@@ -37,6 +37,8 @@ set(PROJECT_SOURCES
     mainwindow.ui
     serverconnector.cpp
     serverconnector.h
+    userdicttab.cpp
+    userdicttab.h
     config_definitions.h
     config_macros.h
     ${TS_FILES}

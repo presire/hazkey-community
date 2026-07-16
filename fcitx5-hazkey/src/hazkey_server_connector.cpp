@@ -419,6 +419,35 @@ void HazkeyServerConnector::moveCursor(int offset) {
     return;
 }
 
+std::optional<HazkeyServerConnector::ClauseBoundaryResult>
+HazkeyServerConnector::adjustClauseBoundary(int offset) {
+    hazkey::RequestEnvelope request;
+    auto props = request.mutable_adjust_clause_boundary();
+    props->set_offset(offset);
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR() << "Error while transacting adjustClauseBoundary().";
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_ERROR() << "adjustClauseBoundary: "
+                      << "Server returned an error: "
+                      << responseVal.error_message();
+        return std::nullopt;
+    }
+    if (!responseVal.has_clause_boundary_result()) {
+        FCITX_ERROR() << "adjustClauseBoundary: "
+                      << "Server returned unexpected response";
+        return std::nullopt;
+    }
+
+    ClauseBoundaryResult result;
+    result.candidates = responseVal.clause_boundary_result().candidates();
+    result.hiragana = responseVal.clause_boundary_result().hiragana();
+    return result;
+}
+
 void HazkeyServerConnector::setContext(std::string context, int anchor) {
     hazkey::RequestEnvelope request;
     auto props = request.mutable_set_context();

@@ -2,10 +2,21 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftUtils
 
+/// Entry kept per displayed candidate so we can distinguish converter results
+/// from user-dictionary injections during commit.
+enum DisplayedCandidate {
+    case fromConverter(Candidate)
+    /// Synthetic candidate from the user dictionary.
+    /// Always represents an exact full-reading match, so on commit the entire
+    /// composing text is consumed.
+    case fromUserDict(word: String)
+}
+
 class HazkeyServerState {
     let serverConfig: HazkeyServerConfig
     let converter: KanaKanjiConverter
-    var currentCandidateList: [Candidate]?
+    let userDictionary: UserDictionary = UserDictionary()
+    var currentCandidateList: [DisplayedCandidate]?
     var composingText: ComposingTextBox = ComposingTextBox()
 
     var isShiftPressedAlone = false
@@ -180,16 +191,23 @@ class HazkeyServerState {
     }
 
     func completePrefix(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
-        if let completedCandidate = currentCandidateList?[candidateIndex] {
-            composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
-            converter.setCompletedData(completedCandidate)
-            converter.updateLearningData(completedCandidate)
-            learningDataNeedsCommit = true
-        } else {
+        guard let entry = currentCandidateList?[candidateIndex] else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Candidate index \(candidateIndex) not found."
             }
+        }
+        switch entry {
+        case .fromConverter(let completedCandidate):
+            composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
+            converter.setCompletedData(completedCandidate)
+            converter.updateLearningData(completedCandidate)
+            learningDataNeedsCommit = true
+        case .fromUserDict:
+            // User-dictionary entries always match the full reading, so we
+            // simply clear the composing text. They do not feed the
+            // converter's learning store.
+            composingText = ComposingTextBox()
         }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -200,6 +218,37 @@ class HazkeyServerState {
         _ = composingText.value.moveCursorFromCursorPosition(count: offset)
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
+        }
+    }
+
+    func adjustClauseBoundary(offset: Int) -> Hazkey_ResponseEnvelope {
+        isShiftPressedAlone = false
+        if composingText.value.isEmpty {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .success
+                $0.clauseBoundaryResult = Hazkey_Commands_ClauseBoundaryResult()
+            }
+        }
+
+        let minCursorPosition = 1
+        let maxBackwardOffset =
+            minCursorPosition - composingText.value.convertTargetCursorPosition
+        let maxForwardOffset =
+            composingText.value.convertTarget.count
+            - composingText.value.convertTargetCursorPosition
+        let clampedOffset = max(min(offset, maxForwardOffset), maxBackwardOffset)
+        _ = composingText.value.moveCursorFromCursorPosition(count: clampedOffset)
+
+        let (candidatesResult, serverCandidates) = makeCandidatesResult(
+            is_suggest: false)
+        currentCandidateList = serverCandidates
+
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+            $0.clauseBoundaryResult = Hazkey_Commands_ClauseBoundaryResult.with {
+                $0.candidates = candidatesResult
+                $0.hiragana = composingText.value.toHiragana()
+            }
         }
     }
 
@@ -278,8 +327,30 @@ class HazkeyServerState {
 
     /// Candidates
 
-    // TODO: return error message
-    func getCandidates(is_suggest: Bool) -> Hazkey_ResponseEnvelope {
+    func ensureCompositionSeparatorForConversion() {
+        guard composingText.value.isAtEndIndex else {
+            return
+        }
+        if composingText.value.input.last?.piece == .compositionSeparator {
+            return
+        }
+        composingText.value.insertAtCursorPosition([
+            ComposingText.InputElement(
+                piece: .compositionSeparator,
+                inputStyle: .mapped(id: .tableName(currentTableName)))
+        ])
+    }
+
+    func candidateRequestText(is_suggest: Bool) -> ComposingText {
+        let usePrefixTarget = !is_suggest && !composingText.value.isAtEndIndex
+        return usePrefixTarget
+            ? composingText.value.prefixToCursorPosition()
+            : composingText.value
+    }
+
+    private func makeCandidatesResult(
+        is_suggest: Bool
+    ) -> (Hazkey_Commands_CandidatesResult, [DisplayedCandidate]) {
 
         func canAppend(
             isSuggest: Bool,
@@ -291,19 +362,19 @@ class HazkeyServerState {
 
         func appendCandidate(
             _ candidate: Candidate,
-            hiraganaPreedit: String,
-            hiraganaPreeditLen: Int,
-            serverCandidates: inout [Candidate],
+            fullHiraganaPreedit: String,
+            requestHiraganaPreeditLen: Int,
+            serverCandidates: inout [DisplayedCandidate],
             clientCandidates: inout [Hazkey_Commands_CandidatesResult.Candidate]
         ) {
             var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
             clientCandidate.text = candidate.text
 
-            let endIndex = min(candidate.rubyCount, hiraganaPreeditLen)
-            clientCandidate.subHiragana = String(hiraganaPreedit.dropFirst(endIndex))
+            let endIndex = min(candidate.rubyCount, requestHiraganaPreeditLen)
+            clientCandidate.subHiragana = String(fullHiraganaPreedit.dropFirst(endIndex))
 
             clientCandidates.append(clientCandidate)
-            serverCandidates.append(candidate)
+            serverCandidates.append(.fromConverter(candidate))
         }
 
         var options = baseConvertRequestOptions
@@ -330,25 +401,34 @@ class HazkeyServerState {
 
         options.requireJapanesePrediction = usePrediction ? .manualMix : .disabled
 
-        var copiedComposingText = composingText.value
-
-        if !is_suggest {
-            let _ = copiedComposingText.moveCursorFromCursorPosition(
-                count: copiedComposingText.toHiragana().count)
-            copiedComposingText.insertAtCursorPosition(
-                [
-                    ComposingText.InputElement(
-                        piece: .compositionSeparator,
-                        inputStyle: .mapped(id: .tableName(currentTableName)))
-                ])
-        }
+        let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
+        let usesFullComposingText =
+            copiedComposingText.convertTarget == composingText.value.convertTarget
 
         var candidatesResult = Hazkey_Commands_CandidatesResult()
         let converted = converter.requestCandidates(copiedComposingText, options: options)
+        let fullHiraganaPreedit = composingText.value.toHiragana()
         let hiraganaPreedit = copiedComposingText.toHiragana()
         let hiraganaPreeditLen = hiraganaPreedit.count
-        var serverCandidates: [Candidate] = []
+        var serverCandidates: [DisplayedCandidate] = []
         var clientCandidates: [Hazkey_Commands_CandidatesResult.Candidate] = []
+
+        // Inject user dictionary entries that exactly match the current reading.
+        // These are surfaced at the top of the candidate list and bypass learning.
+        if usesFullComposingText {
+            userDictionary.reloadIfNeeded()
+            let lookupHiragana = fullHiraganaPreedit.precomposedStringWithCanonicalMapping
+            NSLog(
+                "User dict lookup: '\(lookupHiragana)' (\(userDictionary.count) entries loaded)")
+            let userMatches = userDictionary.exactMatches(hiragana: lookupHiragana)
+            for match in userMatches {
+                var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                clientCandidate.text = match.word
+                clientCandidate.subHiragana = ""
+                clientCandidates.append(clientCandidate)
+                serverCandidates.append(.fromUserDict(word: match.word))
+            }
+        }
 
         // predictionResults is empty when prediction=disabled
         for candidate in converted.predictionResults {
@@ -358,7 +438,9 @@ class HazkeyServerState {
             else { break }
 
             appendCandidate(
-                candidate, hiraganaPreedit: hiraganaPreedit, hiraganaPreeditLen: hiraganaPreeditLen,
+                candidate,
+                fullHiraganaPreedit: fullHiraganaPreedit,
+                requestHiraganaPreeditLen: hiraganaPreeditLen,
                 serverCandidates: &serverCandidates,
                 clientCandidates: &clientCandidates)
         }
@@ -374,7 +456,7 @@ class HazkeyServerState {
                 candidatesResult.liveText = candidate.text
                 candidatesResult.liveTextIndex = Int32(serverCandidates.count)
                 if is_suggest && serverCandidates.count >= N_best {
-                    serverCandidates.append(candidate)
+                    serverCandidates.append(.fromConverter(candidate))
                     break
                 }
             }
@@ -383,23 +465,24 @@ class HazkeyServerState {
 
             appendCandidate(
                 candidate,
-                hiraganaPreedit: hiraganaPreedit,
-                hiraganaPreeditLen: hiraganaPreeditLen,
+                fullHiraganaPreedit: fullHiraganaPreedit,
+                requestHiraganaPreeditLen: hiraganaPreeditLen,
                 serverCandidates: &serverCandidates,
                 clientCandidates: &clientCandidates
             )
         }
 
-        self.currentCandidateList = serverCandidates
         candidatesResult.candidates = clientCandidates
 
-        // Do not automatically convert if there is only one character
         if serverConfig.currentProfile.autoConvertMode
             == Hazkey_Config_Profile.AutoConvertMode.autoConvertForMultipleChars
-            && hiraganaPreedit.count == 1
         {
-            candidatesResult.liveText = ""
-            candidatesResult.liveTextIndex = -1
+            let minChars = serverConfig.currentProfile.autoConvertMinChars > 0
+                ? Int(serverConfig.currentProfile.autoConvertMinChars) : 2
+            if hiraganaPreedit.count < minChars {
+                candidatesResult.liveText = ""
+                candidatesResult.liveTextIndex = -1
+            }
         } else if serverConfig.currentProfile.autoConvertMode
             == Hazkey_Config_Profile.AutoConvertMode.autoConvertDisabled
         {
@@ -419,6 +502,17 @@ class HazkeyServerState {
                 return serverConfig.currentProfile.numCandidatesPerPage
             }
         }()
+
+        return (candidatesResult, serverCandidates)
+    }
+
+    // TODO: return error message
+    func getCandidates(is_suggest: Bool) -> Hazkey_ResponseEnvelope {
+        if !is_suggest {
+            ensureCompositionSeparatorForConversion()
+        }
+        let (candidatesResult, serverCandidates) = makeCandidatesResult(is_suggest: is_suggest)
+        self.currentCandidateList = serverCandidates
 
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success

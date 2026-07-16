@@ -11,3 +11,6 @@
 /CMakeCache.txt
 
 /compile_commands.json
+
+/.omo
+/.codegraph

@@ -176,11 +176,19 @@ void HazkeyState::preeditKeyEvent(
             }
             break;
         case FcitxKey_Left:
-            isCursorMoving_ = true;
-            engine_->server().moveCursor(-1);
+            if (key.states() == KeyState::Shift) {
+                showNonPredictCandidateList();
+                moveSegmentBoundary(false);
+            } else {
+                isCursorMoving_ = true;
+                engine_->server().moveCursor(-1);
+            }
             break;
         case FcitxKey_Right:
-            if (isCursorMoving_) {
+            if (key.states() == KeyState::Shift) {
+                showNonPredictCandidateList();
+                moveSegmentBoundary(true);
+            } else if (isCursorMoving_) {
                 engine_->server().moveCursor(1);
             }
             break;
@@ -227,20 +235,31 @@ void HazkeyState::candidateKeyEvent(
     std::vector<std::string> preedit;
     switch (keysym) {
         case FcitxKey_Right:
-            // if (event.key().states() == KeyState::Alt) {
-            candidateList->nextPage();
-            // }
+            if (key.states() == KeyState::Shift) {
+                moveSegmentBoundary(true);
+            } else {
+                candidateList->nextPage();
+            }
             break;
         case FcitxKey_Left:
-            // if (event.key().states() == KeyState::Alt) {
-            candidateList->prevPage();
-            // }
+            if (key.states() == KeyState::Shift) {
+                moveSegmentBoundary(false);
+            } else {
+                candidateList->prevPage();
+            }
             break;
         case FcitxKey_Return:
             candidateCompleteHandler(candidateList);
             break;
         case FcitxKey_Escape:
+            if (isClauseBoundaryAdjusting_) {
+                showNonPredictCandidateList(false);
+                break;
+            }
+            isClauseBoundaryAdjusting_ = false;
+            [[fallthrough]];
         case FcitxKey_BackSpace:
+            isClauseBoundaryAdjusting_ = false;
             showPreeditCandidateList();
             break;
         case FcitxKey_space:
@@ -306,7 +325,8 @@ void HazkeyState::candidateCompleteHandler(
     engine_->server().completePrefix(candidateList->globalCursorIndex());
     ic_->commitString(preedit[0]);
     if (preedit.size() > 1) {
-        showNonPredictCandidateList();
+        isClauseBoundaryAdjusting_ = false;
+        showNonPredictCandidateList(false);
     } else {
         reset();
     }
@@ -427,12 +447,17 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
 /// Show Candidate List
 
 bool HazkeyState::showCandidateList(bool isSuggest) {
+    auto response = engine_->server().getCandidates(isSuggest);
+    return showCandidateList(response);
+}
+
+bool HazkeyState::showCandidateList(
+    const hazkey::commands::CandidatesResult& response,
+    std::optional<std::string> fallbackPreedit) {
     FCITX_DEBUG() << "HazkeyState showCandidateList";
 
-    auto response = engine_->server().getCandidates(isSuggest);
-
     auto candidateResult =
-        std::make_unique<HazkeyCandidateList>(std::move(response.candidates()));
+        std::make_unique<HazkeyCandidateList>(response.candidates());
 
     candidateResult->setSelectionKey(defaultSelectionKeys);
 
@@ -443,6 +468,8 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
         // preedit conversion is enabled and conversion result is found
         // show preedit conversion result
         preedit_.setSimplePreedit(response.live_text());
+    } else if (fallbackPreedit != std::nullopt) {
+        preedit_.setSimplePreedit(*fallbackPreedit);
     } else {
         // preedit conversion is disabled or conversion result is not
         // available show hiragana preedit
@@ -454,7 +481,9 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
 
     livePreeditIndex_ = response.live_text_index();
 
-    if (response.page_size() > 0) {
+    const bool hasCandidates =
+        response.page_size() > 0 && response.candidates_size() > 0;
+    if (hasCandidates) {
         ic_->inputPanel().setCandidateList(std::move(candidateResult));
         auto newFcitxCandidateList =
             std::dynamic_pointer_cast<HazkeyCandidateList>(
@@ -465,11 +494,17 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
     }
 
     // true if the list is displayed
-    return response.page_size() > 0;
+    return hasCandidates;
 }
 
-void HazkeyState::showNonPredictCandidateList() {
-    showCandidateList(false);
+void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
+    if (!preserveTarget) {
+        engine_->server().moveCursor(1024);
+        isClauseBoundaryAdjusting_ = false;
+    }
+    if (!showCandidateList(false)) {
+        return;
+    }
 
     livePreeditIndex_ = -1;
 
@@ -477,6 +512,25 @@ void HazkeyState::showNonPredictCandidateList() {
     // because the first candidate is the result of all preedit text.
     auto currentPreedit = preedit_.text();
     preedit_.setSimplePreeditHighlighted(currentPreedit);
+
+    auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
+        ic_->inputPanel().candidateList());
+    newCandidateList->focus();
+    updateCandidateCursor(newCandidateList);
+    setCandidateCursorAUX(
+        std::static_pointer_cast<HazkeyCandidateList>(newCandidateList));
+}
+
+void HazkeyState::showNonPredictCandidateList(
+    const hazkey::commands::CandidatesResult& response,
+    const std::string& hiragana) {
+    if (!showCandidateList(response, hiragana)) {
+        return;
+    }
+
+    livePreeditIndex_ = -1;
+
+    preedit_.setSimplePreeditHighlighted(hiragana);
 
     auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
         ic_->inputPanel().candidateList());
@@ -524,6 +578,16 @@ void HazkeyState::backCandidateCursor(
     updateCandidateCursor(candidateList);
 }
 
+void HazkeyState::moveSegmentBoundary(bool expand) {
+    auto result = engine_->server().adjustClauseBoundary(expand ? 1 : -1);
+    if (result == std::nullopt) {
+        isClauseBoundaryAdjusting_ = false;
+        return;
+    }
+    isClauseBoundaryAdjusting_ = true;
+    showNonPredictCandidateList(result->candidates, result->hiragana);
+}
+
 /// AUX
 
 void HazkeyState::setCandidateCursorAUX(
@@ -557,6 +621,7 @@ void HazkeyState::reset() {
     isDirectConversionMode_ = false;
     livePreeditIndex_ = -1;
     isCursorMoving_ = false;
+    isClauseBoundaryAdjusting_ = false;
     engine_->server().newComposingText();
     ic_->inputPanel().reset();
 }

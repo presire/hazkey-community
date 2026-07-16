@@ -30,6 +30,7 @@
 #include "constants.h"
 #include "constants.h.in"
 #include "serverconnector.h"
+#include "userdicttab.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QWidget(parent),
@@ -59,6 +60,18 @@ MainWindow::MainWindow(QWidget* parent)
             "style=\"font-size:18pt\">%1</span></p></body></html>")
             .arg(HAZKEY_VERSION_STR);
     ui_->aboutHazkeyTitleVersionText->setText(hazkeyVersionText);
+
+    // Add User Dictionary tab (managed independently from server config —
+    // the file is read directly by hazkey-server via mtime polling).
+    {
+        auto* userDictTab = new UserDictTab(ui_->tabWidget);
+        // Insert between "Input Style" (index 2) and "Dictionary" (index 3).
+        const int dictionaryTabIndex =
+            ui_->tabWidget->indexOf(ui_->dictionaryTab);
+        const int insertAt =
+            dictionaryTabIndex >= 0 ? dictionaryTabIndex : ui_->tabWidget->count();
+        ui_->tabWidget->insertTab(insertAt, userDictTab, tr("User Dictionary"));
+    }
 
     // Connect UI signals
     connectSignals();
@@ -303,6 +316,12 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
 
     SET_SPINBOX(ui_->numSuggestion, currentProfile_->num_suggestions(),
                 ConfigDefs::SpinboxDefaults::NUM_SUGGESTIONS);
+    const int autoConvertMinChars = currentProfile_->auto_convert_min_chars();
+    SET_SPINBOX(ui_->autoConvertMinChars,
+                autoConvertMinChars > 0
+                    ? autoConvertMinChars
+                    : ConfigDefs::SpinboxDefaults::AUTO_CONVERT_MIN_CHARS,
+                ConfigDefs::SpinboxDefaults::AUTO_CONVERT_MIN_CHARS);
     SET_SPINBOX(ui_->numCandidatesPerPage,
                 currentProfile_->num_candidates_per_page(),
                 ConfigDefs::SpinboxDefaults::NUM_CANDIDATES_PER_PAGE);
@@ -399,6 +418,8 @@ bool MainWindow::saveCurrentConfig() {
         ConfigDefs::SuggestionListMode, ui_->suggestionList));
 
     currentProfile_->set_num_suggestions(GET_SPINBOX_INT(ui_->numSuggestion));
+    currentProfile_->set_auto_convert_min_chars(
+        GET_SPINBOX_INT(ui_->autoConvertMinChars));
     currentProfile_->set_num_candidates_per_page(
         GET_SPINBOX_INT(ui_->numCandidatesPerPage));
     currentProfile_->set_zenzai_infer_limit(
