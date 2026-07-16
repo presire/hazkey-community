@@ -4,6 +4,8 @@ Hazkey input method for fcitx5
 
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を利用したIMEです
 
+このリポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしています。
+
 ## ホームページ
 
 [https://hazkey.hiira.dev](https://hazkey.hiira.dev)
