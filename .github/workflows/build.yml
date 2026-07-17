@@ -1,10 +1,11 @@
 name: Build
 
 on:
-  push:
-    tags:
-      - "*"
+  workflow_call:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -15,27 +16,17 @@ jobs:
           - runner: ubuntu-22.04
             label: ubuntu-22.04
             arch: x86_64
-            swift_url: https://download.swift.org/swift-6.2-release/ubuntu2204/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu22.04.tar.gz
+            swiftly_platform_choice: "2"
             static_protobuf: false
           - runner: ubuntu-24.04
             label: ubuntu-24.04
             arch: x86_64
-            swift_url: https://download.swift.org/swift-6.2-release/ubuntu2404/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu24.04.tar.gz
-            static_protobuf: false
-          - runner: ubuntu-24.04-arm
-            label: ubuntu-24.04
-            arch: aarch64
-            swift_url: https://download.swift.org/swift-6.2-release/ubuntu2404-aarch64/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu24.04-aarch64.tar.gz
+            swiftly_platform_choice: "1"
             static_protobuf: false
           - runner: ubuntu-22.04
             label: ubuntu-22.04-static_protobuf
             arch: x86_64
-            swift_url: https://download.swift.org/swift-6.2-release/ubuntu2204/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu22.04.tar.gz
-            static_protobuf: true
-          - runner: ubuntu-24.04-arm
-            label: ubuntu-24.04-static_protobuf
-            arch: aarch64
-            swift_url: https://download.swift.org/swift-6.2-release/ubuntu2404-aarch64/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu24.04-aarch64.tar.gz
+            swiftly_platform_choice: "2"
             static_protobuf: true
     runs-on: ${{ matrix.runner }}
     steps:
@@ -49,19 +40,31 @@ jobs:
         id: cache-swift
         uses: actions/cache@v5
         with:
-          path: ${{ github.workspace }}/swift
-          key: ${{ matrix.runner }}-${{ matrix.arch }}-swift-6.2-RELEASE
+          path: |
+            ~/.local/share/swiftly
+            ~/.local/bin/swiftly
+          key: ${{ matrix.runner }}-${{ matrix.arch }}-swiftly-swift-6.3.3
 
-      - name: Install Swift Environment
+      - name: Install Swiftly and Swift 6.3.3
         if: steps.cache-swift.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ${{ github.workspace }}/swift
-          wget ${{ matrix.swift_url }}
-          tar xf $(basename ${{ matrix.swift_url }}) --strip-components=1 -C ${{ github.workspace }}/swift
+          curl -fL --retry 5 --retry-all-errors -O \
+            https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+          tar zxf swiftly-$(uname -m).tar.gz
+          printf '%s\n' '${{ matrix.swiftly_platform_choice }}' | ./swiftly init --quiet-shell-followup --skip-install --no-modify-profile
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          swiftly install 6.3.3
+          swiftly use 6.3.3
 
       - name: Add Swift to PATH
         run: |
-          echo "${{ github.workspace }}/swift/usr/bin" >> $GITHUB_PATH
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          echo "$(dirname "$(swiftly which swift)")" >> $GITHUB_PATH
+
+      - name: Check Swift version
+        run: |
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          swift --version
 
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
@@ -89,7 +92,7 @@ jobs:
           sudo apt-get install -y mesa-vulkan-drivers vulkan-sdk
 
       - name: Vulkan Dependencies (Ubuntu 24.04+)
-        if: matrix.runner == 'ubuntu-24.04' || matrix.runner == 'ubuntu-24.04-arm'
+        if: matrix.runner == 'ubuntu-24.04'
         run: |
           sudo apt-get install -y libvulkan-dev glslc
 
@@ -159,21 +162,218 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/hazkey-server/build
           cd ${{ github.workspace }}/hazkey-server/build
-          if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DGGML_CPU_ALL_VARIANTS=OFF -DGGML_CPU_ARM_ARCH=armv8-a -G Ninja ..
-          else
-            cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -G Ninja ..
-          fi
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -G Ninja ..
           ninja -j$(nproc)
           env DESTDIR=${{ github.workspace }}/workdir ninja install
 
       - name: Create tar.gz fcitx5-hazkey package
         run: |
           cd ${{ github.workspace }}/workdir
-          tar -czvf ${{ github.workspace }}/packages/fcitx5-hazkey-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz ./usr
+          tar -czvf ${{ github.workspace }}/packages/fcitx5-hazkey-${{ github.ref_name }}-${{ matrix.label }}-${{ matrix.arch }}.tar.gz ./usr
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v6
         with:
           name: fcitx5-hazkey-${{ matrix.label }}-${{ matrix.arch }}
           path: ${{ github.workspace }}/packages/*
+          if-no-files-found: error
+
+  distro-packages:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 13 Trixie
+            distro: debian
+            image: debian:trixie
+            package_type: deb
+            package_suffix: trixie
+            package_arch: amd64
+          - name: Fedora 44
+            distro: fedora
+            image: fedora:44
+            package_type: rpm
+            package_suffix: fc44
+            package_arch: x86_64
+          - name: openSUSE Leap 16
+            distro: opensuse
+            image: opensuse/leap:16
+            package_type: rpm
+            package_suffix: leap16
+            package_arch: x86_64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Update submodules
+        run: git submodule update --init --recursive
+
+      - name: Build and package inside container
+        env:
+          DISTRO: ${{ matrix.distro }}
+          IMAGE: ${{ matrix.image }}
+          PACKAGE_TYPE: ${{ matrix.package_type }}
+          PACKAGE_SUFFIX: ${{ matrix.package_suffix }}
+          PACKAGE_ARCH: ${{ matrix.package_arch }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+        run: |
+          rm -rf workdir packages rpmbuild hazkey.spec
+          mkdir -p workdir packages
+
+          docker run --rm -i \
+            -e DISTRO="$DISTRO" \
+            -e PACKAGE_TYPE="$PACKAGE_TYPE" \
+            -e PACKAGE_SUFFIX="$PACKAGE_SUFFIX" \
+            -e PACKAGE_ARCH="$PACKAGE_ARCH" \
+            -e GITHUB_REF_NAME="$GITHUB_REF_NAME_VALUE" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$IMAGE" sh -s <<'EOF'
+          set -eux
+
+          case "$DISTRO" in
+            debian)
+              apt-get update
+              apt-get install -y \
+                build-essential ca-certificates curl git gettext gzip tar ninja-build pkg-config \
+                cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+                libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+                libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev libncurses6 \
+                glslc protobuf-compiler libprotobuf-dev dpkg-dev
+              ;;
+            fedora)
+              dnf install -y \
+                @development-tools ca-certificates curl git gzip tar gettext \
+                ninja-build pkgconf-pkg-config cmake rpm-build \
+                qt6-qtbase-devel qt6-qttools-devel \
+                fcitx5-devel fcitx5-qt-devel \
+                protobuf-compiler protobuf-devel protobuf-lite-devel \
+                vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
+                libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel
+              ;;
+            opensuse)
+              zypper --non-interactive --gpg-auto-import-keys refresh
+              zypper --non-interactive install --no-recommends \
+                ca-certificates \
+                pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel libicu-devel \
+                libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \
+                cmake ninja gettext-tools protobuf-devel fcitx5-devel \
+                qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
+                shaderc glslang-devel
+              ;;
+          esac
+
+          rm -rf /work/swift
+          mkdir -p /work/swift
+          curl -fL --retry 5 --retry-all-errors -o /tmp/swift.tar.gz \
+            https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+          tar -xzf /tmp/swift.tar.gz --strip-components=1 -C /work/swift
+          export PATH="/work/swift/usr/bin:$PATH"
+          swift --version
+
+          rm -rf hazkey-settings/build fcitx5-hazkey/build hazkey-server/build
+          mkdir -p workdir packages
+
+          sed -i "s/Qt::Orientation::/Qt::/g" hazkey-settings/mainwindow.ui
+
+          cmake -S hazkey-settings -B hazkey-settings/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DProtobuf_USE_STATIC_LIBS=OFF
+          cmake --build hazkey-settings/build --parallel
+          DESTDIR=/work/workdir cmake --install hazkey-settings/build
+
+          cmake -S fcitx5-hazkey -B fcitx5-hazkey/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DProtobuf_USE_STATIC_LIBS=OFF
+          cmake --build fcitx5-hazkey/build --parallel
+          DESTDIR=/work/workdir cmake --install fcitx5-hazkey/build
+
+          cmake -S hazkey-server -B hazkey-server/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build hazkey-server/build --parallel
+          DESTDIR=/work/workdir cmake --install hazkey-server/build
+
+          version="${GITHUB_REF_NAME#v}"
+          case "$version" in
+            ''|*[!0-9.]* ) version="0.2.1" ;;
+          esac
+
+          if [ "$PACKAGE_TYPE" = "deb" ]; then
+            mkdir -p workdir/DEBIAN
+            {
+              printf '%s\n' 'Package: fcitx5-hazkey'
+              printf 'Version: %s\n' "${version}-1~${PACKAGE_SUFFIX}"
+              printf '%s\n' 'Section: utils'
+              printf '%s\n' 'Priority: optional'
+              printf 'Architecture: %s\n' "$PACKAGE_ARCH"
+              printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
+              printf '%s\n' 'Depends: fcitx5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
+              printf '%s\n' 'Description: Hazkey Japanese input method for Fcitx5'
+              printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
+              printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
+            } > workdir/DEBIAN/control
+            dpkg-deb --build --root-owner-group workdir \
+              "packages/fcitx5-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            dpkg-deb --info packages/*.deb
+            dpkg-deb --contents packages/*.deb
+          else
+            topdir=/work/rpmbuild
+            mkdir -p "$topdir"
+            {
+              printf '%s\n' 'Name: fcitx5-hazkey'
+              printf 'Version: %s\n' "$version"
+              printf 'Release: %s\n' "1.${PACKAGE_SUFFIX}"
+              printf '%s\n' 'Summary: Hazkey Japanese input method for Fcitx5'
+              printf '%s\n' 'License: MIT'
+              printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
+              printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
+              printf '%s\n' 'Requires: fcitx5, qt6-qtbase, protobuf, vulkan-loader'
+              printf '\n'
+              printf '%s\n' '%description'
+              printf '%s\n' 'Japanese input method using AzooKeyKanaKanjiConverter.'
+              printf '\n'
+              printf '%s\n' '%prep'
+              printf '\n'
+              printf '%s\n' '%build'
+              printf '\n'
+              printf '%s\n' '%install'
+              printf '%s\n' 'rm -rf %{buildroot}'
+              printf '%s\n' 'mkdir -p %{buildroot}/usr'
+              printf '%s\n' 'cp -a /work/workdir/usr/. %{buildroot}/usr/'
+              printf '\n'
+              printf '%s\n' '%files'
+              find workdir/usr \( -type f -o -type l \) -printf '/usr/%P\n'
+            } > hazkey.spec
+            rpmbuild -bb hazkey.spec \
+              --define "_topdir $topdir" \
+              --define "_builddir $topdir/BUILD" \
+              --define "_buildrootdir $topdir/BUILDROOT" \
+              --define "_rpmdir $topdir/RPMS" \
+              --define "_srcrpmdir $topdir/SRPMS"
+            find "$topdir/RPMS" -type f -name '*.rpm' -exec cp {} packages/ \;
+            rpm_file="$(find packages -type f -name '*.rpm' -print -quit)"
+            rpm_target="packages/fcitx5-hazkey-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
+            if [ "$rpm_file" != "$rpm_target" ]; then
+              mv "$rpm_file" "$rpm_target"
+            fi
+            rpm -qp --requires packages/*.rpm
+            rpm -qp --filesbypkg packages/*.rpm
+          fi
+
+          chmod -R a+rX packages
+          EOF
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: fcitx5-hazkey-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
+          path: packages/*
+          if-no-files-found: error
