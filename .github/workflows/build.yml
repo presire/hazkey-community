@@ -301,9 +301,11 @@ jobs:
           cmake --build hazkey-server/build --parallel
           DESTDIR=/work/workdir cmake --install hazkey-server/build
 
-          version="${GITHUB_REF_NAME#v}"
+          ref_name="${GITHUB_REF_NAME#v}"
+          version="${ref_name%%[!0-9.]*}"
           case "$version" in
-            ''|*[!0-9.]* ) version="0.2.1" ;;
+            [0-9]*.[0-9]*.[0-9]* ) ;;
+            * ) version="0.2.2" ;;
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then
