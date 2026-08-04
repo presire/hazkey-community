@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-settings VERSION 0.2.2 LANGUAGES CXX)
+project(hazkey-settings VERSION 0.2.3 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -37,8 +37,6 @@ set(PROJECT_SOURCES
     mainwindow.ui
     serverconnector.cpp
     serverconnector.h
-    userdicttab.cpp
-    userdicttab.h
     config_definitions.h
     config_macros.h
     ${TS_FILES}
@@ -112,7 +110,7 @@ target_include_directories(hazkey-settings PRIVATE
 target_link_libraries(hazkey-settings PRIVATE
     Qt6::Widgets
     Qt6::Network
-    ${Protobuf_LITE_LIBRARIES}
+    protobuf::libprotobuf-lite
 )
 
 include(GNUInstallDirs)

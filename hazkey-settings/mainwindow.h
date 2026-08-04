@@ -5,9 +5,17 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QProgressDialog>
+#include <QString>
+#include <QVector>
 #include <QWidget>
 
 #include "serverconnector.h"
+
+struct UserDictEntry {
+    QString reading;
+    QString word;
+    QString comment;
+};
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -45,6 +53,13 @@ class MainWindow : public QWidget {
     void onCheckAllConversion();
     void onUncheckAllConversion();
     void onClearLearningData();
+    void onUserDictAdd();
+    void onUserDictEdit();
+    void onUserDictDelete();
+    void onUserDictImport();
+    void onUserDictExport();
+    void onUserDictSelectionChanged();
+    void onUseUserDictToggled(bool enabled);
     void onDownloadZenzaiModel();
     void onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
     void onDownloadFinished();
@@ -84,6 +99,12 @@ class MainWindow : public QWidget {
         const QString& message, const QString& backgroundColor,
         const QString& buttonText = QString(),
         std::function<void()> buttonCallback = nullptr);
+    static QString userDictFilePath();
+    void loadUserDictFromDisk();
+    bool saveUserDictToDisk();
+    void refreshUserDictTable();
+    bool editUserDictEntryDialog(UserDictEntry& entry, const QString& title);
+    void setupUserDict();
     Ui::MainWindow* ui_;
     ServerConnector server_;
     hazkey::config::CurrentConfig currentConfig_;
@@ -93,5 +114,6 @@ class MainWindow : public QWidget {
     QNetworkReply* currentDownload_;
     QProgressDialog* downloadProgressDialog_;
     QString zenzaiModelPath_;
+    QVector<UserDictEntry> userDictEntries_;
 };
 #endif  // MAINWINDOW_H

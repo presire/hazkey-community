@@ -415,7 +415,7 @@ class HazkeyServerState {
 
         // Inject user dictionary entries that exactly match the current reading.
         // These are surfaced at the top of the candidate list and bypass learning.
-        if usesFullComposingText {
+        if usesFullComposingText && serverConfig.currentProfile.useUserDictionaryEffective {
             userDictionary.reloadIfNeeded()
             let lookupHiragana = fullHiraganaPreedit.precomposedStringWithCanonicalMapping
             NSLog(
@@ -546,4 +546,12 @@ class HazkeyServerState {
         NSLog("State configuration reinitialized successfully")
     }
 
+}
+
+extension Hazkey_Config_Profile {
+    /// Effective value of the per-profile user dictionary setting.
+    /// Legacy or missing config defaults to true to preserve existing behavior.
+    var useUserDictionaryEffective: Bool {
+        hasUseUserDictionary ? useUserDictionary : true
+    }
 }

@@ -110,6 +110,7 @@ message Profile {
     repeated EnabledInputTable enabled_tables = 56;
 
     optional string submode_entry_point_chars = 60;
+    optional bool use_user_dictionary = 70;
 
     optional bool use_default_zenzai_settings = 100;
     optional bool zenzai_enable = 101;

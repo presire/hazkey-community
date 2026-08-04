@@ -7,10 +7,15 @@
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
+#include <QFormLayout>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMenu>
@@ -19,6 +24,9 @@
 #include <QNetworkRequest>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QTextStream>
 #include <QThread>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -30,7 +38,6 @@
 #include "constants.h"
 #include "constants.h.in"
 #include "serverconnector.h"
-#include "userdicttab.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QWidget(parent),
@@ -61,17 +68,8 @@ MainWindow::MainWindow(QWidget* parent)
             .arg(HAZKEY_VERSION_STR);
     ui_->aboutHazkeyTitleVersionText->setText(hazkeyVersionText);
 
-    // Add User Dictionary tab (managed independently from server config —
-    // the file is read directly by hazkey-server via mtime polling).
-    {
-        auto* userDictTab = new UserDictTab(ui_->tabWidget);
-        // Insert between "Input Style" (index 2) and "Dictionary" (index 3).
-        const int dictionaryTabIndex =
-            ui_->tabWidget->indexOf(ui_->dictionaryTab);
-        const int insertAt =
-            dictionaryTabIndex >= 0 ? dictionaryTabIndex : ui_->tabWidget->count();
-        ui_->tabWidget->insertTab(insertAt, userDictTab, tr("User Dictionary"));
-    }
+    // Setup User Dictionary tab
+    setupUserDict();
 
     // Connect UI signals
     connectSignals();
@@ -108,9 +106,10 @@ void MainWindow::connectSignals() {
                 &MainWindow::onResetConfiguration);
     }
 
-    // Connect history checkbox to enable/disable dependent controls
     connect(ui_->useHistory, &QCheckBox::toggled, this,
             &MainWindow::onUseHistoryToggled);
+    connect(ui_->useUserDict, &QCheckBox::toggled, this,
+            &MainWindow::onUseUserDictToggled);
 
     // Connect input table management buttons
     connect(ui_->enableTable, &QToolButton::clicked, this,
@@ -174,6 +173,20 @@ void MainWindow::connectSignals() {
     // Connect clear learning data button
     connect(ui_->clearLearningData, &QPushButton::clicked, this,
             &MainWindow::onClearLearningData);
+
+    // Connect user dictionary buttons and table signals
+    connect(ui_->userDictNewEntry, &QPushButton::clicked, this,
+            &MainWindow::onUserDictAdd);
+    connect(ui_->userDictDeleteEntry, &QPushButton::clicked, this,
+            &MainWindow::onUserDictDelete);
+    connect(ui_->userDictImport, &QPushButton::clicked, this,
+            &MainWindow::onUserDictImport);
+    connect(ui_->userDictExport, &QPushButton::clicked, this,
+            &MainWindow::onUserDictExport);
+    connect(ui_->userDictTable, &QTableWidget::itemSelectionChanged, this,
+            &MainWindow::onUserDictSelectionChanged);
+    connect(ui_->userDictTable, &QTableWidget::itemDoubleClicked, this,
+            [this](QTableWidgetItem*) { onUserDictEdit(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -201,6 +214,14 @@ void MainWindow::onApply() { saveCurrentConfig(); }
 
 void MainWindow::onUseHistoryToggled(bool enabled) {
     ui_->stopStoreNewHistory->setEnabled(enabled);
+}
+
+void MainWindow::onUseUserDictToggled(bool enabled) {
+    ui_->userDictTable->setEnabled(enabled);
+    ui_->userDictImport->setEnabled(enabled);
+    ui_->userDictExport->setEnabled(enabled);
+    ui_->userDictNewEntry->setEnabled(enabled);
+    onUserDictSelectionChanged();
 }
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
@@ -340,6 +361,12 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                  currentProfile_->zenzai_contextual_mode(),
                  ConfigDefs::CheckboxDefaults::ZENZAI_CONTEXTUAL);
 
+    const bool useUserDict = currentProfile_->has_use_user_dictionary()
+                                 ? currentProfile_->use_user_dictionary()
+                                 : true;
+    SET_CHECKBOX(ui_->useUserDict, useUserDict, true);
+    onUseUserDictToggled(useUserDict);
+
     auto specialConversions = &currentProfile_->special_conversion_mode();
     SET_CHECKBOX(ui_->halfwidthKatakanaConversion,
                  specialConversions->halfwidth_katakana(),
@@ -431,6 +458,7 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_zenzai_enable(GET_CHECKBOX_BOOL(ui_->enableZenzai));
     currentProfile_->set_zenzai_contextual_mode(
         GET_CHECKBOX_BOOL(ui_->zenzaiContextualConversion));
+    currentProfile_->set_use_user_dictionary(GET_CHECKBOX_BOOL(ui_->useUserDict));
 
     auto* specialConversions =
         currentProfile_->mutable_special_conversion_mode();
@@ -1840,4 +1868,289 @@ QString MainWindow::calculateFileSHA256(const QString& filePath) {
 
     file.close();
     return QString(hash.result().toHex());
+}
+
+QString MainWindow::userDictFilePath() {
+    QString xdg = qEnvironmentVariable("XDG_CONFIG_HOME");
+    QString base;
+    if (!xdg.isEmpty()) {
+        base = xdg + "/hazkey";
+    } else {
+        base = QDir::homePath() + "/.config/hazkey";
+    }
+    QDir().mkpath(base);
+    return base + "/user_dictionary.tsv";
+}
+
+void MainWindow::setupUserDict() {
+    ui_->userDictTable->setColumnCount(3);
+    ui_->userDictTable->setHorizontalHeaderLabels(
+        {tr("Reading"), tr("Word"), tr("Comment")});
+    ui_->userDictTable->horizontalHeader()->setStretchLastSection(true);
+    ui_->userDictTable->horizontalHeader()->setSectionResizeMode(
+        0, QHeaderView::ResizeToContents);
+    ui_->userDictTable->horizontalHeader()->setSectionResizeMode(
+        1, QHeaderView::ResizeToContents);
+    ui_->userDictTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui_->userDictTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui_->userDictTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui_->userDictTable->verticalHeader()->setVisible(false);
+
+    loadUserDictFromDisk();
+    refreshUserDictTable();
+}
+
+void MainWindow::loadUserDictFromDisk() {
+    userDictEntries_.clear();
+    QFile file(userDictFilePath());
+    if (!file.exists()) return;
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream in(&file);
+    in.setEncoding(QStringConverter::Utf8);
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        if (line.isEmpty() || line.startsWith('#')) continue;
+        const QStringList cols = line.split('\t');
+        if (cols.size() < 2) continue;
+        UserDictEntry e;
+        e.reading = cols[0].trimmed();
+        e.word = cols[1];
+        e.comment = cols.size() >= 3 ? cols[2] : QString();
+        if (e.reading.isEmpty() || e.word.isEmpty()) continue;
+        userDictEntries_.append(e);
+    }
+}
+
+bool MainWindow::saveUserDictToDisk() {
+    const QString path = userDictFilePath();
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate |
+                   QIODevice::Text)) {
+        QMessageBox::warning(
+            this, tr("User Dictionary"),
+            tr("Failed to save user dictionary to %1").arg(path));
+        return false;
+    }
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    out << "# reading<TAB>word<TAB>comment\n";
+    for (const auto& e : userDictEntries_) {
+        out << e.reading << '\t' << e.word;
+        if (!e.comment.isEmpty()) out << '\t' << e.comment;
+        out << '\n';
+    }
+    return true;
+}
+
+void MainWindow::refreshUserDictTable() {
+    ui_->userDictTable->setRowCount(userDictEntries_.size());
+    for (int i = 0; i < userDictEntries_.size(); ++i) {
+        ui_->userDictTable->setItem(i, 0, new QTableWidgetItem(userDictEntries_[i].reading));
+        ui_->userDictTable->setItem(i, 1, new QTableWidgetItem(userDictEntries_[i].word));
+        ui_->userDictTable->setItem(i, 2, new QTableWidgetItem(userDictEntries_[i].comment));
+    }
+    onUserDictSelectionChanged();
+}
+
+void MainWindow::onUserDictSelectionChanged() {
+    const bool enabled = ui_->useUserDict->isChecked();
+    const bool hasSel = !ui_->userDictTable->selectedItems().isEmpty();
+    ui_->userDictDeleteEntry->setEnabled(enabled && hasSel);
+}
+
+bool MainWindow::editUserDictEntryDialog(UserDictEntry& entry, const QString& title) {
+    QDialog dialog(this);
+    dialog.setWindowTitle(title);
+    dialog.setMinimumSize(520, 200);
+    auto* form = new QFormLayout();
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    auto* readingEdit = new QLineEdit(entry.reading, &dialog);
+    auto* wordEdit = new QLineEdit(entry.word, &dialog);
+    auto* commentEdit = new QLineEdit(entry.comment, &dialog);
+    form->addRow(tr("Reading (hiragana)"), readingEdit);
+    form->addRow(tr("Word"), wordEdit);
+    form->addRow(tr("Comment"), commentEdit);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->addLayout(form);
+    layout->addStretch();
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) return false;
+    const QString reading = readingEdit->text().trimmed();
+    const QString word = wordEdit->text();
+    if (reading.isEmpty() || word.isEmpty()) {
+        QMessageBox::warning(this, tr("User Dictionary"),
+                             tr("Reading and Word must not be empty."));
+        return false;
+    }
+    if (reading.contains('\t') || word.contains('\t') ||
+        commentEdit->text().contains('\t') || reading.contains('\n') ||
+        word.contains('\n')) {
+        QMessageBox::warning(this, tr("User Dictionary"),
+                             tr("Tab and newline characters are not allowed."));
+        return false;
+    }
+    entry.reading = reading;
+    entry.word = word;
+    entry.comment = commentEdit->text();
+    return true;
+}
+
+void MainWindow::onUserDictAdd() {
+    UserDictEntry e;
+    if (!editUserDictEntryDialog(e, tr("Add Word"))) return;
+    userDictEntries_.append(e);
+    if (!saveUserDictToDisk()) {
+        userDictEntries_.removeLast();
+        return;
+    }
+    refreshUserDictTable();
+}
+
+void MainWindow::onUserDictEdit() {
+    const int row = ui_->userDictTable->currentRow();
+    if (row < 0 || row >= userDictEntries_.size()) return;
+    UserDictEntry e = userDictEntries_[row];
+    if (!editUserDictEntryDialog(e, tr("Edit Word"))) return;
+    const UserDictEntry old = userDictEntries_[row];
+    userDictEntries_[row] = e;
+    if (!saveUserDictToDisk()) {
+        userDictEntries_[row] = old;
+        return;
+    }
+    refreshUserDictTable();
+    ui_->userDictTable->selectRow(row);
+}
+
+void MainWindow::onUserDictDelete() {
+    const int row = ui_->userDictTable->currentRow();
+    if (row < 0 || row >= userDictEntries_.size()) return;
+    if (QMessageBox::question(
+            this, tr("User Dictionary"),
+            tr("Delete \"%1\" → \"%2\"?")
+                .arg(userDictEntries_[row].reading, userDictEntries_[row].word)) !=
+        QMessageBox::Yes) {
+        return;
+    }
+    const UserDictEntry removed = userDictEntries_[row];
+    userDictEntries_.removeAt(row);
+    if (!saveUserDictToDisk()) {
+        userDictEntries_.insert(row, removed);
+        return;
+    }
+    refreshUserDictTable();
+}
+
+void MainWindow::onUserDictImport() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Import User Dictionary"), QString(),
+        tr("Tab-separated files (*.tsv *.txt);;All files (*)"));
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(
+            this, tr("User Dictionary"),
+            tr("Failed to open user dictionary file: %1").arg(path));
+        return;
+    }
+
+    QVector<UserDictEntry> importedEntries;
+    int skippedRows = 0;
+    QTextStream in(&file);
+    in.setEncoding(QStringConverter::Utf8);
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        if (line.isEmpty() || line.startsWith('#')) continue;
+        const QStringList cols = line.split('\t');
+        if (cols.size() < 2) {
+            ++skippedRows;
+            continue;
+        }
+        UserDictEntry entry;
+        entry.reading = cols[0].trimmed();
+        entry.word = cols[1];
+        entry.comment = cols.size() >= 3 ? cols[2] : QString();
+        if (entry.reading.isEmpty() || entry.word.isEmpty()) {
+            ++skippedRows;
+            continue;
+        }
+        importedEntries.append(entry);
+    }
+
+    if (importedEntries.isEmpty()) {
+        QMessageBox::information(
+            this, tr("User Dictionary"),
+            tr("No valid user dictionary entries were found."));
+        return;
+    }
+
+    const QVector<UserDictEntry> backup = userDictEntries_;
+    int updatedEntries = 0;
+    int addedEntries = 0;
+    for (const auto& imported : importedEntries) {
+        bool updated = false;
+        for (auto& existing : userDictEntries_) {
+            if (existing.reading == imported.reading &&
+                existing.word == imported.word) {
+                existing = imported;
+                updated = true;
+                break;
+            }
+        }
+        if (updated) {
+            ++updatedEntries;
+        } else {
+            userDictEntries_.append(imported);
+            ++addedEntries;
+        }
+    }
+
+    if (!saveUserDictToDisk()) {
+        userDictEntries_ = backup;
+        return;
+    }
+
+    refreshUserDictTable();
+    QMessageBox::information(
+        this, tr("User Dictionary"),
+        tr("Imported %1 new and updated %2 entries; skipped %3 malformed rows.")
+            .arg(addedEntries)
+            .arg(updatedEntries)
+            .arg(skippedRows));
+}
+
+void MainWindow::onUserDictExport() {
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export User Dictionary"), QString(),
+        tr("Tab-separated files (*.tsv *.txt);;All files (*)"));
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate |
+                   QIODevice::Text)) {
+        QMessageBox::warning(
+            this, tr("User Dictionary"),
+            tr("Failed to export user dictionary to %1").arg(path));
+        return;
+    }
+
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    out << "# reading<TAB>word<TAB>comment\n";
+    for (const auto& entry : userDictEntries_) {
+        out << entry.reading << '\t' << entry.word;
+        if (!entry.comment.isEmpty()) out << '\t' << entry.comment;
+        out << '\n';
+    }
+
+    QMessageBox::information(
+        this, tr("User Dictionary"),
+        tr("Exported user dictionary to %1").arg(path));
 }
