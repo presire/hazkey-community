@@ -33,6 +33,12 @@ jobs:
             package_type: rpm
             package_suffix: leap16
             package_arch: x86_64
+          - name: openSUSE Tumbleweed
+            distro: opensuse
+            image: opensuse/tumbleweed:latest
+            package_type: rpm
+            package_suffix: tumbleweed
+            package_arch: x86_64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -92,6 +98,13 @@ jobs:
                 cmake ninja gettext-tools protobuf-devel fcitx5-devel \
                 qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
                 shaderc glslang-devel
+
+              # Swift (Ubuntu 24.04 build) needs libxml2.so.2; Tumbleweed only ships
+              # libxml2-16 (libxml2.so.16) after the 2.14 soname bump, so symlink it.
+              if ! zypper --non-interactive install --no-recommends libxml2-2; then
+                zypper --non-interactive install --no-recommends libxml2-16
+                ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
+              fi
               ;;
           esac
 
