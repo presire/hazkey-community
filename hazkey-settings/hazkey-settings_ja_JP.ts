@@ -534,14 +534,14 @@
     </message>
     <message>
         <location filename="mainwindow.cpp" line="1967"/>
-        <location filename="mainwindow.cpp" line="2034"/>
-        <location filename="mainwindow.cpp" line="2041"/>
-        <location filename="mainwindow.cpp" line="2082"/>
+        <location filename="mainwindow.cpp" line="2058"/>
+        <location filename="mainwindow.cpp" line="2065"/>
         <location filename="mainwindow.cpp" line="2106"/>
-        <location filename="mainwindow.cpp" line="2137"/>
-        <location filename="mainwindow.cpp" line="2170"/>
-        <location filename="mainwindow.cpp" line="2187"/>
-        <location filename="mainwindow.cpp" line="2201"/>
+        <location filename="mainwindow.cpp" line="2130"/>
+        <location filename="mainwindow.cpp" line="2161"/>
+        <location filename="mainwindow.cpp" line="2194"/>
+        <location filename="mainwindow.cpp" line="2211"/>
+        <location filename="mainwindow.cpp" line="2225"/>
         <source>User Dictionary</source>
         <translation>単語登録</translation>
     </message>
@@ -783,43 +783,43 @@ UIを更新するには再読み込みボタンを押してください。</tran
         <translation>設定が正常に再読み込みされました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2099"/>
+        <location filename="mainwindow.cpp" line="2123"/>
         <source>Import User Dictionary</source>
         <translation>ユーザー辞書をインポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2100"/>
-        <location filename="mainwindow.cpp" line="2180"/>
+        <location filename="mainwindow.cpp" line="2124"/>
+        <location filename="mainwindow.cpp" line="2204"/>
         <source>Tab-separated files (*.tsv *.txt);;All files (*)</source>
         <translation>タブ区切りファイル (*.tsv *.txt);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2107"/>
+        <location filename="mainwindow.cpp" line="2131"/>
         <source>Failed to open user dictionary file: %1</source>
         <translation>ユーザー辞書ファイルを開けませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2138"/>
+        <location filename="mainwindow.cpp" line="2162"/>
         <source>No valid user dictionary entries were found.</source>
         <translation>有効なユーザー辞書エントリが見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2171"/>
+        <location filename="mainwindow.cpp" line="2195"/>
         <source>Imported %1 new and updated %2 entries; skipped %3 malformed rows.</source>
         <translation>%1 件を追加し、%2 件を更新しました。不正な行 %3 件をスキップしました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2179"/>
+        <location filename="mainwindow.cpp" line="2203"/>
         <source>Export User Dictionary</source>
         <translation>ユーザー辞書をエクスポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2188"/>
+        <location filename="mainwindow.cpp" line="2212"/>
         <source>Failed to export user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートできませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2202"/>
+        <location filename="mainwindow.cpp" line="2226"/>
         <source>Exported user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートしました: %1</translation>
     </message>
@@ -856,27 +856,27 @@ UIを更新するには再読み込みボタンを押してください。</tran
         <translation>よみ (ひらがな)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2035"/>
+        <location filename="mainwindow.cpp" line="2059"/>
         <source>Reading and Word must not be empty.</source>
         <translation>「よみ」と「単語」は空にできません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2042"/>
+        <location filename="mainwindow.cpp" line="2066"/>
         <source>Tab and newline characters are not allowed.</source>
         <translation>タブ文字と改行文字は使用できません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2054"/>
+        <location filename="mainwindow.cpp" line="2078"/>
         <source>Add Word</source>
         <translation>単語を追加</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2067"/>
+        <location filename="mainwindow.cpp" line="2091"/>
         <source>Edit Word</source>
         <translation>単語を編集</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2083"/>
+        <location filename="mainwindow.cpp" line="2107"/>
         <source>Delete &quot;%1&quot; → &quot;%2&quot;?</source>
         <translation>「%1」→「%2」を削除しますか?</translation>
     </message>
@@ -907,8 +907,13 @@ UIを更新するには再読み込みボタンを押してください。</tran
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2014"/>
-        <source>動詞: 活用生成は今後のバージョンで対応予定</source>
-        <translation>動詞: 活用生成は今後のバージョンで対応予定</translation>
+        <source>動詞: 読みの末尾から活用形を自動生成します</source>
+        <translation>動詞: 読みの末尾から活用形を自動生成します</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="2031"/>
+        <source>活用形を自動生成します（読みの末尾から判定）</source>
+        <translation>活用形を自動生成します（読みの末尾から判定）</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2018"/>

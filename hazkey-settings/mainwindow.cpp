@@ -1970,7 +1970,7 @@ bool MainWindow::saveUserDictToDisk() {
     }
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
-    out << "# reading<TAB>word<TAB>comment\n";
+    out << "# reading<TAB>word<TAB>comment[<TAB>pos]\n";
     for (const auto& e : userDictEntries_) {
         writeUserDictEntry(out, e);
         out << '\n';
@@ -2011,11 +2011,35 @@ bool MainWindow::editUserDictEntryDialog(UserDictEntry& entry, const QString& ti
     posCombo->addItem(posToDisplay(QStringLiteral("verb")), QStringLiteral("verb"));
     int posIndex = posCombo->findData(entry.pos.isEmpty() ? QStringLiteral("noun") : entry.pos);
     posCombo->setCurrentIndex(posIndex >= 0 ? posIndex : 0);
-    posCombo->setItemData(3, tr("動詞: 活用生成は今後のバージョンで対応予定"), Qt::ToolTipRole);
+    posCombo->setItemData(3, tr("動詞: 読みの末尾から活用形を自動生成します"), Qt::ToolTipRole);
     form->addRow(tr("Reading (hiragana)"), readingEdit);
     form->addRow(tr("Word"), wordEdit);
     form->addRow(tr("Comment"), commentEdit);
     form->addRow(tr("Part of Speech"), posCombo);
+
+    // Conjugation info label shown only when "verb" POS is selected.
+    // Intentionally generic text: avoids duplicating kana tail-detection logic
+    // (which lives in hazkey-server/Sources/hazkey-server/VerbConjugator.swift).
+    auto* conjugationInfoLabel = new QLabel(&dialog);
+    conjugationInfoLabel->setWordWrap(true);
+    conjugationInfoLabel->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
+    conjugationInfoLabel->setVisible(false);
+    form->addRow(QString(), conjugationInfoLabel);
+    auto updateConjugationInfo = [conjugationInfoLabel](const QString& pos) {
+        if (pos == QStringLiteral("verb")) {
+            conjugationInfoLabel->setText(
+                QCoreApplication::translate("MainWindow",
+                    "活用形を自動生成します（読みの末尾から判定）"));
+            conjugationInfoLabel->setVisible(true);
+        } else {
+            conjugationInfoLabel->setVisible(false);
+        }
+    };
+    updateConjugationInfo(posCombo->currentData().toString());
+    connect(posCombo, &QComboBox::currentIndexChanged, posCombo,
+        [posCombo, updateConjugationInfo]() {
+            updateConjugationInfo(posCombo->currentData().toString());
+        });
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -2191,7 +2215,7 @@ void MainWindow::onUserDictExport() {
 
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
-    out << "# reading<TAB>word<TAB>comment\n";
+    out << "# reading<TAB>word<TAB>comment[<TAB>pos]\n";
     for (const auto& entry : userDictEntries_) {
         writeUserDictEntry(out, entry);
         out << '\n';
