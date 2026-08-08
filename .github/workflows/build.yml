@@ -21,6 +21,12 @@ jobs:
             package_type: deb
             package_suffix: trixie
             package_arch: amd64
+          - name: Ubuntu 26.04
+            distro: debian
+            image: ubuntu:26.04
+            package_type: deb
+            package_suffix: ubuntu2604
+            package_arch: amd64
           - name: Fedora 44
             distro: fedora
             image: fedora:44
@@ -60,6 +66,7 @@ jobs:
 
           docker run --rm -i \
             -e DISTRO="$DISTRO" \
+            -e IMAGE="$IMAGE" \
             -e PACKAGE_TYPE="$PACKAGE_TYPE" \
             -e PACKAGE_SUFFIX="$PACKAGE_SUFFIX" \
             -e PACKAGE_ARCH="$PACKAGE_ARCH" \
@@ -108,6 +115,14 @@ jobs:
               ;;
           esac
 
+          if [ "$IMAGE" = "ubuntu:26.04" ]; then
+            apt-get install -y libxml2-16
+            ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
+              /usr/lib/x86_64-linux-gnu/libxml2.so.2
+          fi
+
+          git config --global --add safe.directory /work/hazkey-server/llama.cpp
+
           rm -rf /work/swift
           mkdir -p /work/swift
           curl -fL --retry 5 --retry-all-errors -o /tmp/swift.tar.gz \
@@ -141,14 +156,18 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr
-          cmake --build hazkey-server/build --parallel
+          if [ "$PACKAGE_SUFFIX" = "tumbleweed" ]; then
+            cmake --build hazkey-server/build --parallel 1
+          else
+            cmake --build hazkey-server/build --parallel
+          fi
           DESTDIR=/work/workdir cmake --install hazkey-server/build
 
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
             [0-9]*.[0-9]*.[0-9]* ) ;;
-            * ) version="0.2.2" ;;
+            * ) version="0.2.4" ;;
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then

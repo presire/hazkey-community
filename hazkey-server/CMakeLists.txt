@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-server VERSION 0.2.3)
+project(hazkey-server VERSION 0.2.4)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
