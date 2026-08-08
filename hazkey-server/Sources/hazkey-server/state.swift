@@ -6,9 +6,8 @@ import SwiftUtils
 /// from user-dictionary injections during commit.
 enum DisplayedCandidate {
     case fromConverter(Candidate)
-    /// Synthetic candidate from the user dictionary.
-    /// Always represents an exact full-reading match, so on commit the entire
-    /// composing text is consumed.
+    /// Legacy: no longer produced after engine-injection migration.
+    /// Engine-injected user-dict entries now arrive as `.fromConverter`.
     case fromUserDict(word: String)
 }
 
@@ -22,6 +21,7 @@ class HazkeyServerState {
     var isShiftPressedAlone = false
     var isSubInputMode = false
     var learningDataNeedsCommit = false
+    private var userDictInjected = false
 
     var keymap: Keymap
     var currentTableName: String
@@ -201,8 +201,12 @@ class HazkeyServerState {
         case .fromConverter(let completedCandidate):
             composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
             converter.setCompletedData(completedCandidate)
-            converter.updateLearningData(completedCandidate)
-            learningDataNeedsCommit = true
+            if !completedCandidate.data.contains(where: { $0.metadata.contains(.isFromUserDictionary) }) {
+                converter.updateLearningData(completedCandidate)
+                learningDataNeedsCommit = true
+            } else {
+                learningDataNeedsCommit = false
+            }
         case .fromUserDict:
             // User-dictionary entries always match the full reading, so we
             // simply clear the composing text. They do not feed the
@@ -402,8 +406,20 @@ class HazkeyServerState {
         options.requireJapanesePrediction = usePrediction ? .manualMix : .disabled
 
         let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
-        let usesFullComposingText =
-            copiedComposingText.convertTarget == composingText.value.convertTarget
+
+        // Inject user dictionary into the engine so entries participate in
+        // connection-cost ranking with their assigned part-of-speech (CID).
+        if serverConfig.currentProfile.useUserDictionaryEffective {
+            let reloaded = userDictionary.reloadIfNeeded()
+            if reloaded || !userDictInjected {
+                converter.importDynamicUserDictionary(userDictionary.toDicdataElements())
+                userDictInjected = true
+                NSLog("[hazkey] Injected \(userDictionary.count) user dictionary entries into engine")
+            }
+        } else if userDictInjected {
+            converter.importDynamicUserDictionary([])  // clear when toggled off
+            userDictInjected = false
+        }
 
         var candidatesResult = Hazkey_Commands_CandidatesResult()
         let converted = converter.requestCandidates(copiedComposingText, options: options)
@@ -412,23 +428,6 @@ class HazkeyServerState {
         let hiraganaPreeditLen = hiraganaPreedit.count
         var serverCandidates: [DisplayedCandidate] = []
         var clientCandidates: [Hazkey_Commands_CandidatesResult.Candidate] = []
-
-        // Inject user dictionary entries that exactly match the current reading.
-        // These are surfaced at the top of the candidate list and bypass learning.
-        if usesFullComposingText && serverConfig.currentProfile.useUserDictionaryEffective {
-            userDictionary.reloadIfNeeded()
-            let lookupHiragana = fullHiraganaPreedit.precomposedStringWithCanonicalMapping
-            NSLog(
-                "User dict lookup: '\(lookupHiragana)' (\(userDictionary.count) entries loaded)")
-            let userMatches = userDictionary.exactMatches(hiragana: lookupHiragana)
-            for match in userMatches {
-                var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
-                clientCandidate.text = match.word
-                clientCandidate.subHiragana = ""
-                clientCandidates.append(clientCandidate)
-                serverCandidates.append(.fromUserDict(word: match.word))
-            }
-        }
 
         // predictionResults is empty when prediction=disabled
         for candidate in converted.predictionResults {

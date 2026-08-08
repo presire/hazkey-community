@@ -15,6 +15,7 @@ struct UserDictEntry {
     QString reading;
     QString word;
     QString comment;
+    QString pos;
 };
 
 QT_BEGIN_NAMESPACE

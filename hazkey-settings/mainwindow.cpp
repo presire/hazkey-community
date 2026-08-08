@@ -5,6 +5,7 @@
 
 #include <QAbstractButton>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDialog>
@@ -38,6 +39,39 @@
 #include "constants.h"
 #include "constants.h.in"
 #include "serverconnector.h"
+
+namespace {
+
+const QStringList POS_TOKENS = QStringLiteral("noun,person,place,verb").split(',');
+
+QString normalizePosToken(QString t) {
+    t = t.trimmed().toLower();
+    if (t.isEmpty() || !POS_TOKENS.contains(t)) {
+        if (!t.isEmpty()) {
+            qWarning("Unknown POS token '%s', defaulting to noun", qPrintable(t));
+        }
+        return QStringLiteral("noun");
+    }
+    return t;
+}
+
+QString posToDisplay(const QString& pos) {
+    if (pos == QStringLiteral("person")) return QCoreApplication::translate("MainWindow", "人名");
+    if (pos == QStringLiteral("place")) return QCoreApplication::translate("MainWindow", "地名");
+    if (pos == QStringLiteral("verb")) return QCoreApplication::translate("MainWindow", "動詞");
+    return QCoreApplication::translate("MainWindow", "固有名詞");
+}
+
+void writeUserDictEntry(QTextStream& out, const UserDictEntry& e) {
+    if (e.pos == QStringLiteral("noun") || e.pos.isEmpty()) {
+        out << e.reading << '\t' << e.word;
+        if (!e.comment.isEmpty()) out << '\t' << e.comment;
+    } else {
+        out << e.reading << '\t' << e.word << '\t' << e.comment << '\t' << e.pos;
+    }
+}
+
+}  // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QWidget(parent),
@@ -1883,14 +1917,16 @@ QString MainWindow::userDictFilePath() {
 }
 
 void MainWindow::setupUserDict() {
-    ui_->userDictTable->setColumnCount(3);
+    ui_->userDictTable->setColumnCount(4);
     ui_->userDictTable->setHorizontalHeaderLabels(
-        {tr("Reading"), tr("Word"), tr("Comment")});
+        {tr("Reading"), tr("Word"), tr("Comment"), tr("品詞")});
     ui_->userDictTable->horizontalHeader()->setStretchLastSection(true);
     ui_->userDictTable->horizontalHeader()->setSectionResizeMode(
         0, QHeaderView::ResizeToContents);
     ui_->userDictTable->horizontalHeader()->setSectionResizeMode(
         1, QHeaderView::ResizeToContents);
+    ui_->userDictTable->horizontalHeader()->setSectionResizeMode(
+        3, QHeaderView::ResizeToContents);
     ui_->userDictTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui_->userDictTable->setSelectionMode(QAbstractItemView::SingleSelection);
     ui_->userDictTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1916,6 +1952,7 @@ void MainWindow::loadUserDictFromDisk() {
         e.reading = cols[0].trimmed();
         e.word = cols[1];
         e.comment = cols.size() >= 3 ? cols[2] : QString();
+        e.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
         if (e.reading.isEmpty() || e.word.isEmpty()) continue;
         userDictEntries_.append(e);
     }
@@ -1935,8 +1972,7 @@ bool MainWindow::saveUserDictToDisk() {
     out.setEncoding(QStringConverter::Utf8);
     out << "# reading<TAB>word<TAB>comment\n";
     for (const auto& e : userDictEntries_) {
-        out << e.reading << '\t' << e.word;
-        if (!e.comment.isEmpty()) out << '\t' << e.comment;
+        writeUserDictEntry(out, e);
         out << '\n';
     }
     return true;
@@ -1948,6 +1984,7 @@ void MainWindow::refreshUserDictTable() {
         ui_->userDictTable->setItem(i, 0, new QTableWidgetItem(userDictEntries_[i].reading));
         ui_->userDictTable->setItem(i, 1, new QTableWidgetItem(userDictEntries_[i].word));
         ui_->userDictTable->setItem(i, 2, new QTableWidgetItem(userDictEntries_[i].comment));
+        ui_->userDictTable->setItem(i, 3, new QTableWidgetItem(posToDisplay(userDictEntries_[i].pos)));
     }
     onUserDictSelectionChanged();
 }
@@ -1967,9 +2004,18 @@ bool MainWindow::editUserDictEntryDialog(UserDictEntry& entry, const QString& ti
     auto* readingEdit = new QLineEdit(entry.reading, &dialog);
     auto* wordEdit = new QLineEdit(entry.word, &dialog);
     auto* commentEdit = new QLineEdit(entry.comment, &dialog);
+    auto* posCombo = new QComboBox(&dialog);
+    posCombo->addItem(posToDisplay(QStringLiteral("noun")), QStringLiteral("noun"));
+    posCombo->addItem(posToDisplay(QStringLiteral("person")), QStringLiteral("person"));
+    posCombo->addItem(posToDisplay(QStringLiteral("place")), QStringLiteral("place"));
+    posCombo->addItem(posToDisplay(QStringLiteral("verb")), QStringLiteral("verb"));
+    int posIndex = posCombo->findData(entry.pos.isEmpty() ? QStringLiteral("noun") : entry.pos);
+    posCombo->setCurrentIndex(posIndex >= 0 ? posIndex : 0);
+    posCombo->setItemData(3, tr("動詞: 活用生成は今後のバージョンで対応予定"), Qt::ToolTipRole);
     form->addRow(tr("Reading (hiragana)"), readingEdit);
     form->addRow(tr("Word"), wordEdit);
     form->addRow(tr("Comment"), commentEdit);
+    form->addRow(tr("Part of Speech"), posCombo);
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -1999,6 +2045,7 @@ bool MainWindow::editUserDictEntryDialog(UserDictEntry& entry, const QString& ti
     entry.reading = reading;
     entry.word = word;
     entry.comment = commentEdit->text();
+    entry.pos = posCombo->currentData().toString();
     return true;
 }
 
@@ -2077,6 +2124,7 @@ void MainWindow::onUserDictImport() {
         entry.reading = cols[0].trimmed();
         entry.word = cols[1];
         entry.comment = cols.size() >= 3 ? cols[2] : QString();
+        entry.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
         if (entry.reading.isEmpty() || entry.word.isEmpty()) {
             ++skippedRows;
             continue;
@@ -2145,8 +2193,7 @@ void MainWindow::onUserDictExport() {
     out.setEncoding(QStringConverter::Utf8);
     out << "# reading<TAB>word<TAB>comment\n";
     for (const auto& entry : userDictEntries_) {
-        out << entry.reading << '\t' << entry.word;
-        if (!entry.comment.isEmpty()) out << '\t' << entry.comment;
+        writeUserDictEntry(out, entry);
         out << '\n';
     }
 
