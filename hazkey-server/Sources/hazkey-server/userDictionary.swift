@@ -18,7 +18,12 @@ struct UserDictionaryEntry {
 
     /// Returns a `DicdataElement` usable by the kana-kanji converter.
     func toDicdataElement() -> DicdataElement {
-        let cid = Self.cid(for: pos)
+        let cid: Int
+        if pos == "verb" {
+            cid = VerbConjugator.detectBaseCid(hiraganaReading: reading) ?? 772
+        } else {
+            cid = Self.cid(for: pos)
+        }
         return DicdataElement(
             word: word,
             ruby: reading.toKatakana(),
@@ -28,6 +33,16 @@ struct UserDictionaryEntry {
         )
     }
 
+    /// Expands this entry into one or more `DicdataElement` values.
+    /// Verb entries produce all conjugated forms; other POS produce a single element.
+    func expandedDicdataElements() -> [DicdataElement] {
+        if pos == "verb" {
+            return VerbConjugator.dicdataElements(word: word, hiraganaReading: reading)
+        }
+        return [toDicdataElement()]
+    }
+
+    // Verb POS is handled separately via VerbConjugator (tail-detection + conjugation).
     private static func cid(for pos: String) -> Int {
         switch pos {
         case "noun":
@@ -36,8 +51,6 @@ struct UserDictionaryEntry {
             return CIDData.人名一般.cid
         case "place":
             return CIDData.地名一般.cid
-        case "verb":
-            return 772  // 動詞一般 — CIDData has no verb case
         default:
             NSLog("[hazkey] Unknown user dictionary POS token '\(pos)', defaulting to noun")
             return CIDData.固有名詞.cid
@@ -132,7 +145,7 @@ class UserDictionary {
 
     /// Returns all entries as `DicdataElement` values for converter integration.
     func toDicdataElements() -> [DicdataElement] {
-        return entries.map { $0.toDicdataElement() }
+        return entries.flatMap { $0.expandedDicdataElements() }
     }
 
     /// Total entry count (for diagnostics).
