@@ -1,10 +1,12 @@
 #ifndef _FCITX5_HAZKEY_HAZKEY_STATE_H_
 #define _FCITX5_HAZKEY_HAZKEY_STATE_H_
 
+#include <fcitx-utils/key.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/surroundingtext.h>
 
+#include "config.pb.h"
 #include "hazkey_candidate.h"
 #include "hazkey_preedit.h"
 
@@ -43,6 +45,11 @@ class HazkeyState : public InputContextProperty {
 
     // update surrounding text
     void updateSurroundingText(std::string appendText = "");
+
+    // lazy-load the server profile (hotkey + current auto-convert mode)
+    void loadServerProfile();
+    // toggle live conversion via hotkey (synchronous get/mutate/set)
+    void handleLiveConvertToggle(KeyEvent& event);
 
     bool ctrlShortcutHandler(KeyEvent& keyEvent);
     // f6-f10 key handler
@@ -117,6 +124,12 @@ class HazkeyState : public InputContextProperty {
 
     bool isDirectConversionMode_ = false;
     int livePreeditIndex_ = -1;
+
+    fcitx::Key liveConvertHotkey_{"Control+Shift+L"};
+    hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
+        hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
+    bool serverProfileLoaded_ = false;
+
     // engine
     HazkeyEngine* engine_;
     // fcitx input context

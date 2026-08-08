@@ -38,6 +38,7 @@
 #include "config_macros.h"
 #include "constants.h"
 #include "constants.h.in"
+#include "keysequence_util.h"
 #include "serverconnector.h"
 
 namespace {
@@ -434,6 +435,14 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
     SET_LINEEDIT(ui_->zenzaiUserPlofile, currentProfile_->zenzai_profile(), "");
 
+    {
+        const std::string storedHotkey = currentProfile_->auto_convert_hotkey();
+        const QString fcitxStr = QString::fromStdString(
+            storedHotkey.empty() ? "Control+Shift+L" : storedHotkey);
+        ui_->liveConvertHotkey->setKeySequence(
+            qKeySequenceFromFcitxKeyString(fcitxStr));
+    }
+
     // Load input table configuration
     loadInputTables();
 
@@ -518,6 +527,9 @@ bool MainWindow::saveCurrentConfig() {
         GET_LINEEDIT_STRING(ui_->submodeEntryPointChars));
     currentProfile_->set_zenzai_profile(
         GET_LINEEDIT_STRING(ui_->zenzaiUserPlofile));
+    currentProfile_->set_auto_convert_hotkey(
+        fcitxKeyStringFromQKeySequence(ui_->liveConvertHotkey->keySequence())
+            .toStdString());
 
     // Save zenzai backend device
     QString selectedDevice = ui_->zenzaiBackendDevice->currentData().toString();

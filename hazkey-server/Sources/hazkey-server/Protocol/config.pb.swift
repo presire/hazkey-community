@@ -321,6 +321,15 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `submodeEntryPointChars`. Subsequent reads from it will return its default value.
   mutating func clearSubmodeEntryPointChars() {_uniqueStorage()._submodeEntryPointChars = nil}
 
+  var autoConvertHotkey: String {
+    get {return _storage._autoConvertHotkey ?? String()}
+    set {_uniqueStorage()._autoConvertHotkey = newValue}
+  }
+  /// Returns true if `autoConvertHotkey` has been explicitly set.
+  var hasAutoConvertHotkey: Bool {return _storage._autoConvertHotkey != nil}
+  /// Clears the value of `autoConvertHotkey`. Subsequent reads from it will return its default value.
+  mutating func clearAutoConvertHotkey() {_uniqueStorage()._autoConvertHotkey = nil}
+
   var useUserDictionary: Bool {
     get {return _storage._useUserDictionary ?? false}
     set {_uniqueStorage()._useUserDictionary = newValue}
@@ -1035,6 +1044,7 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     55: .standard(proto: "use_default_table_settings"),
     56: .standard(proto: "enabled_tables"),
     60: .standard(proto: "submode_entry_point_chars"),
+    61: .standard(proto: "auto_convert_hotkey"),
     70: .standard(proto: "use_user_dictionary"),
     100: .standard(proto: "use_default_zenzai_settings"),
     101: .standard(proto: "zenzai_enable"),
@@ -1074,6 +1084,7 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     var _useDefaultTableSettings: Bool? = nil
     var _enabledTables: [Hazkey_Config_Profile.EnabledInputTable] = []
     var _submodeEntryPointChars: String? = nil
+    var _autoConvertHotkey: String? = nil
     var _useUserDictionary: Bool? = nil
     var _useDefaultZenzaiSettings: Bool? = nil
     var _zenzaiEnable: Bool? = nil
@@ -1120,6 +1131,7 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       _useDefaultTableSettings = source._useDefaultTableSettings
       _enabledTables = source._enabledTables
       _submodeEntryPointChars = source._submodeEntryPointChars
+      _autoConvertHotkey = source._autoConvertHotkey
       _useUserDictionary = source._useUserDictionary
       _useDefaultZenzaiSettings = source._useDefaultZenzaiSettings
       _zenzaiEnable = source._zenzaiEnable
@@ -1174,6 +1186,7 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         case 55: try { try decoder.decodeSingularBoolField(value: &_storage._useDefaultTableSettings) }()
         case 56: try { try decoder.decodeRepeatedMessageField(value: &_storage._enabledTables) }()
         case 60: try { try decoder.decodeSingularStringField(value: &_storage._submodeEntryPointChars) }()
+        case 61: try { try decoder.decodeSingularStringField(value: &_storage._autoConvertHotkey) }()
         case 70: try { try decoder.decodeSingularBoolField(value: &_storage._useUserDictionary) }()
         case 100: try { try decoder.decodeSingularBoolField(value: &_storage._useDefaultZenzaiSettings) }()
         case 101: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiEnable) }()
@@ -1270,6 +1283,9 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       try { if let v = _storage._submodeEntryPointChars {
         try visitor.visitSingularStringField(value: v, fieldNumber: 60)
       } }()
+      try { if let v = _storage._autoConvertHotkey {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 61)
+      } }()
       try { if let v = _storage._useUserDictionary {
         try visitor.visitSingularBoolField(value: v, fieldNumber: 70)
       } }()
@@ -1339,6 +1355,7 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         if _storage._useDefaultTableSettings != rhs_storage._useDefaultTableSettings {return false}
         if _storage._enabledTables != rhs_storage._enabledTables {return false}
         if _storage._submodeEntryPointChars != rhs_storage._submodeEntryPointChars {return false}
+        if _storage._autoConvertHotkey != rhs_storage._autoConvertHotkey {return false}
         if _storage._useUserDictionary != rhs_storage._useUserDictionary {return false}
         if _storage._useDefaultZenzaiSettings != rhs_storage._useDefaultZenzaiSettings {return false}
         if _storage._zenzaiEnable != rhs_storage._zenzaiEnable {return false}

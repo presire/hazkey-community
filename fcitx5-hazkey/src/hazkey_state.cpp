@@ -14,6 +14,7 @@
 #include "hazkey_candidate.h"
 #include "hazkey_engine.h"
 #include "hazkey_server_connector.h"
+#include "live_convert_mode.h"
 
 namespace fcitx {
 
@@ -37,6 +38,17 @@ void HazkeyState::commitPreedit() { preedit_.commitPreedit(); }
 
 void HazkeyState::keyEvent(KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState keyEvent";
+
+    if (!event.isRelease()) {
+        if (!serverProfileLoaded_) {
+            loadServerProfile();
+        }
+        if (event.key().check(liveConvertHotkey_)) {
+            handleLiveConvertToggle(event);
+            event.filterAndAccept();
+            return;
+        }
+    }
 
     std::string composingText = engine_->server().getComposingText(
         hazkey::commands::GetComposingString_CharType_HIRAGANA,
@@ -344,6 +356,68 @@ void HazkeyState::updateSurroundingText(std::string appendText) {
     }
 }
 
+void HazkeyState::loadServerProfile() {
+    auto configOpt = engine_->server().getServerConfig();
+    if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
+        return;  // server not ready; keep defaults
+    }
+    const auto& profile = configOpt->profiles(0);
+    const std::string& hotkey = profile.auto_convert_hotkey();
+    liveConvertHotkey_ = Key(hotkey.empty() ? "Control+Shift+L" : hotkey);
+    cachedAutoConvertMode_ = profile.auto_convert_mode();
+    using M = hazkey::config::Profile_AutoConvertMode;
+    // Only update the remembered "ON" mode when the server's mode is not
+    // DISABLED. When DISABLED (e.g. after a previous hotkey toggle-off), keep
+    // the previous remembered value so toggle-on restores the right mode.
+    // rememberedOnMode_ lives on the connector (shared across input contexts)
+    // so it survives focus changes between applications.
+    if (cachedAutoConvertMode_ !=
+        M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED) {
+        engine_->server().rememberedOnMode() = cachedAutoConvertMode_;
+    }
+    serverProfileLoaded_ = true;
+}
+
+void HazkeyState::handleLiveConvertToggle(KeyEvent& event) {
+    FCITX_DEBUG() << "HazkeyState handleLiveConvertToggle";
+
+    auto prevMode = cachedAutoConvertMode_;
+    auto& sharedRemembered = engine_->server().rememberedOnMode();
+    auto prevRemembered = sharedRemembered;
+
+    cachedAutoConvertMode_ =
+        computeNextAutoConvertMode(cachedAutoConvertMode_, sharedRemembered);
+
+    auto configOpt = engine_->server().getServerConfig();
+    if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
+        FCITX_WARN() << "handleLiveConvertToggle: getServerConfig failed";
+        cachedAutoConvertMode_ = prevMode;
+        sharedRemembered = prevRemembered;
+        return;
+    }
+
+    auto config = configOpt.value();
+    config.mutable_profiles(0)->set_auto_convert_mode(cachedAutoConvertMode_);
+
+    if (!engine_->server().setServerConfig(config)) {
+        FCITX_WARN() << "handleLiveConvertToggle: setServerConfig failed";
+        cachedAutoConvertMode_ = prevMode;
+        sharedRemembered = prevRemembered;
+        return;
+    }
+
+    auto composingText = engine_->server().getComposingText(
+        hazkey::commands::GetComposingString_CharType_HIRAGANA,
+        preedit_.text());
+    if (composingText.empty()) {
+        ic_->updateUserInterface(
+            fcitx::UserInterfaceComponent::InputPanel);
+        return;
+    }
+    showCandidateList(true);
+    ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+}
+
 bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
     auto keysym = event.key().sym();
     switch (keysym) {
@@ -463,8 +537,9 @@ bool HazkeyState::showCandidateList(
 
     ic_->inputPanel().reset();
 
-    // TODO: check live preedit config
-    if (!response.live_text().empty()) {
+    if (cachedAutoConvertMode_ !=
+            hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED &&
+        !response.live_text().empty()) {
         // preedit conversion is enabled and conversion result is found
         // show preedit conversion result
         preedit_.setSimplePreedit(response.live_text());

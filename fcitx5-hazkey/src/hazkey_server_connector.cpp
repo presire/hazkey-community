@@ -24,6 +24,7 @@
 
 #include "base.pb.h"
 #include "commands.pb.h"
+#include "config.pb.h"
 
 static std::mutex transact_mutex;
 
@@ -522,6 +523,43 @@ void HazkeyServerConnector::saveLearningData() {
     return;
 }
 
+std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerConfig() {
+    hazkey::RequestEnvelope request;
+    request.mutable_get_config();
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR() << "Error while transacting getServerConfig().";
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_ERROR() << "getServerConfig: " << "Server returned an error: "
+                      << responseVal.error_message();
+        return std::nullopt;
+    }
+    return responseVal.current_config();
+}
+
+bool HazkeyServerConnector::setServerConfig(
+    const hazkey::config::CurrentConfig& config) {
+    hazkey::RequestEnvelope request;
+    auto* sc = request.mutable_set_config();
+    *sc->mutable_profiles() = config.profiles();
+    *sc->mutable_file_hashes() = config.file_hashes();
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR() << "Error while transacting setServerConfig().";
+        return false;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_ERROR() << "setServerConfig: " << "Server returned an error: "
+                      << responseVal.error_message();
+        return false;
+    }
+    return true;
+}
+
 hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     bool isSuggestMode) {
     hazkey::RequestEnvelope request;
@@ -529,7 +567,7 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     props->set_is_suggest(isSuggestMode);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting setServerConfig().";
+        FCITX_ERROR() << "Error while transacting getCandidates().";
         std::vector<CandidateData> empty_vec;
         return hazkey::commands::CandidatesResult();
     }

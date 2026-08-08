@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-settings VERSION 0.2.5 LANGUAGES CXX)
+project(hazkey-settings VERSION 0.2.6 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -39,6 +39,8 @@ set(PROJECT_SOURCES
     serverconnector.h
     config_definitions.h
     config_macros.h
+    keysequence_util.cpp
+    keysequence_util.h
     ${TS_FILES}
 )
 

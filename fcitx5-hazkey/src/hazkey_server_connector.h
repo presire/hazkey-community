@@ -6,10 +6,12 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <optional>
 #include <string>
 
 #include "base.pb.h"
 #include "commands.pb.h"
+#include "config.pb.h"
 
 class HazkeyServerConnector {
    public:
@@ -58,11 +60,8 @@ class HazkeyServerConnector {
 
     void setContext(std::string context, int anchor);
 
-    void setServerConfig(int zenzaiEnabled, int zenzaiInferLimit,
-                         int numberFullwidth, int symbolFullwidth,
-                         int periodStyleIndex, int commaStyleIndex,
-                         int spaceFullwidth, int tenCombining,
-                         std::string profileText);
+    std::optional<hazkey::config::CurrentConfig> getServerConfig();
+    bool setServerConfig(const hazkey::config::CurrentConfig& config);
 
     void newComposingText();
 
@@ -77,12 +76,20 @@ class HazkeyServerConnector {
 
     hazkey::commands::CandidatesResult getCandidates(bool isSuggest);
 
+    // Shared across all input contexts: remembers the last non-DISABLED
+    // auto-convert mode so the hotkey can restore it on toggle-on.
+    hazkey::config::Profile_AutoConvertMode& rememberedOnMode() {
+        return rememberedOnMode_;
+    }
+
    private:
     bool retryConnect();
     bool isHazkeyServerRunning();
     bool requestSuccess(hazkey::ResponseEnvelope);
     int sock_ = -1;
     std::string socket_path_;
+    hazkey::config::Profile_AutoConvertMode rememberedOnMode_ =
+        hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
 };
 
 #endif  // HAZKEY_SERVER_CONNECTOR_H

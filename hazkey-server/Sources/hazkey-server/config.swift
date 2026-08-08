@@ -207,6 +207,7 @@ class HazkeyServerConfig {
         newConf.autoConvertMode =
             Hazkey_Config_Profile.AutoConvertMode.autoConvertForMultipleChars
         newConf.autoConvertMinChars = 2
+        newConf.autoConvertHotkey = "Control+Shift+L"
         newConf.auxTextMode = Hazkey_Config_Profile.AuxTextMode.auxTextShowWhenCursorNotAtEnd
         newConf.suggestionListMode =
             Hazkey_Config_Profile.SuggestionListMode.suggestionListShowPredictiveResults

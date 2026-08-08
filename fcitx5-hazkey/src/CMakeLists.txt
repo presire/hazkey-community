@@ -4,7 +4,7 @@ set(PROTO_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../protocol/config.proto
 )
 
-add_library(fcitx5-hazkey SHARED hazkey_state.cpp hazkey_engine.cpp hazkey_candidate.cpp hazkey_preedit.cpp hazkey_server_connector.cpp)
+add_library(fcitx5-hazkey SHARED hazkey_state.cpp hazkey_engine.cpp hazkey_candidate.cpp hazkey_preedit.cpp hazkey_server_connector.cpp live_convert_mode.cpp)
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
     # 3.15 ~：stable proto3 optional support
