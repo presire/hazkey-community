@@ -46,6 +46,21 @@ let package = Package(
                 "hazkey-server",
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
+            path: "Tests/hazkey-server",
+            // Pre-existing integration tests reference Hazkey_Commands_QueryData
+            // which was removed from the protobuf schema. Exclude until they are
+            // updated to the current protocol.
+            exclude: [
+                "base.swift",
+                "utils.swift",
+                "config.swift",
+                "candidate.swift",
+                "composingTextExtension.swift",
+                "error.swift",
+                "integration.swift",
+                "userDictionaryProfileSetting.swift",
+                "autoConversion.swift",
+            ],
             swiftSettings: [.interoperabilityMode(.Cxx)],
         ),
     ]
