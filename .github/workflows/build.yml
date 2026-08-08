@@ -65,6 +65,8 @@ jobs:
           mkdir -p workdir packages
 
           docker run --rm -i \
+            --ulimit nproc=-1:-1 \
+            --pids-limit=-1 \
             -e DISTRO="$DISTRO" \
             -e IMAGE="$IMAGE" \
             -e PACKAGE_TYPE="$PACKAGE_TYPE" \
