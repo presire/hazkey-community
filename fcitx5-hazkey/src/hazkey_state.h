@@ -49,7 +49,7 @@ class HazkeyState : public InputContextProperty {
     // lazy-load the server profile (hotkey + current auto-convert mode)
     void loadServerProfile();
     // toggle live conversion via hotkey (synchronous get/mutate/set)
-    void handleLiveConvertToggle(KeyEvent& event);
+    void handleLiveConvertToggle([[maybe_unused]] KeyEvent& event);
 
     bool ctrlShortcutHandler(KeyEvent& keyEvent);
     // f6-f10 key handler

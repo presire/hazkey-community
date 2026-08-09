@@ -2,9 +2,35 @@
 
 # hazkey-server wrapper script
 ENV_FILE="$XDG_CONFIG_HOME/hazkey/env"
-# Load user defiend environment variables
+# Load user defined environment variables
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
+fi
+
+# Mitigate SIGILL crash on multi-GPU systems where multiple Vulkan ICDs
+# (e.g. nvidia_icd.json + radeon_icd.json) coexist.
+# Ref: https://github.com/7ka-Hiira/hazkey/issues/29
+# When neither VK_DRIVER_FILES nor VK_ICD_FILENAMES is set, pin the Vulkan
+# loader to the first detected ICD so that ggml_backend_load_all() does not
+# initialize conflicting vendor drivers simultaneously (which triggers a
+# Swift runtime precondition failure -> SIGILL).
+# User-provided values (via shell env or $XDG_CONFIG_HOME/hazkey/env) are
+# always respected.
+if [ -z "${VK_DRIVER_FILES:-}" ] && [ -z "${VK_ICD_FILENAMES:-}" ]; then
+    for icd_dir in \
+        /usr/share/vulkan/icd.d \
+        /usr/local/share/vulkan/icd.d \
+        /etc/vulkan/icd.d
+    do
+        [ -d "$icd_dir" ] || continue
+        for f in "$icd_dir"/*.json; do
+            [ -f "$f" ] || continue
+            VK_DRIVER_FILES="$f"
+            VK_ICD_FILENAMES="$f"
+            export VK_DRIVER_FILES VK_ICD_FILENAMES
+            break 2
+        done
+    done
 fi
 
 exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey/hazkey-server" "$@"

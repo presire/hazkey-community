@@ -378,7 +378,7 @@ void HazkeyState::loadServerProfile() {
     serverProfileLoaded_ = true;
 }
 
-void HazkeyState::handleLiveConvertToggle(KeyEvent& event) {
+void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState handleLiveConvertToggle";
 
     auto prevMode = cachedAutoConvertMode_;

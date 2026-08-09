@@ -31,7 +31,13 @@ class HazkeyEngine : public InputMethodEngineV2 {
     auto factory() const { return &factory_; }
     auto instance() const { return instance_; }
 
-    auto server() const { return server_; }
+    // Return a reference (not a copy) so callers can bind to member
+    // references safely. The previous `auto server() const` returned by
+    // value, which made expressions like
+    //   auto& r = engine_->server().rememberedOnMode();
+    // bind to a destroyed temporary — undefined behavior (dangling pointer).
+    HazkeyServerConnector& server() { return server_; }
+    const HazkeyServerConnector& server() const { return server_; }
 
     const Configuration *getConfig() const override { return &config_; }
     void setConfig(const RawConfig &config) override;

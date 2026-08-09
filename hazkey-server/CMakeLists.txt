@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-server VERSION 0.2.6)
+project(hazkey-server VERSION 0.2.7)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -102,7 +102,11 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     set(GGML_BACKEND_DL ON CACHE BOOL "")
     set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "")
     set(GGML_CPU ON CACHE BOOL "")
-    set(GGML_VULKAN ON CACHE BOOL "")
+    # GGML_VULKAN: Vulkan backend for Zenzai neural conversion.
+    # Default ON (required for GPU acceleration on Linux). Users who want a
+    # CPU-only build (e.g. to avoid the multi-ICD SIGILL issue on hybrid
+    # GPU systems) can pass -DGGML_VULKAN=OFF at configure time.
+    option(GGML_VULKAN "Build llama.cpp with Vulkan backend (CPU-only build: -DGGML_VULKAN=OFF)" ON)
     set(GGML_CUDA OFF CACHE BOOL "")
     set(GGML_HIP OFF CACHE BOOL "")
     set(CMAKE_SKIP_BUILD_RPATH ON CACHE BOOL "")

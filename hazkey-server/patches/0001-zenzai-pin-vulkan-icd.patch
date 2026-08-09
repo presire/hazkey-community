@@ -1,0 +1,73 @@
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift
+@@ -224,7 +224,70 @@
+         return ctx_params
+     }
+ 
++    /// Detect Vulkan ICDs in standard search paths and, when more than one is
++    /// installed, restrict the Vulkan loader to the first detected ICD by
++    /// exporting `VK_DRIVER_FILES` / `VK_ICD_FILENAMES`.
++    ///
++    /// This is a workaround for https://github.com/7ka-Hiira/hazkey/issues/29
++    /// where multi-GPU systems (e.g. NVIDIA dGPU + AMD/Intel iGPU) with both
++    /// `nvidia_icd.json` and `radeon_icd.json` installed crash hazkey-server
++    /// with SIGILL during Zenzai / Vulkan initialization.
++    ///
++    /// User-provided values for `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` (set
++    /// via shell, systemd unit, or `~/.config/hazkey/env`) are always respected
++    /// and never overridden.
++    ///
++    /// Notes:
++    /// - Only intervenes when 2+ ICDs are detected; single-ICD systems are
++    ///   not affected by Issue #29 and are left untouched.
++    /// - Must be called *before* any ggml backend / Vulkan API call.
++    private static func pinVulkanICDIfNeeded() {
++        let env = ProcessInfo.processInfo.environment
++        if env["VK_DRIVER_FILES"] != nil { return }
++        if env["VK_ICD_FILENAMES"] != nil { return }
++
++        var icdSearchPaths = [
++            "/usr/share/vulkan/icd.d",
++            "/usr/local/share/vulkan/icd.d",
++            "/etc/vulkan/icd.d",
++        ]
++        // Honor XDG_DATA_DIRS when set (typical on Arch / Fedora / Debian).
++        if let xdg = env["XDG_DATA_DIRS"] {
++            for entry in xdg.split(separator: ":") {
++                icdSearchPaths.append("\(entry)/vulkan/icd.d")
++            }
++        }
++
++        let fm = FileManager.default
++        var foundICDs: [String] = []
++        for searchPath in icdSearchPaths {
++            guard let candidates = try? fm.contentsOfDirectory(atPath: searchPath) else { continue }
++            for candidate in candidates where candidate.hasSuffix(".json") {
++                foundICDs.append("\(searchPath)/\(candidate)")
++            }
++        }
++
++        // Only intervene when more than one ICD is present; single-ICD
++        // systems are not affected by Issue #29.
++        guard foundICDs.count > 1 else { return }
++
++        let pinned = foundICDs[0]
++        debug("[Vulkan ICD] Multi-ICD environment detected: \(foundICDs). Pinning to \(pinned) to avoid SIGILL (Issue #29).")
++        setenv("VK_DRIVER_FILES", pinned, 1)
++        setenv("VK_ICD_FILENAMES", pinned, 1)
++    }
++
+     static func createContext(path: String, deviceConfig: ZenzaiDeviceConfig = ZenzaiDeviceConfig()) throws -> ZenzContext {
++        // Mitigate SIGILL crash on multi-GPU Linux systems where multiple
++        // Vulkan ICDs (e.g. nvidia_icd.json + radeon_icd.json) coexist.
++        // Ref: https://github.com/7ka-Hiira/hazkey/issues/29
++        // Pin to a single ICD *before* ggml_backend_load_all() runs, because
++        // once the Vulkan loader creates a VkInstance it initializes every
++        // available ICD and the resulting vendor-mixed state triggers a Swift
++        // runtime precondition failure (ud2 -> SIGILL) that cannot be caught
++        // by Swift do/catch.
++        Self.pinVulkanICDIfNeeded()
++
+         llama_backend_init()
+         ggml_backend_load_all();
+ 
