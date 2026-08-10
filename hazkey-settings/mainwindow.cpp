@@ -427,6 +427,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->hazkeyVersionConversion,
                  specialConversions->hazkey_version(),
                  ConfigDefs::CheckboxDefaults::HAZKEY_VERSION);
+    SET_CHECKBOX(ui_->relativeDateConversion,
+                 specialConversions->relative_date(),
+                 ConfigDefs::CheckboxDefaults::RELATIVE_DATE);
 
     ui_->stopStoreNewHistory->setEnabled(currentProfile_->use_input_history());
 
@@ -522,6 +525,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->romanTypographyConversion));
     specialConversions->set_hazkey_version(
         GET_CHECKBOX_BOOL(ui_->hazkeyVersionConversion));
+    specialConversions->set_relative_date(
+        GET_CHECKBOX_BOOL(ui_->relativeDateConversion));
 
     currentProfile_->set_submode_entry_point_chars(
         GET_LINEEDIT_STRING(ui_->submodeEntryPointChars));
@@ -1535,6 +1540,7 @@ void MainWindow::onCheckAllConversion() {
     ui_->unicodeCodePointConversion->setChecked(true);
     ui_->romanTypographyConversion->setChecked(true);
     ui_->hazkeyVersionConversion->setChecked(true);
+    ui_->relativeDateConversion->setChecked(true);
 }
 
 void MainWindow::onUncheckAllConversion() {
@@ -1547,6 +1553,7 @@ void MainWindow::onUncheckAllConversion() {
     ui_->unicodeCodePointConversion->setChecked(false);
     ui_->romanTypographyConversion->setChecked(false);
     ui_->hazkeyVersionConversion->setChecked(false);
+    ui_->relativeDateConversion->setChecked(false);
 }
 
 void MainWindow::onClearLearningData() {

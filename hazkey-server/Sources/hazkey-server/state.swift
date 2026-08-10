@@ -9,6 +9,10 @@ enum DisplayedCandidate {
     /// Legacy: no longer produced after engine-injection migration.
     /// Engine-injected user-dict entries now arrive as `.fromConverter`.
     case fromUserDict(word: String)
+    /// [community] Relative-date candidate injected by `RelativeDateProvider`.
+    /// Treated like `.fromUserDict` at commit time (clear composing text, no
+    /// learning) but kept as a distinct case for clarity and future extensions.
+    case fromDateProvider(word: String)
 }
 
 class HazkeyServerState {
@@ -211,6 +215,12 @@ class HazkeyServerState {
             // User-dictionary entries always match the full reading, so we
             // simply clear the composing text. They do not feed the
             // converter's learning store.
+            composingText = ComposingTextBox()
+        case .fromDateProvider:
+            // [community] Date-provider candidates match the full reading of a
+            // relative-date trigger word (きょう/きのう/...) and produce a
+            // computed date string. Behaves like `.fromUserDict` at commit:
+            // clear composing text, do not feed the learning store.
             composingText = ComposingTextBox()
         }
         return Hazkey_ResponseEnvelope.with {
@@ -471,6 +481,50 @@ class HazkeyServerState {
             )
         }
 
+        // === [community] Relative-date candidate injection (post-process) ===
+        // Inject formatted date strings (yyyy年M月d日, yyyy-MM-dd, ...) when the
+        // composing hiragana exactly matches a relative-date trigger word
+        // (きょう, きのう, ...) AND the engine returned the kanji representation
+        // (今日, 昨日, ...). Date candidates are inserted immediately after the
+        // kanji representation in both serverCandidates (for index alignment
+        // with completePrefix) and clientCandidates (for wire serialization).
+        if serverConfig.currentProfile.useRelativeDateEffective {
+            if let trigger = RelativeDateProvider.detectTrigger(
+                composingHiragana: hiraganaPreedit)
+            {
+                // Find the index of the kanji representation in serverCandidates.
+                // Only inject when the kanji form exists (matches the user's
+                // "漢字表現が有る時だけ挿入" preference).
+                if let kanjiIndex = serverCandidates.firstIndex(where: { dc in
+                    if case .fromConverter(let c) = dc { return c.text == trigger.kanji }
+                    return false
+                }) {
+                    let dateStrings = RelativeDateProvider.generateDateStrings(for: trigger)
+                    var insertedCount = 0
+                    for dateStr in dateStrings {
+                        // Respect N_best limit for suggest mode.
+                        guard canAppend(
+                            isSuggest: is_suggest,
+                            currentCount: serverCandidates.count,
+                            limit: N_best
+                        ) else { break }
+
+                        var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                        clientCandidate.text = dateStr
+                        // Date candidates consume the full reading, so subHiragana
+                        // is the remaining preedit (empty for exact-match trigger).
+                        clientCandidate.subHiragana = String(
+                            fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+
+                        let insertAt = kanjiIndex + 1 + insertedCount
+                        serverCandidates.insert(.fromDateProvider(word: dateStr), at: insertAt)
+                        clientCandidates.insert(clientCandidate, at: insertAt)
+                        insertedCount += 1
+                    }
+                }
+            }
+        }
+
         candidatesResult.candidates = clientCandidates
 
         if serverConfig.currentProfile.autoConvertMode
@@ -552,5 +606,12 @@ extension Hazkey_Config_Profile {
     /// Legacy or missing config defaults to true to preserve existing behavior.
     var useUserDictionaryEffective: Bool {
         hasUseUserDictionary ? useUserDictionary : true
+    }
+
+    /// [community] Effective value of the relative-date candidate setting.
+    /// Legacy or missing config defaults to true to preserve existing behavior.
+    var useRelativeDateEffective: Bool {
+        let mode = specialConversionMode
+        return mode.hasRelativeDate ? mode.relativeDate : true
     }
 }

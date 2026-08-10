@@ -224,6 +224,7 @@ class HazkeyServerConfig {
             $0.romanTypography = true
             $0.unicodeCodepoint = true
             $0.hazkeyVersion = true
+            $0.relativeDate = true
             $0.halfwidthKatakana = true
             $0.extendedEmoji = true
         }

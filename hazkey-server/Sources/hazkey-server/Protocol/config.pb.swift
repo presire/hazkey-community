@@ -634,6 +634,18 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `hazkeyVersion`. Subsequent reads from it will return its default value.
     mutating func clearHazkeyVersion() {self._hazkeyVersion = nil}
 
+    /// [community] Relative-date candidates (きょう → 今日 + 2026年8月11日 + ...).
+    /// When enabled, formatted date strings are appended after the kanji
+    /// representation of recognized trigger words.
+    var relativeDate: Bool {
+      get {return _relativeDate ?? false}
+      set {_relativeDate = newValue}
+    }
+    /// Returns true if `relativeDate` has been explicitly set.
+    var hasRelativeDate: Bool {return self._relativeDate != nil}
+    /// Clears the value of `relativeDate`. Subsequent reads from it will return its default value.
+    mutating func clearRelativeDate() {self._relativeDate = nil}
+
     var halfwidthKatakana: Bool {
       get {return _halfwidthKatakana ?? false}
       set {_halfwidthKatakana = newValue}
@@ -663,6 +675,7 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _romanTypography: Bool? = nil
     fileprivate var _unicodeCodepoint: Bool? = nil
     fileprivate var _hazkeyVersion: Bool? = nil
+    fileprivate var _relativeDate: Bool? = nil
     fileprivate var _halfwidthKatakana: Bool? = nil
     fileprivate var _extendedEmoji: Bool? = nil
   }
@@ -1414,6 +1427,7 @@ extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, Sw
     5: .standard(proto: "roman_typography"),
     6: .standard(proto: "unicode_codepoint"),
     7: .standard(proto: "hazkey_version"),
+    8: .standard(proto: "relative_date"),
     50: .standard(proto: "halfwidth_katakana"),
     51: .standard(proto: "extended_emoji"),
   ]
@@ -1431,6 +1445,7 @@ extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, Sw
       case 5: try { try decoder.decodeSingularBoolField(value: &self._romanTypography) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self._unicodeCodepoint) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self._hazkeyVersion) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self._relativeDate) }()
       case 50: try { try decoder.decodeSingularBoolField(value: &self._halfwidthKatakana) }()
       case 51: try { try decoder.decodeSingularBoolField(value: &self._extendedEmoji) }()
       default: break
@@ -1464,6 +1479,9 @@ extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, Sw
     try { if let v = self._hazkeyVersion {
       try visitor.visitSingularBoolField(value: v, fieldNumber: 7)
     } }()
+    try { if let v = self._relativeDate {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 8)
+    } }()
     try { if let v = self._halfwidthKatakana {
       try visitor.visitSingularBoolField(value: v, fieldNumber: 50)
     } }()
@@ -1481,6 +1499,7 @@ extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, Sw
     if lhs._romanTypography != rhs._romanTypography {return false}
     if lhs._unicodeCodepoint != rhs._unicodeCodepoint {return false}
     if lhs._hazkeyVersion != rhs._hazkeyVersion {return false}
+    if lhs._relativeDate != rhs._relativeDate {return false}
     if lhs._halfwidthKatakana != rhs._halfwidthKatakana {return false}
     if lhs._extendedEmoji != rhs._extendedEmoji {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
