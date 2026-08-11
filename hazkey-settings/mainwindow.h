@@ -10,6 +10,7 @@
 #include <QWidget>
 
 #include "serverconnector.h"
+#include "zenzai_models.h"
 
 struct UserDictEntry {
     QString reading;
@@ -95,7 +96,6 @@ class MainWindow : public QWidget {
     void clearKeymapsAndTables();
     QString translateKeymapName(const QString& keymapName, bool isBuiltin);
     QString translateTableName(const QString& tableName, bool isBuiltin);
-    QString calculateFileSHA256(const QString& filePath);
     QWidget* createWarningWidget(
         const QString& message, const QString& backgroundColor,
         const QString& buttonText = QString(),
@@ -115,6 +115,10 @@ class MainWindow : public QWidget {
     QNetworkReply* currentDownload_;
     QProgressDialog* downloadProgressDialog_;
     QString zenzaiModelPath_;
+    // Selected by user in the model selection dialog before each download.
+    QString currentDownloadUrl_;
+    QString currentDownloadExpectedSha256_;
+    QString currentDownloadKey_;
     QVector<UserDictEntry> userDictEntries_;
 };
 #endif  // MAINWINDOW_H

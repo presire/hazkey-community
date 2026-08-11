@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-settings VERSION 0.2.8 LANGUAGES CXX)
+project(hazkey-settings VERSION 0.2.9 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -41,6 +41,8 @@ set(PROJECT_SOURCES
     config_macros.h
     keysequence_util.cpp
     keysequence_util.h
+    zenzai_models.cpp
+    zenzai_models.h
     ${TS_FILES}
 )
 
@@ -132,3 +134,13 @@ install(CODE "
     \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_BINDIR}/hazkey-settings\"
     SYMBOLIC)
 ")
+
+# Tests
+find_package(Qt6 REQUIRED COMPONENTS Test)
+enable_testing()
+qt_add_executable(zenzai_model_management_test
+    zenzai_model_management_test.cpp
+    zenzai_models.cpp
+)
+target_link_libraries(zenzai_model_management_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME zenzai_model_management_test COMMAND zenzai_model_management_test)
