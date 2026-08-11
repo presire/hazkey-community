@@ -67,6 +67,7 @@ jobs:
           docker run --rm -i \
             --ulimit nproc=-1:-1 \
             --pids-limit=-1 \
+            --shm-size=1g \
             -e DISTRO="$DISTRO" \
             -e IMAGE="$IMAGE" \
             -e PACKAGE_TYPE="$PACKAGE_TYPE" \
@@ -158,7 +159,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr
-          if [ "$PACKAGE_SUFFIX" = "tumbleweed" ]; then
+          if [ "$PACKAGE_SUFFIX" = "tumbleweed" ] || [ "$PACKAGE_SUFFIX" = "ubuntu2604" ]; then
             cmake --build hazkey-server/build --parallel 1
           else
             cmake --build hazkey-server/build --parallel
