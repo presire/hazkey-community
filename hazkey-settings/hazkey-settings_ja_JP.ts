@@ -274,13 +274,13 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="907"/>
-        <location filename="mainwindow.cpp" line="1660"/>
+        <location filename="mainwindow.cpp" line="1661"/>
         <source>Romaji</source>
         <translation>ローマ字</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="912"/>
-        <location filename="mainwindow.cpp" line="1637"/>
+        <location filename="mainwindow.cpp" line="1638"/>
         <source>JIS Kana</source>
         <translation>JISかな</translation>
     </message>
@@ -400,7 +400,7 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="1548"/>
-        <location filename="mainwindow.cpp" line="1747"/>
+        <location filename="mainwindow.cpp" line="1915"/>
         <source>Delete</source>
         <translation>削除</translation>
     </message>
@@ -446,7 +446,7 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="1729"/>
-        <location filename="mainwindow.cpp" line="1689"/>
+        <location filename="mainwindow.cpp" line="1758"/>
         <source>Manage Zenzai Models</source>
         <translation>Zenzaiモデルの管理</translation>
     </message>
@@ -486,109 +486,108 @@
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/7ka-Hiira/fcitx5-hazkey/issues&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;不具合報告&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="141"/>
-        <location filename="mainwindow.cpp" line="2073"/>
-        <location filename="mainwindow.cpp" line="2081"/>
-        <location filename="mainwindow.cpp" line="2088"/>
-        <location filename="mainwindow.cpp" line="2095"/>
+        <location filename="mainwindow.cpp" line="142"/>
+        <location filename="mainwindow.cpp" line="2231"/>
+        <location filename="mainwindow.cpp" line="2239"/>
+        <location filename="mainwindow.cpp" line="2246"/>
+        <location filename="mainwindow.cpp" line="2253"/>
         <source>Configuration Error</source>
         <translation>設定エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="142"/>
+        <location filename="mainwindow.cpp" line="143"/>
         <source>Failed to load configuration. Please check your connection to the hazkey server.</source>
         <translation>設定の読み込みに失敗しました。hazkeyサーバーへの接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="326"/>
+        <location filename="mainwindow.cpp" line="327"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Zenzai support not installed.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; Zenzaiサポートがインストールされていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="522"/>
-        <location filename="mainwindow.cpp" line="1602"/>
-        <location filename="mainwindow.cpp" line="1624"/>
-        <location filename="mainwindow.cpp" line="1740"/>
-        <location filename="mainwindow.cpp" line="1768"/>
-        <location filename="mainwindow.cpp" line="1839"/>
+        <location filename="mainwindow.cpp" line="523"/>
+        <location filename="mainwindow.cpp" line="1603"/>
+        <location filename="mainwindow.cpp" line="1625"/>
+        <location filename="mainwindow.cpp" line="1860"/>
+        <location filename="mainwindow.cpp" line="1935"/>
+        <location filename="mainwindow.cpp" line="1984"/>
         <source>Error</source>
         <translation>エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="523"/>
-        <location filename="mainwindow.cpp" line="1603"/>
+        <location filename="mainwindow.cpp" line="524"/>
+        <location filename="mainwindow.cpp" line="1604"/>
         <source>No configuration profile loaded.</source>
         <translation>設定プロファイルが読み込まれていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="597"/>
-        <location filename="mainwindow.cpp" line="602"/>
+        <location filename="mainwindow.cpp" line="598"/>
+        <location filename="mainwindow.cpp" line="603"/>
         <source>Save Error</source>
         <translation>保存エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="598"/>
+        <location filename="mainwindow.cpp" line="599"/>
         <source>Failed to save configuration: %1</source>
         <translation>設定の保存に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="603"/>
+        <location filename="mainwindow.cpp" line="604"/>
         <source>An unknown error occurred while saving configuration.</source>
         <translation>設定の保存中に不明なエラーが発生しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1662"/>
+        <location filename="mainwindow.cpp" line="1663"/>
         <source>Kana</source>
         <translation>かな</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="659"/>
-        <location filename="mainwindow.cpp" line="898"/>
+        <location filename="mainwindow.cpp" line="660"/>
+        <location filename="mainwindow.cpp" line="899"/>
         <source>[not found]</source>
         <translation>[見つかりません]</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="108"/>
+        <location filename="mainwindow.cpp" line="109"/>
         <source>Reload</source>
         <translation>再読み込み</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2190"/>
-        <location filename="mainwindow.cpp" line="2281"/>
-        <location filename="mainwindow.cpp" line="2288"/>
-        <location filename="mainwindow.cpp" line="2329"/>
-        <location filename="mainwindow.cpp" line="2353"/>
-        <location filename="mainwindow.cpp" line="2384"/>
-        <location filename="mainwindow.cpp" line="2417"/>
-        <location filename="mainwindow.cpp" line="2434"/>
-        <location filename="mainwindow.cpp" line="2448"/>
+        <location filename="mainwindow.cpp" line="2348"/>
+        <location filename="mainwindow.cpp" line="2439"/>
+        <location filename="mainwindow.cpp" line="2446"/>
+        <location filename="mainwindow.cpp" line="2487"/>
+        <location filename="mainwindow.cpp" line="2511"/>
+        <location filename="mainwindow.cpp" line="2542"/>
+        <location filename="mainwindow.cpp" line="2575"/>
+        <location filename="mainwindow.cpp" line="2592"/>
+        <location filename="mainwindow.cpp" line="2606"/>
         <source>User Dictionary</source>
         <translation>単語登録</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="338"/>
+        <location filename="mainwindow.cpp" line="339"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Zenzai model not found.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; Zenzaiモデルが見つかりません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="339"/>
+        <location filename="mainwindow.cpp" line="340"/>
         <source>Download Model</source>
         <translation>モデルをダウンロード</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="373"/>
+        <location filename="mainwindow.cpp" line="374"/>
         <source>The current model is not the latest version.</source>
         <translation>現在のZenzaiモデルは最新バージョンではありません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="374"/>
+        <location filename="mainwindow.cpp" line="375"/>
         <source>Download Update</source>
         <translation>更新をダウンロード</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1693"/>
         <source>Choose a model to download or delete a downloaded model:</source>
-        <translation>ダウンロードするモデルを選択するか、ダウンロード済みのモデルを削除してください:</translation>
+        <translation type="vanished">ダウンロードするモデルを選択するか、ダウンロード済みのモデルを削除してください:</translation>
     </message>
     <message>
         <location filename="zenzai_models.cpp" line="212"/>
@@ -596,7 +595,7 @@
         <translation>推奨: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1683"/>
+        <location filename="mainwindow.cpp" line="1751"/>
         <source>No Zenzai models are configured.</source>
         <translation>Zenzaiモデルが設定されていません。</translation>
     </message>
@@ -616,98 +615,98 @@
         <translation>旧バージョン。互換性維持用。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="656"/>
-        <location filename="mainwindow.cpp" line="685"/>
-        <location filename="mainwindow.cpp" line="768"/>
-        <location filename="mainwindow.cpp" line="895"/>
-        <location filename="mainwindow.cpp" line="924"/>
-        <location filename="mainwindow.cpp" line="1008"/>
+        <location filename="mainwindow.cpp" line="657"/>
+        <location filename="mainwindow.cpp" line="686"/>
+        <location filename="mainwindow.cpp" line="769"/>
+        <location filename="mainwindow.cpp" line="896"/>
+        <location filename="mainwindow.cpp" line="925"/>
+        <location filename="mainwindow.cpp" line="1009"/>
         <source>[built-in]</source>
         <translation>[内蔵]</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1115"/>
         <location filename="mainwindow.cpp" line="1116"/>
         <location filename="mainwindow.cpp" line="1117"/>
-        <location filename="mainwindow.cpp" line="1230"/>
+        <location filename="mainwindow.cpp" line="1118"/>
         <location filename="mainwindow.cpp" line="1231"/>
         <location filename="mainwindow.cpp" line="1232"/>
+        <location filename="mainwindow.cpp" line="1233"/>
         <source>Disabled in Kana mode</source>
         <translation>かなモードでは無効</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1396"/>
+        <location filename="mainwindow.cpp" line="1397"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Current settings can only be edited in Advanced mode.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; 現在の設定は詳細設定モードでのみ編集できます。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1399"/>
+        <location filename="mainwindow.cpp" line="1400"/>
         <source>Reset Input Style</source>
         <translation>入力スタイルをリセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1609"/>
+        <location filename="mainwindow.cpp" line="1610"/>
         <source>Clear Input History</source>
         <translation>入力履歴を削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1610"/>
+        <location filename="mainwindow.cpp" line="1611"/>
         <source>Are you sure you want to clear all input history data? This action cannot be undone.</source>
         <translation>この操作は取り消せません。本当に履歴を削除しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1620"/>
+        <location filename="mainwindow.cpp" line="1621"/>
         <source>Success</source>
         <translation>成功</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1621"/>
+        <location filename="mainwindow.cpp" line="1622"/>
         <source>Input history has been cleared successfully.</source>
         <translation>入力履歴が削除されました</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1625"/>
+        <location filename="mainwindow.cpp" line="1626"/>
         <source>Failed to clear input history. Please check your connection to the hazkey server.</source>
         <translation>入力履歴の削除に失敗しました。hazkey-serverとの接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1639"/>
+        <location filename="mainwindow.cpp" line="1640"/>
         <source>Japanese Symbol</source>
         <translation>日本語用記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1641"/>
+        <location filename="mainwindow.cpp" line="1642"/>
         <source>Fullwidth Period</source>
         <translation>全角ピリオド</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1643"/>
+        <location filename="mainwindow.cpp" line="1644"/>
         <source>Fullwidth Comma</source>
         <translation>全角カンマ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1645"/>
+        <location filename="mainwindow.cpp" line="1646"/>
         <source>Fullwidth Number</source>
         <translation>全角数字</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1647"/>
+        <location filename="mainwindow.cpp" line="1648"/>
         <source>Fullwidth Symbol</source>
         <translation>全角記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1649"/>
+        <location filename="mainwindow.cpp" line="1650"/>
         <source>Fullwidth Space</source>
         <translation>全角スペース</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1682"/>
-        <location filename="mainwindow.cpp" line="1937"/>
-        <location filename="mainwindow.cpp" line="1958"/>
-        <location filename="mainwindow.cpp" line="1968"/>
-        <location filename="mainwindow.cpp" line="1983"/>
-        <location filename="mainwindow.cpp" line="1994"/>
-        <location filename="mainwindow.cpp" line="2040"/>
+        <location filename="mainwindow.cpp" line="1750"/>
+        <location filename="mainwindow.cpp" line="2069"/>
+        <location filename="mainwindow.cpp" line="2086"/>
+        <location filename="mainwindow.cpp" line="2094"/>
+        <location filename="mainwindow.cpp" line="2107"/>
+        <location filename="mainwindow.cpp" line="2116"/>
+        <location filename="mainwindow.cpp" line="2198"/>
         <source>Download Error</source>
         <translation>ダウンロードエラー</translation>
     </message>
@@ -724,22 +723,22 @@
         <translation type="vanished">既存のZenzaiモデルファイルを上書きしますか?</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1856"/>
+        <location filename="mainwindow.cpp" line="1892"/>
         <source>Downloading Zenzai model...</source>
         <translation>Zenzaiモデルをダウンロード中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1856"/>
+        <location filename="mainwindow.cpp" line="1892"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1895"/>
+        <location filename="mainwindow.cpp" line="2023"/>
         <source>Downloading Zenzai model... %1 MB / %2 MB</source>
         <translation>Zenzaiモデルをダウンロード中... %1 MB / %2 MB</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1938"/>
+        <location filename="mainwindow.cpp" line="2070"/>
         <source>Downloaded file verification failed. Checksum mismatch.
 Expected: %1
 Got: %2</source>
@@ -748,27 +747,28 @@ Got: %2</source>
 取得地: %2</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1959"/>
+        <location filename="mainwindow.cpp" line="2087"/>
         <source>Failed to save model file: %1</source>
         <translation>モデルファイルの保存に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1969"/>
+        <location filename="mainwindow.cpp" line="2095"/>
         <source>Failed to write model file: %1</source>
         <translation>モデルファイルの書き込みに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1984"/>
+        <location filename="mainwindow.cpp" line="2108"/>
         <source>Failed to remove old model file.</source>
         <translation>古いモデルファイルの削除に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1995"/>
+        <location filename="mainwindow.cpp" line="2117"/>
         <source>Failed to rename model file.</source>
         <translation>モデルファイルの名前変更に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2009"/>
+        <location filename="mainwindow.cpp" line="2160"/>
+        <location filename="mainwindow.cpp" line="2165"/>
         <source>Download Complete</source>
         <translation>ダウンロード完了</translation>
     </message>
@@ -779,195 +779,212 @@ Please push &apos;Reload&apos; to refresh the UI.</source>
 UIを更新するには再読み込みボタンを押してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2047"/>
+        <location filename="mainwindow.cpp" line="2205"/>
         <source>Reload Configuration</source>
         <translation>設定を再読み込み</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2048"/>
+        <location filename="mainwindow.cpp" line="2206"/>
         <source>Reloading will discard any unsaved changes. Continue?</source>
         <translation>再読み込みすると、保存されていない変更は失われます。続行しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2057"/>
+        <location filename="mainwindow.cpp" line="2215"/>
         <source>Connection Error</source>
         <translation>接続エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2058"/>
+        <location filename="mainwindow.cpp" line="2216"/>
         <source>Failed to connect to server.</source>
         <translation>サーバーへの接続に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2074"/>
+        <location filename="mainwindow.cpp" line="2232"/>
         <source>Failed to load configuration from server.</source>
         <translation>サーバーから設定を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2082"/>
+        <location filename="mainwindow.cpp" line="2240"/>
         <source>No profile found in configuration.</source>
         <translation>設定にプロファイルが見つかりません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2089"/>
+        <location filename="mainwindow.cpp" line="2247"/>
         <source>Failed to access profile.</source>
         <translation>プロファイルへのアクセスに失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2096"/>
+        <location filename="mainwindow.cpp" line="2254"/>
         <source>Failed to update UI.</source>
         <translation>UIの更新に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2102"/>
+        <location filename="mainwindow.cpp" line="2260"/>
         <source>Reload Complete</source>
         <translation>再読み込み完了</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2103"/>
+        <location filename="mainwindow.cpp" line="2261"/>
         <source>Configuration has been reloaded successfully.</source>
         <translation>設定が正常に再読み込みされました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2346"/>
+        <location filename="mainwindow.cpp" line="2504"/>
         <source>Import User Dictionary</source>
         <translation>ユーザー辞書をインポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2347"/>
-        <location filename="mainwindow.cpp" line="2427"/>
+        <location filename="mainwindow.cpp" line="2505"/>
+        <location filename="mainwindow.cpp" line="2585"/>
         <source>Tab-separated files (*.tsv *.txt);;All files (*)</source>
         <translation>タブ区切りファイル (*.tsv *.txt);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2354"/>
+        <location filename="mainwindow.cpp" line="2512"/>
         <source>Failed to open user dictionary file: %1</source>
         <translation>ユーザー辞書ファイルを開けませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2385"/>
+        <location filename="mainwindow.cpp" line="2543"/>
         <source>No valid user dictionary entries were found.</source>
         <translation>有効なユーザー辞書エントリが見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2418"/>
+        <location filename="mainwindow.cpp" line="2576"/>
         <source>Imported %1 new and updated %2 entries; skipped %3 malformed rows.</source>
         <translation>%1 件を追加し、%2 件を更新しました。不正な行 %3 件をスキップしました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2426"/>
+        <location filename="mainwindow.cpp" line="2584"/>
         <source>Export User Dictionary</source>
         <translation>ユーザー辞書をエクスポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2435"/>
+        <location filename="mainwindow.cpp" line="2593"/>
         <source>Failed to export user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートできませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2449"/>
+        <location filename="mainwindow.cpp" line="2607"/>
         <source>Exported user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートしました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2041"/>
+        <location filename="mainwindow.cpp" line="2199"/>
         <source>Failed to download Zenzai model: %1</source>
         <translation>Zenzaiモデルのダウンロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1769"/>
+        <location filename="mainwindow.cpp" line="1936"/>
         <source>Failed to delete model.</source>
         <translation>モデルの削除に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2145"/>
+        <location filename="mainwindow.cpp" line="1963"/>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="2161"/>
+        <source>The downloaded model is now selected. Click OK to activate it.</source>
+        <translation>ダウンロードされたモデルが選択されました。OKを押して有効化してください。</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="2166"/>
+        <source>Zenzai model has been downloaded successfully.
+Open Manage Zenzai Models to activate it.</source>
+        <translation>Zenzaiモデルが正常にダウンロードされました。
+「Zenzaiモデルの管理」を開いて有効化してください。</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="2303"/>
         <source>Reading</source>
         <translation>よみ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2145"/>
-        <location filename="mainwindow.cpp" line="2239"/>
+        <location filename="mainwindow.cpp" line="2303"/>
+        <location filename="mainwindow.cpp" line="2397"/>
         <source>Word</source>
         <translation>単語</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2145"/>
-        <location filename="mainwindow.cpp" line="2240"/>
+        <location filename="mainwindow.cpp" line="2303"/>
+        <location filename="mainwindow.cpp" line="2398"/>
         <source>Comment</source>
         <translation>コメント</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2191"/>
+        <location filename="mainwindow.cpp" line="2349"/>
         <source>Failed to save user dictionary to %1</source>
         <translation>ユーザー辞書を %1 に保存できませんでした</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2238"/>
+        <location filename="mainwindow.cpp" line="2396"/>
         <source>Reading (hiragana)</source>
         <translation>よみ (ひらがな)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2282"/>
+        <location filename="mainwindow.cpp" line="2440"/>
         <source>Reading and Word must not be empty.</source>
         <translation>「よみ」と「単語」は空にできません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2289"/>
+        <location filename="mainwindow.cpp" line="2447"/>
         <source>Tab and newline characters are not allowed.</source>
         <translation>タブ文字と改行文字は使用できません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2301"/>
+        <location filename="mainwindow.cpp" line="2459"/>
         <source>Add Word</source>
         <translation>単語を追加</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2314"/>
+        <location filename="mainwindow.cpp" line="2472"/>
         <source>Edit Word</source>
         <translation>単語を編集</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2330"/>
+        <location filename="mainwindow.cpp" line="2488"/>
         <source>Delete &quot;%1&quot; → &quot;%2&quot;?</source>
         <translation>「%1」→「%2」を削除しますか?</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="64"/>
+        <location filename="mainwindow.cpp" line="65"/>
         <source>人名</source>
         <translation>人名</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="65"/>
+        <location filename="mainwindow.cpp" line="66"/>
         <source>地名</source>
         <translation>地名</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="66"/>
+        <location filename="mainwindow.cpp" line="67"/>
         <source>動詞</source>
         <translation>動詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="67"/>
+        <location filename="mainwindow.cpp" line="68"/>
         <source>固有名詞</source>
         <translation>固有名詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2145"/>
+        <location filename="mainwindow.cpp" line="2303"/>
         <source>品詞</source>
         <translation>品詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2237"/>
+        <location filename="mainwindow.cpp" line="2395"/>
         <source>動詞: 読みの末尾から活用形を自動生成します</source>
         <translation>動詞: 読みの末尾から活用形を自動生成します</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2254"/>
+        <location filename="mainwindow.cpp" line="2412"/>
         <source>活用形を自動生成します（読みの末尾から判定）</source>
         <translation>活用形を自動生成します（読みの末尾から判定）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2241"/>
+        <location filename="mainwindow.cpp" line="2399"/>
         <source>Part of Speech</source>
         <translation>品詞</translation>
     </message>
@@ -977,39 +994,38 @@ UIを更新するには再読み込みボタンを押してください。</tran
         <translation>（ダウンロード済み）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1752"/>
+        <location filename="mainwindow.cpp" line="1922"/>
         <source>Delete Model</source>
         <translation>モデルを削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1753"/>
+        <location filename="mainwindow.cpp" line="1923"/>
         <source>Are you sure you want to delete the model &quot;%1&quot;?</source>
         <translation>モデル「%1」を削除してもよろしいですか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1787"/>
         <source>All known models are already downloaded.</source>
-        <translation>すべての既知のモデルがダウンロード済みです。</translation>
+        <translation type="vanished">すべての既知のモデルがダウンロード済みです。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1796"/>
+        <location filename="mainwindow.cpp" line="1798"/>
         <source>Download</source>
         <translation>ダウンロード</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1825"/>
+        <location filename="mainwindow.cpp" line="1837"/>
         <source>Preserve Custom Model</source>
         <translation>カスタムモデルの保存</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1826"/>
+        <location filename="mainwindow.cpp" line="1838"/>
         <source>A custom Zenzai model &quot;zenzai.gguf&quot; already exists.
 Do you want to preserve it before downloading a new one?</source>
         <translation>カスタムZenzaiモデル「zenzai.gguf」が既に存在します。
 新しいモデルをダウンロードする前に、これを保存しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1840"/>
+        <location filename="mainwindow.cpp" line="1861"/>
         <source>Failed to preserve custom model.</source>
         <translation>カスタムモデルの保存に失敗しました。</translation>
     </message>
@@ -1018,26 +1034,34 @@ Do you want to preserve it before downloading a new one?</source>
         <translation type="vanished">ダウンロードされたモデルの有効化に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1732"/>
         <source>Use This Model</source>
-        <translation>このモデルを使用</translation>
+        <translation type="vanished">このモデルを使用</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1727"/>
         <source>In Use</source>
-        <translation>使用中</translation>
+        <translation type="vanished">使用中</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1741"/>
+        <location filename="mainwindow.cpp" line="1985"/>
         <source>Failed to activate model.</source>
         <translation>モデルの有効化に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2010"/>
         <source>Zenzai model has been downloaded successfully.
 The management dialog will reopen; please select &quot;Use This Model&quot; to activate it.</source>
-        <translation>Zenzaiモデルが正常にダウンロードされました。
+        <translation type="vanished">Zenzaiモデルが正常にダウンロードされました。
 管理ダイアログが再開されます。「このモデルを使用」を選択して有効化してください。</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="1762"/>
+        <source>Select a downloaded model to use, or download a new one:</source>
+        <translation>使用するダウンロード済みモデルを選択するか、新しいモデルをダウンロードしてください：</translation>
+    </message>
+    <message>
+        <source>Zenzai model has been downloaded successfully.
+Select the model with the radio button and click OK to activate it.</source>
+        <translation type="vanished">Zenzaiモデルが正常にダウンロードされました。
+ラジオボタンでモデルを選択してOKを押すと有効化されます。</translation>
     </message>
 </context>
 </TS>

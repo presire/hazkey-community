@@ -4,6 +4,7 @@
 #include <QAbstractButton>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QPointer>
 #include <QProgressDialog>
 #include <QString>
 #include <QVector>
@@ -106,6 +107,11 @@ class MainWindow : public QWidget {
     void refreshUserDictTable();
     bool editUserDictEntryDialog(UserDictEntry& entry, const QString& title);
     void setupUserDict();
+    // Recompute and restore all Zenzai dialog button states from disk.
+    // No-op when zenzaiModelDialog_ is null.
+    void refreshZenzaiDialogButtonStates();
+    // Returns zenzaiModelDialog_ as QWidget* if alive, otherwise this.
+    QWidget* zenzaiDialogParent() const;
     Ui::MainWindow* ui_;
     ServerConnector server_;
     hazkey::config::CurrentConfig currentConfig_;
@@ -115,6 +121,8 @@ class MainWindow : public QWidget {
     QNetworkReply* currentDownload_;
     QProgressDialog* downloadProgressDialog_;
     QString zenzaiModelPath_;
+    // Pointer to the currently open Zenzai model management dialog (if any).
+    QPointer<QDialog> zenzaiModelDialog_;
     // Selected by user in the model selection dialog before each download.
     QString currentDownloadUrl_;
     QString currentDownloadExpectedSha256_;
