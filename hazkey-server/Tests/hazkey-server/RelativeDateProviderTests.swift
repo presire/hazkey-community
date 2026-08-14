@@ -501,8 +501,231 @@ final class RelativeDateProviderTests: XCTestCase {
     }
 
     func testTriggerCount() {
-        // 期待されるトリガー数: 7 day + 3 month + 4 monthEnd + 5 year + 4 yearAbsolute = 23
-        XCTAssertEqual(RelativeDateProvider.triggers.count, 23)
+        // 期待されるトリガー数:
+        // 7 day (既存) + おとつい + さきおととい + さきおとつい = 10 day
+        // + 3 month + 4 monthEnd + 5 year + 4 yearAbsolute = 26
+        XCTAssertEqual(RelativeDateProvider.triggers.count, 26)
+    }
+
+    // MARK: - [RED] 相対日付: おとつい / さきおととい / さきおとつい
+
+    // --- おとつい (一昨日 / offset -2) ---
+
+    /// おとつい は おととい のエイリアス。読みが異なるだけで漢字・オフセットは同じ。
+    func testOtotsuiDetectsAsIssaku() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "おとつい")
+        XCTAssertNotNil(trigger, "おとつい must have a registered trigger")
+        XCTAssertEqual(trigger?.kanji, "一昨日")
+        if case .day(let offset) = trigger?.target {
+            XCTAssertEqual(offset, -2)
+        } else {
+            XCTFail("おとつい target must be .day(offset: -2)")
+        }
+    }
+
+    /// おとつい は synthesizeKanjiWhenMissing が false — エンジンが 一昨日 を返せば注入する。
+    func testOtotsuiSynthesizeKanjiWhenMissingIsFalse() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "おとつい")
+        XCTAssertNotNil(trigger)
+        XCTAssertFalse(
+            trigger?.synthesizeKanjiWhenMissing ?? true,
+            "おとつい must NOT synthesize kanji (engine already returns 一昨日)"
+        )
+    }
+
+    /// おとつい の日付文字列は おととい と完全に一致する (6種同一)。
+    func testOtotsuiAndOtotoiYieldIdenticalDateStrings() {
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        let triggerOtotoi   = RelativeDateProvider.detectTrigger(composingHiragana: "おととい")!
+        let triggerOtotsui  = RelativeDateProvider.detectTrigger(composingHiragana: "おとつい")!
+        let datesOtotoi  = RelativeDateProvider.generateDateStrings(for: triggerOtotoi,  now: now)
+        let datesOtotsui = RelativeDateProvider.generateDateStrings(for: triggerOtotsui, now: now)
+        XCTAssertEqual(datesOtotoi.count, 6)
+        XCTAssertEqual(datesOtotsui.count, 6, "おとつい must also produce 6 date strings")
+        XCTAssertEqual(datesOtotoi, datesOtotsui,
+            "おとつい and おととい must yield identical date strings (both offset -2)")
+    }
+
+    /// おとつい の具体的な日付文字列を検証する (2026-08-11 の2日前 = 2026-08-09 日曜日)。
+    func testOtotsuiDateStringsAt2026_08_11() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "おとつい")!
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
+
+        // 2026-08-11 - 2 days = 2026-08-09 (日曜日)
+        XCTAssertEqual(result[0], "2026年8月9日")
+        XCTAssertEqual(result[1], "2026-08-09")
+        XCTAssertEqual(result[2], "2026/08/09")
+        XCTAssertEqual(result[3], "令和8年8月9日")
+        XCTAssertEqual(result[4], "2026年8月9日(日)")
+        XCTAssertEqual(result[5], "令和8年8月9日(日)")
+    }
+
+    // --- さきおととい (一昨昨日 / offset -3) ---
+
+    /// さきおととい は offset -3 の通常トリガー。エンジンが 一昨昨日 を返す前提。
+    func testSakiOtotoiDetectsAsIssaku() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおととい")
+        XCTAssertNotNil(trigger, "さきおととい must have a registered trigger")
+        XCTAssertEqual(trigger?.kanji, "一昨昨日")
+        if case .day(let offset) = trigger?.target {
+            XCTAssertEqual(offset, -3)
+        } else {
+            XCTFail("さきおととい target must be .day(offset: -3)")
+        }
+    }
+
+    /// さきおととい は synthesizeKanjiWhenMissing が false — エンジンが 一昨昨日 を返せば注入する。
+    func testSakiOtotoiSynthesizeKanjiWhenMissingIsFalse() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおととい")
+        XCTAssertNotNil(trigger)
+        XCTAssertFalse(
+            trigger?.synthesizeKanjiWhenMissing ?? true,
+            "さきおととい must NOT synthesize kanji (engine already returns 一昨昨日)"
+        )
+    }
+
+    /// さきおととい の具体的な日付文字列を検証する (2026-08-11 の3日前 = 2026-08-08 土曜日)。
+    func testSakiOtotoiDateStringsAt2026_08_11() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおととい")!
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
+
+        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        XCTAssertEqual(result.count, 6)
+        XCTAssertEqual(result[0], "2026年8月8日")
+        XCTAssertEqual(result[1], "2026-08-08")
+        XCTAssertEqual(result[2], "2026/08/08")
+        XCTAssertEqual(result[3], "令和8年8月8日")
+        XCTAssertEqual(result[4], "2026年8月8日(土)")
+        XCTAssertEqual(result[5], "令和8年8月8日(土)")
+    }
+
+    // --- さきおとつい (一昨昨日 / offset -3 / synthesizeKanjiWhenMissing = true) ---
+
+    /// さきおとつい はエンジンが 一昨昨日 を候補として返さないため、
+    /// synthesizeKanjiWhenMissing = true でプロバイダ側が漢字を合成する。
+    func testSakiOtotsuiDetectsAsIssaku() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおとつい")
+        XCTAssertNotNil(trigger, "さきおとつい must have a registered trigger")
+        XCTAssertEqual(trigger?.kanji, "一昨昨日")
+        if case .day(let offset) = trigger?.target {
+            XCTAssertEqual(offset, -3)
+        } else {
+            XCTFail("さきおとつい target must be .day(offset: -3)")
+        }
+    }
+
+    /// さきおとつい だけが synthesizeKanjiWhenMissing = true であること。
+    /// 既存トリガーおよび新規の おとつい / さきおととい はいずれも false。
+    func testSakiOtotsuiSynthesizeKanjiWhenMissingIsTrue() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおとつい")
+        XCTAssertNotNil(trigger)
+        XCTAssertTrue(
+            trigger?.synthesizeKanjiWhenMissing ?? false,
+            "さきおとつい MUST synthesize kanji (engine has no 一昨昨日 candidate for this reading)"
+        )
+    }
+
+    /// さきおとつい の synthesizeKanjiWhenMissing フラグは他の全トリガーには波及しない。
+    /// 新旧問わず synthesizeKanjiWhenMissing が true なのは さきおとつい のみ。
+    func testOnlySakiOtotsuiHasSynthesizeFlag() {
+        let flaggedTriggers = RelativeDateProvider.triggers.filter { $0.synthesizeKanjiWhenMissing }
+        XCTAssertEqual(flaggedTriggers.count, 1,
+            "Exactly one trigger must have synthesizeKanjiWhenMissing=true")
+        XCTAssertEqual(flaggedTriggers.first?.reading, "さきおとつい",
+            "Only さきおとつい must have synthesizeKanjiWhenMissing=true")
+    }
+
+    /// さきおとつい の日付文字列は さきおととい と完全に一致する (6種同一)。
+    /// オフセットが同じ (-3) であるため、生成される日付は読みに依らず同一となる。
+    func testSakiOtotsuiAndSakiOtotoiYieldIdenticalDateStrings() {
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        let triggerSakiOtotoi   = RelativeDateProvider.detectTrigger(composingHiragana: "さきおととい")!
+        let triggerSakiOtotsui  = RelativeDateProvider.detectTrigger(composingHiragana: "さきおとつい")!
+        let datesSakiOtotoi  = RelativeDateProvider.generateDateStrings(for: triggerSakiOtotoi,  now: now)
+        let datesSakiOtotsui = RelativeDateProvider.generateDateStrings(for: triggerSakiOtotsui, now: now)
+        XCTAssertEqual(datesSakiOtotoi.count, 6)
+        XCTAssertEqual(datesSakiOtotsui.count, 6,
+            "さきおとつい must also produce 6 date strings")
+        XCTAssertEqual(datesSakiOtotoi, datesSakiOtotsui,
+            "さきおとつい and さきおととい must yield identical date strings (both offset -3)")
+    }
+
+    /// さきおとつい の具体的な日付文字列を検証する (2026-08-11 の3日前 = 2026-08-08 土曜日)。
+    func testSakiOtotsuiDateStringsAt2026_08_11() {
+        let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "さきおとつい")!
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
+
+        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        XCTAssertEqual(result.count, 6)
+        XCTAssertEqual(result[0], "2026年8月8日")
+        XCTAssertEqual(result[1], "2026-08-08")
+        XCTAssertEqual(result[2], "2026/08/08")
+        XCTAssertEqual(result[3], "令和8年8月8日")
+        XCTAssertEqual(result[4], "2026年8月8日(土)")
+        XCTAssertEqual(result[5], "令和8年8月8日(土)")
+    }
+
+    // --- offset -2 エイリアス群の決定論的等価性 ---
+
+    /// offset -2 の全エイリアス (おととい / おとつい) が同一の6日付文字列を生成する。
+    func testAllOffsetMinus2AliasesYieldIdenticalSixDateStrings() {
+        let now = Self.makeDate(year: 2026, month: 8, day: 3)!
+        // 2026-08-03 - 2 days = 2026-08-01 (土曜日)
+        let readings = ["おととい", "おとつい"]
+        var allResults: [[String]] = []
+        for reading in readings {
+            let trigger = RelativeDateProvider.detectTrigger(composingHiragana: reading)
+            XCTAssertNotNil(trigger, "Trigger missing for \(reading)")
+            if let t = trigger {
+                let result = RelativeDateProvider.generateDateStrings(for: t, now: now)
+                XCTAssertEqual(result.count, 6,
+                    "offset -2 alias '\(reading)' must produce 6 strings")
+                allResults.append(result)
+            }
+        }
+        // 全エイリアスが同一の文字列配列であること
+        if let first = allResults.first {
+            for (i, result) in allResults.dropFirst().enumerated() {
+                XCTAssertEqual(first, result,
+                    "offset -2 alias at index \(i + 1) differs from おととい")
+            }
+            // 具体値: 2026-08-01 (土)
+            XCTAssertEqual(first[0], "2026年8月1日")
+            XCTAssertEqual(first[1], "2026-08-01")
+            XCTAssertEqual(first[4], "2026年8月1日(土)")
+        }
+    }
+
+    /// offset -3 の全エイリアス (さきおととい / さきおとつい) が同一の6日付文字列を生成する。
+    func testAllOffsetMinus3AliasesYieldIdenticalSixDateStrings() {
+        let now = Self.makeDate(year: 2026, month: 8, day: 11)!
+        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        let readings = ["さきおととい", "さきおとつい"]
+        var allResults: [[String]] = []
+        for reading in readings {
+            let trigger = RelativeDateProvider.detectTrigger(composingHiragana: reading)
+            XCTAssertNotNil(trigger, "Trigger missing for \(reading)")
+            if let t = trigger {
+                let result = RelativeDateProvider.generateDateStrings(for: t, now: now)
+                XCTAssertEqual(result.count, 6,
+                    "offset -3 alias '\(reading)' must produce 6 strings")
+                allResults.append(result)
+            }
+        }
+        // 全エイリアスが同一の文字列配列であること
+        if let first = allResults.first {
+            for (i, result) in allResults.dropFirst().enumerated() {
+                XCTAssertEqual(first, result,
+                    "offset -3 alias at index \(i + 1) differs from さきおととい")
+            }
+            // 具体値: 2026-08-08 (土)
+            XCTAssertEqual(first[0], "2026年8月8日")
+            XCTAssertEqual(first[1], "2026-08-08")
+            XCTAssertEqual(first[4], "2026年8月8日(土)")
+        }
     }
 
     // MARK: - Helpers

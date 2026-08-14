@@ -41,19 +41,43 @@ enum RelativeDateProvider {
         /// エンジンが返す漢字表現。この候補の直後に日付文字列を挿入する。
         let kanji: String
         let target: DateTarget
+        /// エンジンがこの読みに対して `kanji` を候補として返さない場合に
+        /// プロバイダ側で合成アンカーを生成するかどうか。
+        /// 既存トリガーおよびエンジンが漢字を返すことが確認済みのトリガーは
+        /// `false` のままにすること。現在 `さきおとつい` のみ `true`。
+        let synthesizeKanjiWhenMissing: Bool
+
+        init(
+            reading: String,
+            kanji: String,
+            target: DateTarget,
+            synthesizeKanjiWhenMissing: Bool = false
+        ) {
+            self.reading = reading
+            self.kanji = kanji
+            self.target = target
+            self.synthesizeKanjiWhenMissing = synthesizeKanjiWhenMissing
+        }
     }
 
     /// All trigger words recognized by this provider.
     /// 読みの重複 (例: あした/あす → 明日) は別トリガーとして登録する。
     static let triggers: [Trigger] = [
         // === 日単位 ===
-        Trigger(reading: "きょう",      kanji: "今日",    target: .day(offset:  0)),
-        Trigger(reading: "きのう",      kanji: "昨日",    target: .day(offset: -1)),
-        Trigger(reading: "おととい",    kanji: "一昨日",  target: .day(offset: -2)),
-        Trigger(reading: "あした",      kanji: "明日",    target: .day(offset:  1)),
-        Trigger(reading: "あす",        kanji: "明日",    target: .day(offset:  1)),
-        Trigger(reading: "あさって",    kanji: "明後日",  target: .day(offset:  2)),
-        Trigger(reading: "しあさって",  kanji: "明々後日", target: .day(offset:  3)),
+        Trigger(reading: "きょう",        kanji: "今日",    target: .day(offset:  0)),
+        Trigger(reading: "きのう",        kanji: "昨日",    target: .day(offset: -1)),
+        Trigger(reading: "おととい",      kanji: "一昨日",  target: .day(offset: -2)),
+        // おとつい は おととい の異表記エイリアス。エンジンは一昨日を返す。
+        Trigger(reading: "おとつい",      kanji: "一昨日",  target: .day(offset: -2)),
+        Trigger(reading: "あした",        kanji: "明日",    target: .day(offset:  1)),
+        Trigger(reading: "あす",          kanji: "明日",    target: .day(offset:  1)),
+        Trigger(reading: "あさって",      kanji: "明後日",  target: .day(offset:  2)),
+        Trigger(reading: "しあさって",    kanji: "明々後日", target: .day(offset:  3)),
+        // さきおととい: エンジンが一昨昨日を返す読み。
+        Trigger(reading: "さきおととい",  kanji: "一昨昨日", target: .day(offset: -3)),
+        // さきおとつい: エンジンが一昨昨日を返さないため、プロバイダ側で合成アンカーを生成する。
+        Trigger(reading: "さきおとつい",  kanji: "一昨昨日", target: .day(offset: -3),
+                synthesizeKanjiWhenMissing: true),
         // === 月単位 (年月のみ出力) ===
         Trigger(reading: "こんげつ",    kanji: "今月",    target: .month(offset:  0)),
         Trigger(reading: "らいげつ",    kanji: "来月",    target: .month(offset:  1)),

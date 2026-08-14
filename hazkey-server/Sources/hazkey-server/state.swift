@@ -488,6 +488,11 @@ class HazkeyServerState {
         // (今日, 昨日, ...). Date candidates are inserted immediately after the
         // kanji representation in both serverCandidates (for index alignment
         // with completePrefix) and clientCandidates (for wire serialization).
+        //
+        // Fallback (synthesizeKanjiWhenMissing): when the engine does not produce
+        // the kanji anchor (e.g. さきおとつい → 一昨昨日 is absent), and the trigger
+        // explicitly opts in, a synthetic anchor + date strings are appended at the
+        // end of both lists. No insertion is done; liveTextIndex is unchanged.
         if serverConfig.currentProfile.useRelativeDateEffective {
             if let trigger = RelativeDateProvider.detectTrigger(
                 composingHiragana: hiraganaPreedit)
@@ -495,10 +500,14 @@ class HazkeyServerState {
                 // Find the index of the kanji representation in serverCandidates.
                 // Only inject when the kanji form exists (matches the user's
                 // "漢字表現が有る時だけ挿入" preference).
-                if let kanjiIndex = serverCandidates.firstIndex(where: { dc in
+                let kanjiIndex = serverCandidates.firstIndex(where: { dc in
                     if case .fromConverter(let c) = dc { return c.text == trigger.kanji }
                     return false
-                }) {
+                })
+
+                if let kanjiIndex = kanjiIndex {
+                    // Normal path: converter anchor found — insert date strings
+                    // immediately after the kanji representation.
                     let dateStrings = RelativeDateProvider.generateDateStrings(for: trigger)
                     var insertedCount = 0
                     for dateStr in dateStrings {
@@ -520,6 +529,46 @@ class HazkeyServerState {
                         serverCandidates.insert(.fromDateProvider(word: dateStr), at: insertAt)
                         clientCandidates.insert(clientCandidate, at: insertAt)
                         insertedCount += 1
+                    }
+                } else if trigger.synthesizeKanjiWhenMissing {
+                    // Fallback path: engine did not return the kanji anchor and
+                    // this trigger opts in for synthesis.
+                    // Append the synthetic anchor then the date strings at the tail.
+                    // Do NOT mutate liveTextIndex; do NOT insert before existing entries.
+                    //
+                    // Limit is checked against clientCandidates.count (visible slots),
+                    // not serverCandidates.count: in suggest mode the live candidate may
+                    // exist only in serverCandidates (hidden), so using serverCandidates
+                    // would incorrectly consume a visible slot.
+                    if canAppend(
+                        isSuggest: is_suggest,
+                        currentCount: clientCandidates.count,
+                        limit: N_best
+                    ) {
+                        // Synthetic kanji anchor (treated as fromDateProvider at commit).
+                        var anchorClientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                        anchorClientCandidate.text = trigger.kanji
+                        anchorClientCandidate.subHiragana = String(
+                            fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+                        serverCandidates.append(.fromDateProvider(word: trigger.kanji))
+                        clientCandidates.append(anchorClientCandidate)
+
+                        // Date strings following the synthetic anchor.
+                        let dateStrings = RelativeDateProvider.generateDateStrings(for: trigger)
+                        for dateStr in dateStrings {
+                            guard canAppend(
+                                isSuggest: is_suggest,
+                                currentCount: clientCandidates.count,
+                                limit: N_best
+                            ) else { break }
+
+                            var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                            clientCandidate.text = dateStr
+                            clientCandidate.subHiragana = String(
+                                fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+                            serverCandidates.append(.fromDateProvider(word: dateStr))
+                            clientCandidates.append(clientCandidate)
+                        }
                     }
                 }
             }
