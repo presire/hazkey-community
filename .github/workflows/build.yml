@@ -159,11 +159,14 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr
-          if [ "$PACKAGE_SUFFIX" = "tumbleweed" ] || [ "$PACKAGE_SUFFIX" = "ubuntu2604" ]; then
-            cmake --build hazkey-server/build --parallel 1
-          else
-            cmake --build hazkey-server/build --parallel
-          fi
+
+          # vulkan-shaders-gen forks up to 16 glslc subprocesses in parallel,
+          # which can exceed the process-table limit in constrained CI
+          # containers and silently drop shader symbols. Force serial shader
+          # compilation everywhere to keep the fork load predictable.
+          export GGML_VULKAN_SHADER_MAX_PARALLEL=1
+
+          cmake --build hazkey-server/build --parallel 1
           DESTDIR=/work/workdir cmake --install hazkey-server/build
 
           ref_name="${GITHUB_REF_NAME#v}"
