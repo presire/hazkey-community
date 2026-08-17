@@ -13,6 +13,11 @@ enum DisplayedCandidate {
     /// Treated like `.fromUserDict` at commit time (clear composing text, no
     /// learning) but kept as a distinct case for clarity and future extensions.
     case fromDateProvider(word: String)
+    /// [community] Special-number candidate (subscript/superscript/circled/
+    /// roman numerals/...) injected by `KanaNumberProvider`. Treated like
+    /// `.fromDateProvider` at commit time (clear composing text, no
+    /// learning) but kept distinct for clarity.
+    case fromKanaNumberProvider(word: String)
 }
 
 class HazkeyServerState {
@@ -221,6 +226,11 @@ class HazkeyServerState {
             // relative-date trigger word (きょう/きのう/...) and produce a
             // computed date string. Behaves like `.fromUserDict` at commit:
             // clear composing text, do not feed the learning store.
+            composingText = ComposingTextBox()
+        case .fromKanaNumberProvider:
+            // [community] Kana-number special-candidate entries match the full
+            // reading of a kana numeral. Behaves like `.fromDateProvider` at
+            // commit: clear composing text, do not feed the learning store.
             composingText = ComposingTextBox()
         }
         return Hazkey_ResponseEnvelope.with {
@@ -569,6 +579,51 @@ class HazkeyServerState {
                             serverCandidates.append(.fromDateProvider(word: dateStr))
                             clientCandidates.append(clientCandidate)
                         }
+                    }
+                }
+            }
+        }
+
+        // === [community] Kana-number special-candidate injection (post-process) ===
+        // The converter identifies Japanese-number candidates with `CIDData.数`.
+        // Its ASCII decimal candidate is the authoritative resolved value; this
+        // server layer only maps that value to the approved glyph families.
+        if !is_suggest && !KanaNumberProvider.isAsciiDecimal(hiraganaPreedit) {
+            let numberAnchorIndices = serverCandidates.indices.filter { idx in
+                guard case .fromConverter(let c) = serverCandidates[idx] else { return false }
+                return c.rubyCount == hiraganaPreeditLen
+                    && c.data.contains { $0.lcid == CIDData.数.cid && $0.rcid == CIDData.数.cid }
+            }
+            let decimalDigits: String? = numberAnchorIndices.compactMap { idx -> String? in
+                guard case .fromConverter(let c) = serverCandidates[idx] else { return nil }
+                return KanaNumberProvider.isAsciiDecimal(c.text) ? c.text : nil
+            }.first
+
+            if let decimalDigits, let lastAnchorIndex = numberAnchorIndices.max() {
+                let existingTexts = Set(
+                    serverCandidates.compactMap { dc -> String? in
+                        guard case .fromConverter(let c) = dc else { return nil }
+                        return c.text
+                    })
+                let generatedTexts = KanaNumberProvider.generateCandidates(forDecimalDigits: decimalDigits)
+                    .filter { !existingTexts.contains($0) }
+                if !generatedTexts.isEmpty
+                    && canAppend(
+                        isSuggest: is_suggest, currentCount: serverCandidates.count, limit: N_best)
+                {
+                    let insertAt = lastAnchorIndex + 1
+                    for (offset, text) in generatedTexts.enumerated() {
+                        var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                        clientCandidate.text = text
+                        clientCandidate.subHiragana = String(
+                            fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+                        serverCandidates.insert(
+                            .fromKanaNumberProvider(word: text), at: insertAt + offset)
+                        clientCandidates.insert(clientCandidate, at: insertAt + offset)
+                    }
+
+                    if Int32(insertAt) <= candidatesResult.liveTextIndex {
+                        candidatesResult.liveTextIndex += Int32(generatedTexts.count)
                     }
                 }
             }
