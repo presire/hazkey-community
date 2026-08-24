@@ -105,7 +105,7 @@ ninjaを利用します。
 
 ```sh
 git clone --recursive https://github.com/presire/hazkey-community
-cd hazkey
+cd hazkey-community
 
 mkdir build && cd build
 
@@ -127,7 +127,7 @@ CPU専用ビルドの例:
 
 ```sh
 git clone --recursive https://github.com/presire/hazkey-community
-cd hazkey
+cd hazkey-community
 
 mkdir build && cd build
 

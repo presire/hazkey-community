@@ -420,6 +420,10 @@ class HazkeyServerConfig {
         if !normalized.hasZenzaiInferLimit {
             normalized.zenzaiInferLimit = defaults.zenzaiInferLimit
         }
+        if !normalized.specialConversionMode.hasHalfwidthKatakana {
+            normalized.specialConversionMode.halfwidthKatakana =
+                defaults.specialConversionMode.halfwidthKatakana
+        }
 
         try validateEnums(normalized)
         try validateRange(normalized.numSuggestions, field: "numSuggestions", range: 1...10)
@@ -628,7 +632,7 @@ class HazkeyServerConfig {
             keyboardLanguage: .none,
             englishCandidateInRoman2KanaInput: false,
             fullWidthRomanCandidate: true,
-            halfWidthKanaCandidate: true,
+            halfWidthKanaCandidate: currentProfile.specialConversionMode.halfwidthKatakana,
             learningType: learningType,
             maxMemoryCount: 65536,
             shouldResetMemory: false,

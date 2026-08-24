@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(hazkey-settings VERSION 0.2.11 LANGUAGES CXX)
+project(hazkey-settings VERSION 0.2.12 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -43,7 +43,6 @@ set(PROJECT_SOURCES
     keysequence_util.h
     zenzai_models.cpp
     zenzai_models.h
-    ${TS_FILES}
 )
 
 qt_add_executable(hazkey-settings ${PROJECT_SOURCES}

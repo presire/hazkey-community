@@ -42,6 +42,38 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(normalized.zenzaiInferLimit, 10)
     }
 
+    func testHalfwidthKatakanaCandidateOptionUsesExplicitProfileValue() throws {
+        // Given: profiles that explicitly disable and enable halfwidth-kana candidates.
+        var disabledProfile = HazkeyServerConfig.genDefaultConfig()
+        disabledProfile.specialConversionMode.halfwidthKatakana = false
+        var enabledProfile = HazkeyServerConfig.genDefaultConfig()
+        enabledProfile.specialConversionMode.halfwidthKatakana = true
+        let config = HazkeyServerConfig()
+
+        // When: each normalized profile produces converter request options.
+        config.currentProfile = try HazkeyServerConfig.normalizeProfile(disabledProfile)
+        let disabledOptions = config.genBaseConvertRequestOptions()
+        config.currentProfile = try HazkeyServerConfig.normalizeProfile(enabledProfile)
+        let enabledOptions = config.genBaseConvertRequestOptions()
+
+        // Then: the converter option preserves the explicit profile setting.
+        XCTAssertFalse(disabledOptions.halfWidthKanaCandidate)
+        XCTAssertTrue(enabledOptions.halfWidthKanaCandidate)
+    }
+
+    func testNormalizeProfileEnablesMissingHalfwidthKatakanaSetting() throws {
+        // Given: a legacy profile whose halfwidth-katakana optional field is absent.
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.specialConversionMode.clearHalfwidthKatakana()
+
+        // When: it crosses the configuration boundary.
+        let normalized = try HazkeyServerConfig.normalizeProfile(profile)
+
+        // Then: the default enabled value becomes explicit.
+        XCTAssertTrue(normalized.specialConversionMode.hasHalfwidthKatakana)
+        XCTAssertTrue(normalized.specialConversionMode.halfwidthKatakana)
+    }
+
     func testNormalizeProfileRejectsUnknownEnumAndInvalidNumericValues() {
         // Given: profiles containing values the server cannot safely interpret.
         var unknownEnum = HazkeyServerConfig.genDefaultConfig()
