@@ -135,4 +135,11 @@ jobs:
           export LLAMA_LIB_DIR="${GITHUB_WORKSPACE}/build/bin"
           export LD_LIBRARY_PATH="${LLAMA_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
           cd hazkey-server
+          swift package resolve
+          number_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
+          number_source="${number_checkout}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift"
+          number_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0003-fix-standalone-unit-japanese-number.patch"
+          if ! grep -q "hazkey-community patch" "${number_source}"; then
+            git -C "${number_checkout}" apply "${number_patch}"
+          fi
           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"
