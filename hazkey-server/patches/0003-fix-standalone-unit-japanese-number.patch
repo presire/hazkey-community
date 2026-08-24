@@ -1,0 +1,23 @@
+--- a/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift
++++ b/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift
+@@ -416,9 +416,18 @@ extension DicdataStore {
+         let roman: String
+         if tokens.allSatisfy({$0.isNumber}) {
+             roman = tokens.map {$0.toRoman}.joined()
+-        } else if tokens.allSatisfy({$0.isNotNumber}) {
+-            return []
+         } else {
++            // NOTE: [hazkey-community patch] Do not early-return here just because
++            // every token is a "unit" token (じゅう/ひゃく/せん/まん/おく/ちょう) or
++            // the terminator (おわり). A standalone unit reading with no preceding
++            // digit (e.g. "じゅう" alone, meaning 10) is valid Japanese and must be
++            // resolved by parseTokens(), which already defaults the implied digit to
++            // `.One` (`curnum ?? .One`) for exactly this case. The removed branch
++            // previously short-circuited before parseTokens ever ran, so bare
++            // "じゅう"/"ひゃく"/"せん" etc. produced zero candidates instead of
++            // "10"/"100"/"1000". Genuinely invalid combinations (e.g. "マルマン")
++            // still resolve to an empty/all-zero result inside parseTokens and are
++            // rejected below, so this change does not weaken validation.
+             let result = parseTokens(tokens: tokens)
+             if result.isEmpty {
+                 return []

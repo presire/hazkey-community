@@ -99,12 +99,15 @@ jobs:
           # constrained CI containers and silently drop shader symbols.
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
           # Build C++ libraries, executables, and CTest-registered test
-          # binaries (zenzai_model_management_test, keysequence_util_test)
+          # binaries (zenzai_model_management_test, keysequence_util_test,
+          # live_convert_mode_test, hazkey_candidate_selection_test)
           # in parallel for speed.
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
           cmake --build build --target zenzai_model_management_test --parallel
           cmake --build build --target keysequence_util_test --parallel
+          cmake --build build --target live_convert_mode_test --parallel
+          cmake --build build --target hazkey_candidate_selection_test --parallel
 
       - name: Build Swift server (single-threaded)
         run: |
@@ -117,6 +120,11 @@ jobs:
       - name: Run CTest (C++ tests)
         run: |
           set -eux
+          # keysequence_util_test links Qt6::Gui and needs a platform
+          # plugin; there is no display on the headless CI runner, so
+          # force the software "offscreen" platform instead of the
+          # default "xcb".
+          export QT_QPA_PLATFORM=offscreen
           cd build
           ctest --output-on-failure --schedule-random \
             --parallel "$(nproc)"
