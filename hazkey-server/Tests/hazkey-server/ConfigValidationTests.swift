@@ -94,4 +94,98 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(keymap["C"]?.0, "う")
         XCTAssertEqual(keymap["C"]?.1, "e")
     }
+
+    func testZenzaiModelResolverUsesValidCustomWeightAndRejectsInvalidCustomWeight() throws {
+        // Given: a profile with custom weights enabled and both valid and invalid paths.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let customModel = directory.appendingPathComponent("custom.gguf")
+        try Data().write(to: customModel)
+        let discoveredModel = directory.appendingPathComponent("discovered.gguf")
+        try Data().write(to: discoveredModel)
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.useZenzaiCustomWeight = true
+        profile.zenzaiWeightPath = customModel.path
+
+        // When: the custom path is valid, then changed to a missing path.
+        let resolvedCustom = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: discoveredModel)
+        profile.zenzaiWeightPath = directory.appendingPathComponent("missing.gguf").path
+        let resolvedMissing = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: discoveredModel)
+
+        // Then: the valid custom model wins, while an invalid explicit path disables Zenzai.
+        XCTAssertEqual(resolvedCustom, customModel)
+        XCTAssertNil(resolvedMissing)
+    }
+
+    func testZenzaiModelResolverUsesDiscoveryWhenCustomWeightIsDisabledOrEmpty() throws {
+        // Given: an available discovered model and a profile without an active custom path.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let discoveredModel = directory.appendingPathComponent("discovered.gguf")
+        try Data().write(to: discoveredModel)
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.useZenzaiCustomWeight = false
+        profile.zenzaiWeightPath = directory.appendingPathComponent("ignored.gguf").path
+
+        // When: custom weights are disabled, then enabled with an empty path.
+        let disabledResolution = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: discoveredModel)
+        profile.useZenzaiCustomWeight = true
+        profile.zenzaiWeightPath = ""
+        let emptyResolution = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: discoveredModel)
+
+        // Then: normal model discovery is retained in both cases.
+        XCTAssertEqual(disabledResolution, discoveredModel)
+        XCTAssertEqual(emptyResolution, discoveredModel)
+    }
+
+    func testProfileHistoryDirectoryIsSharedUnlessIsolationIsEnabled() {
+        // Given: a profile with an identifier that cannot be used directly as a path component.
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.profileID = "work/team"
+        let stateDirectory = URL(fileURLWithPath: "/tmp/hazkey-state")
+
+        // When: history isolation is disabled, then enabled.
+        profile.useProfileIndependentHistory = false
+        let sharedDirectory = HazkeyServerConfig.memoryDirectory(for: profile, stateDirectory: stateDirectory)
+        profile.useProfileIndependentHistory = true
+        let isolatedDirectory = HazkeyServerConfig.memoryDirectory(for: profile, stateDirectory: stateDirectory)
+
+        // Then: shared history retains its existing location and isolated history has one safe component.
+        XCTAssertEqual(sharedDirectory, stateDirectory.appendingPathComponent("memory", isDirectory: true))
+        XCTAssertEqual(isolatedDirectory.deletingLastPathComponent(), sharedDirectory)
+        XCTAssertFalse(isolatedDirectory.lastPathComponent.contains("/"))
+        XCTAssertNotEqual(isolatedDirectory, sharedDirectory)
+    }
+
+    func testRichCandidateSelectionUsesTheRequestKind() {
+        // Given: independently enabled rich suggestion and rich candidate settings.
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.useRichSuggestion = true
+        profile.useRichCandidates = false
+
+        // When: options are selected for suggestion and manual conversion requests.
+        let suggestionValue = HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: true)
+        let conversionValue = HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: false)
+
+        // Then: each request reads only its corresponding setting.
+        XCTAssertTrue(suggestionValue)
+        XCTAssertFalse(conversionValue)
+
+        profile.useRichSuggestion = false
+        profile.useRichCandidates = true
+        XCTAssertFalse(HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: true))
+        XCTAssertTrue(HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: false))
+    }
 }

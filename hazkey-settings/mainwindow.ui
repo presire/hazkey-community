@@ -282,8 +282,24 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="0">
-               <widget class="QLabel" name="liveConvertHotkeyLabel">
+               <item row="5" column="0">
+                <widget class="QLabel" name="useRichSuggestionLabel">
+                 <property name="minimumSize">
+                  <size>
+                   <width>200</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Use rich suggestions</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QCheckBox" name="useRichSuggestion"/>
+               </item>
+               <item row="6" column="0">
+                <widget class="QLabel" name="liveConvertHotkeyLabel">
                 <property name="minimumSize">
                  <size>
                   <width>200</width>
@@ -295,8 +311,8 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="1">
-               <widget class="QKeySequenceEdit" name="liveConvertHotkey"/>
+               <item row="6" column="1">
+                <widget class="QKeySequenceEdit" name="liveConvertHotkey"/>
               </item>
              </layout>
            </item>
@@ -360,8 +376,8 @@
                </property>
               </widget>
              </item>
-             <item row="0" column="1">
-              <widget class="QSpinBox" name="numCandidatesPerPage">
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="numCandidatesPerPage">
                <property name="minimum">
                 <number>1</number>
                </property>
@@ -482,15 +498,15 @@
              <property name="spacing">
               <number>12</number>
              </property>
-             <item row="3" column="0">
-              <widget class="QLabel" name="manageLearningLabel">
+              <item row="4" column="0">
+               <widget class="QLabel" name="manageLearningLabel">
                <property name="text">
                 <string>Manage input history data</string>
                </property>
               </widget>
              </item>
-             <item row="3" column="1">
-              <widget class="QPushButton" name="clearLearningData">
+              <item row="4" column="1">
+               <widget class="QPushButton" name="clearLearningData">
                <property name="text">
                 <string>Clear all input history data</string>
                </property>
@@ -525,9 +541,19 @@
              <item row="1" column="1">
               <widget class="QCheckBox" name="useHistory"/>
              </item>
-             <item row="2" column="1">
-              <widget class="QCheckBox" name="stopStoreNewHistory"/>
-             </item>
+              <item row="2" column="1">
+               <widget class="QCheckBox" name="stopStoreNewHistory"/>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="useProfileIndependentHistoryLabel">
+                <property name="text">
+                 <string>Use profile-independent input history</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QCheckBox" name="useProfileIndependentHistory"/>
+              </item>
             </layout>
            </item>
            <item>
@@ -642,6 +668,22 @@
                  <string>Extended Emoji</string>
                 </property>
                </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="useRichCandidatesLabel">
+                <property name="minimumSize">
+                 <size>
+                  <width>200</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>Use rich candidates</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QCheckBox" name="useRichCandidates"/>
               </item>
               <item row="3" column="1">
                <widget class="QCheckBox" name="relativeDateConversion">
@@ -1743,17 +1785,48 @@
               <item row="6" column="1">
                <widget class="QLineEdit" name="zenzaiPreference"/>
               </item>
-              <item row="7" column="0">
-               <widget class="QLabel" name="zenzaiBackendDeviceLabel">
+               <item row="7" column="0">
+                <widget class="QLabel" name="useZenzaiCustomWeightLabel">
+                 <property name="text">
+                  <string>Use custom Zenzai weight</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1">
+                <widget class="QCheckBox" name="useZenzaiCustomWeight"/>
+               </item>
+               <item row="8" column="0">
+                <widget class="QLabel" name="zenzaiWeightPathLabel">
+                 <property name="text">
+                  <string>Custom weight file</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="8" column="1">
+                <layout class="QHBoxLayout" name="zenzaiWeightPathLayout">
+                 <item>
+                  <widget class="QLineEdit" name="zenzaiWeightPath"/>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="browseZenzaiWeightPath">
+                   <property name="text">
+                    <string>Browse...</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item row="9" column="0">
+                <widget class="QLabel" name="zenzaiBackendDeviceLabel">
                 <property name="text">
                  <string>Backend</string>
                 </property>
                </widget>
               </item>
-              <item row="7" column="1">
-               <widget class="QComboBox" name="zenzaiBackendDevice"/>
-              </item>
-              <item row="8" column="0" colspan="2">
+               <item row="9" column="1">
+                <widget class="QComboBox" name="zenzaiBackendDevice"/>
+               </item>
+               <item row="10" column="0" colspan="2">
                <widget class="QPushButton" name="manageZenzaiModels">
                 <property name="text">
                  <string>Manage Zenzai Models</string>

@@ -30,6 +30,7 @@ class HazkeyServerState {
     var isShiftPressedAlone = false
     var isSubInputMode = false
     var learningDataNeedsCommit = false
+    var zenzaiLeftContext = ""
     private var userDictInjected = false
 
     var keymap: Keymap
@@ -48,20 +49,20 @@ class HazkeyServerState {
 
         // Create user state directories (history data)
         do {
-            let newPath = HazkeyServerConfig.getStateDirectory().appendingPathComponent(
-                "memory", isDirectory: true)
-            if !FileManager.default.fileExists(atPath: newPath.path) {
+            let memoryDirectory = serverConfig.memoryDirectory()
+            if !FileManager.default.fileExists(atPath: memoryDirectory.path) {
                 let oldPath = HazkeyServerConfig.getDataDirectory().appendingPathComponent(
                     "memory", isDirectory: true)
-                if FileManager.default.fileExists(atPath: oldPath.path) {
+                if !serverConfig.currentProfile.useProfileIndependentHistoryEffective,
+                    FileManager.default.fileExists(atPath: oldPath.path)
+                {
                     // v0.2.0の保存パスからの移動対応
                     try FileManager.default.createDirectory(
                         at: HazkeyServerConfig.getStateDirectory(),
                         withIntermediateDirectories: true)
-                    try FileManager.default.moveItem(at: oldPath, to: newPath)
+                    try FileManager.default.moveItem(at: oldPath, to: memoryDirectory)
                 } else {
-                    try FileManager.default.createDirectory(
-                        at: newPath, withIntermediateDirectories: true)
+                    try serverConfig.createMemoryDirectoryIfNeeded()
                 }
             }
         } catch {
@@ -82,9 +83,9 @@ class HazkeyServerState {
     }
 
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
-        let leftContext = String(surroundingText.prefix(anchorIndex))
+        zenzaiLeftContext = String(surroundingText.prefix(anchorIndex))
         baseConvertRequestOptions.zenzaiMode = serverConfig.genZenzaiMode(
-            leftContext: leftContext)
+            leftContext: zenzaiLeftContext)
 
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -424,6 +425,11 @@ class HazkeyServerState {
                 == Hazkey_Config_Profile.SuggestionListMode.suggestionListShowPredictiveResults
 
         options.requireJapanesePrediction = usePrediction ? .manualMix : .disabled
+        options.zenzaiMode = serverConfig.genZenzaiMode(
+            leftContext: zenzaiLeftContext,
+            requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
+                for: serverConfig.currentProfile, isSuggestion: is_suggest)
+        )
 
         let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
 
@@ -678,7 +684,23 @@ class HazkeyServerState {
     }
 
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
-        converter.resetMemory()
+        if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
+            let memoryDirectory = serverConfig.memoryDirectory()
+            do {
+                if FileManager.default.fileExists(atPath: memoryDirectory.path) {
+                    try FileManager.default.removeItem(at: memoryDirectory)
+                }
+                try serverConfig.createMemoryDirectoryIfNeeded()
+            } catch {
+                NSLog("Failed to clear isolated history: \(error.localizedDescription)")
+                return Hazkey_ResponseEnvelope.with {
+                    $0.status = .failed
+                    $0.errorMessage = "Failed to clear profile history."
+                }
+            }
+        } else {
+            converter.resetMemory()
+        }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -694,11 +716,17 @@ class HazkeyServerState {
         self.currentTableName = newTableName
 
         self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
+        do {
+            try serverConfig.createMemoryDirectoryIfNeeded()
+        } catch {
+            NSLog("Failed to create user memory directory: \(error.localizedDescription)")
+        }
 
         self.composingText = ComposingTextBox()
         self.currentCandidateList = nil
         self.isSubInputMode = false
         self.isShiftPressedAlone = false
+        self.zenzaiLeftContext = ""
 
         NSLog("State configuration reinitialized successfully")
     }

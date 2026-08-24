@@ -37,6 +37,8 @@ class MainWindow : public QWidget {
     void onButtonClicked(QAbstractButton* button);
     void onApply();
     void onUseHistoryToggled(bool enabled);
+    void onUseZenzaiCustomWeightToggled(bool enabled);
+    void onBrowseZenzaiWeightPath();
     void onEnableTable();
     void onDisableTable();
     void onTableMoveUp();

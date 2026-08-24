@@ -88,8 +88,10 @@ class HazkeyServerConfig {
             }
         }()
 
+        self.zenzaiModelPath = nil
+        self.zenzaiAvailable = false
         self.ggmlBackendDevices = getZenzaiDevices()
-        zenzaiModelPath = if ggmlBackendDevices.count <= 0 { nil } else { getZenzaiModelPath() }
+        zenzaiModelPath = resolveActiveZenzaiModelPath()
         self.zenzaiAvailable = (ggmlBackendDevices.count > 0) && (zenzaiModelPath != nil)
     }
 
@@ -332,6 +334,8 @@ class HazkeyServerConfig {
             throw ConfigError.emptyProfiles
         }
         currentProfile = firstProfile
+        zenzaiModelPath = resolveActiveZenzaiModelPath()
+        zenzaiAvailable = !ggmlBackendDevices.isEmpty && zenzaiModelPath != nil
 
         if let state = state {
             state.reinitializeConfiguration()
@@ -497,7 +501,70 @@ class HazkeyServerConfig {
         return homeDir.appendingPathComponent(".cache").appendingPathComponent("hazkey")
     }
 
-    func genZenzaiMode(leftContext: String)
+    static func requestRichCandidates(
+        for profile: Hazkey_Config_Profile,
+        isSuggestion: Bool
+    ) -> Bool {
+        isSuggestion ? profile.useRichSuggestion : profile.useRichCandidates
+    }
+
+    static func memoryDirectory(
+        for profile: Hazkey_Config_Profile,
+        stateDirectory: URL = HazkeyServerConfig.getStateDirectory()
+    ) -> URL {
+        let sharedDirectory = stateDirectory.appendingPathComponent("memory", isDirectory: true)
+        guard profile.useProfileIndependentHistoryEffective else {
+            return sharedDirectory
+        }
+
+        let profileIdentifier = profile.profileID.isEmpty
+            ? "default"
+            : Data(profile.profileID.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        return sharedDirectory.appendingPathComponent(profileIdentifier, isDirectory: true)
+    }
+
+    static func resolveZenzaiModelPath(
+        for profile: Hazkey_Config_Profile,
+        discoveredModelPath: URL?
+    ) -> URL? {
+        guard profile.useZenzaiCustomWeight, !profile.zenzaiWeightPath.isEmpty else {
+            return discoveredModelPath
+        }
+
+        let customModelPath = URL(fileURLWithPath: profile.zenzaiWeightPath)
+        guard let values = try? customModelPath.resourceValues(forKeys: [.isRegularFileKey]),
+            values.isRegularFile == true
+        else {
+            NSLog("Configured Zenzai model is not a regular file: \(customModelPath.path)")
+            return nil
+        }
+        return customModelPath
+    }
+
+    func memoryDirectory() -> URL {
+        Self.memoryDirectory(for: currentProfile)
+    }
+
+    func createMemoryDirectoryIfNeeded() throws {
+        try FileManager.default.createDirectory(
+            at: memoryDirectory(), withIntermediateDirectories: true)
+    }
+
+    private func resolveActiveZenzaiModelPath() -> URL? {
+        guard !ggmlBackendDevices.isEmpty else {
+            return nil
+        }
+        return Self.resolveZenzaiModelPath(
+            for: currentProfile, discoveredModelPath: getZenzaiModelPath())
+    }
+
+    func genZenzaiMode(
+        leftContext: String,
+        requestRichCandidates: Bool? = nil
+    )
         -> ConvertRequestOptions.ZenzaiMode
     {
         let deviceName =
@@ -508,7 +575,7 @@ class HazkeyServerConfig {
             return ConvertRequestOptions.ZenzaiMode.on(
                 weight: zenzaiModelPath,
                 inferenceLimit: Int(currentProfile.zenzaiInferLimit),
-                requestRichCandidates: currentProfile.useRichCandidates,
+                requestRichCandidates: requestRichCandidates ?? currentProfile.useRichCandidates,
                 personalizationMode: nil,
                 versionDependentMode: .v3(
                     ConvertRequestOptions.ZenzaiV3DependentMode.init(
@@ -565,8 +632,7 @@ class HazkeyServerConfig {
             learningType: learningType,
             maxMemoryCount: 65536,
             shouldResetMemory: false,
-            memoryDirectoryURL: HazkeyServerConfig.getStateDirectory().appendingPathComponent(
-                "memory", isDirectory: true),
+            memoryDirectoryURL: memoryDirectory(),
             sharedContainerURL: HazkeyServerConfig.getCacheDirectory().appendingPathComponent(
                 "shared", isDirectory: true),
             textReplacer: .empty,
@@ -682,8 +748,15 @@ class HazkeyServerConfig {
     }
 
     func reloadZenzaiModel() {
-        zenzaiModelPath = if ggmlBackendDevices.count <= 0 { nil } else { getZenzaiModelPath() }
+        zenzaiModelPath = resolveActiveZenzaiModelPath()
         self.zenzaiAvailable = (ggmlBackendDevices.count > 0) && (zenzaiModelPath != nil)
+    }
+}
+
+extension Hazkey_Config_Profile {
+    /// Legacy or missing config keeps history shared between profiles.
+    var useProfileIndependentHistoryEffective: Bool {
+        hasUseProfileIndependentHistory ? useProfileIndependentHistory : false
     }
 }
 

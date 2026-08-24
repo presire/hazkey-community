@@ -162,6 +162,10 @@ void MainWindow::connectSignals() {
 
     connect(ui_->useHistory, &QCheckBox::toggled, this,
             &MainWindow::onUseHistoryToggled);
+    connect(ui_->useZenzaiCustomWeight, &QCheckBox::toggled, this,
+            &MainWindow::onUseZenzaiCustomWeightToggled);
+    connect(ui_->browseZenzaiWeightPath, &QPushButton::clicked, this,
+            &MainWindow::onBrowseZenzaiWeightPath);
     connect(ui_->useUserDict, &QCheckBox::toggled, this,
             &MainWindow::onUseUserDictToggled);
 
@@ -274,6 +278,22 @@ void MainWindow::onUseHistoryToggled(bool enabled) {
     ui_->stopStoreNewHistory->setEnabled(enabled);
 }
 
+void MainWindow::onUseZenzaiCustomWeightToggled(bool enabled) {
+    const bool customWeightEnabled =
+        enabled && ui_->useZenzaiCustomWeight->isEnabled();
+    ui_->zenzaiWeightPath->setEnabled(customWeightEnabled);
+    ui_->browseZenzaiWeightPath->setEnabled(customWeightEnabled);
+}
+
+void MainWindow::onBrowseZenzaiWeightPath() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Select custom Zenzai weight"), ui_->zenzaiWeightPath->text(),
+        tr("GGUF files (*.gguf)"));
+    if (!path.isEmpty()) {
+        ui_->zenzaiWeightPath->setText(path);
+    }
+}
+
 void MainWindow::onUseUserDictToggled(bool enabled) {
     ui_->userDictTable->setEnabled(enabled);
     ui_->userDictImport->setEnabled(enabled);
@@ -322,6 +342,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiTopic->setEnabled(false);
         ui_->zenzaiStyle->setEnabled(false);
         ui_->zenzaiPreference->setEnabled(false);
+        ui_->useZenzaiCustomWeight->setEnabled(false);
+        ui_->zenzaiWeightPath->setEnabled(false);
+        ui_->browseZenzaiWeightPath->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(false);
         ui_->manageZenzaiModels->setVisible(false);
@@ -337,6 +360,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiTopic->setEnabled(false);
         ui_->zenzaiStyle->setEnabled(false);
         ui_->zenzaiPreference->setEnabled(false);
+        ui_->useZenzaiCustomWeight->setEnabled(false);
+        ui_->zenzaiWeightPath->setEnabled(false);
+        ui_->browseZenzaiWeightPath->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(false);
@@ -353,6 +379,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiTopic->setEnabled(true);
         ui_->zenzaiStyle->setEnabled(true);
         ui_->zenzaiPreference->setEnabled(true);
+        ui_->useZenzaiCustomWeight->setEnabled(true);
         ui_->zenzaiBackendDevice->setEnabled(true);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(true);
@@ -441,11 +468,21 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->stopStoreNewHistory,
                  currentProfile_->stop_store_new_history(),
                  ConfigDefs::CheckboxDefaults::STOP_STORE_NEW_HISTORY);
+    SET_CHECKBOX(ui_->useProfileIndependentHistory,
+                 currentProfile_->use_profile_independent_history(),
+                 ConfigDefs::CheckboxDefaults::USE_PROFILE_INDEPENDENT_HISTORY);
+    SET_CHECKBOX(ui_->useRichSuggestion, currentProfile_->use_rich_suggestion(),
+                 ConfigDefs::CheckboxDefaults::USE_RICH_SUGGESTION);
+    SET_CHECKBOX(ui_->useRichCandidates, currentProfile_->use_rich_candidates(),
+                 ConfigDefs::CheckboxDefaults::USE_RICH_CANDIDATES);
     SET_CHECKBOX(ui_->enableZenzai, currentProfile_->zenzai_enable(),
                  ConfigDefs::CheckboxDefaults::ENABLE_ZENZAI);
     SET_CHECKBOX(ui_->zenzaiContextualConversion,
                  currentProfile_->zenzai_contextual_mode(),
                  ConfigDefs::CheckboxDefaults::ZENZAI_CONTEXTUAL);
+    SET_CHECKBOX(ui_->useZenzaiCustomWeight,
+                 currentProfile_->use_zenzai_custom_weight(),
+                 ConfigDefs::CheckboxDefaults::USE_ZENZAI_CUSTOM_WEIGHT);
 
     const bool useUserDict = currentProfile_->has_use_user_dictionary()
                                  ? currentProfile_->use_user_dictionary()
@@ -483,6 +520,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                  ConfigDefs::CheckboxDefaults::RELATIVE_DATE);
 
     ui_->stopStoreNewHistory->setEnabled(currentProfile_->use_input_history());
+    onUseZenzaiCustomWeightToggled(ui_->useZenzaiCustomWeight->isChecked());
 
     SET_LINEEDIT(ui_->submodeEntryPointChars,
                  currentProfile_->submode_entry_point_chars(),
@@ -491,6 +529,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_LINEEDIT(ui_->zenzaiTopic, currentProfile_->zenzai_topic(), "");
     SET_LINEEDIT(ui_->zenzaiStyle, currentProfile_->zenzai_style(), "");
     SET_LINEEDIT(ui_->zenzaiPreference, currentProfile_->zenzai_preference(), "");
+    SET_LINEEDIT(ui_->zenzaiWeightPath, currentProfile_->zenzai_weight_path(), "");
 
     {
         const std::string storedHotkey = currentProfile_->auto_convert_hotkey();
@@ -555,9 +594,17 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_use_input_history(GET_CHECKBOX_BOOL(ui_->useHistory));
     currentProfile_->set_stop_store_new_history(
         GET_CHECKBOX_BOOL(ui_->stopStoreNewHistory));
+    currentProfile_->set_use_profile_independent_history(
+        GET_CHECKBOX_BOOL(ui_->useProfileIndependentHistory));
+    currentProfile_->set_use_rich_suggestion(
+        GET_CHECKBOX_BOOL(ui_->useRichSuggestion));
+    currentProfile_->set_use_rich_candidates(
+        GET_CHECKBOX_BOOL(ui_->useRichCandidates));
     currentProfile_->set_zenzai_enable(GET_CHECKBOX_BOOL(ui_->enableZenzai));
     currentProfile_->set_zenzai_contextual_mode(
         GET_CHECKBOX_BOOL(ui_->zenzaiContextualConversion));
+    currentProfile_->set_use_zenzai_custom_weight(
+        GET_CHECKBOX_BOOL(ui_->useZenzaiCustomWeight));
     currentProfile_->set_use_user_dictionary(GET_CHECKBOX_BOOL(ui_->useUserDict));
 
     auto* specialConversions =
@@ -590,6 +637,8 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_zenzai_style(GET_LINEEDIT_STRING(ui_->zenzaiStyle));
     currentProfile_->set_zenzai_preference(
         GET_LINEEDIT_STRING(ui_->zenzaiPreference));
+    currentProfile_->set_zenzai_weight_path(
+        GET_LINEEDIT_STRING(ui_->zenzaiWeightPath));
     currentProfile_->set_auto_convert_hotkey(
         fcitxKeyStringFromQKeySequence(ui_->liveConvertHotkey->keySequence())
             .toStdString());

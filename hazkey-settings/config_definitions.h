@@ -149,8 +149,12 @@ struct SuggestionListMode {
 struct CheckboxDefaults {
     static constexpr bool USE_HISTORY = false;
     static constexpr bool STOP_STORE_NEW_HISTORY = false;
+    static constexpr bool USE_PROFILE_INDEPENDENT_HISTORY = false;
+    static constexpr bool USE_RICH_SUGGESTION = false;
+    static constexpr bool USE_RICH_CANDIDATES = false;
     static constexpr bool ENABLE_ZENZAI = false;
     static constexpr bool ZENZAI_CONTEXTUAL = false;
+    static constexpr bool USE_ZENZAI_CUSTOM_WEIGHT = false;
     static constexpr bool HALFWIDTH_KATAKANA = false;
     static constexpr bool EXTENDED_EMOJI = false;
     static constexpr bool COMMA_SEPARATED_NUMBER = false;
