@@ -600,24 +600,26 @@ class HazkeyServerState {
                 return c.rubyCount == hiraganaPreeditLen
                     && c.data.contains { $0.lcid == CIDData.数.cid && $0.rcid == CIDData.数.cid }
             }
-            let decimalDigits: String? = numberAnchorIndices.compactMap { idx -> String? in
+            let decimalAnchor = numberAnchorIndices.compactMap { idx -> (index: Int, digits: String)? in
                 guard case .fromConverter(let c) = serverCandidates[idx] else { return nil }
-                return KanaNumberProvider.isAsciiDecimal(c.text) ? c.text : nil
+                guard KanaNumberProvider.isAsciiDecimal(c.text) else { return nil }
+                return (idx, c.text)
             }.first
 
-            if let decimalDigits, let lastAnchorIndex = numberAnchorIndices.max() {
+            if let decimalAnchor {
                 let existingTexts = Set(
                     serverCandidates.compactMap { dc -> String? in
                         guard case .fromConverter(let c) = dc else { return nil }
                         return c.text
                     })
-                let generatedTexts = KanaNumberProvider.generateCandidates(forDecimalDigits: decimalDigits)
+                let generatedTexts = KanaNumberProvider.generateCandidates(
+                    forDecimalDigits: decimalAnchor.digits)
                     .filter { !existingTexts.contains($0) }
                 if !generatedTexts.isEmpty
                     && canAppend(
                         isSuggest: is_suggest, currentCount: serverCandidates.count, limit: N_best)
                 {
-                    let insertAt = lastAnchorIndex + 1
+                    let insertAt = decimalAnchor.index + 1
                     for (offset, text) in generatedTexts.enumerated() {
                         var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
                         clientCandidate.text = text
