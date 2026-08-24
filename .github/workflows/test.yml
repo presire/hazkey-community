@@ -1,0 +1,130 @@
+name: Test
+
+# Regression-test workflow: builds the project and runs CTest + Swift
+# XCTest on every pull request and on every push to main.  It does NOT
+# produce, install, or publish any packages — that is the job of
+# build.yml / release.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Cancel superseded runs on the same ref so only the latest commit
+  # is tested — saves runner minutes on rapid pushes.
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Update submodules
+        run: git submodule update --init --recursive
+
+      - name: Install build dependencies
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ca-certificates curl git gettext gzip tar \
+            ninja-build pkg-config \
+            cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-l10n-tools \
+            libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+            libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev \
+            libncurses6 glslc protobuf-compiler libprotobuf-dev
+
+      - name: Install Swift 6.3.3 toolchain
+        run: |
+          set -eux
+          # Download the official Swift 6.3.3 release for Ubuntu 24.04.
+          # The project requires Swift >= 6.1 (swift-tools-version: 6.1
+          # in hazkey-server/Package.swift).  build.yml uses the same
+          # 6.3.3-RELEASE toolchain.
+          SWIFT_TARBALL="/tmp/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${SWIFT_TARBALL}" \
+            "https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+          mkdir -p /opt/swift
+          tar -xzf "${SWIFT_TARBALL}" --strip-components=1 -C /opt/swift
+          echo "/opt/swift/usr/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Fix llama.cpp safe.directory
+        # git submodule operations inside nested repos trigger
+      # "dubious ownership" errors without this.
+        run: |
+          git config --global --add safe.directory \
+            "$(pwd)/hazkey-server/llama.cpp"
+
+      - name: Workaround Qt::Orientation namespace
+        # Some Qt6 versions in CI containers reject the
+        # Qt::Orientation::Horizontal fully-qualified enum syntax in
+        # mainwindow.ui.  build.yml applies the same sed.
+        run: |
+          sed -i 's/Qt::Orientation::/Qt::/g' \
+            hazkey-settings/mainwindow.ui
+
+      - name: Configure project (CMake)
+        run: |
+          set -eux
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DProtobuf_USE_STATIC_LIBS=OFF
+
+      - name: Build C++ targets and tests
+        run: |
+          set -eux
+          # vulkan-shaders-gen forks up to 16 glslc subprocesses in
+          # parallel, which can exceed the process-table limit in
+          # constrained CI containers and silently drop shader symbols.
+          export GGML_VULKAN_SHADER_MAX_PARALLEL=1
+          # Build C++ libraries, executables, and CTest-registered test
+          # binaries (zenzai_model_management_test, keysequence_util_test)
+          # in parallel for speed.
+          cmake --build build --target hazkey-settings --parallel
+          cmake --build build --target fcitx5-hazkey --parallel
+          cmake --build build --target zenzai_model_management_test --parallel
+          cmake --build build --target keysequence_util_test --parallel
+
+      - name: Build Swift server (single-threaded)
+        run: |
+          set -eux
+          export GGML_VULKAN_SHADER_MAX_PARALLEL=1
+          # Swift server: single-threaded build to avoid OOM on the
+          # runner.  build_swift.cmake retries once on first failure.
+          cmake --build build --target build_hazkey_server --parallel 1
+
+      - name: Run CTest (C++ tests)
+        run: |
+          set -eux
+          cd build
+          ctest --output-on-failure --schedule-random \
+            --parallel "$(nproc)"
+
+      - name: Run Swift XCTest (ZenzaiSupport)
+        run: |
+          set -eux
+          export LLAMA_LIB_DIR="${GITHUB_WORKSPACE}/build/bin"
+          export LD_LIBRARY_PATH="${LLAMA_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+          cd hazkey-server
+          swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"

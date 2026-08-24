@@ -9,6 +9,7 @@ endif()
 
 project(fcitx5-hazkey VERSION 0.2.11)
 include(GNUInstallDirs)
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 

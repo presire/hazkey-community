@@ -67,11 +67,7 @@ class ProtocolHandler {
                 $0.status = .success
             }
         case .getDefaultProfile:
-            NSLog("Unimplemented: getDefaultProfile")
-            response = Hazkey_ResponseEnvelope.with {
-                $0.status = .failed
-                $0.errorMessage = "Unimplemented: getDefaultProfile"
-            }
+            response = HazkeyServerConfig.getDefaultProfile()
         case .none:
             NSLog("Payload not specified")
             response = Hazkey_ResponseEnvelope.with {

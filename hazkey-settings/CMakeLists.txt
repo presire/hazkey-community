@@ -144,3 +144,10 @@ qt_add_executable(zenzai_model_management_test
 )
 target_link_libraries(zenzai_model_management_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME zenzai_model_management_test COMMAND zenzai_model_management_test)
+
+qt_add_executable(keysequence_util_test
+    keysequence_util_test.cpp
+    keysequence_util.cpp
+)
+target_link_libraries(keysequence_util_test PRIVATE Qt6::Test Qt6::Gui)
+add_test(NAME keysequence_util_test COMMAND keysequence_util_test)

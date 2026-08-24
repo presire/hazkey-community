@@ -11,6 +11,7 @@ class ServerConnector {
     ServerConnector();
     ~ServerConnector();
     std::optional<hazkey::config::CurrentConfig> getConfig();
+    std::optional<hazkey::config::CurrentConfig> getDefaultProfile();
     void setCurrentConfig(hazkey::config::CurrentConfig);
     bool clearAllHistory(const std::string& profileId);
     bool reloadZenzaiModel();
@@ -21,6 +22,7 @@ class ServerConnector {
     void endSession();
     // Session-aware versions of methods
     std::optional<hazkey::config::CurrentConfig> getConfigInSession();
+    std::optional<hazkey::config::CurrentConfig> getDefaultProfileInSession();
     bool reloadZenzaiModelInSession();
 
    private:

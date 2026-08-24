@@ -533,6 +533,15 @@ bool HazkeyState::showCandidateList(
     auto candidateResult =
         std::make_unique<HazkeyCandidateList>(response.candidates());
 
+    candidateResult->setSelectionHandler([this](int globalIndex) {
+        auto candidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
+            ic_->inputPanel().candidateList());
+        if (candidateList != nullptr &&
+            candidateList->globalCursorIndex() == globalIndex) {
+            candidateCompleteHandler(candidateList);
+        }
+    });
+
     candidateResult->setSelectionKey(defaultSelectionKeys);
 
     ic_->inputPanel().reset();

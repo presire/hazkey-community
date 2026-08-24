@@ -16,6 +16,7 @@
 #include <chrono>
 #include <fstream>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 
 #include "qdir.h"
@@ -258,6 +259,30 @@ ServerConnector::getConfigInSession() {
     return responseVal.current_config();
 }
 
+std::optional<hazkey::config::CurrentConfig>
+ServerConnector::getDefaultProfileInSession() {
+    std::lock_guard<std::mutex> lock(transact_mutex);
+
+    if (session_socket_ == -1) {
+        return std::nullopt;
+    }
+
+    hazkey::RequestEnvelope request;
+    auto _ = request.mutable_get_default_profile();
+    auto response = transactOnSocket(session_socket_, request);
+    if (response == std::nullopt) {
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        return std::nullopt;
+    }
+    if (!responseVal.has_current_config()) {
+        return std::nullopt;
+    }
+    return responseVal.current_config();
+}
+
 bool ServerConnector::reloadZenzaiModelInSession() {
     std::lock_guard<std::mutex> lock(transact_mutex);
 
@@ -292,6 +317,24 @@ std::optional<hazkey::config::CurrentConfig> ServerConnector::getConfig() {
     return responseVal.current_config();
 }
 
+std::optional<hazkey::config::CurrentConfig>
+ServerConnector::getDefaultProfile() {
+    hazkey::RequestEnvelope request;
+    auto _ = request.mutable_get_default_profile();
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        return std::nullopt;
+    }
+    if (!responseVal.has_current_config()) {
+        return std::nullopt;
+    }
+    return responseVal.current_config();
+}
+
 void ServerConnector::setCurrentConfig(
     hazkey::config::CurrentConfig currentConfig) {
     hazkey::RequestEnvelope request;
@@ -299,11 +342,15 @@ void ServerConnector::setCurrentConfig(
     *props->mutable_profiles() = currentConfig.profiles();
     auto response = transact(request);
     if (response == std::nullopt) {
-        return;
+        throw std::runtime_error(
+            "Failed to communicate with the hazkey server while saving configuration.");
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        return;
+        const std::string errorMessage = responseVal.error_message();
+        throw std::runtime_error(
+            errorMessage.empty() ? "The hazkey server rejected the configuration."
+                                 : errorMessage);
     }
 }
 

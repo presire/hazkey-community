@@ -15,12 +15,7 @@ std::vector<std::string> HazkeyCandidateWord::getPreedit() const {
 
 void HazkeyCandidateWord::select(InputContext* ic) const {
     FCITX_UNUSED(ic);
-    // TODO: reinplement in cleaner way
-    // KeyEvent keyEvent(ic, Key(FcitxKey_Return));
-    // keyEvent = KeyEvent(
-    //     ic, Key(KeySym(FcitxKey_1 + (index_ % ic->inputPanel() )),
-    //             KeyState::Alt));
-    // ic->keyEvent(keyEvent);
+    selectCandidate_(index_);
 }
 
 /// CandidateList
@@ -33,7 +28,9 @@ HazkeyCandidateList::HazkeyCandidateList(
     // CandidateWord needs to know their own index
     int i = 0;
     for (const auto& candidate : candidates) {
-        append(std::make_unique<HazkeyCandidateWord>(i, candidate));
+        append(std::make_unique<HazkeyCandidateWord>(
+            i, candidate,
+            [this](int globalIndex) { selectCandidate(globalIndex); }));
         i++;
     }
 }
@@ -55,6 +52,23 @@ void HazkeyCandidateList::setCursorIndex(int localIndex) {
     }
     int globalIndex = pageSize() * currentPage() + localIndex;
     setGlobalCursorIndex(globalIndex);
+}
+
+bool HazkeyCandidateList::selectCandidate(int globalIndex) {
+    const int localIndex = globalIndex - pageSize() * currentPage();
+    if (localIndex < 0 || localIndex >= size()) {
+        return false;
+    }
+    setCursorIndex(localIndex);
+    if (selectionHandler_) {
+        selectionHandler_(globalIndex);
+    }
+    return true;
+}
+
+void HazkeyCandidateList::setSelectionHandler(
+    SelectionHandler selectionHandler) {
+    selectionHandler_ = std::move(selectionHandler);
 }
 
 void HazkeyCandidateList::nextPage() {

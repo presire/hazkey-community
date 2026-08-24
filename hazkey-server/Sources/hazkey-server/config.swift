@@ -5,6 +5,29 @@ import SwiftProtobuf
 let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024  //1MB
 let TABLE_FILE_SIZE_LIMIT = 1024 * 1024  //1MB
 
+enum ConfigError: LocalizedError {
+    case invalidJSONTopLevel
+    case invalidJSONProfile(index: Int)
+    case emptyProfiles
+    case unrecognizedEnum(field: String, rawValue: Int)
+    case valueOutOfRange(field: String, value: Int32, range: ClosedRange<Int32>)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidJSONTopLevel:
+            return "Config JSON must be an array of profiles."
+        case .invalidJSONProfile(let index):
+            return "Config JSON profile at index \(index) must be an object."
+        case .emptyProfiles:
+            return "At least one configuration profile is required."
+        case .unrecognizedEnum(let field, let rawValue):
+            return "Invalid \(field) enum value: \(rawValue)."
+        case .valueOutOfRange(let field, let value, let range):
+            return "Invalid \(field) value \(value); expected \(range.lowerBound)...\(range.upperBound)."
+        }
+    }
+}
+
 let builtInKeymaps = [
     "JIS Kana",
     "Japanese Symbol",
@@ -49,8 +72,7 @@ class HazkeyServerConfig {
             profiles = [HazkeyServerConfig.genDefaultConfig()]
         }
 
-        // TODO: add [0] out of range handling
-        currentProfile = profiles[0]
+        currentProfile = profiles.first ?? Self.genDefaultConfig()
 
         let fileManager = FileManager()
 
@@ -267,10 +289,21 @@ class HazkeyServerConfig {
         return newConf
     }
 
+    static func getDefaultProfile() -> Hazkey_ResponseEnvelope {
+        let currentConfig = Hazkey_Config_CurrentConfig.with {
+            $0.profiles = [Self.genDefaultConfig()]
+        }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+            $0.currentConfig = currentConfig
+        }
+    }
+
     func saveConfig(
         _ newProfiles: [Hazkey_Config_Profile],
         state: HazkeyServerState? = nil
     ) throws {
+        let normalizedProfiles = try Self.normalizeProfiles(newProfiles)
         let configDir = Self.getConfigDirectory()
         let configPath = configDir.appendingPathComponent("config.json")
 
@@ -281,7 +314,7 @@ class HazkeyServerConfig {
         var encodeOptions = JSONEncodingOptions()
         encodeOptions.alwaysPrintEnumsAsInts = true
         encodeOptions.useDeterministicOrdering = true
-        for profile in newProfiles {
+        for profile in normalizedProfiles {
             let jsonData = try profile.jsonUTF8Data(options: encodeOptions)
             let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
             jsonObjects.append(jsonObject)
@@ -294,8 +327,11 @@ class HazkeyServerConfig {
 
         NSLog("Config saved to: \(configPath.path)")
 
-        profiles = newProfiles
-        currentProfile = profiles[0]
+        profiles = normalizedProfiles
+        guard let firstProfile = normalizedProfiles.first else {
+            throw ConfigError.emptyProfiles
+        }
+        currentProfile = firstProfile
 
         if let state = state {
             state.reinitializeConfiguration()
@@ -309,33 +345,106 @@ class HazkeyServerConfig {
         // Check if config file exists
         guard FileManager.default.fileExists(atPath: configPath.path) else {
             NSLog("Config file does not exist at: \(configPath.path), returning empty config")
-            return [Self.genDefaultConfig()]
+            return try normalizeProfiles([Self.genDefaultConfig()])
         }
 
         // Read file contents
         let jsonData = try Data(contentsOf: configPath)
 
-        // Parse JSON array
-        let jsonArray =
-            try JSONSerialization.jsonObject(with: jsonData, options: []) as! [[String: Any]]
-
-        var configs: [Hazkey_Config_Profile] = []
-        var decodeOptions = JSONDecodingOptions()
-        decodeOptions.ignoreUnknownFields = true
-        for jsonObject in jsonArray {
-            let jsonObjectData = try JSONSerialization.data(withJSONObject: jsonObject, options: [])
-            let config = try Hazkey_Config_Profile(
-                jsonUTF8Data: jsonObjectData, options: decodeOptions)
-            configs.append(config)
-        }
-
-        if configs.count == 0 {
-            NSLog("Loaded empty config. returning default config...")
-            return [genDefaultConfig()]
-        }
+        let configs = try decodeProfiles(from: jsonData)
 
         NSLog("Config loaded from: \(configPath.path)")
         return configs
+    }
+
+    static func decodeProfiles(from jsonData: Data) throws -> [Hazkey_Config_Profile] {
+        guard let jsonArray = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [Any]
+        else {
+            throw ConfigError.invalidJSONTopLevel
+        }
+
+        var profiles: [Hazkey_Config_Profile] = []
+        var decodeOptions = JSONDecodingOptions()
+        decodeOptions.ignoreUnknownFields = true
+        for (index, jsonValue) in jsonArray.enumerated() {
+            guard let jsonObject = jsonValue as? [String: Any] else {
+                throw ConfigError.invalidJSONProfile(index: index)
+            }
+            let jsonObjectData = try JSONSerialization.data(withJSONObject: jsonObject, options: [])
+            let config = try Hazkey_Config_Profile(
+                jsonUTF8Data: jsonObjectData, options: decodeOptions)
+            profiles.append(config)
+        }
+
+        if profiles.isEmpty {
+            NSLog("Loaded empty config. returning default config...")
+            return try normalizeProfiles([Self.genDefaultConfig()])
+        }
+
+        return try normalizeProfiles(profiles)
+    }
+
+    static func normalizeProfiles(_ profiles: [Hazkey_Config_Profile]) throws -> [Hazkey_Config_Profile] {
+        guard !profiles.isEmpty else {
+            throw ConfigError.emptyProfiles
+        }
+        return try profiles.map(normalizeProfile)
+    }
+
+    static func normalizeProfile(_ profile: Hazkey_Config_Profile) throws -> Hazkey_Config_Profile {
+        let defaults = Self.genDefaultConfig()
+        var normalized = profile
+
+        if !normalized.hasAutoConvertMode {
+            normalized.autoConvertMode = defaults.autoConvertMode
+        }
+        if !normalized.hasAuxTextMode {
+            normalized.auxTextMode = defaults.auxTextMode
+        }
+        if !normalized.hasSuggestionListMode {
+            normalized.suggestionListMode = defaults.suggestionListMode
+        }
+        if !normalized.hasNumSuggestions {
+            normalized.numSuggestions = defaults.numSuggestions
+        }
+        if !normalized.hasAutoConvertMinChars {
+            normalized.autoConvertMinChars = defaults.autoConvertMinChars
+        }
+        if !normalized.hasNumCandidatesPerPage {
+            normalized.numCandidatesPerPage = defaults.numCandidatesPerPage
+        }
+        if !normalized.hasZenzaiInferLimit {
+            normalized.zenzaiInferLimit = defaults.zenzaiInferLimit
+        }
+
+        try validateEnums(normalized)
+        try validateRange(normalized.numSuggestions, field: "numSuggestions", range: 1...10)
+        try validateRange(normalized.autoConvertMinChars, field: "autoConvertMinChars", range: 1...10)
+        try validateRange(normalized.numCandidatesPerPage, field: "numCandidatesPerPage", range: 1...10)
+        try validateRange(normalized.zenzaiInferLimit, field: "zenzaiInferLimit", range: 1...100)
+        return normalized
+    }
+
+    private static func validateEnums(_ profile: Hazkey_Config_Profile) throws {
+        if case .UNRECOGNIZED(let rawValue) = profile.autoConvertMode {
+            throw ConfigError.unrecognizedEnum(field: "autoConvertMode", rawValue: rawValue)
+        }
+        if case .UNRECOGNIZED(let rawValue) = profile.auxTextMode {
+            throw ConfigError.unrecognizedEnum(field: "auxTextMode", rawValue: rawValue)
+        }
+        if case .UNRECOGNIZED(let rawValue) = profile.suggestionListMode {
+            throw ConfigError.unrecognizedEnum(field: "suggestionListMode", rawValue: rawValue)
+        }
+    }
+
+    private static func validateRange(
+        _ value: Int32,
+        field: String,
+        range: ClosedRange<Int32>
+    ) throws {
+        guard range.contains(value) else {
+            throw ConfigError.valueOutOfRange(field: field, value: value, range: range)
+        }
     }
 
     static func getConfigDirectory() -> URL {
@@ -499,24 +608,9 @@ class HazkeyServerConfig {
                         "keymap", isDirectory: true
                     ).appendingPathComponent(enabledKeymap.filename, isDirectory: false)
                 do {
-                    let lines = try String(contentsOf: customKeymapFile, encoding: .utf8)
-                        .split(separator: "\n")
-                        .map { $0.split(separator: "\t") }
+                    let contents = try String(contentsOf: customKeymapFile, encoding: .utf8)
                     newKeymapRule = [:]
-                    inner: for cols in lines {
-                        guard let key = cols[0].first else { continue inner }
-                        switch cols.count {
-                        case 1:
-                            newKeymapRule[key] = nil
-                        case 2:
-                            newKeymapRule[key] = (cols[1].first!, nil)
-                        case 3...:
-                            newKeymapRule[key] = (cols[1].first!, cols[2].first)
-                        default:
-                            NSLog("Unknown columns count: \(cols.count)")
-                            continue inner
-                        }
-                    }
+                    newKeymapRule = Self.parseCustomKeymap(contents)
                 } catch {
                     NSLog(
                         "Failed to load custom keymap \(enabledKeymap.name): \(error)"
@@ -528,6 +622,25 @@ class HazkeyServerConfig {
         }
 
         return maps
+    }
+
+    static func parseCustomKeymap(_ contents: String) -> Keymap {
+        var keymap: Keymap = [:]
+        for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard let key = columns.first?.first else { continue }
+
+            switch columns.count {
+            case 1:
+                keymap[key] = nil
+            case 2...:
+                guard let input = columns[1].first else { continue }
+                keymap[key] = (input, columns.count > 2 ? columns[2].first : nil)
+            default:
+                continue
+            }
+        }
+        return keymap
     }
 
     func loadInputTable(tableName: String) {

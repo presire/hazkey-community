@@ -52,11 +52,47 @@ else()
     message(FATAL_ERROR "protobuf 3.12+ required for proto3 optional support. Current version: ${Protobuf_VERSION}")
 endif()
 
+add_custom_target(hazkey-proto-headers
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/config.pb.h
+            ${CMAKE_CURRENT_BINARY_DIR}/commands.pb.h
+            ${CMAKE_CURRENT_BINARY_DIR}/base.pb.h
+)
+
 configure_file(hazkey_constants.h.in hazkey_constants.h @ONLY)
 
 target_include_directories(fcitx5-hazkey PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
 target_link_libraries(fcitx5-hazkey PRIVATE Fcitx5::Core Fcitx5::Config ${Protobuf_LITE_LIBRARIES})
 
+if(BUILD_TESTING)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ProtobufLite REQUIRED IMPORTED_TARGET protobuf-lite)
+
+    add_executable(live_convert_mode_test live_convert_mode_test.cpp live_convert_mode.cpp)
+    target_include_directories(live_convert_mode_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
+    target_compile_options(live_convert_mode_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>
+    )
+    add_dependencies(live_convert_mode_test hazkey-proto-headers)
+    add_test(NAME live_convert_mode_test COMMAND live_convert_mode_test)
+
+    add_executable(hazkey_candidate_selection_test
+        hazkey_candidate_selection_test.cpp hazkey_candidate.cpp)
+    target_sources(hazkey_candidate_selection_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/base.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/commands.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/config.pb.cc)
+    target_include_directories(hazkey_candidate_selection_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
+    target_link_libraries(hazkey_candidate_selection_test PRIVATE
+        Fcitx5::Core PkgConfig::ProtobufLite)
+    target_compile_options(hazkey_candidate_selection_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_candidate_selection_test hazkey-proto-headers)
+    add_test(NAME hazkey_candidate_selection_test
+        COMMAND hazkey_candidate_selection_test)
+endif()
 
 set_target_properties(fcitx5-hazkey PROPERTIES PREFIX "")
 install(TARGETS fcitx5-hazkey DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")

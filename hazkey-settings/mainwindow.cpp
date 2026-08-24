@@ -103,12 +103,12 @@ MainWindow::MainWindow(QWidget* parent)
     // Expand table settings mode change tab
     ui_->inputTableConfigModeTabWidget->tabBar()->setExpanding(true);
 
-    // Change name of reset button to reload
-    QPushButton *reloadButton = ui_->dialogButtonBox->button(QDialogButtonBox::Reset);
-    if (reloadButton) {
-        reloadButton->setText(tr("Reload"));
+    // Use Reset to preview the server-provided default configuration.
+    QPushButton* resetButton = ui_->dialogButtonBox->button(QDialogButtonBox::Reset);
+    if (resetButton) {
+        resetButton->setText(tr("Reset"));
         QIcon reloadIcon = QApplication::style()->standardIcon(QStyle::SP_BrowserReload);
-        reloadButton->setIcon(reloadIcon);
+        resetButton->setIcon(reloadIcon);
     }
 
     // Set version
@@ -319,6 +319,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiContextualConversion->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
+        ui_->zenzaiTopic->setEnabled(false);
+        ui_->zenzaiStyle->setEnabled(false);
+        ui_->zenzaiPreference->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(false);
         ui_->manageZenzaiModels->setVisible(false);
@@ -331,6 +334,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiContextualConversion->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
+        ui_->zenzaiTopic->setEnabled(false);
+        ui_->zenzaiStyle->setEnabled(false);
+        ui_->zenzaiPreference->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(false);
@@ -344,6 +350,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiContextualConversion->setEnabled(true);
         ui_->zenzaiInferenceLimit->setEnabled(true);
         ui_->zenzaiUserPlofile->setEnabled(true);
+        ui_->zenzaiTopic->setEnabled(true);
+        ui_->zenzaiStyle->setEnabled(true);
+        ui_->zenzaiPreference->setEnabled(true);
         ui_->zenzaiBackendDevice->setEnabled(true);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(true);
@@ -479,6 +488,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                  currentProfile_->submode_entry_point_chars(),
                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
     SET_LINEEDIT(ui_->zenzaiUserPlofile, currentProfile_->zenzai_profile(), "");
+    SET_LINEEDIT(ui_->zenzaiTopic, currentProfile_->zenzai_topic(), "");
+    SET_LINEEDIT(ui_->zenzaiStyle, currentProfile_->zenzai_style(), "");
+    SET_LINEEDIT(ui_->zenzaiPreference, currentProfile_->zenzai_preference(), "");
 
     {
         const std::string storedHotkey = currentProfile_->auto_convert_hotkey();
@@ -574,6 +586,10 @@ bool MainWindow::saveCurrentConfig() {
         GET_LINEEDIT_STRING(ui_->submodeEntryPointChars));
     currentProfile_->set_zenzai_profile(
         GET_LINEEDIT_STRING(ui_->zenzaiUserPlofile));
+    currentProfile_->set_zenzai_topic(GET_LINEEDIT_STRING(ui_->zenzaiTopic));
+    currentProfile_->set_zenzai_style(GET_LINEEDIT_STRING(ui_->zenzaiStyle));
+    currentProfile_->set_zenzai_preference(
+        GET_LINEEDIT_STRING(ui_->zenzaiPreference));
     currentProfile_->set_auto_convert_hotkey(
         fcitxKeyStringFromQKeySequence(ui_->liveConvertHotkey->keySequence())
             .toStdString());
@@ -2202,8 +2218,8 @@ void MainWindow::onDownloadError(QNetworkReply::NetworkError error) {
 
 void MainWindow::onResetConfiguration() {
     QMessageBox::StandardButton reply = QMessageBox::question(
-        this, tr("Reload Configuration"),
-        tr("Reloading will discard any unsaved changes. Continue?"),
+        this, tr("Reset Configuration"),
+        tr("Resetting will discard any unsaved changes. Continue?"),
         QMessageBox::Yes | QMessageBox::No);
 
     if (reply == QMessageBox::No) {
@@ -2217,30 +2233,25 @@ void MainWindow::onResetConfiguration() {
         return;
     }
 
-    // Reload Zenzai model using the session
-    bool reloadSuccess = server_.reloadZenzaiModelInSession();
-    if (!reloadSuccess) {
-        qWarning() << "Failed to reload Zenzai model";
-    }
-
-    // Get config using the same session
-    auto configOpt = server_.getConfigInSession();
+    // The default configuration is a preview until Apply or OK persists it.
+    auto configOpt = server_.getDefaultProfileInSession();
     server_.endSession();
 
     if (!configOpt.has_value()) {
         QMessageBox::critical(this, tr("Configuration Error"),
-                              tr("Failed to load configuration from server."));
+                              tr("Failed to load default configuration from server."));
         return;
     }
 
-    // Update UI with the loaded config
-    currentConfig_ = configOpt.value();
-    if (currentConfig_.profiles_size() == 0) {
+    if (configOpt->profiles_size() != 1) {
         QMessageBox::critical(this, tr("Configuration Error"),
-                              tr("No profile found in configuration."));
+                              tr("The default configuration must contain exactly one profile."));
         return;
     }
 
+    // Keep runtime metadata from the current configuration; the default-profile
+    // response deliberately contains only the profile to preview.
+    *currentConfig_.mutable_profiles() = configOpt->profiles();
     currentProfile_ = currentConfig_.mutable_profiles(0);
     if (!currentProfile_) {
         QMessageBox::critical(this, tr("Configuration Error"),
@@ -2257,8 +2268,8 @@ void MainWindow::onResetConfiguration() {
 
     QTimer::singleShot(0, this, [this]() {
         QMessageBox::information(
-            this, tr("Reload Complete"),
-            tr("Configuration has been reloaded successfully."));
+            this, tr("Reset Complete"),
+            tr("Configuration has been reset to defaults. Apply or OK to save."));
     });
 }
 
