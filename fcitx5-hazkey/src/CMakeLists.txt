@@ -92,6 +92,40 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_candidate_selection_test hazkey-proto-headers)
     add_test(NAME hazkey_candidate_selection_test
         COMMAND hazkey_candidate_selection_test)
+
+    add_executable(hazkey_client_rpc_probe_test
+        hazkey_client_rpc_probe_test.cpp hazkey_server_connector.cpp)
+    target_sources(hazkey_client_rpc_probe_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/base.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/commands.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/config.pb.cc)
+    target_include_directories(hazkey_client_rpc_probe_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
+    target_link_libraries(hazkey_client_rpc_probe_test PRIVATE
+        Fcitx5::Core PkgConfig::ProtobufLite)
+    target_compile_options(hazkey_client_rpc_probe_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_client_rpc_probe_test hazkey-proto-headers)
+    add_test(NAME hazkey_client_rpc_probe_test
+        COMMAND hazkey_client_rpc_probe_test)
+
+    add_executable(hazkey_client_cache_test
+        hazkey_client_cache_test.cpp hazkey_server_connector.cpp)
+    target_sources(hazkey_client_cache_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/base.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/commands.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/config.pb.cc)
+    target_include_directories(hazkey_client_cache_test PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
+    target_link_libraries(hazkey_client_cache_test PRIVATE
+        Fcitx5::Core PkgConfig::ProtobufLite)
+    target_compile_options(hazkey_client_cache_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_client_cache_test hazkey-proto-headers)
+    add_test(NAME hazkey_client_cache_test
+        COMMAND hazkey_client_cache_test)
 endif()
 
 set_target_properties(fcitx5-hazkey PROPERTIES PREFIX "")

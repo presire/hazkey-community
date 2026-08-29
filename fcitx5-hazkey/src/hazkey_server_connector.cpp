@@ -6,7 +6,6 @@
 #include <fcitx-utils/textformatflags.h>
 #include <fcitx/text.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -27,6 +26,65 @@
 #include "config.pb.h"
 
 static std::mutex transact_mutex;
+
+namespace {
+
+const char* requestType(const hazkey::RequestEnvelope& request) {
+    switch (request.payload_case()) {
+        case hazkey::RequestEnvelope::kSetContext: return "set_context";
+        case hazkey::RequestEnvelope::kNewComposingText: return "new_composing_text";
+        case hazkey::RequestEnvelope::kInputChar: return "input_char";
+        case hazkey::RequestEnvelope::kModifierEvent: return "modifier_event";
+        case hazkey::RequestEnvelope::kDeleteLeft: return "delete_left";
+        case hazkey::RequestEnvelope::kDeleteRight: return "delete_right";
+        case hazkey::RequestEnvelope::kPrefixComplete: return "prefix_complete";
+        case hazkey::RequestEnvelope::kMoveCursor: return "move_cursor";
+        case hazkey::RequestEnvelope::kAdjustClauseBoundary: return "adjust_clause_boundary";
+        case hazkey::RequestEnvelope::kGetHiraganaWithCursor: return "get_hiragana_with_cursor";
+        case hazkey::RequestEnvelope::kGetComposingString: return "get_composing_string";
+        case hazkey::RequestEnvelope::kGetCandidates: return "get_candidates";
+        case hazkey::RequestEnvelope::kGetCurrentInputMode: return "get_current_input_mode";
+        case hazkey::RequestEnvelope::kSaveLearningData: return "save_learning_data";
+        case hazkey::RequestEnvelope::kGetConfig: return "get_config";
+        case hazkey::RequestEnvelope::kSetConfig: return "set_config";
+        case hazkey::RequestEnvelope::kClearAllHistory: return "clear_all_history";
+        case hazkey::RequestEnvelope::kReloadZenzaiModel: return "reload_zenzai_model";
+        case hazkey::RequestEnvelope::kGetDefaultProfile: return "get_default_profile";
+        case hazkey::RequestEnvelope::PAYLOAD_NOT_SET: return "none";
+    }
+    return "none";
+}
+
+class ClientPerfMeasurement {
+   public:
+    explicit ClientPerfMeasurement(const hazkey::RequestEnvelope& request) {
+        const char* path = std::getenv("HAZKEY_PERF_EVIDENCE");
+        if (path == nullptr || path[0] == '\0') {
+            return;
+        }
+        path_ = path;
+        type_ = requestType(request);
+        startedAt_ = std::chrono::steady_clock::now();
+    }
+
+    ~ClientPerfMeasurement() {
+        if (path_.empty()) {
+            return;
+        }
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - startedAt_);
+        std::ofstream output(path_, std::ios::app);
+        output << "{\"type\":\"" << type_ << "\",\"total_ms\":"
+               << elapsed.count() << "}\n";
+    }
+
+   private:
+    std::chrono::steady_clock::time_point startedAt_;
+    std::string path_;
+    std::string type_;
+};
+
+}  // namespace
 
 std::string HazkeyServerConnector::getSocketPath() {
     const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
@@ -171,8 +229,17 @@ void HazkeyServerConnector::connectServer() {
                  << " attempts";
 }
 
+void HazkeyServerConnector::invalidateCache() {
+    cachedHiraganaWithCursor_.reset();
+    cachedComposingText_.clear();
+    cachedCandidatesSuggest_.reset();
+    cachedCandidatesFull_.reset();
+    cachedInputModeDirect_.reset();
+}
+
 std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     const hazkey::RequestEnvelope& send_data) {
+    ClientPerfMeasurement perfMeasurement(send_data);
     std::lock_guard<std::mutex> lock(transact_mutex);
 
     if (sock_ == -1) {
@@ -182,6 +249,9 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
             FCITX_ERROR() << "Failed to establish connection to hazkey-server";
             return std::nullopt;
         }
+        // The server may have been (re)started while we were disconnected:
+        // its composition state is gone, so cached reads must not be served.
+        invalidateCache();
     }
 
     std::string msg;
@@ -201,6 +271,8 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         close(sock_);
         sock_ = -1;
         connectServer();
+        // Reconnected (possibly to a restarted server): drop cached reads.
+        invalidateCache();
         return std::nullopt;
     }
 
@@ -211,6 +283,8 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         close(sock_);
         sock_ = -1;
         connectServer();
+        // Reconnected (possibly to a restarted server): drop cached reads.
+        invalidateCache();
         return std::nullopt;
     }
 
@@ -256,6 +330,12 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 std::string HazkeyServerConnector::getComposingText(
     hazkey::commands::GetComposingString::CharType type,
     std::string currentPreedit) {
+    const auto cacheKey =
+        std::make_pair(static_cast<int>(type), currentPreedit);
+    if (auto it = cachedComposingText_.find(cacheKey);
+        it != cachedComposingText_.end()) {
+        return it->second;
+    }
     hazkey::RequestEnvelope request;
     auto props = request.mutable_get_composing_string();
     props->set_char_type(type);
@@ -277,10 +357,18 @@ std::string HazkeyServerConnector::getComposingText(
     //                   << "Server returned unexpected response";
     //     return "";
     // }
+    cachedComposingText_[cacheKey] = responseVal.text();
     return responseVal.text();
 }
 
 fcitx::Text HazkeyServerConnector::getComposingHiraganaWithCursor() {
+    if (cachedHiraganaWithCursor_.has_value()) {
+        const auto& parts = cachedHiraganaWithCursor_.value();
+        fcitx::Text text = fcitx::Text(parts.beforeCursor);
+        text.append(parts.onCursor, fcitx::TextFormatFlag::Underline);
+        text.append(parts.afterCursor);
+        return text;
+    }
     hazkey::RequestEnvelope request;
     request.mutable_get_hiragana_with_cursor();
     auto response = transact(request);
@@ -301,6 +389,10 @@ fcitx::Text HazkeyServerConnector::getComposingHiraganaWithCursor() {
                       << "Server returned unexpected response";
         return fcitx::Text();
     }
+    cachedHiraganaWithCursor_ = TextWithCursorParts{
+        responseVal.text_with_cursor().beforecursosr(),
+        responseVal.text_with_cursor().oncursor(),
+        responseVal.text_with_cursor().aftercursor()};
     fcitx::Text text =
         fcitx::Text(responseVal.text_with_cursor().beforecursosr());
     text.append(responseVal.text_with_cursor().oncursor(),
@@ -310,6 +402,8 @@ fcitx::Text HazkeyServerConnector::getComposingHiraganaWithCursor() {
 }
 
 void HazkeyServerConnector::inputChar(std::string text) {
+    // State-mutating RPC: any cached read is stale from here on.
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_input_char();
     props->set_text(text);
@@ -328,6 +422,7 @@ void HazkeyServerConnector::inputChar(std::string text) {
 }
 
 void HazkeyServerConnector::shiftKeyEvent(bool isRelease) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_modifier_event();
     props->set_event_type(
@@ -349,6 +444,9 @@ void HazkeyServerConnector::shiftKeyEvent(bool isRelease) {
 }
 
 bool HazkeyServerConnector::currentInputModeIsDirect() {
+    if (cachedInputModeDirect_.has_value()) {
+        return cachedInputModeDirect_.value();
+    }
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_get_current_input_mode();
     auto response = transact(request);
@@ -363,12 +461,15 @@ bool HazkeyServerConnector::currentInputModeIsDirect() {
                       << responseVal.error_message();
         return false;
     }
-    return responseVal.current_input_mode_info().input_mode() ==
-           hazkey::commands::CurrentInputModeInfo::InputMode::
-               CurrentInputModeInfo_InputMode_DIRECT;
+    cachedInputModeDirect_ =
+        responseVal.current_input_mode_info().input_mode() ==
+        hazkey::commands::CurrentInputModeInfo::InputMode::
+            CurrentInputModeInfo_InputMode_DIRECT;
+    return cachedInputModeDirect_.value();
 }
 
 void HazkeyServerConnector::deleteLeft() {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     request.mutable_delete_left();
     auto response = transact(request);
@@ -386,6 +487,7 @@ void HazkeyServerConnector::deleteLeft() {
 }
 
 void HazkeyServerConnector::deleteRight() {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     request.mutable_delete_right();
     auto response = transact(request);
@@ -403,6 +505,7 @@ void HazkeyServerConnector::deleteRight() {
 }
 
 void HazkeyServerConnector::moveCursor(int offset) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_move_cursor();
     props->set_offset(offset);
@@ -422,6 +525,7 @@ void HazkeyServerConnector::moveCursor(int offset) {
 
 std::optional<HazkeyServerConnector::ClauseBoundaryResult>
 HazkeyServerConnector::adjustClauseBoundary(int offset) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_adjust_clause_boundary();
     props->set_offset(offset);
@@ -450,6 +554,7 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
 }
 
 void HazkeyServerConnector::setContext(std::string context, int anchor) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_set_context();
     props->set_context(context);
@@ -469,6 +574,7 @@ void HazkeyServerConnector::setContext(std::string context, int anchor) {
 }
 
 void HazkeyServerConnector::newComposingText() {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     request.mutable_new_composing_text();
     auto response = transact(request);
@@ -488,6 +594,7 @@ void HazkeyServerConnector::newComposingText() {
 }
 
 void HazkeyServerConnector::completePrefix(int index) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_prefix_complete();
     props->set_index(index);
@@ -506,6 +613,7 @@ void HazkeyServerConnector::completePrefix(int index) {
 }
 
 void HazkeyServerConnector::saveLearningData() {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     request.mutable_save_learning_data();
     auto response = transact(request);
@@ -542,6 +650,7 @@ std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerCon
 
 bool HazkeyServerConnector::setServerConfig(
     const hazkey::config::CurrentConfig& config) {
+    invalidateCache();
     hazkey::RequestEnvelope request;
     auto* sc = request.mutable_set_config();
     *sc->mutable_profiles() = config.profiles();
@@ -562,6 +671,17 @@ bool HazkeyServerConnector::setServerConfig(
 
 hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     bool isSuggestMode) {
+    // The non-suggest request makes the server insert a composition
+    // separator, which mutates the state all other reads depend on, so it
+    // must invalidate cached reads before it executes.
+    if (!isSuggestMode) {
+        invalidateCache();
+    }
+    auto& cacheSlot =
+        isSuggestMode ? cachedCandidatesSuggest_ : cachedCandidatesFull_;
+    if (cacheSlot.has_value()) {
+        return cacheSlot.value();
+    }
     hazkey::RequestEnvelope request;
     auto props = request.mutable_get_candidates();
     props->set_is_suggest(isSuggestMode);
@@ -585,5 +705,6 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     //     std::vector<CandidateData> empty_vec;
     //     return hazkey::commands::CandidatesResult();
     // }
+    cacheSlot = responseVal.candidates();
     return responseVal.candidates();
 }

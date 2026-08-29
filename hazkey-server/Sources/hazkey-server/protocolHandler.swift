@@ -23,6 +23,13 @@ class ProtocolHandler {
             return serializeResult(unserialized: response)
         }
 
+        let measurement = PerfProbe.shared?.begin(type: PerfProbe.payloadType(query.payload))
+        defer {
+            if let measurement {
+                PerfProbe.shared?.finish(measurement)
+            }
+        }
+
         switch query.payload {
         case .setContext(let req):
             response = state.setContext(

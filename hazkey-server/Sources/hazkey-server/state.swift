@@ -376,6 +376,10 @@ class HazkeyServerState {
     private func makeCandidatesResult(
         is_suggest: Bool
     ) -> (Hazkey_Commands_CandidatesResult, [DisplayedCandidate]) {
+        let perfProbe = PerfProbe.shared
+        let candidateStartedAt = perfProbe?.now()
+        var userDictionaryStartedAt = candidateStartedAt
+        var userDictionaryFinishedAt = candidateStartedAt
 
         func canAppend(
             isSuggest: Bool,
@@ -430,6 +434,17 @@ class HazkeyServerState {
             requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
                 for: serverConfig.currentProfile, isSuggestion: is_suggest)
         )
+        let zenzai: String = if case .off = options.zenzaiMode { "off" } else { "on" }
+        userDictionaryStartedAt = perfProbe?.now()
+        defer {
+            if let candidateStartedAt, let userDictionaryStartedAt, let userDictionaryFinishedAt {
+                perfProbe?.recordCandidateStages(
+                    userDictionaryStartedAt: userDictionaryStartedAt,
+                    userDictionaryFinishedAt: userDictionaryFinishedAt,
+                    candidateStartedAt: candidateStartedAt,
+                    zenzai: zenzai)
+            }
+        }
 
         let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
 
@@ -446,6 +461,7 @@ class HazkeyServerState {
             converter.importDynamicUserDictionary([])  // clear when toggled off
             userDictInjected = false
         }
+        userDictionaryFinishedAt = perfProbe?.now()
 
         var candidatesResult = Hazkey_Commands_CandidatesResult()
         let converted = converter.requestCandidates(copiedComposingText, options: options)

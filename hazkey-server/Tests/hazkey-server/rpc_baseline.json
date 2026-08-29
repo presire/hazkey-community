@@ -1,0 +1,8 @@
+{
+  "getCandidates" : 24,
+  "getHiraganaWithCursor" : 12,
+  "inputChar" : 42,
+  "moveCursor" : 2,
+  "newComposingText" : 12,
+  "setConfig" : 1
+}

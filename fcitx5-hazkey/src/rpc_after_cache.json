@@ -1,0 +1,8 @@
+{
+  "get_candidates": 7,
+  "get_composing_string": 6,
+  "get_hiragana_with_cursor": 6,
+  "input_char": 21,
+  "move_cursor": 1,
+  "new_composing_text": 6
+}

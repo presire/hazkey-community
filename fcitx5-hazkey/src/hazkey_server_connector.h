@@ -6,8 +6,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <map>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "base.pb.h"
 #include "commands.pb.h"
@@ -86,10 +88,32 @@ class HazkeyServerConnector {
     bool retryConnect();
     bool isHazkeyServerRunning();
     bool requestSuccess(hazkey::ResponseEnvelope);
+
+    // Read-through cache for the per-key hot-path reads. Cleared by every
+    // state-mutating RPC, by the non-suggest candidate request (the server
+    // inserts a composition separator there, which mutates read state), and
+    // whenever the connection is (re)established (server restart loses all
+    // composition state). Read methods serve same-epoch results without a
+    // round trip and only cache SUCCESS responses.
+    void invalidateCache();
+
+    struct TextWithCursorParts {
+        std::string beforeCursor;
+        std::string onCursor;
+        std::string afterCursor;
+    };
     int sock_ = -1;
     std::string socket_path_;
     hazkey::config::Profile_AutoConvertMode rememberedOnMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
+    std::optional<TextWithCursorParts> cachedHiraganaWithCursor_;
+    // Keyed by (CharType, client preedit): alphabet conversions depend on
+    // the preedit (cycleAlphabetCase); the other types only on server state,
+    // which stays constant until the next state-mutating RPC.
+    std::map<std::pair<int, std::string>, std::string> cachedComposingText_;
+    std::optional<hazkey::commands::CandidatesResult> cachedCandidatesSuggest_;
+    std::optional<hazkey::commands::CandidatesResult> cachedCandidatesFull_;
+    std::optional<bool> cachedInputModeDirect_;
 };
 
 #endif  // HAZKEY_SERVER_CONNECTOR_H
