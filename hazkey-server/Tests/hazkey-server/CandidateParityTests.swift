@@ -166,7 +166,10 @@ final class CandidateParityTests: XCTestCase {
         try waitForSocket(at: socketURL.path)
 
         let client = try ParityRPCClient(socketPath: socketURL.path)
-        defer { client.close() }
+        // The socket is closed by `ParityRPCClient.deinit` when `client` goes
+        // out of scope; an explicit `defer { client.close() }` here would just
+        // duplicate that close. (deinit also covers the init-throws path,
+        // where the already-opened file descriptor must be released.)
         try setZenzaiProfile(client: client)
 
         var snapshot: [String: [String]] = [:]
