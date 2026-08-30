@@ -36,7 +36,7 @@
 
 **Dominance verdict.** On the recorded CPU backend and fixed warmed corpus, neural inference accounted for a median `0.782312` of candidate generation (`zenzai_inference_ms / candidate_generation_ms`). Real neural work therefore dominates candidate generation on that measurement and justifies planning a llama.cpp update, subject to the future checklist below.
 
-**Receipts.** The detailed application receipts are in `/home/suse/Program/OpenCode_SubAgent/[開発]hazkey-community/.omo/evidence/hazkey-zenzai-inference/task-5-applycheck.txt`; the real-model benchmark and dominance evidence are in `/home/suse/Program/OpenCode_SubAgent/[開発]hazkey-community/.omo/evidence/hazkey-zenzai-inference/task-4-benchmark.txt`. This review references those sources rather than reproducing their command logs.
+**Receipts.** The detailed application receipts are in `../../../.omo/evidence/hazkey-zenzai-inference/task-5-applycheck.txt` (relative to this README's directory; the `.omo/` directory sits beside this repository checkout, outside version control); the real-model benchmark and dominance evidence are in `../../../.omo/evidence/hazkey-zenzai-inference/task-4-benchmark.txt`. This review references those sources rather than reproducing their command logs.
 
 ## llama.cpp dependency surface
 
