@@ -1,13 +1,13 @@
 {
-  "originHash" : "e6a39d051313779243dc1df0d2877246e2f2dd06afaef932c08b525322dc7638",
+  "originHash" : "7050c4ada3ea64fd250dc4bf6193e4cb2304efc24ea8404e158efa21a4d53f1f",
   "pins" : [
     {
       "identity" : "azookeykanakanjiconverter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/7ka-hiira/AzooKeyKanaKanjiConverter",
+      "kind" : "localSourceControl",
+      "location" : "/tmp/opencode/AzooKeyKanaKanjiConverter",
       "state" : {
-        "branch" : "8b4befc",
-        "revision" : "8b4befc273baafea5964ecf87d3bc36f2bbef68b"
+        "branch" : "hazkey",
+        "revision" : "723e43d09e6e71d1c472b26949d4a1b4016f996c"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections",
       "state" : {
-        "revision" : "8c0c0a8b49e080e54e5e328cc552821ff07cd341",
-        "version" : "1.2.1"
+        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
+        "version" : "1.6.0"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-numerics.git",
       "state" : {
-        "revision" : "e0ec0f5f3af6f3e4d5e7a19d2af26b481acb6ba8",
-        "version" : "1.0.3"
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-protobuf.git",
       "state" : {
-        "revision" : "102a647b573f60f73afdce5613a51d71349fe507",
-        "version" : "1.30.0"
+        "revision" : "55d7a1cc5666b85c13464aea1c4b4a90feccb4c8",
+        "version" : "1.38.1"
       }
     },
     {
@@ -61,15 +61,6 @@
       "location" : "https://github.com/ensan-hcl/swift-tokenizers",
       "state" : {
         "revision" : "4a606f66e0cc4d7d9f0197649e812f7fc86a4c34",
-        "version" : "0.0.1"
-      }
-    },
-    {
-      "identity" : "swiftymarisa",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ensan-hcl/SwiftyMarisa",
-      "state" : {
-        "revision" : "91acc3cb0e747e0bd4b0e0813d42fb273d10e62f",
         "version" : "0.0.1"
       }
     }
