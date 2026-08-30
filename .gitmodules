@@ -6,4 +6,5 @@
 	url = https://github.com/azooKey/azooKey_dictionary_storage
 [submodule "hazkey-server/llama.cpp"]
 	path = hazkey-server/llama.cpp
-	url = https://github.com/7ka-hiira/llama.cpp.git
+	url = https://github.com/presire/llama.cpp.git
+	branch = hazkey
