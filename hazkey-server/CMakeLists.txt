@@ -133,12 +133,26 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/hazkey-server
 
 # install llama libraries
 if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
-    install(FILES
-        "${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml-base.so"
-        "${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml.so"
-        "${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libllama.so"
-        DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama"
-    )
+    # The llama.cpp build sets SOVERSION on these libraries, so each *.so
+    # name in HAZKEY_SERVER_LIBLLAMA_BINDIR is a symlink chain (e.g.
+    # libllama.so -> libllama.so.0 -> libllama.so.0.0.7771). install(FILES)
+    # has no symlink-chain option, so it only copies the top-level symlink
+    # itself; the installed symlink then dangles (its .so.N target is never
+    # installed), and the installed hazkey-server fails to start with
+    # "error while loading shared libraries: libllama.so.0: cannot open
+    # shared object file". file(COPY ... FOLLOW_SYMLINK_CHAIN), run at
+    # install time via install(CODE ...), installs the full chain (every
+    # intermediate symlink plus the final real file) and is a no-op for any
+    # of these paths that is already a plain file rather than a symlink.
+    install(CODE "
+        file(COPY
+            \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml-base.so\"
+            \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml.so\"
+            \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libllama.so\"
+            DESTINATION \"${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\"
+            FOLLOW_SYMLINK_CHAIN
+        )
+    ")
 
     install(DIRECTORY "${HAZKEY_SERVER_LIBLLAMA_BINDIR}/"
         DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama/backends"
