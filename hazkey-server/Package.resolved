@@ -1,10 +1,10 @@
 {
-  "originHash" : "7050c4ada3ea64fd250dc4bf6193e4cb2304efc24ea8404e158efa21a4d53f1f",
+  "originHash" : "5150470cadea2e0fae3f28a772485b1e87ac70d5f91cccbc8933bda83d01d6e9",
   "pins" : [
     {
       "identity" : "azookeykanakanjiconverter",
-      "kind" : "localSourceControl",
-      "location" : "/tmp/opencode/AzooKeyKanaKanjiConverter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/presire/AzooKeyKanaKanjiConverter",
       "state" : {
         "branch" : "hazkey",
         "revision" : "723e43d09e6e71d1c472b26949d4a1b4016f996c"
@@ -61,6 +61,15 @@
       "location" : "https://github.com/ensan-hcl/swift-tokenizers",
       "state" : {
         "revision" : "4a606f66e0cc4d7d9f0197649e812f7fc86a4c34",
+        "version" : "0.0.1"
+      }
+    },
+    {
+      "identity" : "swiftymarisa",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ensan-hcl/SwiftyMarisa",
+      "state" : {
+        "revision" : "91acc3cb0e747e0bd4b0e0813d42fb273d10e62f",
         "version" : "0.0.1"
       }
     }

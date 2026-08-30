@@ -626,7 +626,6 @@ class HazkeyServerConfig {
 
         return ConvertRequestOptions.init(
             N_best: Int(currentProfile.numCandidatesPerPage),
-            needTypoCorrection: false,
             requireJapanesePrediction: .disabled,
             requireEnglishPrediction: .disabled,
             keyboardLanguage: .none,
@@ -643,6 +642,12 @@ class HazkeyServerConfig {
             specialCandidateProviders: specialCandidateProviders,
             zenzaiMode: zenzaiMode,
             preloadDictionary: false,
+            // [converter-fork migration] The hazkey fork (base upstream 93766c4)
+            // replaced `needTypoCorrection: Bool` with `typoCorrectionMode:
+            // TypoCorrectionMode`. `.disabled` is the exact behavioral equivalent
+            // of the previous `needTypoCorrection: false` (unconditional disable;
+            // see KanaKanjiConverter.isClassicTypoCorrectionEnabled).
+            typoCorrectionMode: .disabled,
             metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey \(hazkeyVersion)")
         )
     }
