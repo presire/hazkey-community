@@ -142,4 +142,9 @@ jobs:
           if ! grep -q "hazkey-community patch" "${number_source}"; then
             git -C "${number_checkout}" apply "${number_patch}"
           fi
+          inference_source="${number_checkout}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift"
+          inference_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0004-zenzai-inference-timer.patch"
+          if ! grep -q "ZenzInferencePerf" "${inference_source}"; then
+            git -C "${number_checkout}" apply "${inference_patch}"
+          fi
           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"

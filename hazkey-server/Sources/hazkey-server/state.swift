@@ -380,6 +380,7 @@ class HazkeyServerState {
         let candidateStartedAt = perfProbe?.now()
         var userDictionaryStartedAt = candidateStartedAt
         var userDictionaryFinishedAt = candidateStartedAt
+        var zenzaiInferenceNanoseconds: UInt64?
 
         func canAppend(
             isSuggest: Bool,
@@ -442,7 +443,8 @@ class HazkeyServerState {
                     userDictionaryStartedAt: userDictionaryStartedAt,
                     userDictionaryFinishedAt: userDictionaryFinishedAt,
                     candidateStartedAt: candidateStartedAt,
-                    zenzai: zenzai)
+                    zenzai: zenzai,
+                    zenzaiInferenceNanoseconds: zenzaiInferenceNanoseconds)
             }
         }
 
@@ -464,7 +466,13 @@ class HazkeyServerState {
         userDictionaryFinishedAt = perfProbe?.now()
 
         var candidatesResult = Hazkey_Commands_CandidatesResult()
+        if zenzai == "on" {
+            _ = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
+        }
         let converted = converter.requestCandidates(copiedComposingText, options: options)
+        if zenzai == "on" {
+            zenzaiInferenceNanoseconds = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
+        }
         let fullHiraganaPreedit = composingText.value.toHiragana()
         let hiraganaPreedit = copiedComposingText.toHiragana()
         let hiraganaPreeditLen = hiraganaPreedit.count

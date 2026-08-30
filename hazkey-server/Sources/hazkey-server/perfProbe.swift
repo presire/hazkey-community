@@ -77,12 +77,16 @@ final class PerfProbe: @unchecked Sendable {
         userDictionaryStartedAt: UInt64,
         userDictionaryFinishedAt: UInt64,
         candidateStartedAt: UInt64,
-        zenzai: String
+        zenzai: String,
+        zenzaiInferenceNanoseconds: UInt64? = nil
     ) {
         let finishedAt = now()
         lock.lock()
         stages["user_dictionary_reload_ms"] = milliseconds(from: userDictionaryStartedAt, to: userDictionaryFinishedAt)
         stages["candidate_generation_ms"] = milliseconds(from: candidateStartedAt, to: finishedAt)
+        if let zenzaiInferenceNanoseconds {
+            stages["zenzai_inference_ms"] = Double(zenzaiInferenceNanoseconds) / 1_000_000
+        }
         self.zenzai = zenzai
         lock.unlock()
     }

@@ -35,9 +35,22 @@ endif()
 # Idempotent: skips when the patch is already applied (e.g. on rebuild).
 # Non-fatal: warns and continues if git apply fails, so Swift build is not
 # blocked when the upstream fork already ships the mitigation.
+execute_process(
+    COMMAND "${SWIFT_EXECUTABLE}" package resolve
+            "--scratch-path=${CMAKE_CURRENT_BINARY_DIR}/swift-build"
+    WORKING_DIRECTORY "${SWIFT_WORK_DIR}"
+    RESULT_VARIABLE resolve_result
+)
+if(NOT resolve_result EQUAL 0)
+    message(FATAL_ERROR "Swift package resolve failed; converter checkouts are required for patch application.")
+endif()
+
+# The scratch path owns SwiftPM checkouts. Target it directly so the converter
+# patches are applied to the tree consumed by the CMake build, not the inert
+# ${SWIFT_WORK_DIR}/.build/checkouts path.
 if(HAZKEY_SERVER_ZENZAI_TRAIT)
     set(PATCH_FILE "${SWIFT_WORK_DIR}/patches/0001-zenzai-pin-vulkan-icd.patch")
-    set(CHECKOUT_DIR "${SWIFT_WORK_DIR}/.build/checkouts/AzooKeyKanaKanjiConverter")
+    set(CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
     set(TARGET_FILE "${CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift")
 
     if(EXISTS "${PATCH_FILE}" AND EXISTS "${TARGET_FILE}")
@@ -68,6 +81,40 @@ if(HAZKEY_SERVER_ZENZAI_TRAIT)
     endif()
 endif()
 
+# Apply the Zenzai inference timing seam after the Vulkan ICD mitigation that
+# it was generated on top of, and before the independent Japanese-number fix.
+if(HAZKEY_SERVER_ZENZAI_TRAIT)
+    set(INFERENCE_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0004-zenzai-inference-timer.patch")
+    set(INFERENCE_TARGET_FILE "${CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift")
+
+    if(EXISTS "${INFERENCE_PATCH_FILE}" AND EXISTS "${INFERENCE_TARGET_FILE}")
+        execute_process(
+            COMMAND grep -q "ZenzInferencePerf" "${INFERENCE_TARGET_FILE}"
+            RESULT_VARIABLE inference_patch_check_result
+        )
+        if(NOT inference_patch_check_result EQUAL 0)
+            message(STATUS "Applying Zenzai inference timing seam")
+            execute_process(
+                COMMAND git apply "${INFERENCE_PATCH_FILE}"
+                WORKING_DIRECTORY "${CHECKOUT_DIR}"
+                RESULT_VARIABLE inference_patch_result
+                OUTPUT_VARIABLE inference_patch_output
+                ERROR_VARIABLE inference_patch_error
+            )
+            if(NOT inference_patch_result EQUAL 0)
+                message(WARNING
+                    "Failed to apply Zenzai inference timing seam.\n"
+                    "git apply output: ${inference_patch_output}\n"
+                    "git apply error:  ${inference_patch_error}")
+            else()
+                message(STATUS "Zenzai inference timing seam applied successfully")
+            endif()
+        else()
+            message(STATUS "Zenzai inference timing seam already applied (skipping)")
+        endif()
+    endif()
+endif()
+
 # Apply the standalone-unit Japanese-number conversion fix to the
 # AzooKeyKanaKanjiConverter fork.
 # Upstream bug: getJapaneseNumberDicdata() early-returns an empty result for
@@ -85,7 +132,7 @@ endif()
 # Non-fatal: warns and continues if git apply fails, so Swift build is not
 # blocked when the upstream fork already ships the fix.
 set(NUMBER_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0003-fix-standalone-unit-japanese-number.patch")
-set(NUMBER_CHECKOUT_DIR "${SWIFT_WORK_DIR}/.build/checkouts/AzooKeyKanaKanjiConverter")
+set(NUMBER_CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
 set(NUMBER_TARGET_FILE "${NUMBER_CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift")
 
 if(EXISTS "${NUMBER_PATCH_FILE}" AND EXISTS "${NUMBER_TARGET_FILE}")
