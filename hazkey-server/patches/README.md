@@ -27,7 +27,7 @@
 ```
 (`53128a2` is a new capability — GPU/CPU device selection — not a port of any retired patch; it is listed here because it sits on the same fork branch between the header refresh and the ICD-pin/perf-seam commits.)
 
-**Operational caveat — the fork is local-only.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch has not been pushed to GitHub; it exists only as a local clone. `hazkey-server/Package.swift` currently points its converter dependency at `url: "file:///tmp/opencode/AzooKeyKanaKanjiConverter"` (a filesystem path under `/tmp`, not a `github.com` URL), `branch: "hazkey"`. If that local clone is lost (e.g. `/tmp` is cleared on reboot), the build cannot resolve this dependency until the clone is recreated and the four `hazkey:` commits above are re-created from this project's git history and evidence (`.omo/evidence/hazkey-converter-fork-update/`) before the dependency can resolve again. Pushing the fork branch to a persistent remote removes this risk but is out of scope for this update.
+**Fork availability.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch is pushed to GitHub at `https://github.com/presire/AzooKeyKanaKanjiConverter`, with tip `723e43d`. `hazkey-server/Package.swift` resolves that remote URL directly with `branch: "hazkey"`; no local `/tmp` clone is required to build or resolve the converter dependency.
 
 ## Apply-order narrative (current state)
 
@@ -58,7 +58,7 @@ The `hazkey-converter-fork-update` plan moved 0001, 0004, and 0005 onto the fork
 2. When `hazkey-server/llama.cpp` (the submodule) is bumped to a new pin, refresh the fork's vendored headers (`Sources/llama.cpp/llama.h`, `ggml.h`, `ggml-alloc.h`, `ggml-backend.h`, `ggml-cpu.h`, `ggml-opt.h`) and `module.modulemap` from that new pin, mirroring what fork commit `903cf04` did for pin `9d4f2c3f5`, and amend or add a new `hazkey:` commit for it.
 3. 0003 remains a standalone patch; revalidate it against the new fork tip with the same anchor guard (`hazkey-community patch` string in `JapaneseNumber.swift`) before trusting `build_swift.cmake`'s idempotency check.
 4. Re-run the receipt matrix: fork-side traited (`swift build --traits Zenzai`) and untraited (`swift build`) compile checks, then the full hazkey-server suite (`swift test --traits ZenzaiSupport`), the `HAZKEY_PARITY` candidate-parity gate, and the `HAZKEY_BENCH` inference-seam differential. Do not apply changes directly to a real (non-disposable) checkout.
-5. If the fork branch is ever pushed to a persistent remote, update `hazkey-server/Package.swift`'s dependency `url` from the local `file://` path to that remote URL and record the change alongside the new tip SHA.
+5. Push every future `hazkey` branch update to `https://github.com/presire/AzooKeyKanaKanjiConverter` and record the resulting tip SHA alongside any `hazkey-server/Package.swift` dependency change.
 
 All prior acceptance gates from the llama.cpp-update procedure still apply to any future update that touches this dependency:
 
