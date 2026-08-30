@@ -11,6 +11,11 @@ Hazkey input method for fcitx5
 
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を利用したIMEです。  
 
+> ホームページ (上流版)  
+> [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
+> ドキュメント (上流版)  
+> [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs)  
+
 <br>
 
 ## コミュニティ版の追加機能 (v0.2.2-community以降)
@@ -101,23 +106,7 @@ NVIDIA GPUとAMD/Intel iGPUが同居するLinux環境において、hazkey-serve
 
 <br>
 
-## ホームページ
-
-[https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
-
-## ドキュメント
-
-[https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs)  
-
-## インストール
-
-[インストールガイド](https://hazkey.hiira.dev/docs/install)  
-
-現在AURと[debianパッケージ](https://github.com/7ka-Hiira/fcitx5-hazkey/releases/latest)が利用できます。  
-
 ## ビルド
-
-詳細は[ドキュメントのビルドページを参照してください](https://hazkey.hiira.dev/docs/development/build)。  
 
 ### 依存関係
 
@@ -129,6 +118,142 @@ NVIDIA GPUとAMD/Intel iGPUが同居するLinux環境において、hazkey-serve
 - Ninja
 - Gettext
 - Vulkan SDKヘッダ (`libvulkan-dev` / `vulkan-headers`) - `GGML_VULKAN=ON` (デフォルト) のビルドで必要
+
+以下では、CI (`.github/workflows/build.yml`) で実際にビルド確認済みの4ディストリビューション向けに、  
+Swiftのインストールから依存パッケージの導入までを個別に示します。  
+
+### Swiftのインストール
+
+Hazkeyのビルドには Swift 6.1 以上が必要です。  
+公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
+
+> **2026年8月時点の注意**:  
+> Fedora 44 / openSUSE Leap 16 / Debian 13 (Trixie) / Ubuntu 26.04 は、  
+> いずれも [swift.orgの公式リリースtoolchain](https://www.swift.org/platform-support/) が未公開、または  
+> swiftly (現行配布版 v1.1.3) の自動検出リストに未登録のため、`swiftly init` は「非公式プラットフォーム」と判定します。  
+> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのtoolchainを明示指定してください。  
+> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform` 指定は不要になります)  
+
+#### Fedora 44
+
+```sh
+sudo dnf install git curl
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar zxf swiftly-$(uname -m).tar.gz
+./swiftly init --quiet-shell-followup --platform fedora39
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> Fedora 44は`fedora44`として自動検出されないため、公式リリースtoolchainが存在する`fedora39`を明示指定します。  
+> `fedora39` toolchainは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
+> (`fedora41` toolchainも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
+
+#### openSUSE Leap 16
+
+```sh
+sudo zypper install pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel \
+                    libicu-devel libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar xf swiftly-$(uname -m).tar.gz
+cd swiftly-$(uname -m)
+```
+
+`./swiftly init` 実行時に以下のエラーが表示される場合、openSUSEは証明書パスがDebian系と異なるため、シンボリックリンクの作成が必要です。  
+
+```sh
+# Error: The ca-certificates package is not installed. Swiftly won't be able to trust the sites ...
+sudo ln -s /var/lib/ca-certificates/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
+```
+
+```sh
+./swiftly init --quiet-shell-followup --platform ubi9
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> openSUSE/SUSE系はswift.orgで公式サポートされたことが1度もないため、**RHEL 9 (`ubi9`) のtoolchainを選択してください**。  
+> openSUSE Leap 16でのRHEL 9 toolchain選択は動作確認済みです。  
+> `swiftly`/`swift`実行時に `libxml2.so.2` が見つからないエラーが出た場合は、以下を試してください。  
+
+> ```sh
+> sudo zypper install libxml2-16
+> sudo ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
+> ```
+
+#### Debian 13 (Trixie) / Ubuntu 26.04
+
+```sh
+sudo apt update
+sudo apt install build-essential ca-certificates curl git
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar zxf swiftly-$(uname -m).tar.gz
+```
+
+```sh
+# Debian 13 (Trixie): Debian 13向けの公式toolchainは未公開のため、Debian 12を指定
+./swiftly init --quiet-shell-followup --platform debian12
+
+# Ubuntu 26.04: Ubuntu 26.04向けの公式toolchainは未公開のため、Ubuntu 24.04を指定
+./swiftly init --quiet-shell-followup --platform ubuntu24.04
+```
+
+```sh
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> **Ubuntu 26.04のみ追加対応が必要**:  
+> `ubuntu24.04`向けtoolchainは`libxml2.so.2`を要求しますが、  
+> Ubuntu 26.04は soname が上がった `libxml2.so.16` のみを同梱しているため、シンボリックリンクを作成してください。  
+
+> ```sh
+> sudo apt install libxml2-16
+> sudo ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 /usr/lib/x86_64-linux-gnu/libxml2.so.2
+> ```
+
+### 依存関係ライブラリのインストール
+
+Hazkeyのビルドに必要な依存パッケージをインストールします。  
+Vulkanを使用しない場合は `vulkan-headers` 系パッケージのインストールを省略できます (`-DGGML_VULKAN=OFF` でビルド)。  
+
+#### Fedora 44
+
+```sh
+sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
+                 protobuf-devel protobuf-compiler protobuf-lite-devel \
+                 fcitx5-devel fcitx5-qt-devel \
+                 qt6-qtbase-devel qt6-qttools-devel \
+                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
+                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel
+```
+
+#### openSUSE Leap 16
+
+```sh
+sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
+                    qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
+                    shaderc glslang-devel  # Vulkanを有効にする場合
+```
+
+#### Debian 13 (Trixie) / Ubuntu 26.04
+
+```sh
+sudo apt install cmake ninja-build pkg-config gettext \
+                 protobuf-compiler libprotobuf-dev \
+                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+                 qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+                 libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc
+```
 
 ### ソースビルド・インストール手順
 
@@ -148,11 +273,14 @@ ninja
 sudo ninja install
 ```
 
+> swiftlyでインストールしたSwiftツールチェーンを使う場合、CMakeがランタイムライブラリを見つけられないことがあります。  
+> その場合は `-DSWIFT_LINK_PATH=$HOME/.local/share/swiftly/toolchains/<バージョン>/usr/lib/swift/linux` を追加してください。  
+
 ### ビルドオプション
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
-| `GGML_VULKAN` | `ON` | Zenzaiニューラル変換のVulkanバックエンド<br>GPUアクセラレーションを使用しない場合は、`-DGGML_VULKAN=OFF` でCPU専用ビルドになります。 |
+| `GGML_VULKAN` | `ON` | Zenzaiニューラル変換のVulkanバックエンド<br>GPUアクセラレーションを使用しない場合は、<br>`-DGGML_VULKAN=OFF` でCPU専用ビルドになります。 |
 
 CPU専用ビルドの例:  
 
@@ -171,6 +299,88 @@ ninja
 sudo ninja install
 ```
 
+### Zenzai (GPUニューラル変換) のセットアップ
+
+Zenzaiは、ニューラル変換用のモデルとGGMLバックエンドを使用するオプション機能です。  
+GPUバックエンド (Vulkan) を使用する場合は、Hazkeyを `-DGGML_VULKAN=ON` (デフォルト) でビルドした上で、  
+以下の手順でVulkanドライバを導入してください。**CPUバックエンドのみでもZenzaiは使用可能**です。  
+
+#### NVIDIA GPU
+
+```sh
+#  Fedora 44 (RPM Fusionを使用。NVIDIA公式CUDAリポジトリはRHEL/CentOS向けのため非推奨) 
+sudo dnf install \
+  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda vulkan-tools
+## Maxwell/Pascal/Volta世代 (GeForce GTX 900/10系等) は580xxブランチを使用
+# sudo dnf install akmod-nvidia-580xx xorg-x11-drv-nvidia-580xx xorg-x11-drv-nvidia-580xx-cuda vulkan-tools
+sudo akmods --force && sudo dracut --force
+sudo reboot
+
+#  openSUSE Leap 16 
+sudo zypper addrepo --refresh 'https://download.nvidia.com/opensuse/leap/$releasever/' NVIDIA
+sudo zypper refresh
+sudo zypper install nvidia-driver-G07-kmp-meta nvidia-gl-G07 vulkan-tools
+## GeForce GT 1030を含むPascal世代以前のGPUはG06系列 (プロプライエタリ) を使用
+# sudo zypper install nvidia-driver-G06-kmp-meta nvidia-gl-G06 vulkan-tools
+sudo reboot
+
+#  Debian 13 (Trixie) 
+sudo sed -i 's/^Components: main non-free-firmware/Components: main contrib non-free non-free-firmware/' \
+  /etc/apt/sources.list.d/debian.sources
+sudo apt update
+sudo apt install linux-headers-$(uname -r) nvidia-driver firmware-misc-nonfree
+sudo reboot
+
+#  Ubuntu 26.04 (標準のrestrictedリポジトリから導入。PPA追加は不要) 
+sudo ubuntu-drivers install
+sudo reboot
+```
+
+再起動後、NVIDIAドライバとVulkanを確認します。  
+
+```sh
+nvidia-smi
+vulkaninfo --summary
+```
+
+`vulkaninfo --summary` の出力にNVIDIA GPUが表示されれば、Vulkanバックエンドは利用可能です。  
+
+#### AMD GPU
+
+```sh
+# Fedora 44
+sudo dnf install mesa-vulkan-drivers vulkan-tools
+
+# openSUSE Leap 16
+sudo zypper install libvulkan_radeon vulkan-tools
+
+# Debian 13 (Trixie) / Ubuntu 26.04
+sudo apt install mesa-vulkan-drivers vulkan-tools
+```
+
+```sh
+vulkaninfo --summary
+```
+
+`vulkaninfo --summary` の出力にAMD Radeon GPUが表示されれば、Vulkanドライバは利用可能です。  
+
+> `vulkaninfo` は上記いずれのディストリビューションでも `vulkan-tools` パッケージに含まれます (`mesa-utils` は不要です)。  
+> ドライバ導入後は `ls /usr/share/vulkan/icd.d/` で `nvidia_icd.json` (NVIDIA) または  
+> `radeon_icd*.json` (AMD) が存在することを確認してください。マルチGPU環境での注意点は下記トラブルシューティングを参照してください。  
+
+#### モデルのダウンロードと有効化
+
+1. hazkey-settingsを起動して、[AI]タブを開きます。  
+2. 黄色の警告欄にある [モデルをダウンロード]ボタンを押下します。  
+3. Zenzai v3.1 smallモデルが自動的にダウンロードされ、SHA-256を検証した後に以下のディレクトリへ保存されます。  
+   `~/.local/share/hazkey/zenzai/zenzai.gguf`  
+4. ダウンロード完了後に[再読み込み]ボタンを押下します。  
+5. [Zenzaiを有効化]チェックボックスにチェックを入れて、[適用]または[OK]ボタンを押下します。  
+6. Vulkan GPUがバックエンドの選択肢に表示されない場合は、Fcitx5を再起動してください。  
+   `fcitx5-remote -r`  
+
 ## トラブルシューティング
 
 ### マルチGPU環境でhazkey-serverがSIGILLでクラッシュする
@@ -186,6 +396,7 @@ Zenzai初期化時に `ggml_backend_load_all()` → Vulkan loaderがシステム
 SIGILLはtrap命令のため `do/catch` で捕捉できません。  
 
 **回避策**:  
+
 本プロジェクトでは、以下の3層で自動的に回避します。  
 
 1. **ラッパースクリプト** (`hazkey-server.sh`):  
@@ -227,7 +438,7 @@ VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_icd.x86_64.json
 EOF
 ```
 
-> 注:  
+> 注意:  
 > ICDファイル名はディストリビューション・ドライバにより異なります。  
 > - **AMD**: Mesa (RADV) は `radeon_icd.json`、AMD公式ドライバ (amdvlk) は `amd_icd.x86_64.json`  
 > - **Intel**: Mesa (ANV) は `intel_icd.x86_64.json` (32ビット環境では `intel_icd.i686.json`)  
