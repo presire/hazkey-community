@@ -96,7 +96,6 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     set(CMAKE_SKIP_BUILD_RPATH OFF)
 
     set(BUILD_SHARED_LIBS ON CACHE BOOL "")
-    set(LLAMA_CURL OFF CACHE BOOL "")
     set(LLAMA_STANDALONE OFF CACHE BOOL "")
     set(GGML_NATIVE OFF CACHE BOOL "")
     set(GGML_BACKEND_DL ON CACHE BOOL "")
@@ -110,47 +109,6 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     set(GGML_CUDA OFF CACHE BOOL "")
     set(GGML_HIP OFF CACHE BOOL "")
     set(CMAKE_SKIP_BUILD_RPATH ON CACHE BOOL "")
-
-    # Apply Vulkan shader parallelism patch to the llama.cpp submodule.
-    # vulkan-shaders-gen forks up to 16 glslc subprocesses in parallel, which
-    # can exceed the process-table limit in constrained CI containers and
-    # silently drop shader symbols (manifesting as "was not declared in this
-    # scope" errors when compiling ggml-vulkan.cpp). The patch makes the
-    # concurrency limit overridable via the GGML_VULKAN_SHADER_MAX_PARALLEL
-    # env var.
-    #
-    # Idempotent: skips when the patch is already applied (e.g. on rebuild).
-    # Non-fatal: warns and continues if git apply fails, so the build is not
-    # blocked when the upstream submodule already ships the mitigation.
-    set(VULKAN_SHADER_PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/patches/0002-vulkan-shader-max-parallel.patch")
-    set(VULKAN_SHADER_TARGET_FILE "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp")
-
-    if(EXISTS "${VULKAN_SHADER_PATCH_FILE}" AND EXISTS "${VULKAN_SHADER_TARGET_FILE}")
-        execute_process(
-            COMMAND grep -q "GGML_VULKAN_SHADER_MAX_PARALLEL" "${VULKAN_SHADER_TARGET_FILE}"
-            RESULT_VARIABLE vulkan_patch_check_result
-        )
-        if(NOT vulkan_patch_check_result EQUAL 0)
-            message(STATUS "Applying Vulkan shader parallelism patch")
-            execute_process(
-                COMMAND git apply "${VULKAN_SHADER_PATCH_FILE}"
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp"
-                RESULT_VARIABLE vulkan_patch_result
-                OUTPUT_VARIABLE vulkan_patch_output
-                ERROR_VARIABLE vulkan_patch_error
-            )
-            if(NOT vulkan_patch_result EQUAL 0)
-                message(WARNING
-                    "Failed to apply Vulkan shader parallelism patch.\n"
-                    "git apply output: ${vulkan_patch_output}\n"
-                    "git apply error:  ${vulkan_patch_error}")
-            else()
-                message(STATUS "Vulkan shader parallelism patch applied successfully")
-            endif()
-        else()
-            message(STATUS "Vulkan shader parallelism patch already applied (skipping)")
-        endif()
-    endif()
 
     add_subdirectory(llama.cpp EXCLUDE_FROM_ALL)
 

@@ -115,6 +115,39 @@ if(HAZKEY_SERVER_ZENZAI_TRAIT)
     endif()
 endif()
 
+# Apply the llama memory API migration after the Zenzai inference timing seam
+# it was generated on top of, and before the independent Japanese-number fix.
+if(HAZKEY_SERVER_ZENZAI_TRAIT)
+    set(MEMORY_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0005-zenzai-llama-memory-api.patch")
+
+    if(EXISTS "${MEMORY_PATCH_FILE}" AND EXISTS "${INFERENCE_TARGET_FILE}")
+        execute_process(
+            COMMAND grep -q "llama_memory_seq_pos_max" "${INFERENCE_TARGET_FILE}"
+            RESULT_VARIABLE memory_patch_check_result
+        )
+        if(NOT memory_patch_check_result EQUAL 0)
+            message(STATUS "Applying Zenzai llama memory API patch")
+            execute_process(
+                COMMAND git apply "${MEMORY_PATCH_FILE}"
+                WORKING_DIRECTORY "${CHECKOUT_DIR}"
+                RESULT_VARIABLE memory_patch_result
+                OUTPUT_VARIABLE memory_patch_output
+                ERROR_VARIABLE memory_patch_error
+            )
+            if(NOT memory_patch_result EQUAL 0)
+                message(WARNING
+                    "Failed to apply Zenzai llama memory API patch.\n"
+                    "git apply output: ${memory_patch_output}\n"
+                    "git apply error:  ${memory_patch_error}")
+            else()
+                message(STATUS "Zenzai llama memory API patch applied successfully")
+            endif()
+        else()
+            message(STATUS "Zenzai llama memory API patch already applied (skipping)")
+        endif()
+    endif()
+endif()
+
 # Apply the standalone-unit Japanese-number conversion fix to the
 # AzooKeyKanaKanjiConverter fork.
 # Upstream bug: getJapaneseNumberDicdata() early-returns an empty result for
