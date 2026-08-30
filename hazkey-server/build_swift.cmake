@@ -25,16 +25,8 @@ if(SWIFT_LINK_PATH)
     list(APPEND SWIFT_COMMAND "-Xlinker" "-L${SWIFT_LINK_PATH}")
 endif()
 
-# Apply Vulkan ICD mitigation patch to the AzooKeyKanaKanjiConverter fork.
-# Workaround for https://github.com/7ka-Hiira/hazkey/issues/29: on multi-GPU
-# Linux systems (NVIDIA dGPU + AMD/Intel iGPU with both nvidia_icd.json and
-# radeon_icd.json installed), Zenzai/Vulkan init crashes hazkey-server with
-# SIGILL. The patch pins the Vulkan loader to a single ICD before
-# ggml_backend_load_all() runs.
-#
-# Idempotent: skips when the patch is already applied (e.g. on rebuild).
-# Non-fatal: warns and continues if git apply fails, so Swift build is not
-# blocked when the upstream fork already ships the mitigation.
+# Resolve the converter checkout before applying the standalone-unit
+# Japanese-number conversion fix.
 execute_process(
     COMMAND "${SWIFT_EXECUTABLE}" package resolve
             "--scratch-path=${CMAKE_CURRENT_BINARY_DIR}/swift-build"
@@ -43,109 +35,6 @@ execute_process(
 )
 if(NOT resolve_result EQUAL 0)
     message(FATAL_ERROR "Swift package resolve failed; converter checkouts are required for patch application.")
-endif()
-
-# The scratch path owns SwiftPM checkouts. Target it directly so the converter
-# patches are applied to the tree consumed by the CMake build, not the inert
-# ${SWIFT_WORK_DIR}/.build/checkouts path.
-if(HAZKEY_SERVER_ZENZAI_TRAIT)
-    set(PATCH_FILE "${SWIFT_WORK_DIR}/patches/0001-zenzai-pin-vulkan-icd.patch")
-    set(CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
-    set(TARGET_FILE "${CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift")
-
-    if(EXISTS "${PATCH_FILE}" AND EXISTS "${TARGET_FILE}")
-        execute_process(
-            COMMAND grep -q "pinVulkanICDIfNeeded" "${TARGET_FILE}"
-            RESULT_VARIABLE patch_check_result
-        )
-        if(NOT patch_check_result EQUAL 0)
-            message(STATUS "Applying Vulkan ICD mitigation patch (Issue #29)")
-            execute_process(
-                COMMAND git apply "${PATCH_FILE}"
-                WORKING_DIRECTORY "${CHECKOUT_DIR}"
-                RESULT_VARIABLE patch_result
-                OUTPUT_VARIABLE patch_output
-                ERROR_VARIABLE patch_error
-            )
-            if(NOT patch_result EQUAL 0)
-                message(WARNING
-                    "Failed to apply Vulkan ICD patch (Issue #29 mitigation inactive).\n"
-                    "git apply output: ${patch_output}\n"
-                    "git apply error:  ${patch_error}")
-            else()
-                message(STATUS "Vulkan ICD mitigation patch applied successfully")
-            endif()
-        else()
-            message(STATUS "Vulkan ICD mitigation patch already applied (skipping)")
-        endif()
-    endif()
-endif()
-
-# Apply the Zenzai inference timing seam after the Vulkan ICD mitigation that
-# it was generated on top of, and before the independent Japanese-number fix.
-if(HAZKEY_SERVER_ZENZAI_TRAIT)
-    set(INFERENCE_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0004-zenzai-inference-timer.patch")
-    set(INFERENCE_TARGET_FILE "${CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift")
-
-    if(EXISTS "${INFERENCE_PATCH_FILE}" AND EXISTS "${INFERENCE_TARGET_FILE}")
-        execute_process(
-            COMMAND grep -q "ZenzInferencePerf" "${INFERENCE_TARGET_FILE}"
-            RESULT_VARIABLE inference_patch_check_result
-        )
-        if(NOT inference_patch_check_result EQUAL 0)
-            message(STATUS "Applying Zenzai inference timing seam")
-            execute_process(
-                COMMAND git apply "${INFERENCE_PATCH_FILE}"
-                WORKING_DIRECTORY "${CHECKOUT_DIR}"
-                RESULT_VARIABLE inference_patch_result
-                OUTPUT_VARIABLE inference_patch_output
-                ERROR_VARIABLE inference_patch_error
-            )
-            if(NOT inference_patch_result EQUAL 0)
-                message(WARNING
-                    "Failed to apply Zenzai inference timing seam.\n"
-                    "git apply output: ${inference_patch_output}\n"
-                    "git apply error:  ${inference_patch_error}")
-            else()
-                message(STATUS "Zenzai inference timing seam applied successfully")
-            endif()
-        else()
-            message(STATUS "Zenzai inference timing seam already applied (skipping)")
-        endif()
-    endif()
-endif()
-
-# Apply the llama memory API migration after the Zenzai inference timing seam
-# it was generated on top of, and before the independent Japanese-number fix.
-if(HAZKEY_SERVER_ZENZAI_TRAIT)
-    set(MEMORY_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0005-zenzai-llama-memory-api.patch")
-
-    if(EXISTS "${MEMORY_PATCH_FILE}" AND EXISTS "${INFERENCE_TARGET_FILE}")
-        execute_process(
-            COMMAND grep -q "llama_memory_seq_pos_max" "${INFERENCE_TARGET_FILE}"
-            RESULT_VARIABLE memory_patch_check_result
-        )
-        if(NOT memory_patch_check_result EQUAL 0)
-            message(STATUS "Applying Zenzai llama memory API patch")
-            execute_process(
-                COMMAND git apply "${MEMORY_PATCH_FILE}"
-                WORKING_DIRECTORY "${CHECKOUT_DIR}"
-                RESULT_VARIABLE memory_patch_result
-                OUTPUT_VARIABLE memory_patch_output
-                ERROR_VARIABLE memory_patch_error
-            )
-            if(NOT memory_patch_result EQUAL 0)
-                message(WARNING
-                    "Failed to apply Zenzai llama memory API patch.\n"
-                    "git apply output: ${memory_patch_output}\n"
-                    "git apply error:  ${memory_patch_error}")
-            else()
-                message(STATUS "Zenzai llama memory API patch applied successfully")
-            endif()
-        else()
-            message(STATUS "Zenzai llama memory API patch already applied (skipping)")
-        endif()
-    endif()
 endif()
 
 # Apply the standalone-unit Japanese-number conversion fix to the
