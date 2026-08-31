@@ -69,7 +69,7 @@ jobs:
 
       - name: Fix llama.cpp safe.directory
         # git submodule operations inside nested repos trigger
-      # "dubious ownership" errors without this.
+        # "dubious ownership" errors without this.
         run: |
           git config --global --add safe.directory \
             "$(pwd)/hazkey-server/llama.cpp"

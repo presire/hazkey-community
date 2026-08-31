@@ -173,7 +173,7 @@ jobs:
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
             [0-9]*.[0-9]*.[0-9]* ) ;;
-            * ) version="0.2.4" ;;
+            * ) version="0.2.14" ;;
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then
