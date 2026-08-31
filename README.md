@@ -276,6 +276,13 @@ sudo ninja install
 > swiftlyでインストールしたSwiftツールチェーンを使う場合、CMakeがランタイムライブラリを見つけられないことがあります。  
 > その場合は `-DSWIFT_LINK_PATH=$HOME/.local/share/swiftly/toolchains/<バージョン>/usr/lib/swift/linux` を追加してください。  
 
+> **注意:  
+> ソースの配置パスに角括弧 `[` `]` を含めないでください。**  
+> パスに角括弧が含まれていると (例: `[開発]hazkey-community`)、CMakeの `file(GLOB)` が角括弧を文字クラスとして解釈するため、
+> llama.cppのVulkanビルド (`ExternalProject_Add`) が「source directory is empty」と誤検出してconfigureに失敗します。  
+> 角括弧を含まないパスにcloneするか、`ln -sfn /actual/path/hazkey-community /tmp/hazkey-src-link` のように  
+> 角括弧を含まないsymlink経由でcmakeを実行してください。全角文字自体は問題ありません。  
+
 ### ビルドオプション
 
 | オプション | デフォルト | 説明 |
