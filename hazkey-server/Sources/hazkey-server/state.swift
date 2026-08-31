@@ -381,6 +381,12 @@ class HazkeyServerState {
         var userDictionaryStartedAt = candidateStartedAt
         var userDictionaryFinishedAt = candidateStartedAt
         var zenzaiInferenceNanoseconds: UInt64?
+        // Surface texts already emitted into the response. The converter
+        // deduplicates within predictionResults and within mainResults
+        // separately, but the two arrays can share texts (a user dictionary
+        // word also surfaces as a prediction of its own best node), so the
+        // concatenated list must skip later duplicates.
+        var appendedTexts: Set<String> = []
 
         func canAppend(
             isSuggest: Bool,
@@ -397,6 +403,8 @@ class HazkeyServerState {
             serverCandidates: inout [DisplayedCandidate],
             clientCandidates: inout [Hazkey_Commands_CandidatesResult.Candidate]
         ) {
+            appendedTexts.insert(candidate.text)
+
             var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
             clientCandidate.text = candidate.text
 
@@ -503,6 +511,18 @@ class HazkeyServerState {
             // find live text
             if candidatesResult.liveText.isEmpty && isExactMatch {
                 candidatesResult.liveText = candidate.text
+                // Duplicate of an already-appended entry (the same surface was
+                // emitted as a learned prediction / earlier result): keep the
+                // earlier entry and point the live text at it instead of
+                // appending the same text twice.
+                if let keptIndex = serverCandidates.firstIndex(where: { entry in
+                    if case .fromConverter(let kept) = entry { return kept.text == candidate.text }
+                    return false
+                }) {
+                    candidatesResult.liveTextIndex = Int32(keptIndex)
+                    if limitReached { break }
+                    continue
+                }
                 candidatesResult.liveTextIndex = Int32(serverCandidates.count)
                 if is_suggest && serverCandidates.count >= N_best {
                     serverCandidates.append(.fromConverter(candidate))
@@ -511,6 +531,13 @@ class HazkeyServerState {
             }
 
             if limitReached && !candidatesResult.liveText.isEmpty { break }
+
+            if appendedTexts.contains(candidate.text) {
+                // Cross-source duplicate (learned prediction + user dictionary
+                // collision): the kept earlier entry already represents this
+                // text, so skip the redundant copy.
+                continue
+            }
 
             appendCandidate(
                 candidate,
