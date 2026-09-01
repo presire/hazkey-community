@@ -87,7 +87,8 @@ jobs:
                 cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
                 libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev libncurses6 \
-                glslc protobuf-compiler libprotobuf-dev dpkg-dev
+                glslc protobuf-compiler libprotobuf-dev dpkg-dev \
+                spirv-headers
               ;;
             fedora)
               dnf install -y \
@@ -97,7 +98,8 @@ jobs:
                 fcitx5-devel fcitx5-qt-devel \
                 protobuf-compiler protobuf-devel protobuf-lite-devel \
                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
-                libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel
+                libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
+                spirv-headers-devel
               ;;
             opensuse)
               zypper --non-interactive --gpg-auto-import-keys refresh
@@ -107,7 +109,7 @@ jobs:
                 libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \
                 cmake ninja gettext-tools protobuf-devel fcitx5-devel \
                 qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
-                shaderc glslang-devel
+                shaderc glslang-devel spirv-headers
 
               # Swift (Ubuntu 24.04 build) needs libxml2.so.2; Tumbleweed only ships
               # libxml2-16 (libxml2.so.16) after the 2.14 soname bump, so symlink it.
@@ -173,7 +175,7 @@ jobs:
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
             [0-9]*.[0-9]*.[0-9]* ) ;;
-            * ) version="0.2.14" ;;
+            * ) version="0.2.15" ;;
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then

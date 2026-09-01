@@ -20,6 +20,8 @@
 
 **Fork commits (in order, tip first):**
 ```
+e4fba90 hazkey: minimal compile fixes for llama.cpp pin 00842b94
+2bd54a6 hazkey: refresh vendored llama.cpp headers to hazkey pin 00842b94
 723e43d hazkey: pin Vulkan ICD before backend init and add inference timing seam
 53128a2 hazkey: port device config API for GPU/CPU selection
 5c2ad77 hazkey: migrate to llama_memory_* API
@@ -27,7 +29,7 @@
 ```
 (`53128a2` is a new capability — GPU/CPU device selection — not a port of any retired patch; it is listed here because it sits on the same fork branch between the header refresh and the ICD-pin/perf-seam commits.)
 
-**Fork availability.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch is pushed to GitHub at `https://github.com/presire/AzooKeyKanaKanjiConverter`, with tip `723e43d`. `hazkey-server/Package.swift` resolves that remote URL directly with `branch: "hazkey"`; no local `/tmp` clone is required to build or resolve the converter dependency.
+**Fork availability.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch is pushed to GitHub at `https://github.com/presire/AzooKeyKanaKanjiConverter`, with tip `e4fba90`. `hazkey-server/Package.swift` resolves that remote URL directly with `branch: "hazkey"`; no local `/tmp` clone is required to build or resolve the converter dependency.
 
 ## Apply-order narrative (current state)
 
@@ -44,18 +46,26 @@ There is now only one converter patch left to apply at build time: 0003. `hazkey
 
 The CMake build in `hazkey-server/CMakeLists.txt` passes the following llama.cpp configuration surface: `BUILD_SHARED_LIBS=ON`, `LLAMA_CURL=OFF`, `LLAMA_STANDALONE=OFF`, `GGML_NATIVE=OFF`, `GGML_BACKEND_DL=ON`, `GGML_CPU_ALL_VARIANTS=ON`, `GGML_CPU=ON`, the `GGML_VULKAN` option (default ON), `GGML_CUDA=OFF`, `GGML_HIP=OFF`, and install rpath `$ORIGIN`.
 
-The C API is also a header ABI boundary. The converter fork ships its own `Sources/llama.cpp/module.modulemap` (refreshed by fork commit `903cf04`), which now exposes `llama.h`, `ggml.h`, `ggml-alloc.h`, `ggml-backend.h`, `ggml-cpu.h`, and `ggml-opt.h`, and links `llama`, `ggml`, and `ggml-base`. Because the header refresh is now a fork commit rather than a patch, a future llama.cpp bump means updating the fork's vendored headers directly (see FUTURE update procedure below), not editing a patch file.
+The C API is also a header ABI boundary. The converter fork ships its own `Sources/llama.cpp/module.modulemap` (refreshed by fork commit `903cf04` for pin `9d4f2c3f5`, then again by `2bd54a6` for pin `00842b94`), which now exposes seven headers — `llama.h`, `ggml.h`, `ggml-alloc.h`, `ggml-backend.h`, `ggml-cpu.h`, `ggml-opt.h`, and `gguf.h` (newly added at pin `00842b94`) — and links `llama`, `ggml`, and `ggml-base`. Because the header refresh is now a fork commit rather than a patch, a future llama.cpp bump means updating the fork's vendored headers directly (see FUTURE update procedure below), not editing a patch file.
 
-The model-format axis is independent but coupled to the upgrade decision: the submodule pins `presire/llama.cpp` on its `hazkey` branch at `9d4f2c3f5c2a1749d18ca982130ca1958b1fb5bb`, and the installed `zenzai.gguf` must remain loadable by that library. Compatibility cannot be inferred only from a successful CMake compile.
+The model-format axis is independent but coupled to the upgrade decision: the submodule pins `presire/llama.cpp` on its `hazkey` branch at `00842b94eaa7c7c6b2f11c394f049711f6d20718` (updated from `9d4f2c3f5c2a1749d18ca982130ca1958b1fb5bb` on 2026-09-01), and the installed `zenzai.gguf` must remain loadable by that library. Compatibility cannot be inferred only from a successful CMake compile.
+
+New build-time requirement at pin `00842b94`: upstream `ggml/src/ggml-vulkan/CMakeLists.txt` now runs `find_package(SPIRV-Headers CONFIG REQUIRED)`, and the `ggml-vulkan` target does not propagate the found package's include directory to the compiler, so a locally provisioned SPIRV-Headers prefix must be handed to CMake *and* to the compiler. The exact recipe used for the 2026-09-01 sync (no sudo, everything under `/tmp/opencode`):
+
+1. `git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/opencode/spirv-headers-src`
+2. `cmake -S /tmp/opencode/spirv-headers-src -B /tmp/opencode/spirv-headers-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/tmp/opencode/spirv-headers-prefix && cmake --build /tmp/opencode/spirv-headers-build -j$(nproc) && cmake --install /tmp/opencode/spirv-headers-build` — this installs `share/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake` and `include/spirv/unified1/spirv.hpp` into the prefix.
+3. Configure the hazkey build with `VULKAN_SDK=/tmp/opencode/spirv-headers-prefix`, `SPIRV-Headers_DIR=/tmp/opencode/spirv-headers-prefix/share/cmake/SPIRV-Headers` (the variable name contains a hyphen, so inject it via `env 'SPIRV-Headers_DIR=...' cmake ...`), and `CXXFLAGS=-I/tmp/opencode/spirv-headers-prefix/include` (lands in `CMAKE_CXX_FLAGS`; without it `ggml-vulkan.cpp` fails on the missing `spirv/unified1/spirv.hpp`).
+
+Once a distro `spirv-headers-devel` package places `spirv/unified1/spirv.hpp` on a default compiler include path, the local prefix (and `CXXFLAGS`) is no longer needed.
 
 The Zenzai path currently depends on these llama.cpp API families: `llama_backend_init`, `ggml_backend_load_all`, `llama_model_load*`, `llama_init_from_model`, `llama_get_memory`, `llama_memory_seq_pos_max`, `llama_memory_seq_rm`, `llama_memory_seq_cp`, `llama_batch_init`, `llama_batch_add`, `llama_batch_free`, `llama_decode`, `llama_get_logits`, `llama_n_ctx`, and `llama_vocab_n_tokens`. Treat the `llama_memory_*` family as historically churn-prone and review its semantics and signatures first during an upgrade.
 
 ## FUTURE update procedure
 
-The `hazkey-converter-fork-update` plan moved 0001, 0004, and 0005 onto the fork's `hazkey` branch as ordinary commits (`903cf04`, `5c2ad77`, `53128a2`, `723e43d`, on top of upstream `93766c4`). Future maintenance follows the same model the `presire/llama.cpp` fork already uses:
+The `hazkey-converter-fork-update` plan moved 0001, 0004, and 0005 onto the fork's `hazkey` branch as ordinary commits (`903cf04`, `5c2ad77`, `53128a2`, `723e43d`, on top of upstream `93766c4`); the 2026-09-01 llama.cpp upstream sync added `2bd54a6` (header refresh for pin `00842b94`) and `e4fba90` (minimal compile fixes for that pin) on top. Future maintenance follows the same model the `presire/llama.cpp` fork already uses:
 
-1. To pull in upstream `azooKey/AzooKeyKanaKanjiConverter` changes, run `git merge azooKey/main` (or the equivalent upstream remote) into the fork's `hazkey` branch in the local clone, then rebase the four `hazkey:` commits on top if the merge produces conflicts in the files they touch (`ZenzContext.swift`, `ConvertRequestOptions.swift`, `llama-mock.swift`, `Sources/llama.cpp/*`).
-2. When `hazkey-server/llama.cpp` (the submodule) is bumped to a new pin, refresh the fork's vendored headers (`Sources/llama.cpp/llama.h`, `ggml.h`, `ggml-alloc.h`, `ggml-backend.h`, `ggml-cpu.h`, `ggml-opt.h`) and `module.modulemap` from that new pin, mirroring what fork commit `903cf04` did for pin `9d4f2c3f5`, and amend or add a new `hazkey:` commit for it.
+1. To pull in upstream `azooKey/AzooKeyKanaKanjiConverter` changes, run `git merge azooKey/main` (or the equivalent upstream remote) into the fork's `hazkey` branch in the local clone, then rebase the `hazkey:` commits on top if the merge produces conflicts in the files they touch (`ZenzContext.swift`, `ConvertRequestOptions.swift`, `llama-mock.swift`, `Sources/llama.cpp/*`).
+2. When `hazkey-server/llama.cpp` (the submodule) is bumped to a new pin, refresh the fork's vendored headers (`Sources/llama.cpp/llama.h`, `ggml.h`, `ggml-alloc.h`, `ggml-backend.h`, `ggml-cpu.h`, `ggml-opt.h`, `gguf.h`) and `module.modulemap` from that new pin, mirroring what fork commit `903cf04` did for pin `9d4f2c3f5` and what `2bd54a6` did for pin `00842b94`, and amend or add a new `hazkey:` commit for it. For pins whose `ggml-vulkan` requires `find_package(SPIRV-Headers)` (as `00842b94` does), provision the local SPIRV-Headers prefix and build-time env per the recipe in the llama.cpp dependency surface section before configuring.
 3. 0003 remains a standalone patch; revalidate it against the new fork tip with the same anchor guard (`hazkey-community patch` string in `JapaneseNumber.swift`) before trusting `build_swift.cmake`'s idempotency check.
 4. Re-run the receipt matrix: fork-side traited (`swift build --traits Zenzai`) and untraited (`swift build`) compile checks, then the full hazkey-server suite (`swift test --traits ZenzaiSupport`), the `HAZKEY_PARITY` candidate-parity gate, and the `HAZKEY_BENCH` inference-seam differential. Do not apply changes directly to a real (non-disposable) checkout.
 5. Push every future `hazkey` branch update to `https://github.com/presire/AzooKeyKanaKanjiConverter` and record the resulting tip SHA alongside any `hazkey-server/Package.swift` dependency change.

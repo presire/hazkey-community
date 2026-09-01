@@ -47,7 +47,8 @@ jobs:
             qt6-l10n-tools \
             libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
             libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev \
-            libncurses6 glslc protobuf-compiler libprotobuf-dev
+            libncurses6 glslc protobuf-compiler libprotobuf-dev \
+            spirv-headers
 
       - name: Install Swift 6.3.3 toolchain
         run: |

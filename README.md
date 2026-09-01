@@ -1,4 +1,4 @@
-# fcitx5-hazkey
+# fcitx5-hazkey-community
 
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)  
 
@@ -225,6 +225,7 @@ swift --version
 
 Hazkeyのビルドに必要な依存パッケージをインストールします。  
 Vulkanを使用しない場合は `vulkan-headers` 系パッケージのインストールを省略できます (`-DGGML_VULKAN=OFF` でビルド)。  
+`spirv-headers` 系パッケージは、内蔵のllama.cppがVulkanシェーダのビルド時にSPIR-Vヘッダを要求するため必須です (`-DGGML_VULKAN=OFF` の場合もCMake configure時に `find_package` が要求します)。  
 
 #### Fedora 44
 
@@ -234,7 +235,8 @@ sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
                  fcitx5-devel fcitx5-qt-devel \
                  qt6-qtbase-devel qt6-qttools-devel \
                  vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
-                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel
+                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
+                 spirv-headers-devel
 ```
 
 #### openSUSE Leap 16
@@ -242,6 +244,7 @@ sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
 ```sh
 sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
                     qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
+                    spirv-headers \
                     shaderc glslang-devel  # Vulkanを有効にする場合
 ```
 
@@ -252,7 +255,8 @@ sudo apt install cmake ninja-build pkg-config gettext \
                  protobuf-compiler libprotobuf-dev \
                  libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
                  qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
-                 libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc
+                 libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc \
+                 spirv-headers
 ```
 
 ### ソースビルド・インストール手順
