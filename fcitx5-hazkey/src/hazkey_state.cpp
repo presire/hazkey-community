@@ -1,14 +1,18 @@
 #include "hazkey_state.h"
 
+#include <fcitx-utils/event.h>
+#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx/candidatelist.h>
+#include <fcitx/instance.h>
 
 #include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "candidate_refresh_coalescer.h"
 #include "commands.pb.h"
 #include "fcitx-utils/keysym.h"
 #include "hazkey_candidate.h"
@@ -118,7 +122,12 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
             if (isInputableEvent(event)) {
                 updateSurroundingText();
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
-                showPreeditCandidateList();
+                // Display-only refresh: coalesce rapid successive keystrokes
+                // (see scheduleCandidateRefresh() for rationale). inputChar
+                // itself, above, is the state-mutating RPC and remains
+                // synchronous/ordered -- only the candidate LIST display is
+                // deferred/coalesced.
+                scheduleCandidateRefresh(/*isSuggest=*/true);
                 setHiraganaAUX();
             } else {
                 reset();
@@ -169,7 +178,9 @@ void HazkeyState::preeditKeyEvent(
             if (!isDirectConversionMode_ &&
                 event.key().states() == KeyState::Shift) {
                 engine_->server().inputChar(" ");
-                showPreeditCandidateList();
+                // Display-only refresh: coalesce (see
+                // scheduleCandidateRefresh()).
+                scheduleCandidateRefresh(/*isSuggest=*/true);
             } else {
                 showNonPredictCandidateList();
             }
@@ -221,7 +232,9 @@ void HazkeyState::preeditKeyEvent(
                     reset();
                 }
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
-                showPreeditCandidateList();
+                // Display-only refresh: coalesce (see
+                // scheduleCandidateRefresh()).
+                scheduleCandidateRefresh(/*isSuggest=*/true);
             }
             break;
     }
@@ -640,6 +653,84 @@ void HazkeyState::showPreeditCandidateList() {
     }
 }
 
+/// Candidate refresh coalescing
+//
+// Composition with the existing client-side read-through RPC cache
+// (hazkey_server_connector.h): that cache deduplicates *identical* repeated
+// reads within one composition epoch and is invalidated by state-mutating
+// RPCs (inputChar, deleteLeft/Right, moveCursor, setContext,
+// newComposingText, etc. -- see HazkeyServerConnector::invalidateCache()
+// callers). The coalescer here sits ABOVE that cache, at the call-site
+// level: it does not know or care whether the eventual getCandidates() read
+// would hit the cache or not, it only reduces HOW OFTEN that call happens
+// by collapsing several rapid keystrokes' worth of display-only refresh
+// requests into a single deferred execution. When the deferred refresh
+// finally runs, it goes through showCandidateList(true) ->
+// engine_->server().getCandidates(true) exactly as an uncoalesced call
+// would, so it still benefits from (and does not fight with) the
+// connector's cache. Scheduling never invalidates the cache -- only state
+// mutations do that, and state-mutating operations (inputChar's RPC itself,
+// commit, delete/cursor, clause-boundary adjustment, live-convert toggle,
+// direct conversion) bypass the coalescer entirely and stay synchronous.
+//
+// Thread-safety: fcitx5 key events and this addon's event-loop timer
+// callbacks both run on fcitx5's single event-loop thread (there is no
+// separate worker thread involved anywhere in this addon), so coalescer_,
+// refreshTimer_, and pendingRefreshIsSuggest_ need no locking.
+
+void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
+    pendingRefreshIsSuggest_ = isSuggest;
+    const uint64_t nowUsec = now(CLOCK_MONOTONIC);
+    if (coalescer_.shouldSchedule(nowUsec, kCandidateRefreshCoalesceUsec)) {
+        // Assigning to refreshTimer_ destroys any previously-owned
+        // EventSourceTime first (std::unique_ptr::operator= semantics),
+        // which cancels the old pending callback before the new one is
+        // armed -- this is what makes "latest-wins" actually true at the
+        // real-timer level, not just in the policy's bookkeeping.
+        refreshTimer_ = engine_->instance()->eventLoop().addTimeEvent(
+            CLOCK_MONOTONIC, nowUsec + kCandidateRefreshCoalesceUsec, 0,
+            [this](EventSourceTime*, uint64_t) {
+                firePendingCandidateRefresh();
+                return true;
+            });
+    }
+}
+
+void HazkeyState::firePendingCandidateRefresh() {
+    const uint64_t nowUsec = now(CLOCK_MONOTONIC);
+    if (!coalescer_.shouldFire(nowUsec)) {
+        // Stale/duplicate callback (should not normally happen given the
+        // replace-on-schedule behavior above, but the policy is defensive).
+        return;
+    }
+    coalescer_.onFire();
+    if (pendingRefreshIsSuggest_) {
+        showPreeditCandidateList();
+    } else {
+        showNonPredictCandidateList(/*preserveTarget=*/true);
+    }
+    // Unlike a synchronous keyEvent() dispatch (where HazkeyEngine::keyEvent
+    // calls updatePreedit()/updateUserInterface() after propertyFor(...)
+    // returns), this refresh runs from the event-loop timer callback with
+    // no enclosing keyEvent dispatch, so both calls must be made explicitly
+    // here to push the updated preedit/candidate list to the client.
+    ic_->updatePreedit();
+    ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+}
+
+void HazkeyState::cancelPendingRefresh() {
+    // Dropping the unique_ptr destroys the underlying EventSourceTime
+    // (fcitx-utils/eventloopinterface.h: EventSource's destructor
+    // disarms/removes it from the event loop), so the callback captured in
+    // scheduleCandidateRefresh() can never run afterwards -- there is no
+    // path back into firePendingCandidateRefresh() once refreshTimer_ is
+    // reset. This, together with clearing the policy state, is why reset()
+    // calling cancelPendingRefresh() satisfies the invariant that no
+    // pending callback may mutate the input panel after reset/deactivate.
+    refreshTimer_.reset();
+    coalescer_.onCancel();
+}
+
 /// Candidate Cursor
 
 void HazkeyState::updateCandidateCursor(
@@ -706,6 +797,12 @@ void HazkeyState::reset() {
     livePreeditIndex_ = -1;
     isCursorMoving_ = false;
     isClauseBoundaryAdjusting_ = false;
+    // Explicit cancellation (do not rely on RAII alone): reset() is called
+    // from many keyEvent branches and from both HazkeyEngine::activate()
+    // and HazkeyEngine::deactivate() (the latter is the focus-out-equivalent
+    // for an IME) without the HazkeyState object itself being destroyed, so
+    // a pending coalesced refresh must be cancelled here explicitly.
+    cancelPendingRefresh();
     engine_->server().newComposingText();
     ic_->inputPanel().reset();
 }

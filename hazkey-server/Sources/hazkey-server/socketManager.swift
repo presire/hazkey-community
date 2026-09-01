@@ -159,6 +159,13 @@ class SocketManager {
 
         if newClientFd != -1 {
             // If we already have a client, close it
+            // Note (hazkey-ime-cpu-latency plan todo 2): this unconditional
+            // eviction is also what happens when hazkey-settings opens a
+            // connection while fcitx5 is already connected -- fcitx5's
+            // client gets closed here and reconnects through
+            // HazkeyServerConnector's normal invalidate-and-reconnect path.
+            // This is a known, accepted interaction, not a blocking bug;
+            // server eviction behavior is intentionally left unchanged.
             if let existingClientFd = currentClientFd {
                 NSLog("New client connecting, closing existing client: \(existingClientFd)")
                 closeClient(existingClientFd)

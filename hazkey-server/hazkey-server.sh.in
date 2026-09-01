@@ -7,6 +7,10 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
 fi
 
+# Optional Zenzai CPU settings are read by hazkey-server from the sourced file:
+# HAZKEY_ZENZAI_CPU_THREADS=1..8
+# HAZKEY_ZENZAI_DEADLINE_MS=0..2000 (0 disables the deadline)
+
 # Mitigate SIGILL crash on multi-GPU systems where multiple Vulkan ICDs
 # (e.g. nvidia_icd.json + radeon_icd.json) coexist.
 # Ref: https://github.com/7ka-Hiira/hazkey/issues/29

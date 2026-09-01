@@ -98,6 +98,14 @@ std::string HazkeyServerConnector::getSocketPath() {
 }
 
 void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
+    // Test-only hook (see setTestStartServerHook() in the header): lets
+    // tests observe/intercept spawn decisions without launching a real
+    // hazkey-server process. Unset (the production default) falls through
+    // to the real fcitx::startProcess() call below.
+    if (testStartServerHook_) {
+        testStartServerHook_(force_restart);
+        return;
+    }
     std::vector<std::string> args;
     args.reserve(2);
     args.push_back("hazkey-server");
@@ -116,7 +124,7 @@ bool writeAll(int fd, const void* data, size_t len) {
                 fd_set wfds;
                 FD_ZERO(&wfds);
                 FD_SET(fd, &wfds);
-                timeval tv = {2, 0};  // 2sec timeout
+                timeval tv = {2, 0};  // 2sec write timeout ceiling
                 int r = select(fd + 1, NULL, &wfds, NULL, &tv);
                 if (r <= 0) {
                     FCITX_ERROR() << "write timeout";
@@ -131,7 +139,19 @@ bool writeAll(int fd, const void* data, size_t len) {
     return true;
 }
 
-bool readAll(int fd, void* data, size_t len) {
+// Client-side read ceiling for a single server response. `timeoutSeconds`
+// is the production 10-second value in every real code path (see
+// HazkeyServerConnector::transact()'s kProductionReadTimeoutSeconds); the
+// comment here used to (incorrectly) say "2sec" even though the value was
+// always 10. Decision (hazkey-ime-cpu-latency plan todo 2): keep the
+// 10-second ceiling itself unchanged -- it is the value every prior session
+// documented, and it is the hard limit any future server-side processing
+// deadline (e.g. HAZKEY_ZENZAI_DEADLINE_MS) must stay below, since a
+// response arriving after this point is indistinguishable from a
+// stalled/dead server. `timeoutSeconds` is overridable ONLY through
+// HazkeyServerConnector::setTestReadTimeoutSeconds(), used exclusively by
+// hazkey_client_transact_safety_test; production code always passes 10.
+bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
     size_t recved = 0;
     while (recved < len) {
         ssize_t n = read(fd, (char*)data + recved, len - recved);
@@ -140,7 +160,7 @@ bool readAll(int fd, void* data, size_t len) {
                 fd_set rfds;
                 FD_ZERO(&rfds);
                 FD_SET(fd, &rfds);
-                timeval tv = {10, 0};  // 2sec timeout
+                timeval tv = {timeoutSeconds, 0};  // 10sec read timeout ceiling
                 int r = select(fd + 1, &rfds, NULL, NULL, &tv);
                 if (r <= 0) {
                     FCITX_ERROR() << "read timeout";
@@ -218,9 +238,37 @@ void HazkeyServerConnector::connectServer() {
         close(sock_);
         sock_ = -1;
         if (attempt == ATTEMPT_TRY_START) {
+            // A dead server still needs exactly one non-forced spawn
+            // attempt; unchanged by the hardening below.
             startHazkeyServer(false);
         } else if (attempt == ATTEMPT_TRY_START_FORCE) {
-            startHazkeyServer(true);
+            // Hardening (hazkey-ime-cpu-latency plan todo 2): ordinary
+            // CPU-load-induced slow accepts on a server that answered us
+            // moments ago must not be mistaken for a wedged server. Only
+            // force-restart if the server has never responded, or hasn't
+            // responded in a while.
+            constexpr long kForceRestartContentionWindowMs = 5000;
+            const long contentionWindowMs =
+                testForceRestartWindowMs_ >= 0
+                    ? testForceRestartWindowMs_
+                    : kForceRestartContentionWindowMs;
+            const auto now = std::chrono::steady_clock::now();
+            const bool recentlyResponsive =
+                lastSuccessfulTransaction_ !=
+                    std::chrono::steady_clock::time_point::min() &&
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - lastSuccessfulTransaction_)
+                        .count() < contentionWindowMs;
+            if (recentlyResponsive) {
+                FCITX_INFO()
+                    << "Skipping force-restart: hazkey-server completed a "
+                       "successful transaction within the last "
+                    << contentionWindowMs
+                    << "ms; treating this as CPU contention rather than a "
+                       "wedged server.";
+            } else {
+                startHazkeyServer(true);
+            }
         }
         std::this_thread::sleep_for(
             std::chrono::milliseconds(RETRY_INTERVAL_MS));
@@ -290,9 +338,17 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     FCITX_DEBUG() << "Successfully wrote data to server";
 
+    // Production read-timeout ceiling is 10 seconds; only
+    // hazkey_client_transact_safety_test overrides it, via
+    // setTestReadTimeoutSeconds(), to exercise this path quickly.
+    constexpr int kProductionReadTimeoutSeconds = 10;
+    const int readTimeoutSeconds = testReadTimeoutSeconds_ > 0
+                                        ? testReadTimeoutSeconds_
+                                        : kProductionReadTimeoutSeconds;
+
     // read response length
     uint32_t readLenBuf;
-    if (!readAll(sock_, &readLenBuf, 4)) {
+    if (!readAll(sock_, &readLenBuf, 4, readTimeoutSeconds)) {
         FCITX_ERROR() << "Failed to read buffer length.";
         close(sock_);
         sock_ = -1;
@@ -310,7 +366,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     }
 
     std::vector<char> buf(readLen);
-    if (!readAll(sock_, buf.data(), readLen)) {
+    if (!readAll(sock_, buf.data(), readLen, readTimeoutSeconds)) {
         FCITX_ERROR() << "Failed to read response body.";
         close(sock_);
         sock_ = -1;
@@ -322,6 +378,13 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         FCITX_ERROR() << "Failed to parse received data\n";
         return std::nullopt;
     }
+
+    // A full request/response round trip completed and parsed: the
+    // transport and server are demonstrably alive right now, regardless of
+    // this particular RPC's application-level status. connectServer() uses
+    // this timestamp to avoid mistaking an ordinary CPU-contention slow
+    // accept on a recently-responsive server for a wedged one.
+    lastSuccessfulTransaction_ = std::chrono::steady_clock::now();
 
     FCITX_DEBUG() << "Successfully received and parsed response";
     return resp;
