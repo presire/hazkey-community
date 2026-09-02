@@ -102,7 +102,8 @@ jobs:
           # Build C++ libraries, executables, and CTest-registered test
           # binaries (zenzai_model_management_test, keysequence_util_test,
           # live_convert_mode_test, hazkey_candidate_selection_test,
-          # hazkey_client_rpc_probe_test, hazkey_client_cache_test)
+          # hazkey_client_rpc_probe_test, hazkey_client_cache_test,
+          # candidate_refresh_coalescer_test, hazkey_client_transact_safety_test)
           # in parallel for speed.
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
@@ -112,6 +113,8 @@ jobs:
           cmake --build build --target hazkey_candidate_selection_test --parallel
           cmake --build build --target hazkey_client_rpc_probe_test --parallel
           cmake --build build --target hazkey_client_cache_test --parallel
+          cmake --build build --target candidate_refresh_coalescer_test --parallel
+          cmake --build build --target hazkey_client_transact_safety_test --parallel
 
       - name: Build Swift server (single-threaded)
         run: |
