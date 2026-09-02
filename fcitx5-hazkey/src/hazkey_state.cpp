@@ -663,8 +663,18 @@ void HazkeyState::showPreeditCandidateList() {
 // level: it does not know or care whether the eventual getCandidates() read
 // would hit the cache or not, it only reduces HOW OFTEN that call happens
 // by collapsing several rapid keystrokes' worth of display-only refresh
-// requests into a single deferred execution. When the deferred refresh
-// finally runs, it goes through showCandidateList(true) ->
+// requests into a single deferred execution.
+//
+// Latency: coalescing is LEADING-EDGE (see candidate_refresh_coalescer.h).
+// The first refresh of a typing burst runs synchronously inside the key
+// event, exactly like the uncoalesced call sites did, because at ordinary
+// typing speed keystrokes are far more than one quiet period apart and a
+// purely trailing debounce would add kCandidateRefreshCoalesceUsec to the
+// visible feedback of every keystroke while never merging anything. Only
+// keystrokes that arrive while the previous refresh is still within the
+// quiet period are deferred and merged into one trailing execution.
+//
+// When a deferred refresh finally runs, it goes through showCandidateList(true) ->
 // engine_->server().getCandidates(true) exactly as an uncoalesced call
 // would, so it still benefits from (and does not fight with) the
 // connector's cache. Scheduling never invalidates the cache -- only state
@@ -680,6 +690,26 @@ void HazkeyState::showPreeditCandidateList() {
 void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     pendingRefreshIsSuggest_ = isSuggest;
     const uint64_t nowUsec = now(CLOCK_MONOTONIC);
+
+    // Leading edge: nothing pending and the previous refresh is older than
+    // one quiet period, so there is nothing to coalesce with -- run now and
+    // keep keystroke feedback latency at zero added milliseconds.
+    // scheduleCandidateRefresh() is only reached from noPreeditKeyEvent()
+    // and preeditKeyEvent(), both of which filterAndAccept() the event, so
+    // HazkeyEngine::keyEvent() calls updatePreedit()/updateUserInterface()
+    // right after this dispatch returns -- unlike the timer path below, no
+    // explicit push is needed (or wanted: it would be a redundant second
+    // update of identical content).
+    if (coalescer_.shouldRunImmediately(nowUsec,
+                                        kCandidateRefreshCoalesceUsec)) {
+        // An armed timer must not survive an immediate run: onRun() consumes
+        // the pending slot, so the old callback would be a stale duplicate.
+        refreshTimer_.reset();
+        coalescer_.onRun(nowUsec);
+        runPendingCandidateRefresh();
+        return;
+    }
+
     if (coalescer_.shouldSchedule(nowUsec, kCandidateRefreshCoalesceUsec)) {
         // Assigning to refreshTimer_ destroys any previously-owned
         // EventSourceTime first (std::unique_ptr::operator= semantics),
@@ -702,12 +732,8 @@ void HazkeyState::firePendingCandidateRefresh() {
         // replace-on-schedule behavior above, but the policy is defensive).
         return;
     }
-    coalescer_.onFire();
-    if (pendingRefreshIsSuggest_) {
-        showPreeditCandidateList();
-    } else {
-        showNonPredictCandidateList(/*preserveTarget=*/true);
-    }
+    coalescer_.onRun(nowUsec);
+    runPendingCandidateRefresh();
     // Unlike a synchronous keyEvent() dispatch (where HazkeyEngine::keyEvent
     // calls updatePreedit()/updateUserInterface() after propertyFor(...)
     // returns), this refresh runs from the event-loop timer callback with
@@ -715,6 +741,17 @@ void HazkeyState::firePendingCandidateRefresh() {
     // here to push the updated preedit/candidate list to the client.
     ic_->updatePreedit();
     ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+}
+
+// Executes the latest requested refresh kind. Shared by both execution
+// paths so the leading-edge (synchronous) and trailing (timer) runs cannot
+// drift apart; the UI push differs between them and stays at the call site.
+void HazkeyState::runPendingCandidateRefresh() {
+    if (pendingRefreshIsSuggest_) {
+        showPreeditCandidateList();
+    } else {
+        showNonPredictCandidateList(/*preserveTarget=*/true);
+    }
 }
 
 void HazkeyState::cancelPendingRefresh() {
@@ -727,7 +764,12 @@ void HazkeyState::cancelPendingRefresh() {
     // calling cancelPendingRefresh() satisfies the invariant that no
     // pending callback may mutate the input panel after reset/deactivate.
     refreshTimer_.reset();
-    coalescer_.onCancel();
+    // resetPolicy() rather than onCancel(): reset() begins a NEW composition
+    // epoch, whose first refresh must never be deferred. onCancel() alone
+    // would leave the previous epoch's run timestamp behind, and the
+    // leading-edge predicate would read it as "a refresh just ran" and defer
+    // the first keystroke of the new composition by a full quiet period.
+    coalescer_.resetPolicy();
 }
 
 /// Candidate Cursor

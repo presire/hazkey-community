@@ -1,10 +1,20 @@
 #!/usr/bin/env sh
 
 # hazkey-server wrapper script
-ENV_FILE="$XDG_CONFIG_HOME/hazkey/env"
-# Load user defined environment variables
+# XDG_CONFIG_HOME is optional per the XDG base directory spec and is unset on
+# many desktop sessions; without this fallback the path collapses to
+# "/hazkey/env" and every user setting below is silently ignored.
+ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hazkey/env"
+# Load user defined environment variables.
+# `set -a` is required: the settings are consumed by the hazkey-server process
+# this script exec()s at the end, and a plain `KEY=value` line in a sourced
+# file only creates a shell-local variable, which is NOT part of the
+# environment handed to exec. `.` is used instead of the bash-only `source`
+# because this script runs under POSIX sh.
 if [ -f "$ENV_FILE" ]; then
-    source "$ENV_FILE"
+    set -a
+    . "$ENV_FILE"
+    set +a
 fi
 
 # Optional Zenzai CPU settings are read by hazkey-server from the sourced file:

@@ -104,6 +104,12 @@ class HazkeyState : public InputContextProperty {
     // Timer callback target: consults coalescer_.shouldFire() and, if still
     // due, executes the latest pending refresh kind.
     void firePendingCandidateRefresh();
+    // Executes the latest requested refresh kind (suggest vs non-suggest).
+    // Shared by the leading-edge synchronous path in
+    // scheduleCandidateRefresh() and the trailing timer path in
+    // firePendingCandidateRefresh(); it performs no UI push of its own
+    // because the two callers differ in whether one is needed.
+    void runPendingCandidateRefresh();
     // Explicitly cancels any pending coalesced refresh (does not rely on
     // RAII alone): drops refreshTimer_ (cancelling the fcitx event-loop
     // callback) and clears coalescer_ state. Called from reset(), which is
