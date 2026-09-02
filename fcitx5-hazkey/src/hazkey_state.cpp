@@ -1,7 +1,6 @@
 #include "hazkey_state.h"
 
 #include <fcitx-utils/event.h>
-#include <fcitx-utils/eventloopinterface.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx/candidatelist.h>
@@ -720,7 +719,7 @@ void HazkeyState::firePendingCandidateRefresh() {
 
 void HazkeyState::cancelPendingRefresh() {
     // Dropping the unique_ptr destroys the underlying EventSourceTime
-    // (fcitx-utils/eventloopinterface.h: EventSource's destructor
+    // (fcitx-utils/event.h: EventSource's destructor
     // disarms/removes it from the event loop), so the callback captured in
     // scheduleCandidateRefresh() can never run afterwards -- there is no
     // path back into firePendingCandidateRefresh() once refreshTimer_ is
