@@ -349,9 +349,9 @@ Vulkanデバイスを選ぶ時は、下記の最低ラインを目安にして�
 
 | モデル (キー) | Hugging Face (GGUF) | パラメータ / 量子化 / 実測サイズ | ライセンス | 設定UIでの扱い |
 |---|---|---|---|---|
-| zenz-v3.2-small | [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) | 95.1M params / Q5_K_M / 73.9[MB]<br>(UI表記 ~74 [MB]) | Apache-2.0 | `recommended: true` (推奨・最新・最高精度) |
+| zenz-v3.2-small | [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) | 95.1M params / Q5_K_M / 73.9[MB]<br>(UI表記 ~74 [MB]) | Apache-2.0 | `recommended: true`<br>(推奨・最新・最高精度) |
 | zenz-v3.2-xsmall | [Miwa-Keita/zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) | 25.6M params / Q5_K_M / 21[MB]<br>(UI表記 ~21 [MB]) | Apache-2.0 | 軽量・CPU高速・やや低精度 |
-| zenz-v3.1-small | [Miwa-Keita/zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | 95.1M params / Q5_K_M / 73.9[MB]<br>(UI表記 ~74 [MB]) | CC-BY-SA-4.0 | `isLegacyGen: true` (旧世代・互換維持用) |
+| zenz-v3.1-small | [Miwa-Keita/zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | 95.1M params / Q5_K_M / 73.9[MB]<br>(UI表記 ~74 [MB]) | CC-BY-SA-4.0 | `isLegacyGen: true`<br>(旧世代・互換維持用) |
 
 <br>
 
@@ -421,6 +421,79 @@ v3.1-smallは互換維持用と捉え、新規利用はv3.2-smallを選んでく
 CPU専用ビルド (`-DGGML_VULKAN=OFF`) を使用してください。  
 
 詳細は下記トラブルシューティングを参照してください。  
+
+<br>
+
+### `~/.config/hazkey/env` による詳細設定
+
+`hazkey-server` 起動時に読み込まれる環境変数ファイルです。  
+Vulkan ICDの固定とZenzai CPU予算制御などを、設定UIを経由せずに上書きできます。  
+
+**読み込みの仕組み**:  
+ラッパースクリプト (`hazkey-server/hazkey-server.sh.in`) が  
+`${XDG_CONFIG_HOME:-$HOME/.config}/hazkey/env` (通常は `~/.config/hazkey/env`) を `set -a` で `source` し、  
+`exec` する `hazkey-server` プロセスに引き継ぎます。  
+
+ファイルが存在しない場合は何もしません。  
+書式は1行1変数の `KEY=value` (`export` は不要、`#` 以降はコメント)  
+
+<br>
+
+| 変数名 | 用途 | 設定値 |
+|---|---|---|
+| `VK_DRIVER_FILES` | 使用するVulkan ICDの固定 (マルチGPUのSIGILL回避) | ICDのJSONパス (例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br>実在名は、`ls /usr/share/vulkan/icd.d/` で確認 |
+| `VK_ICD_FILENAMES` | 同上 (Vulkan loader向けの別名)<br>`VK_DRIVER_FILES` と同じ値を書く | 同上 |
+| `HAZKEY_ZENZAI_CPU_THREADS` | Zenzai CPU推論のスレッド数 (オプトイン) | `1`〜`8` |
+| `HAZKEY_ZENZAI_DEADLINE_MS` | Zenzai CPU推論の締切時間ミリ秒 (オプトイン) | `0`〜`2000`<br>`0` は無期限 (締切なし)<br>締切超過時はニューラル変換なしにフォールバック |
+| `HAZKEY_ZENZAI_MODEL` | Zenzaiモデル (`zenzai.gguf`) の明示指定 (上級者向け) | 実在する通常ファイルのパス<br>環境変数 > `~/.local/share/hazkey/zenzai/zenzai.gguf` > システム配備の順に探索 |
+| `HAZKEY_DICTIONARY` | 辞書ディレクトリの明示指定 (上級者向け) | 実在するディレクトリのパス |
+| `GGML_BACKEND_DIR` | llama.cppバックエンド (`.so`) の探索ディレクトリ (上級者向け) | ディレクトリのパス (末尾 `/` はなくても可、自動補完) |
+
+デフォルト値 (未設定・無効値時の動作):
+
+- `VK_DRIVER_FILES`:  
+  未設定時は検出された最初のICDに自動ピン留め。  
+- `VK_ICD_FILENAMES`:  
+   同上  
+- `HAZKEY_ZENZAI_CPU_THREADS`:  
+  未設定時は既存動作を維持  
+  `0`・`9`・非数値など範囲外はデフォルト動作にフォールバック  
+- `HAZKEY_ZENZAI_DEADLINE_MS`:  
+  未設定時は既存動作を維持  
+  負数・範囲外・非数値などはデフォルト動作にフォールバック  
+- `HAZKEY_ZENZAI_MODEL`:  
+  未設定時は自動検出  
+  実在しない・通常ファイルでない場合は、次の候補にフォールバック  
+- `HAZKEY_DICTIONARY`:  
+  未設定時・存在しない場合はシステムの `Dictionary` を使用  
+- `GGML_BACKEND_DIR`:  
+  未設定時は `<systemLibrary>/libllama/backends/` を使用  
+
+<br>
+
+**設定例** (Vulkan固定 + CPU予算制御の併用):  
+
+```sh
+mkdir -p ~/.config/hazkey
+
+cat > ~/.config/hazkey/env <<'EOF'
+VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+HAZKEY_ZENZAI_CPU_THREADS=4
+HAZKEY_ZENZAI_DEADLINE_MS=0
+EOF
+
+# 次回サーバ起動時に反映 (即時反映したい場合)
+pkill -x hazkey-server
+```
+
+> **注意**:  
+> - `XDG_CONFIG_HOME` が設定されている環境では `~/.config/hazkey/env` ではなく `$XDG_CONFIG_HOME/hazkey/env` が読まれます。  
+> - systemdドロップイン (`fcitx5.service.d/*.conf` の `Environment=`) と両方に異なる値を書いた場合は、  
+>   **`~/.config/hazkey/env` 側が優先**されます。(ラッパーが `source` で上書きするため)  
+>   混在させず、どちらか一方を使ってください。  
+> - `HAZKEY_ZENZAI_CPU_THREADS` / `HAZKEY_ZENZAI_DEADLINE_MS` の実体は `AzooKeyKanaKanjiConverter` fork側で読み取られます。  
+    不正値はクラッシュせず既存動作にフォールバックします。  
 
 <br>
 
