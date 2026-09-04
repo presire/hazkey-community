@@ -83,7 +83,9 @@ class HazkeyServerState {
     }
 
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
-        zenzaiLeftContext = String(surroundingText.prefix(anchorIndex))
+        let clamped = max(0, min(anchorIndex, surroundingText.count))
+        if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(surroundingText.count)") }
+        zenzaiLeftContext = String(surroundingText.prefix(clamped))
         baseConvertRequestOptions.zenzaiMode = serverConfig.genZenzaiMode(
             leftContext: zenzaiLeftContext)
 
@@ -97,6 +99,7 @@ class HazkeyServerState {
     func createComposingTextInstanse() -> Hazkey_ResponseEnvelope {
         composingText = ComposingTextBox()
         currentCandidateList = nil
+        zenzaiLeftContext = ""
         isSubInputMode = false
         isShiftPressedAlone = false
         return Hazkey_ResponseEnvelope.with {

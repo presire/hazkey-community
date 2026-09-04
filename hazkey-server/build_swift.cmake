@@ -84,6 +84,47 @@ if(EXISTS "${NUMBER_PATCH_FILE}" AND EXISTS "${NUMBER_TARGET_FILE}")
     endif()
 endif()
 
+# Apply the Zenzai review retry fix that preserves explicitly registered
+# user-dictionary candidates. A repeated identical review constraint may need
+# to retry without learned-memory candidates, but applying that retry to a
+# user-dictionary candidate drops the user's explicit entry from the lattice.
+#
+# Idempotent: skips when this patch's unique anchor is already present. The
+# target file has unrelated `hazkey-community patch` markers, so the guard
+# includes this patch's identifying comment as well.
+# Non-fatal: warns and continues if git apply fails, so Swift build is not
+# blocked when the upstream fork already ships the fix.
+set(USER_DICTIONARY_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0006-zenzai-preserve-user-dictionary.patch")
+set(USER_DICTIONARY_CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
+set(USER_DICTIONARY_TARGET_FILE "${USER_DICTIONARY_CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/zenzai.swift")
+
+if(EXISTS "${USER_DICTIONARY_PATCH_FILE}" AND EXISTS "${USER_DICTIONARY_TARGET_FILE}")
+    execute_process(
+        COMMAND grep -q "hazkey-community patch.*Preserve explicitly registered user-dictionary candidates" "${USER_DICTIONARY_TARGET_FILE}"
+        RESULT_VARIABLE user_dictionary_patch_check_result
+    )
+    if(NOT user_dictionary_patch_check_result EQUAL 0)
+        message(STATUS "Applying Zenzai user-dictionary retry preservation fix")
+        execute_process(
+            COMMAND git apply "${USER_DICTIONARY_PATCH_FILE}"
+            WORKING_DIRECTORY "${USER_DICTIONARY_CHECKOUT_DIR}"
+            RESULT_VARIABLE user_dictionary_patch_result
+            OUTPUT_VARIABLE user_dictionary_patch_output
+            ERROR_VARIABLE user_dictionary_patch_error
+        )
+        if(NOT user_dictionary_patch_result EQUAL 0)
+            message(WARNING
+                "Failed to apply Zenzai user-dictionary retry preservation fix.\n"
+                "git apply output: ${user_dictionary_patch_output}\n"
+                "git apply error:  ${user_dictionary_patch_error}")
+        else()
+            message(STATUS "Zenzai user-dictionary retry preservation fix applied successfully")
+        endif()
+    else()
+        message(STATUS "Zenzai user-dictionary retry preservation fix already applied (skipping)")
+    endif()
+endif()
+
 execute_process(
     COMMAND ${SWIFT_COMMAND}
     WORKING_DIRECTORY "${SWIFT_WORK_DIR}"

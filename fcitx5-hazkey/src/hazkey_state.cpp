@@ -3,6 +3,7 @@
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
+#include <fcitx-utils/utf8.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/instance.h>
 
@@ -109,6 +110,8 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
                 ic_->commitString(" ");
                 reset();
             } else {
+                // Keep Zenzai leftContext fresh.
+                updateSurroundingText();
                 engine_->server().inputChar(" ");
                 ic_->commitString(engine_->server().getComposingText(
                     hazkey::commands::GetComposingString_CharType::
@@ -176,6 +179,8 @@ void HazkeyState::preeditKeyEvent(
         case FcitxKey_space:
             if (!isDirectConversionMode_ &&
                 event.key().states() == KeyState::Shift) {
+                // Keep Zenzai leftContext fresh.
+                updateSurroundingText();
                 engine_->server().inputChar(" ");
                 // Display-only refresh: coalesce (see
                 // scheduleCandidateRefresh()).
@@ -230,6 +235,8 @@ void HazkeyState::preeditKeyEvent(
                     preedit_.commitPreedit();
                     reset();
                 }
+                // Zenzai leftContext更新のため。
+                updateSurroundingText();
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
                 // Display-only refresh: coalesce (see
                 // scheduleCandidateRefresh()).
@@ -327,8 +334,11 @@ void HazkeyState::candidateKeyEvent(
                     candidateCompleteHandler(candidateList);
                 }
             } else if (isInputableEvent(event)) {
+                auto committedText = preedit_.text();
                 preedit_.commitPreedit();
                 reset();
+                // Keep Zenzai leftContext fresh after committing.
+                updateSurroundingText(committedText);
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
                 showPreeditCandidateList();
             } else {
@@ -360,9 +370,10 @@ void HazkeyState::updateSurroundingText(std::string appendText) {
     if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
         ic_->surroundingText().isValid()) {
         auto& surroundingText = ic_->surroundingText();
+        // anchor() is in characters; count appendText in characters too.
         engine_->server().setContext(
             surroundingText.text() + appendText,
-            surroundingText.anchor() + appendText.length());
+            surroundingText.anchor() + utf8::lengthValidated(appendText));
     } else {
         engine_->server().setContext("", 0);
     }

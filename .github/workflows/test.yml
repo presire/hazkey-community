@@ -146,7 +146,13 @@ jobs:
           number_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
           number_source="${number_checkout}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift"
           number_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0003-fix-standalone-unit-japanese-number.patch"
-          if ! grep -q "hazkey-community patch" "${number_source}"; then
-            git -C "${number_checkout}" apply "${number_patch}"
-          fi
-          swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"
+           if ! grep -q "hazkey-community patch" "${number_source}"; then
+             git -C "${number_checkout}" apply "${number_patch}"
+           fi
+           user_dictionary_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
+           user_dictionary_source="${user_dictionary_checkout}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/zenzai.swift"
+           user_dictionary_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0006-zenzai-preserve-user-dictionary.patch"
+           if ! grep -q "hazkey-community patch.*Preserve explicitly registered user-dictionary candidates" "${user_dictionary_source}"; then
+             git -C "${user_dictionary_checkout}" apply "${user_dictionary_patch}"
+           fi
+           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"
