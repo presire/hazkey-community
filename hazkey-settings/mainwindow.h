@@ -6,6 +6,7 @@
 #include <QNetworkReply>
 #include <QPointer>
 #include <QProgressDialog>
+#include <QPushButton>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -29,7 +30,6 @@ class MainWindow : public QWidget {
 
    private slots:
     void onButtonClicked(QAbstractButton* button);
-    void onApply();
     void onUseHistoryToggled(bool enabled);
     void onUseZenzaiCustomWeightToggled(bool enabled);
     void onBrowseZenzaiWeightPath();
@@ -108,11 +108,24 @@ class MainWindow : public QWidget {
     void refreshZenzaiDialogButtonStates();
     // Returns zenzaiModelDialog_ as QWidget* if alive, otherwise this.
     QWidget* zenzaiDialogParent() const;
+    // Dirty-state tracking for the Apply button. The button is enabled only
+    // while the UI-represented normal configuration differs from the saved
+    // baseline. The baseline updates only after a successful initial server
+    // fetch or a successful save; a failed save leaves it untouched. UI
+    // population and internal Basic/Advanced synchronization are guarded by
+    // isLoadingConfig_ so they neither alter the baseline nor mark dirty.
+    void setConfigLoading(bool loading);
+    void updateBaseline();
+    void recomputeDirtyState();
+    QString uiStateKey() const;
+    QPushButton* applyButton() const;
     Ui::MainWindow* ui_;
     ServerConnector server_;
     hazkey::config::CurrentConfig currentConfig_;
     hazkey::config::Profile* currentProfile_;
     bool isUpdatingFromAdvanced_;
+    bool isLoadingConfig_;
+    QString baselineKey_;
     QNetworkAccessManager* networkManager_;
     QNetworkReply* currentDownload_;
     QProgressDialog* downloadProgressDialog_;

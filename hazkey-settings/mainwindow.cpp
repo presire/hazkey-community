@@ -17,6 +17,9 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -77,8 +80,24 @@ QString posToDisplay(const QString& pos) {
 // the actual bytes, not the HuggingFace LFS oid). `isLegacyGen` is set for
 // known older-generation models that should trigger an "Update" warning
 // when installed; current-generation non-recommended variants (e.g.
-// xsmall) do not trigger the warning even though they are not the
-// recommended default.
+//         xsmall) do not trigger the warning even though they are not the
+//         recommended default.
+
+// Build the structural state of an enabled-items list (input tables or
+// keymaps) for uiStateKey(): each entry becomes a JSON array holding the
+// item name (an arbitrary user-visible string) and its built-in flag, so
+// no delimiter escaping is involved.
+QJsonArray enabledListState(const QListWidget* list) {
+    QJsonArray entries;
+    for (int i = 0; i < list->count(); ++i) {
+        const QListWidgetItem* item = list->item(i);
+        QJsonArray entry;
+        entry.append(item->data(Qt::UserRole).toString());
+        entry.append(item->data(Qt::UserRole + 1).toBool());
+        entries.append(entry);
+    }
+    return entries;
+}
 
 }  // namespace
 
@@ -87,6 +106,7 @@ MainWindow::MainWindow(QWidget* parent)
       ui_(new Ui::MainWindow),
       server_(ServerConnector()),
       isUpdatingFromAdvanced_(false),
+      isLoadingConfig_(false),
       networkManager_(new QNetworkAccessManager(this)),
       currentDownload_(nullptr),
       downloadProgressDialog_(nullptr) {
@@ -137,10 +157,104 @@ MainWindow::MainWindow(QWidget* parent)
     }
 }
 
+void MainWindow::setConfigLoading(bool loading) {
+    isLoadingConfig_ = loading;
+}
+
+QPushButton* MainWindow::applyButton() const {
+    if (!ui_->dialogButtonBox) {
+        return nullptr;
+    }
+    return ui_->dialogButtonBox->button(QDialogButtonBox::Apply);
+}
+
+// Build a canonical key that fully describes the normal configuration
+// currently represented by the UI: every Profile-backed control plus the
+// ordered enabled input-table/keymap state. Used to detect a pending edit by
+// comparing against the saved baseline.
+//
+// The state is serialized as a compact JSON document. JSON string escaping
+// makes the encoding structural, so arbitrary user-entered text (the
+// profile text fields and custom table/keymap names) can never collide
+// across fields the way ad-hoc delimiter concatenation could.
+QString MainWindow::uiStateKey() const {
+    QJsonObject state;
+    state.insert("autoConvertMode", ui_->autoConvertion->currentIndex());
+    state.insert("auxiliaryText", ui_->auxiliaryText->currentIndex());
+    state.insert("suggestionList", ui_->suggestionList->currentIndex());
+    state.insert("numSuggestion", ui_->numSuggestion->value());
+    state.insert("autoConvertMinChars", ui_->autoConvertMinChars->value());
+    state.insert("numCandidatesPerPage", ui_->numCandidatesPerPage->value());
+    state.insert("zenzaiInferenceLimit", ui_->zenzaiInferenceLimit->value());
+    state.insert("useHistory", ui_->useHistory->isChecked());
+    state.insert("stopStoreNewHistory", ui_->stopStoreNewHistory->isChecked());
+    state.insert("useProfileIndependentHistory",
+                 ui_->useProfileIndependentHistory->isChecked());
+    state.insert("useRichSuggestion", ui_->useRichSuggestion->isChecked());
+    state.insert("useRichCandidates", ui_->useRichCandidates->isChecked());
+    state.insert("enableZenzai", ui_->enableZenzai->isChecked());
+    state.insert("zenzaiContextualConversion",
+                 ui_->zenzaiContextualConversion->isChecked());
+    state.insert("useZenzaiCustomWeight",
+                 ui_->useZenzaiCustomWeight->isChecked());
+    state.insert("useUserDict", ui_->useUserDict->isChecked());
+    state.insert("halfwidthKatakanaConversion",
+                 ui_->halfwidthKatakanaConversion->isChecked());
+    state.insert("extendedEmojiConversion",
+                 ui_->extendedEmojiConversion->isChecked());
+    state.insert("commaSeparatedNumCoversion",
+                 ui_->commaSeparatedNumCoversion->isChecked());
+    state.insert("calendarConversion", ui_->calendarConversion->isChecked());
+    state.insert("timeConversion", ui_->timeConversion->isChecked());
+    state.insert("mailDomainConversion",
+                 ui_->mailDomainConversion->isChecked());
+    state.insert("unicodeCodePointConversion",
+                 ui_->unicodeCodePointConversion->isChecked());
+    state.insert("romanTypographyConversion",
+                 ui_->romanTypographyConversion->isChecked());
+    state.insert("hazkeyVersionConversion",
+                 ui_->hazkeyVersionConversion->isChecked());
+    state.insert("relativeDateConversion",
+                 ui_->relativeDateConversion->isChecked());
+    state.insert("submodeEntryPointChars",
+                 ui_->submodeEntryPointChars->text());
+    state.insert("zenzaiUserPlofile", ui_->zenzaiUserPlofile->text());
+    state.insert("zenzaiTopic", ui_->zenzaiTopic->text());
+    state.insert("zenzaiStyle", ui_->zenzaiStyle->text());
+    state.insert("zenzaiPreference", ui_->zenzaiPreference->text());
+    state.insert("zenzaiWeightPath", ui_->zenzaiWeightPath->text());
+    state.insert("liveConvertHotkey",
+                 ui_->liveConvertHotkey->keySequence().toString());
+    state.insert("zenzaiBackendDevice",
+                 ui_->zenzaiBackendDevice->currentData().toString());
+    // Ordered enabled input tables (name + built-in flag).
+    state.insert("enabledTables", enabledListState(ui_->enabledTableList));
+    // Ordered enabled keymaps (name + built-in flag).
+    state.insert("enabledKeymaps", enabledListState(ui_->enabledKeymapList));
+    return QString::fromUtf8(
+        QJsonDocument(state).toJson(QJsonDocument::Compact));
+}
+
+void MainWindow::updateBaseline() {
+    baselineKey_ = uiStateKey();
+}
+
+void MainWindow::recomputeDirtyState() {
+    // While the UI is being populated from a configuration, programmatic
+    // changes must not be treated as a pending user edit.
+    if (isLoadingConfig_) {
+        return;
+    }
+    const bool dirty = (uiStateKey() != baselineKey_);
+    if (QPushButton* apply = applyButton()) {
+        apply->setEnabled(dirty);
+    }
+}
+
 void MainWindow::connectSignals() {
-    // Connect dialog buttons
-    connect(ui_->dialogButtonBox, &QDialogButtonBox::accepted, this,
-            &MainWindow::onApply);
+    // Connect dialog buttons. Ok is routed only through the single
+    // `clicked` -> onButtonClicked path so it triggers at most one save;
+    // the QDialogButtonBox::accepted signal is intentionally not wired here.
     connect(ui_->dialogButtonBox, &QDialogButtonBox::clicked, this,
             &MainWindow::onButtonClicked);
 
@@ -241,6 +355,83 @@ void MainWindow::connectSignals() {
             &MainWindow::onUserDictSelectionChanged);
     connect(ui_->userDictTable, &QTableWidget::itemDoubleClicked, this,
             [this](QTableWidgetItem*) { onUserDictEdit(); });
+
+    // Track pending normal configuration edits so the Apply button is enabled
+    // only while the UI differs from the saved baseline. Programmatic
+    // population is suppressed inside recomputeDirtyState() via
+    // isLoadingConfig_.
+    connect(ui_->autoConvertion,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->auxiliaryText,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->suggestionList,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->zenzaiBackendDevice,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+
+    connect(ui_->numSuggestion,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->autoConvertMinChars,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->numCandidatesPerPage,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->zenzaiInferenceLimit,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { recomputeDirtyState(); });
+
+    connect(ui_->stopStoreNewHistory, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->useProfileIndependentHistory, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->useRichSuggestion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->useRichCandidates, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->enableZenzai, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->zenzaiContextualConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->halfwidthKatakanaConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->extendedEmojiConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->commaSeparatedNumCoversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->calendarConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->timeConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->mailDomainConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->unicodeCodePointConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->romanTypographyConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->hazkeyVersionConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->relativeDateConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+
+    connect(ui_->zenzaiUserPlofile, &QLineEdit::textChanged, this,
+            [this](const QString&) { recomputeDirtyState(); });
+    connect(ui_->zenzaiTopic, &QLineEdit::textChanged, this,
+            [this](const QString&) { recomputeDirtyState(); });
+    connect(ui_->zenzaiStyle, &QLineEdit::textChanged, this,
+            [this](const QString&) { recomputeDirtyState(); });
+    connect(ui_->zenzaiPreference, &QLineEdit::textChanged, this,
+            [this](const QString&) { recomputeDirtyState(); });
+    connect(ui_->zenzaiWeightPath, &QLineEdit::textChanged, this,
+            [this](const QString&) { recomputeDirtyState(); });
+
+    connect(ui_->liveConvertHotkey, &QKeySequenceEdit::keySequenceChanged, this,
+            [this](const QKeySequence&) { recomputeDirtyState(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -264,10 +455,9 @@ void MainWindow::onButtonClicked(QAbstractButton* button) {
     }
 }
 
-void MainWindow::onApply() { saveCurrentConfig(); }
-
 void MainWindow::onUseHistoryToggled(bool enabled) {
     ui_->stopStoreNewHistory->setEnabled(enabled);
+    recomputeDirtyState();
 }
 
 void MainWindow::onUseZenzaiCustomWeightToggled(bool enabled) {
@@ -275,6 +465,7 @@ void MainWindow::onUseZenzaiCustomWeightToggled(bool enabled) {
         enabled && ui_->useZenzaiCustomWeight->isEnabled();
     ui_->zenzaiWeightPath->setEnabled(customWeightEnabled);
     ui_->browseZenzaiWeightPath->setEnabled(customWeightEnabled);
+    recomputeDirtyState();
 }
 
 void MainWindow::onBrowseZenzaiWeightPath() {
@@ -292,6 +483,7 @@ void MainWindow::onUseUserDictToggled(bool enabled) {
     ui_->userDictExport->setEnabled(enabled);
     ui_->userDictNewEntry->setEnabled(enabled);
     onUserDictSelectionChanged();
+    recomputeDirtyState();
 }
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
@@ -312,6 +504,10 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
             return false;
         }
     }
+
+    // Populating the UI from a configuration is a programmatic action; it
+    // must not be reported as a pending user edit by any signal handler.
+    setConfigLoading(true);
 
     // Remove any existing warning widgets on AI tab
     if (ui_->aiTabScrollContentsLayout->count() > 1) {
@@ -558,6 +754,15 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     // Sync Advanced tab settings to Basic tab
     syncAdvancedToBasic();
 
+    setConfigLoading(false);
+    // A fresh fetch from the server establishes the saved baseline; the Reset
+    // preview (fetchConfig == false) must NOT update it, so a default preview
+    // that differs from the saved configuration keeps Apply enabled.
+    if (fetchConfig) {
+        updateBaseline();
+    }
+    recomputeDirtyState();
+
     return true;
 }
 
@@ -649,6 +854,10 @@ bool MainWindow::saveCurrentConfig() {
     // Save to server
     try {
         server_.setCurrentConfig(currentConfig_);
+        // Only a successful save updates the baseline; a failure below leaves
+        // it and the Apply button untouched so the user can retry.
+        updateBaseline();
+        recomputeDirtyState();
         return true;
     } catch (const std::exception& e) {
         QMessageBox::critical(
@@ -802,6 +1011,7 @@ void MainWindow::onEnableTable() {
     updateTableButtonStates();
     saveInputTables();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onDisableTable() {
@@ -838,6 +1048,7 @@ void MainWindow::onDisableTable() {
     updateTableButtonStates();
     saveInputTables();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onTableMoveUp() {
@@ -856,6 +1067,7 @@ void MainWindow::onTableMoveUp() {
     updateTableButtonStates();
     saveInputTables();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onTableMoveDown() {
@@ -874,6 +1086,7 @@ void MainWindow::onTableMoveDown() {
     updateTableButtonStates();
     saveInputTables();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onEnabledTableSelectionChanged() { updateTableButtonStates(); }
@@ -1042,6 +1255,7 @@ void MainWindow::onEnableKeymap() {
     updateKeymapButtonStates();
     saveKeymaps();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onDisableKeymap() {
@@ -1078,6 +1292,7 @@ void MainWindow::onDisableKeymap() {
     updateKeymapButtonStates();
     saveKeymaps();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onKeymapMoveUp() {
@@ -1096,6 +1311,7 @@ void MainWindow::onKeymapMoveUp() {
     updateKeymapButtonStates();
     saveKeymaps();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onKeymapMoveDown() {
@@ -1114,6 +1330,7 @@ void MainWindow::onKeymapMoveDown() {
     updateKeymapButtonStates();
     saveKeymaps();
     syncAdvancedToBasic();
+    recomputeDirtyState();
 }
 
 void MainWindow::onEnabledKeymapSelectionChanged() {
@@ -1155,6 +1372,7 @@ void MainWindow::onSubmodeEntryChanged() {
         // Check compatibility and update warning
         syncAdvancedToBasic();
     }
+    recomputeDirtyState();
 }
 
 void MainWindow::onBasicInputStyleChanged() {
@@ -1180,12 +1398,14 @@ void MainWindow::onBasicInputStyleChanged() {
     }
 
     syncBasicToAdvanced();
+    recomputeDirtyState();
 }
 
 void MainWindow::onBasicSettingChanged() {
     if (isUpdatingFromAdvanced_) return;
 
     syncBasicToAdvanced();
+    recomputeDirtyState();
 }
 
 void MainWindow::resetInputStyleToDefault() {
@@ -1209,6 +1429,10 @@ void MainWindow::resetInputStyleToDefault() {
     // Apply changes
     syncBasicToAdvanced();
     hideBasicModeWarning();
+    // Recompute explicitly: even if the combo indices were already at their
+    // defaults, the Basic->Advanced synchronization may still change the
+    // ordered table/keymap state, so the dirty state must be refreshed.
+    recomputeDirtyState();
 }
 
 void MainWindow::syncBasicToAdvanced() {
