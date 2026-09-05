@@ -11,14 +11,8 @@
 #include <QWidget>
 
 #include "serverconnector.h"
+#include "userdict_model.h"
 #include "zenzai_models.h"
-
-struct UserDictEntry {
-    QString reading;
-    QString word;
-    QString comment;
-    QString pos;
-};
 
 QT_BEGIN_NAMESPACE
 namespace Ui {

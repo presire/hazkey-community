@@ -44,6 +44,7 @@
 #include "constants.h.in"
 #include "keysequence_util.h"
 #include "serverconnector.h"
+#include "userdict_model.h"
 #include "zenzai_models.h"
 
 namespace {
@@ -66,15 +67,6 @@ QString posToDisplay(const QString& pos) {
     if (pos == QStringLiteral("place")) return QCoreApplication::translate("MainWindow", "地名");
     if (pos == QStringLiteral("verb")) return QCoreApplication::translate("MainWindow", "動詞");
     return QCoreApplication::translate("MainWindow", "固有名詞");
-}
-
-void writeUserDictEntry(QTextStream& out, const UserDictEntry& e) {
-    if (e.pos == QStringLiteral("noun") || e.pos.isEmpty()) {
-        out << e.reading << '\t' << e.word;
-        if (!e.comment.isEmpty()) out << '\t' << e.comment;
-    } else {
-        out << e.reading << '\t' << e.word << '\t' << e.comment << '\t' << e.pos;
-    }
 }
 
 // Catalog of Zenzai GGUF models the GUI can download. Sorted with the
@@ -2401,20 +2393,11 @@ void MainWindow::loadUserDictFromDisk() {
 
 bool MainWindow::saveUserDictToDisk() {
     const QString path = userDictFilePath();
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate |
-                   QIODevice::Text)) {
+    if (!writeUserDictionaryFile(path, userDictEntries_)) {
         QMessageBox::warning(
             this, tr("User Dictionary"),
             tr("Failed to save user dictionary to %1").arg(path));
         return false;
-    }
-    QTextStream out(&file);
-    out.setEncoding(QStringConverter::Utf8);
-    out << "# reading<TAB>word<TAB>comment[<TAB>pos]\n";
-    for (const auto& e : userDictEntries_) {
-        writeUserDictEntry(out, e);
-        out << '\n';
     }
     return true;
 }
@@ -2645,21 +2628,11 @@ void MainWindow::onUserDictExport() {
         tr("Tab-separated files (*.tsv *.txt);;All files (*)"));
     if (path.isEmpty()) return;
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate |
-                   QIODevice::Text)) {
+    if (!writeUserDictionaryFile(path, userDictEntries_)) {
         QMessageBox::warning(
             this, tr("User Dictionary"),
             tr("Failed to export user dictionary to %1").arg(path));
         return;
-    }
-
-    QTextStream out(&file);
-    out.setEncoding(QStringConverter::Utf8);
-    out << "# reading<TAB>word<TAB>comment[<TAB>pos]\n";
-    for (const auto& entry : userDictEntries_) {
-        writeUserDictEntry(out, entry);
-        out << '\n';
     }
 
     QMessageBox::information(

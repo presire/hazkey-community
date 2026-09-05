@@ -43,6 +43,8 @@ set(PROJECT_SOURCES
     keysequence_util.h
     zenzai_models.cpp
     zenzai_models.h
+    userdict_model.cpp
+    userdict_model.h
 )
 
 qt_add_executable(hazkey-settings ${PROJECT_SOURCES}
@@ -150,3 +152,10 @@ qt_add_executable(keysequence_util_test
 )
 target_link_libraries(keysequence_util_test PRIVATE Qt6::Test Qt6::Gui)
 add_test(NAME keysequence_util_test COMMAND keysequence_util_test)
+
+qt_add_executable(userdict_model_test
+    userdict_model_test.cpp
+    userdict_model.cpp
+)
+target_link_libraries(userdict_model_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME userdict_model_test COMMAND userdict_model_test)
