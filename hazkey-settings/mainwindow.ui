@@ -669,22 +669,6 @@
                 </property>
                </widget>
               </item>
-              <item row="1" column="0">
-               <widget class="QLabel" name="useRichCandidatesLabel">
-                <property name="minimumSize">
-                 <size>
-                  <width>200</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="text">
-                 <string>Use rich candidates</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="1">
-               <widget class="QCheckBox" name="useRichCandidates"/>
-              </item>
               <item row="3" column="1">
                <widget class="QCheckBox" name="relativeDateConversion">
                 <property name="text">
@@ -693,6 +677,32 @@
                </widget>
               </item>
              </layout>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="richCandidatesGrid">
+             <property name="leftMargin">
+              <number>20</number>
+             </property>
+             <property name="topMargin">
+              <number>10</number>
+             </property>
+             <property name="rightMargin">
+              <number>20</number>
+             </property>
+             <property name="bottomMargin">
+              <number>10</number>
+             </property>
+             <property name="spacing">
+              <number>12</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QCheckBox" name="useRichCandidates">
+               <property name="text">
+                <string>Use rich candidates</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item>
             <layout class="QHBoxLayout" name="specialConversionsActions">
