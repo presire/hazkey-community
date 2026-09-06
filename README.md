@@ -9,7 +9,13 @@
 
 Hazkey input method for fcitx5  
 
-[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を利用したIMEです。  
+> **対応環境**:  
+> ***動作確認およびサポート対象は、Fedora 44、openSUSE Leap 16 / SLE 16、Debian 13 (Trixie) のみです。***  
+> openSUSE Tumbleweed および Ubuntu 26.04向けパッケージも頒布していますが、動作確認・サポートの対象外です。  
+> パッケージの頒布は、これらの環境での動作保証を意味しません。  
+> その他のディストリビューションでの動作は保証しません。  
+
+[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を利用したIMEです。
 
 > ホームページ (上流版)  
 > [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
