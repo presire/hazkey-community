@@ -15,6 +15,8 @@
 #include "userdict_model.h"
 #include "zenzai_models.h"
 
+class LearningHistoryDialog;
+
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -52,6 +54,7 @@ class MainWindow : public QWidget {
     void onCheckAllConversion();
     void onUncheckAllConversion();
     void onClearLearningData();
+    void onSelectiveLearningHistory();
     void onUserDictAdd();
     void onUserDictEdit();
     void onUserDictDelete();
@@ -132,6 +135,7 @@ class MainWindow : public QWidget {
     QString zenzaiModelPath_;
     // Pointer to the currently open Zenzai model management dialog (if any).
     QPointer<QDialog> zenzaiModelDialog_;
+    QPointer<LearningHistoryDialog> learningHistoryDialog_;
     // Selected by user in the model selection dialog before each download.
     QString currentDownloadUrl_;
     QString currentDownloadExpectedSha256_;

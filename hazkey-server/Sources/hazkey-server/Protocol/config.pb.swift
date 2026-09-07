@@ -15,12 +15,12 @@ import SwiftProtobuf
 // incompatible with the version of SwiftProtobuf to which you are linking.
 // Please ensure that you are building against the same version of the API
 // that was used to generate this file.
-fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
+fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
   struct _2: SwiftProtobuf.ProtobufAPIVersion_2 {}
   typealias Version = _2
 }
 
-struct Hazkey_Config_FileHash: Sendable {
+nonisolated struct Hazkey_Config_FileHash: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -33,7 +33,7 @@ struct Hazkey_Config_FileHash: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum ConfigFileType: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum ConfigFileType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case configMain // = 0
     case inputTable // = 1
@@ -70,7 +70,7 @@ struct Hazkey_Config_FileHash: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_Keymap: Sendable {
+nonisolated struct Hazkey_Config_Keymap: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -86,7 +86,7 @@ struct Hazkey_Config_Keymap: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_InputTable: Sendable {
+nonisolated struct Hazkey_Config_InputTable: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -102,7 +102,7 @@ struct Hazkey_Config_InputTable: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_BackendDevice: Sendable {
+nonisolated struct Hazkey_Config_BackendDevice: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -116,331 +116,331 @@ struct Hazkey_Config_BackendDevice: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_Profile: @unchecked Sendable {
+nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   var serverVersion: String {
-    get {return _storage._serverVersion ?? String()}
+    get {_storage._serverVersion ?? String()}
     set {_uniqueStorage()._serverVersion = newValue}
   }
   /// Returns true if `serverVersion` has been explicitly set.
-  var hasServerVersion: Bool {return _storage._serverVersion != nil}
+  var hasServerVersion: Bool {_storage._serverVersion != nil}
   /// Clears the value of `serverVersion`. Subsequent reads from it will return its default value.
   mutating func clearServerVersion() {_uniqueStorage()._serverVersion = nil}
 
   var profileName: String {
-    get {return _storage._profileName}
+    get {_storage._profileName}
     set {_uniqueStorage()._profileName = newValue}
   }
 
   var profileID: String {
-    get {return _storage._profileID}
+    get {_storage._profileID}
     set {_uniqueStorage()._profileID = newValue}
   }
 
   var useDefaultInputUiSettings: Bool {
-    get {return _storage._useDefaultInputUiSettings ?? false}
+    get {_storage._useDefaultInputUiSettings ?? false}
     set {_uniqueStorage()._useDefaultInputUiSettings = newValue}
   }
   /// Returns true if `useDefaultInputUiSettings` has been explicitly set.
-  var hasUseDefaultInputUiSettings: Bool {return _storage._useDefaultInputUiSettings != nil}
+  var hasUseDefaultInputUiSettings: Bool {_storage._useDefaultInputUiSettings != nil}
   /// Clears the value of `useDefaultInputUiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultInputUiSettings() {_uniqueStorage()._useDefaultInputUiSettings = nil}
 
   var autoConvertMode: Hazkey_Config_Profile.AutoConvertMode {
-    get {return _storage._autoConvertMode ?? .unspecified}
+    get {_storage._autoConvertMode ?? .unspecified}
     set {_uniqueStorage()._autoConvertMode = newValue}
   }
   /// Returns true if `autoConvertMode` has been explicitly set.
-  var hasAutoConvertMode: Bool {return _storage._autoConvertMode != nil}
+  var hasAutoConvertMode: Bool {_storage._autoConvertMode != nil}
   /// Clears the value of `autoConvertMode`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertMode() {_uniqueStorage()._autoConvertMode = nil}
 
   var auxTextMode: Hazkey_Config_Profile.AuxTextMode {
-    get {return _storage._auxTextMode ?? .unspecified}
+    get {_storage._auxTextMode ?? .unspecified}
     set {_uniqueStorage()._auxTextMode = newValue}
   }
   /// Returns true if `auxTextMode` has been explicitly set.
-  var hasAuxTextMode: Bool {return _storage._auxTextMode != nil}
+  var hasAuxTextMode: Bool {_storage._auxTextMode != nil}
   /// Clears the value of `auxTextMode`. Subsequent reads from it will return its default value.
   mutating func clearAuxTextMode() {_uniqueStorage()._auxTextMode = nil}
 
   var suggestionListMode: Hazkey_Config_Profile.SuggestionListMode {
-    get {return _storage._suggestionListMode ?? .unspecified}
+    get {_storage._suggestionListMode ?? .unspecified}
     set {_uniqueStorage()._suggestionListMode = newValue}
   }
   /// Returns true if `suggestionListMode` has been explicitly set.
-  var hasSuggestionListMode: Bool {return _storage._suggestionListMode != nil}
+  var hasSuggestionListMode: Bool {_storage._suggestionListMode != nil}
   /// Clears the value of `suggestionListMode`. Subsequent reads from it will return its default value.
   mutating func clearSuggestionListMode() {_uniqueStorage()._suggestionListMode = nil}
 
   var useRichSuggestion: Bool {
-    get {return _storage._useRichSuggestion ?? false}
+    get {_storage._useRichSuggestion ?? false}
     set {_uniqueStorage()._useRichSuggestion = newValue}
   }
   /// Returns true if `useRichSuggestion` has been explicitly set.
-  var hasUseRichSuggestion: Bool {return _storage._useRichSuggestion != nil}
+  var hasUseRichSuggestion: Bool {_storage._useRichSuggestion != nil}
   /// Clears the value of `useRichSuggestion`. Subsequent reads from it will return its default value.
   mutating func clearUseRichSuggestion() {_uniqueStorage()._useRichSuggestion = nil}
 
   var numSuggestions: Int32 {
-    get {return _storage._numSuggestions ?? 0}
+    get {_storage._numSuggestions ?? 0}
     set {_uniqueStorage()._numSuggestions = newValue}
   }
   /// Returns true if `numSuggestions` has been explicitly set.
-  var hasNumSuggestions: Bool {return _storage._numSuggestions != nil}
+  var hasNumSuggestions: Bool {_storage._numSuggestions != nil}
   /// Clears the value of `numSuggestions`. Subsequent reads from it will return its default value.
   mutating func clearNumSuggestions() {_uniqueStorage()._numSuggestions = nil}
 
   var autoConvertMinChars: Int32 {
-    get {return _storage._autoConvertMinChars ?? 0}
+    get {_storage._autoConvertMinChars ?? 0}
     set {_uniqueStorage()._autoConvertMinChars = newValue}
   }
   /// Returns true if `autoConvertMinChars` has been explicitly set.
-  var hasAutoConvertMinChars: Bool {return _storage._autoConvertMinChars != nil}
+  var hasAutoConvertMinChars: Bool {_storage._autoConvertMinChars != nil}
   /// Clears the value of `autoConvertMinChars`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertMinChars() {_uniqueStorage()._autoConvertMinChars = nil}
 
   var useDefaultConversionUiSettings: Bool {
-    get {return _storage._useDefaultConversionUiSettings ?? false}
+    get {_storage._useDefaultConversionUiSettings ?? false}
     set {_uniqueStorage()._useDefaultConversionUiSettings = newValue}
   }
   /// Returns true if `useDefaultConversionUiSettings` has been explicitly set.
-  var hasUseDefaultConversionUiSettings: Bool {return _storage._useDefaultConversionUiSettings != nil}
+  var hasUseDefaultConversionUiSettings: Bool {_storage._useDefaultConversionUiSettings != nil}
   /// Clears the value of `useDefaultConversionUiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultConversionUiSettings() {_uniqueStorage()._useDefaultConversionUiSettings = nil}
 
   var numCandidatesPerPage: Int32 {
-    get {return _storage._numCandidatesPerPage ?? 0}
+    get {_storage._numCandidatesPerPage ?? 0}
     set {_uniqueStorage()._numCandidatesPerPage = newValue}
   }
   /// Returns true if `numCandidatesPerPage` has been explicitly set.
-  var hasNumCandidatesPerPage: Bool {return _storage._numCandidatesPerPage != nil}
+  var hasNumCandidatesPerPage: Bool {_storage._numCandidatesPerPage != nil}
   /// Clears the value of `numCandidatesPerPage`. Subsequent reads from it will return its default value.
   mutating func clearNumCandidatesPerPage() {_uniqueStorage()._numCandidatesPerPage = nil}
 
   var useRichCandidates: Bool {
-    get {return _storage._useRichCandidates ?? false}
+    get {_storage._useRichCandidates ?? false}
     set {_uniqueStorage()._useRichCandidates = newValue}
   }
   /// Returns true if `useRichCandidates` has been explicitly set.
-  var hasUseRichCandidates: Bool {return _storage._useRichCandidates != nil}
+  var hasUseRichCandidates: Bool {_storage._useRichCandidates != nil}
   /// Clears the value of `useRichCandidates`. Subsequent reads from it will return its default value.
   mutating func clearUseRichCandidates() {_uniqueStorage()._useRichCandidates = nil}
 
   var useDefaultHistorySettings: Bool {
-    get {return _storage._useDefaultHistorySettings ?? false}
+    get {_storage._useDefaultHistorySettings ?? false}
     set {_uniqueStorage()._useDefaultHistorySettings = newValue}
   }
   /// Returns true if `useDefaultHistorySettings` has been explicitly set.
-  var hasUseDefaultHistorySettings: Bool {return _storage._useDefaultHistorySettings != nil}
+  var hasUseDefaultHistorySettings: Bool {_storage._useDefaultHistorySettings != nil}
   /// Clears the value of `useDefaultHistorySettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultHistorySettings() {_uniqueStorage()._useDefaultHistorySettings = nil}
 
   var useProfileIndependentHistory: Bool {
-    get {return _storage._useProfileIndependentHistory ?? false}
+    get {_storage._useProfileIndependentHistory ?? false}
     set {_uniqueStorage()._useProfileIndependentHistory = newValue}
   }
   /// Returns true if `useProfileIndependentHistory` has been explicitly set.
-  var hasUseProfileIndependentHistory: Bool {return _storage._useProfileIndependentHistory != nil}
+  var hasUseProfileIndependentHistory: Bool {_storage._useProfileIndependentHistory != nil}
   /// Clears the value of `useProfileIndependentHistory`. Subsequent reads from it will return its default value.
   mutating func clearUseProfileIndependentHistory() {_uniqueStorage()._useProfileIndependentHistory = nil}
 
   var useInputHistory: Bool {
-    get {return _storage._useInputHistory ?? false}
+    get {_storage._useInputHistory ?? false}
     set {_uniqueStorage()._useInputHistory = newValue}
   }
   /// Returns true if `useInputHistory` has been explicitly set.
-  var hasUseInputHistory: Bool {return _storage._useInputHistory != nil}
+  var hasUseInputHistory: Bool {_storage._useInputHistory != nil}
   /// Clears the value of `useInputHistory`. Subsequent reads from it will return its default value.
   mutating func clearUseInputHistory() {_uniqueStorage()._useInputHistory = nil}
 
   var stopStoreNewHistory: Bool {
-    get {return _storage._stopStoreNewHistory ?? false}
+    get {_storage._stopStoreNewHistory ?? false}
     set {_uniqueStorage()._stopStoreNewHistory = newValue}
   }
   /// Returns true if `stopStoreNewHistory` has been explicitly set.
-  var hasStopStoreNewHistory: Bool {return _storage._stopStoreNewHistory != nil}
+  var hasStopStoreNewHistory: Bool {_storage._stopStoreNewHistory != nil}
   /// Clears the value of `stopStoreNewHistory`. Subsequent reads from it will return its default value.
   mutating func clearStopStoreNewHistory() {_uniqueStorage()._stopStoreNewHistory = nil}
 
   var useDefaultSpecialConversionSettings: Bool {
-    get {return _storage._useDefaultSpecialConversionSettings ?? false}
+    get {_storage._useDefaultSpecialConversionSettings ?? false}
     set {_uniqueStorage()._useDefaultSpecialConversionSettings = newValue}
   }
   /// Returns true if `useDefaultSpecialConversionSettings` has been explicitly set.
-  var hasUseDefaultSpecialConversionSettings: Bool {return _storage._useDefaultSpecialConversionSettings != nil}
+  var hasUseDefaultSpecialConversionSettings: Bool {_storage._useDefaultSpecialConversionSettings != nil}
   /// Clears the value of `useDefaultSpecialConversionSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultSpecialConversionSettings() {_uniqueStorage()._useDefaultSpecialConversionSettings = nil}
 
   var specialConversionMode: Hazkey_Config_Profile.SpecialConversionMode {
-    get {return _storage._specialConversionMode ?? Hazkey_Config_Profile.SpecialConversionMode()}
+    get {_storage._specialConversionMode ?? Hazkey_Config_Profile.SpecialConversionMode()}
     set {_uniqueStorage()._specialConversionMode = newValue}
   }
   /// Returns true if `specialConversionMode` has been explicitly set.
-  var hasSpecialConversionMode: Bool {return _storage._specialConversionMode != nil}
+  var hasSpecialConversionMode: Bool {_storage._specialConversionMode != nil}
   /// Clears the value of `specialConversionMode`. Subsequent reads from it will return its default value.
   mutating func clearSpecialConversionMode() {_uniqueStorage()._specialConversionMode = nil}
 
   var useDefaultKeymapSettings: Bool {
-    get {return _storage._useDefaultKeymapSettings ?? false}
+    get {_storage._useDefaultKeymapSettings ?? false}
     set {_uniqueStorage()._useDefaultKeymapSettings = newValue}
   }
   /// Returns true if `useDefaultKeymapSettings` has been explicitly set.
-  var hasUseDefaultKeymapSettings: Bool {return _storage._useDefaultKeymapSettings != nil}
+  var hasUseDefaultKeymapSettings: Bool {_storage._useDefaultKeymapSettings != nil}
   /// Clears the value of `useDefaultKeymapSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultKeymapSettings() {_uniqueStorage()._useDefaultKeymapSettings = nil}
 
   var enabledKeymaps: [Hazkey_Config_Profile.EnabledKeymap] {
-    get {return _storage._enabledKeymaps}
+    get {_storage._enabledKeymaps}
     set {_uniqueStorage()._enabledKeymaps = newValue}
   }
 
   var useDefaultTableSettings: Bool {
-    get {return _storage._useDefaultTableSettings ?? false}
+    get {_storage._useDefaultTableSettings ?? false}
     set {_uniqueStorage()._useDefaultTableSettings = newValue}
   }
   /// Returns true if `useDefaultTableSettings` has been explicitly set.
-  var hasUseDefaultTableSettings: Bool {return _storage._useDefaultTableSettings != nil}
+  var hasUseDefaultTableSettings: Bool {_storage._useDefaultTableSettings != nil}
   /// Clears the value of `useDefaultTableSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultTableSettings() {_uniqueStorage()._useDefaultTableSettings = nil}
 
   var enabledTables: [Hazkey_Config_Profile.EnabledInputTable] {
-    get {return _storage._enabledTables}
+    get {_storage._enabledTables}
     set {_uniqueStorage()._enabledTables = newValue}
   }
 
   var submodeEntryPointChars: String {
-    get {return _storage._submodeEntryPointChars ?? String()}
+    get {_storage._submodeEntryPointChars ?? String()}
     set {_uniqueStorage()._submodeEntryPointChars = newValue}
   }
   /// Returns true if `submodeEntryPointChars` has been explicitly set.
-  var hasSubmodeEntryPointChars: Bool {return _storage._submodeEntryPointChars != nil}
+  var hasSubmodeEntryPointChars: Bool {_storage._submodeEntryPointChars != nil}
   /// Clears the value of `submodeEntryPointChars`. Subsequent reads from it will return its default value.
   mutating func clearSubmodeEntryPointChars() {_uniqueStorage()._submodeEntryPointChars = nil}
 
   var autoConvertHotkey: String {
-    get {return _storage._autoConvertHotkey ?? String()}
+    get {_storage._autoConvertHotkey ?? String()}
     set {_uniqueStorage()._autoConvertHotkey = newValue}
   }
   /// Returns true if `autoConvertHotkey` has been explicitly set.
-  var hasAutoConvertHotkey: Bool {return _storage._autoConvertHotkey != nil}
+  var hasAutoConvertHotkey: Bool {_storage._autoConvertHotkey != nil}
   /// Clears the value of `autoConvertHotkey`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertHotkey() {_uniqueStorage()._autoConvertHotkey = nil}
 
   var useUserDictionary: Bool {
-    get {return _storage._useUserDictionary ?? false}
+    get {_storage._useUserDictionary ?? false}
     set {_uniqueStorage()._useUserDictionary = newValue}
   }
   /// Returns true if `useUserDictionary` has been explicitly set.
-  var hasUseUserDictionary: Bool {return _storage._useUserDictionary != nil}
+  var hasUseUserDictionary: Bool {_storage._useUserDictionary != nil}
   /// Clears the value of `useUserDictionary`. Subsequent reads from it will return its default value.
   mutating func clearUseUserDictionary() {_uniqueStorage()._useUserDictionary = nil}
 
   var useDefaultZenzaiSettings: Bool {
-    get {return _storage._useDefaultZenzaiSettings ?? false}
+    get {_storage._useDefaultZenzaiSettings ?? false}
     set {_uniqueStorage()._useDefaultZenzaiSettings = newValue}
   }
   /// Returns true if `useDefaultZenzaiSettings` has been explicitly set.
-  var hasUseDefaultZenzaiSettings: Bool {return _storage._useDefaultZenzaiSettings != nil}
+  var hasUseDefaultZenzaiSettings: Bool {_storage._useDefaultZenzaiSettings != nil}
   /// Clears the value of `useDefaultZenzaiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultZenzaiSettings() {_uniqueStorage()._useDefaultZenzaiSettings = nil}
 
   var zenzaiEnable: Bool {
-    get {return _storage._zenzaiEnable ?? false}
+    get {_storage._zenzaiEnable ?? false}
     set {_uniqueStorage()._zenzaiEnable = newValue}
   }
   /// Returns true if `zenzaiEnable` has been explicitly set.
-  var hasZenzaiEnable: Bool {return _storage._zenzaiEnable != nil}
+  var hasZenzaiEnable: Bool {_storage._zenzaiEnable != nil}
   /// Clears the value of `zenzaiEnable`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiEnable() {_uniqueStorage()._zenzaiEnable = nil}
 
   var zenzaiInferLimit: Int32 {
-    get {return _storage._zenzaiInferLimit ?? 0}
+    get {_storage._zenzaiInferLimit ?? 0}
     set {_uniqueStorage()._zenzaiInferLimit = newValue}
   }
   /// Returns true if `zenzaiInferLimit` has been explicitly set.
-  var hasZenzaiInferLimit: Bool {return _storage._zenzaiInferLimit != nil}
+  var hasZenzaiInferLimit: Bool {_storage._zenzaiInferLimit != nil}
   /// Clears the value of `zenzaiInferLimit`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiInferLimit() {_uniqueStorage()._zenzaiInferLimit = nil}
 
   var zenzaiContextualMode: Bool {
-    get {return _storage._zenzaiContextualMode ?? false}
+    get {_storage._zenzaiContextualMode ?? false}
     set {_uniqueStorage()._zenzaiContextualMode = newValue}
   }
   /// Returns true if `zenzaiContextualMode` has been explicitly set.
-  var hasZenzaiContextualMode: Bool {return _storage._zenzaiContextualMode != nil}
+  var hasZenzaiContextualMode: Bool {_storage._zenzaiContextualMode != nil}
   /// Clears the value of `zenzaiContextualMode`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiContextualMode() {_uniqueStorage()._zenzaiContextualMode = nil}
 
   var useZenzaiCustomWeight: Bool {
-    get {return _storage._useZenzaiCustomWeight ?? false}
+    get {_storage._useZenzaiCustomWeight ?? false}
     set {_uniqueStorage()._useZenzaiCustomWeight = newValue}
   }
   /// Returns true if `useZenzaiCustomWeight` has been explicitly set.
-  var hasUseZenzaiCustomWeight: Bool {return _storage._useZenzaiCustomWeight != nil}
+  var hasUseZenzaiCustomWeight: Bool {_storage._useZenzaiCustomWeight != nil}
   /// Clears the value of `useZenzaiCustomWeight`. Subsequent reads from it will return its default value.
   mutating func clearUseZenzaiCustomWeight() {_uniqueStorage()._useZenzaiCustomWeight = nil}
 
   var zenzaiWeightPath: String {
-    get {return _storage._zenzaiWeightPath ?? String()}
+    get {_storage._zenzaiWeightPath ?? String()}
     set {_uniqueStorage()._zenzaiWeightPath = newValue}
   }
   /// Returns true if `zenzaiWeightPath` has been explicitly set.
-  var hasZenzaiWeightPath: Bool {return _storage._zenzaiWeightPath != nil}
+  var hasZenzaiWeightPath: Bool {_storage._zenzaiWeightPath != nil}
   /// Clears the value of `zenzaiWeightPath`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiWeightPath() {_uniqueStorage()._zenzaiWeightPath = nil}
 
   var zenzaiBackendDeviceName: String {
-    get {return _storage._zenzaiBackendDeviceName ?? String()}
+    get {_storage._zenzaiBackendDeviceName ?? String()}
     set {_uniqueStorage()._zenzaiBackendDeviceName = newValue}
   }
   /// Returns true if `zenzaiBackendDeviceName` has been explicitly set.
-  var hasZenzaiBackendDeviceName: Bool {return _storage._zenzaiBackendDeviceName != nil}
+  var hasZenzaiBackendDeviceName: Bool {_storage._zenzaiBackendDeviceName != nil}
   /// Clears the value of `zenzaiBackendDeviceName`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiBackendDeviceName() {_uniqueStorage()._zenzaiBackendDeviceName = nil}
 
   var zenzaiProfile: String {
-    get {return _storage._zenzaiProfile ?? String()}
+    get {_storage._zenzaiProfile ?? String()}
     set {_uniqueStorage()._zenzaiProfile = newValue}
   }
   /// Returns true if `zenzaiProfile` has been explicitly set.
-  var hasZenzaiProfile: Bool {return _storage._zenzaiProfile != nil}
+  var hasZenzaiProfile: Bool {_storage._zenzaiProfile != nil}
   /// Clears the value of `zenzaiProfile`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiProfile() {_uniqueStorage()._zenzaiProfile = nil}
 
   var zenzaiTopic: String {
-    get {return _storage._zenzaiTopic ?? String()}
+    get {_storage._zenzaiTopic ?? String()}
     set {_uniqueStorage()._zenzaiTopic = newValue}
   }
   /// Returns true if `zenzaiTopic` has been explicitly set.
-  var hasZenzaiTopic: Bool {return _storage._zenzaiTopic != nil}
+  var hasZenzaiTopic: Bool {_storage._zenzaiTopic != nil}
   /// Clears the value of `zenzaiTopic`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiTopic() {_uniqueStorage()._zenzaiTopic = nil}
 
   var zenzaiStyle: String {
-    get {return _storage._zenzaiStyle ?? String()}
+    get {_storage._zenzaiStyle ?? String()}
     set {_uniqueStorage()._zenzaiStyle = newValue}
   }
   /// Returns true if `zenzaiStyle` has been explicitly set.
-  var hasZenzaiStyle: Bool {return _storage._zenzaiStyle != nil}
+  var hasZenzaiStyle: Bool {_storage._zenzaiStyle != nil}
   /// Clears the value of `zenzaiStyle`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiStyle() {_uniqueStorage()._zenzaiStyle = nil}
 
   var zenzaiPreference: String {
-    get {return _storage._zenzaiPreference ?? String()}
+    get {_storage._zenzaiPreference ?? String()}
     set {_uniqueStorage()._zenzaiPreference = newValue}
   }
   /// Returns true if `zenzaiPreference` has been explicitly set.
-  var hasZenzaiPreference: Bool {return _storage._zenzaiPreference != nil}
+  var hasZenzaiPreference: Bool {_storage._zenzaiPreference != nil}
   /// Clears the value of `zenzaiPreference`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiPreference() {_uniqueStorage()._zenzaiPreference = nil}
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum AutoConvertMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum AutoConvertMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case unspecified // = 0
     case autoConvertDisabled // = 1
@@ -482,7 +482,7 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
-  enum AuxTextMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum AuxTextMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case unspecified // = 0
     case auxTextDisabled // = 1
@@ -524,7 +524,7 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
-  enum SuggestionListMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum SuggestionListMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case unspecified // = 0
     case suggestionListDisabled // = 1
@@ -566,71 +566,71 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
-  struct SpecialConversionMode: Sendable {
+  nonisolated struct SpecialConversionMode: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
     var commaSeparatedNumber: Bool {
-      get {return _commaSeparatedNumber ?? false}
+      get {_commaSeparatedNumber ?? false}
       set {_commaSeparatedNumber = newValue}
     }
     /// Returns true if `commaSeparatedNumber` has been explicitly set.
-    var hasCommaSeparatedNumber: Bool {return self._commaSeparatedNumber != nil}
+    var hasCommaSeparatedNumber: Bool {self._commaSeparatedNumber != nil}
     /// Clears the value of `commaSeparatedNumber`. Subsequent reads from it will return its default value.
     mutating func clearCommaSeparatedNumber() {self._commaSeparatedNumber = nil}
 
     var mailDomain: Bool {
-      get {return _mailDomain ?? false}
+      get {_mailDomain ?? false}
       set {_mailDomain = newValue}
     }
     /// Returns true if `mailDomain` has been explicitly set.
-    var hasMailDomain: Bool {return self._mailDomain != nil}
+    var hasMailDomain: Bool {self._mailDomain != nil}
     /// Clears the value of `mailDomain`. Subsequent reads from it will return its default value.
     mutating func clearMailDomain() {self._mailDomain = nil}
 
     var calendar: Bool {
-      get {return _calendar ?? false}
+      get {_calendar ?? false}
       set {_calendar = newValue}
     }
     /// Returns true if `calendar` has been explicitly set.
-    var hasCalendar: Bool {return self._calendar != nil}
+    var hasCalendar: Bool {self._calendar != nil}
     /// Clears the value of `calendar`. Subsequent reads from it will return its default value.
     mutating func clearCalendar() {self._calendar = nil}
 
     var time: Bool {
-      get {return _time ?? false}
+      get {_time ?? false}
       set {_time = newValue}
     }
     /// Returns true if `time` has been explicitly set.
-    var hasTime: Bool {return self._time != nil}
+    var hasTime: Bool {self._time != nil}
     /// Clears the value of `time`. Subsequent reads from it will return its default value.
     mutating func clearTime() {self._time = nil}
 
     var romanTypography: Bool {
-      get {return _romanTypography ?? false}
+      get {_romanTypography ?? false}
       set {_romanTypography = newValue}
     }
     /// Returns true if `romanTypography` has been explicitly set.
-    var hasRomanTypography: Bool {return self._romanTypography != nil}
+    var hasRomanTypography: Bool {self._romanTypography != nil}
     /// Clears the value of `romanTypography`. Subsequent reads from it will return its default value.
     mutating func clearRomanTypography() {self._romanTypography = nil}
 
     var unicodeCodepoint: Bool {
-      get {return _unicodeCodepoint ?? false}
+      get {_unicodeCodepoint ?? false}
       set {_unicodeCodepoint = newValue}
     }
     /// Returns true if `unicodeCodepoint` has been explicitly set.
-    var hasUnicodeCodepoint: Bool {return self._unicodeCodepoint != nil}
+    var hasUnicodeCodepoint: Bool {self._unicodeCodepoint != nil}
     /// Clears the value of `unicodeCodepoint`. Subsequent reads from it will return its default value.
     mutating func clearUnicodeCodepoint() {self._unicodeCodepoint = nil}
 
     var hazkeyVersion: Bool {
-      get {return _hazkeyVersion ?? false}
+      get {_hazkeyVersion ?? false}
       set {_hazkeyVersion = newValue}
     }
     /// Returns true if `hazkeyVersion` has been explicitly set.
-    var hasHazkeyVersion: Bool {return self._hazkeyVersion != nil}
+    var hasHazkeyVersion: Bool {self._hazkeyVersion != nil}
     /// Clears the value of `hazkeyVersion`. Subsequent reads from it will return its default value.
     mutating func clearHazkeyVersion() {self._hazkeyVersion = nil}
 
@@ -638,29 +638,29 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
     /// When enabled, formatted date strings are appended after the kanji
     /// representation of recognized trigger words.
     var relativeDate: Bool {
-      get {return _relativeDate ?? false}
+      get {_relativeDate ?? false}
       set {_relativeDate = newValue}
     }
     /// Returns true if `relativeDate` has been explicitly set.
-    var hasRelativeDate: Bool {return self._relativeDate != nil}
+    var hasRelativeDate: Bool {self._relativeDate != nil}
     /// Clears the value of `relativeDate`. Subsequent reads from it will return its default value.
     mutating func clearRelativeDate() {self._relativeDate = nil}
 
     var halfwidthKatakana: Bool {
-      get {return _halfwidthKatakana ?? false}
+      get {_halfwidthKatakana ?? false}
       set {_halfwidthKatakana = newValue}
     }
     /// Returns true if `halfwidthKatakana` has been explicitly set.
-    var hasHalfwidthKatakana: Bool {return self._halfwidthKatakana != nil}
+    var hasHalfwidthKatakana: Bool {self._halfwidthKatakana != nil}
     /// Clears the value of `halfwidthKatakana`. Subsequent reads from it will return its default value.
     mutating func clearHalfwidthKatakana() {self._halfwidthKatakana = nil}
 
     var extendedEmoji: Bool {
-      get {return _extendedEmoji ?? false}
+      get {_extendedEmoji ?? false}
       set {_extendedEmoji = newValue}
     }
     /// Returns true if `extendedEmoji` has been explicitly set.
-    var hasExtendedEmoji: Bool {return self._extendedEmoji != nil}
+    var hasExtendedEmoji: Bool {self._extendedEmoji != nil}
     /// Clears the value of `extendedEmoji`. Subsequent reads from it will return its default value.
     mutating func clearExtendedEmoji() {self._extendedEmoji = nil}
 
@@ -680,35 +680,35 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _extendedEmoji: Bool? = nil
   }
 
-  struct EnabledKeymap: Sendable {
+  nonisolated struct EnabledKeymap: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
     var name: String {
-      get {return _name ?? String()}
+      get {_name ?? String()}
       set {_name = newValue}
     }
     /// Returns true if `name` has been explicitly set.
-    var hasName: Bool {return self._name != nil}
+    var hasName: Bool {self._name != nil}
     /// Clears the value of `name`. Subsequent reads from it will return its default value.
     mutating func clearName() {self._name = nil}
 
     var isBuiltIn: Bool {
-      get {return _isBuiltIn ?? false}
+      get {_isBuiltIn ?? false}
       set {_isBuiltIn = newValue}
     }
     /// Returns true if `isBuiltIn` has been explicitly set.
-    var hasIsBuiltIn: Bool {return self._isBuiltIn != nil}
+    var hasIsBuiltIn: Bool {self._isBuiltIn != nil}
     /// Clears the value of `isBuiltIn`. Subsequent reads from it will return its default value.
     mutating func clearIsBuiltIn() {self._isBuiltIn = nil}
 
     var filename: String {
-      get {return _filename ?? String()}
+      get {_filename ?? String()}
       set {_filename = newValue}
     }
     /// Returns true if `filename` has been explicitly set.
-    var hasFilename: Bool {return self._filename != nil}
+    var hasFilename: Bool {self._filename != nil}
     /// Clears the value of `filename`. Subsequent reads from it will return its default value.
     mutating func clearFilename() {self._filename = nil}
 
@@ -721,35 +721,35 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _filename: String? = nil
   }
 
-  struct EnabledInputTable: Sendable {
+  nonisolated struct EnabledInputTable: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
     var name: String {
-      get {return _name ?? String()}
+      get {_name ?? String()}
       set {_name = newValue}
     }
     /// Returns true if `name` has been explicitly set.
-    var hasName: Bool {return self._name != nil}
+    var hasName: Bool {self._name != nil}
     /// Clears the value of `name`. Subsequent reads from it will return its default value.
     mutating func clearName() {self._name = nil}
 
     var isBuiltIn: Bool {
-      get {return _isBuiltIn ?? false}
+      get {_isBuiltIn ?? false}
       set {_isBuiltIn = newValue}
     }
     /// Returns true if `isBuiltIn` has been explicitly set.
-    var hasIsBuiltIn: Bool {return self._isBuiltIn != nil}
+    var hasIsBuiltIn: Bool {self._isBuiltIn != nil}
     /// Clears the value of `isBuiltIn`. Subsequent reads from it will return its default value.
     mutating func clearIsBuiltIn() {self._isBuiltIn = nil}
 
     var filename: String {
-      get {return _filename ?? String()}
+      get {_filename ?? String()}
       set {_filename = newValue}
     }
     /// Returns true if `filename` has been explicitly set.
-    var hasFilename: Bool {return self._filename != nil}
+    var hasFilename: Bool {self._filename != nil}
     /// Clears the value of `filename`. Subsequent reads from it will return its default value.
     mutating func clearFilename() {self._filename = nil}
 
@@ -767,7 +767,7 @@ struct Hazkey_Config_Profile: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
-struct Hazkey_Config_GetConfig: Sendable {
+nonisolated struct Hazkey_Config_GetConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -777,7 +777,7 @@ struct Hazkey_Config_GetConfig: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_SetConfig: Sendable {
+nonisolated struct Hazkey_Config_SetConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -791,7 +791,7 @@ struct Hazkey_Config_SetConfig: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_GetDefaultProfile: Sendable {
+nonisolated struct Hazkey_Config_GetDefaultProfile: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -801,7 +801,7 @@ struct Hazkey_Config_GetDefaultProfile: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_ClearAllHistory: Sendable {
+nonisolated struct Hazkey_Config_ClearAllHistory: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -813,7 +813,7 @@ struct Hazkey_Config_ClearAllHistory: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_ReloadZenzaiModel: Sendable {
+nonisolated struct Hazkey_Config_ReloadZenzaiModel: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -823,7 +823,7 @@ struct Hazkey_Config_ReloadZenzaiModel: Sendable {
   init() {}
 }
 
-struct Hazkey_Config_CurrentConfig: Sendable {
+nonisolated struct Hazkey_Config_CurrentConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -849,17 +849,114 @@ struct Hazkey_Config_CurrentConfig: Sendable {
   init() {}
 }
 
+nonisolated struct Hazkey_Config_GetLearningHistory: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var profileID: String = String()
+
+  /// Partial match on reading or word is applied before pagination.
+  var query: String = String()
+
+  var offset: UInt32 = 0
+
+  /// The server clamps this value to at most 200.
+  var limit: UInt32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Config_LearningEntryKey: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var reading: String = String()
+
+  var word: String = String()
+
+  var lcid: UInt32 = 0
+
+  var rcid: UInt32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Config_DeleteLearningEntries: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var profileID: String = String()
+
+  var entries: [Hazkey_Config_LearningEntryKey] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Config_LearningHistoryEntry: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var reading: String = String()
+
+  var word: String = String()
+
+  var lcid: UInt32 = 0
+
+  var rcid: UInt32 = 0
+
+  var count: UInt32 = 0
+
+  /// Days since the Unix epoch.
+  var lastUsedUnixDay: UInt32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Config_GetLearningHistoryResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var entries: [Hazkey_Config_LearningHistoryEntry] = []
+
+  var totalCount: UInt32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Config_DeleteLearningEntriesResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var deletedCount: UInt32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
-fileprivate let _protobuf_package = "hazkey.config"
+fileprivate nonisolated let _protobuf_package = "hazkey.config"
 
-extension Hazkey_Config_FileHash: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_FileHash: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".FileHash"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .same(proto: "sha256sum"),
-    3: .same(proto: "type"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}sha256sum\0\u{1}type\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -897,20 +994,13 @@ extension Hazkey_Config_FileHash: SwiftProtobuf.Message, SwiftProtobuf._MessageI
   }
 }
 
-extension Hazkey_Config_FileHash.ConfigFileType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "CONFIG_MAIN"),
-    1: .same(proto: "INPUT_TABLE"),
-  ]
+nonisolated extension Hazkey_Config_FileHash.ConfigFileType: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CONFIG_MAIN\0\u{1}INPUT_TABLE\0")
 }
 
-extension Hazkey_Config_Keymap: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_Keymap: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Keymap"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .standard(proto: "is_built_in"),
-    3: .same(proto: "filename"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}is_built_in\0\u{1}filename\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -948,13 +1038,9 @@ extension Hazkey_Config_Keymap: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
   }
 }
 
-extension Hazkey_Config_InputTable: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_InputTable: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".InputTable"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .standard(proto: "is_built_in"),
-    3: .same(proto: "filename"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}is_built_in\0\u{1}filename\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -992,12 +1078,9 @@ extension Hazkey_Config_InputTable: SwiftProtobuf.Message, SwiftProtobuf._Messag
   }
 }
 
-extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".BackendDevice"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .same(proto: "desc"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}desc\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1030,47 +1113,9 @@ extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftProtobuf._Mes
   }
 }
 
-extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    4: .standard(proto: "server_version"),
-    5: .standard(proto: "profile_name"),
-    6: .standard(proto: "profile_id"),
-    10: .standard(proto: "use_default_input_ui_settings"),
-    11: .standard(proto: "auto_convert_mode"),
-    12: .standard(proto: "aux_text_mode"),
-    13: .standard(proto: "suggestion_list_mode"),
-    14: .standard(proto: "use_rich_suggestion"),
-    15: .standard(proto: "num_suggestions"),
-    16: .standard(proto: "auto_convert_min_chars"),
-    20: .standard(proto: "use_default_conversion_ui_settings"),
-    21: .standard(proto: "num_candidates_per_page"),
-    22: .standard(proto: "use_rich_candidates"),
-    30: .standard(proto: "use_default_history_settings"),
-    31: .standard(proto: "use_profile_independent_history"),
-    32: .standard(proto: "use_input_history"),
-    23: .standard(proto: "stop_store_new_history"),
-    40: .standard(proto: "use_default_special_conversion_settings"),
-    41: .standard(proto: "special_conversion_mode"),
-    50: .standard(proto: "use_default_keymap_settings"),
-    51: .standard(proto: "enabled_keymaps"),
-    55: .standard(proto: "use_default_table_settings"),
-    56: .standard(proto: "enabled_tables"),
-    60: .standard(proto: "submode_entry_point_chars"),
-    61: .standard(proto: "auto_convert_hotkey"),
-    70: .standard(proto: "use_user_dictionary"),
-    100: .standard(proto: "use_default_zenzai_settings"),
-    101: .standard(proto: "zenzai_enable"),
-    102: .standard(proto: "zenzai_infer_limit"),
-    103: .standard(proto: "zenzai_contextual_mode"),
-    105: .standard(proto: "use_zenzai_custom_weight"),
-    106: .standard(proto: "zenzai_weight_path"),
-    107: .standard(proto: "zenzai_backend_device_name"),
-    120: .standard(proto: "zenzai_profile"),
-    121: .standard(proto: "zenzai_topic"),
-    122: .standard(proto: "zenzai_style"),
-    123: .standard(proto: "zenzai_preference"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1390,47 +1435,21 @@ extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
   }
 }
 
-extension Hazkey_Config_Profile.AutoConvertMode: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "AUTO_CONVERT_MODE_UNSPECIFIED"),
-    1: .same(proto: "AUTO_CONVERT_DISABLED"),
-    2: .same(proto: "AUTO_CONVERT_ALWAYS"),
-    3: .same(proto: "AUTO_CONVERT_FOR_MULTIPLE_CHARS"),
-  ]
+nonisolated extension Hazkey_Config_Profile.AutoConvertMode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AUTO_CONVERT_MODE_UNSPECIFIED\0\u{1}AUTO_CONVERT_DISABLED\0\u{1}AUTO_CONVERT_ALWAYS\0\u{1}AUTO_CONVERT_FOR_MULTIPLE_CHARS\0")
 }
 
-extension Hazkey_Config_Profile.AuxTextMode: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "AUX_TEXT_MODE_UNSPECIFIED"),
-    1: .same(proto: "AUX_TEXT_DISABLED"),
-    2: .same(proto: "AUX_TEXT_SHOW_ALWAYS"),
-    3: .same(proto: "AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END"),
-  ]
+nonisolated extension Hazkey_Config_Profile.AuxTextMode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AUX_TEXT_MODE_UNSPECIFIED\0\u{1}AUX_TEXT_DISABLED\0\u{1}AUX_TEXT_SHOW_ALWAYS\0\u{1}AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END\0")
 }
 
-extension Hazkey_Config_Profile.SuggestionListMode: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "SUGGESTION_LIST_MODE_UNSPECIFIED"),
-    1: .same(proto: "SUGGESTION_LIST_DISABLED"),
-    2: .same(proto: "SUGGESTION_LIST_SHOW_NORMAL_RESULTS"),
-    3: .same(proto: "SUGGESTION_LIST_SHOW_PREDICTIVE_RESULTS"),
-  ]
+nonisolated extension Hazkey_Config_Profile.SuggestionListMode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SUGGESTION_LIST_MODE_UNSPECIFIED\0\u{1}SUGGESTION_LIST_DISABLED\0\u{1}SUGGESTION_LIST_SHOW_NORMAL_RESULTS\0\u{1}SUGGESTION_LIST_SHOW_PREDICTIVE_RESULTS\0")
 }
 
-extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Config_Profile.protoMessageName + ".SpecialConversionMode"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "comma_separated_number"),
-    2: .standard(proto: "mail_domain"),
-    3: .same(proto: "calendar"),
-    4: .same(proto: "time"),
-    5: .standard(proto: "roman_typography"),
-    6: .standard(proto: "unicode_codepoint"),
-    7: .standard(proto: "hazkey_version"),
-    8: .standard(proto: "relative_date"),
-    50: .standard(proto: "halfwidth_katakana"),
-    51: .standard(proto: "extended_emoji"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}comma_separated_number\0\u{3}mail_domain\0\u{1}calendar\0\u{1}time\0\u{3}roman_typography\0\u{3}unicode_codepoint\0\u{3}hazkey_version\0\u{3}relative_date\0\u{4}*halfwidth_katakana\0\u{3}extended_emoji\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1507,13 +1526,9 @@ extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, Sw
   }
 }
 
-extension Hazkey_Config_Profile.EnabledKeymap: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_Profile.EnabledKeymap: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Config_Profile.protoMessageName + ".EnabledKeymap"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .standard(proto: "is_built_in"),
-    3: .same(proto: "filename"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}is_built_in\0\u{1}filename\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1555,13 +1570,9 @@ extension Hazkey_Config_Profile.EnabledKeymap: SwiftProtobuf.Message, SwiftProto
   }
 }
 
-extension Hazkey_Config_Profile.EnabledInputTable: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_Profile.EnabledInputTable: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Config_Profile.protoMessageName + ".EnabledInputTable"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "name"),
-    2: .standard(proto: "is_built_in"),
-    3: .same(proto: "filename"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}is_built_in\0\u{1}filename\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1603,7 +1614,7 @@ extension Hazkey_Config_Profile.EnabledInputTable: SwiftProtobuf.Message, SwiftP
   }
 }
 
-extension Hazkey_Config_GetConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_GetConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetConfig"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -1622,12 +1633,9 @@ extension Hazkey_Config_GetConfig: SwiftProtobuf.Message, SwiftProtobuf._Message
   }
 }
 
-extension Hazkey_Config_SetConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_SetConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".SetConfig"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "file_hashes"),
-    2: .same(proto: "profiles"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_hashes\0\u{1}profiles\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1660,7 +1668,7 @@ extension Hazkey_Config_SetConfig: SwiftProtobuf.Message, SwiftProtobuf._Message
   }
 }
 
-extension Hazkey_Config_GetDefaultProfile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_GetDefaultProfile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetDefaultProfile"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -1679,11 +1687,9 @@ extension Hazkey_Config_GetDefaultProfile: SwiftProtobuf.Message, SwiftProtobuf.
   }
 }
 
-extension Hazkey_Config_ClearAllHistory: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_ClearAllHistory: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ClearAllHistory"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "profile_id"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}profile_id\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1711,7 +1717,7 @@ extension Hazkey_Config_ClearAllHistory: SwiftProtobuf.Message, SwiftProtobuf._M
   }
 }
 
-extension Hazkey_Config_ReloadZenzaiModel: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_ReloadZenzaiModel: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ReloadZenzaiModel"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -1730,18 +1736,9 @@ extension Hazkey_Config_ReloadZenzaiModel: SwiftProtobuf.Message, SwiftProtobuf.
   }
 }
 
-extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".CurrentConfig"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "file_hashes"),
-    2: .same(proto: "profiles"),
-    3: .standard(proto: "available_keymaps"),
-    4: .standard(proto: "available_tables"),
-    7: .standard(proto: "available_zenzai_backend_devices"),
-    8: .standard(proto: "zenzai_model_available"),
-    9: .standard(proto: "zenzai_model_path"),
-    6: .standard(proto: "xdg_config_home_path"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_hashes\0\u{1}profiles\0\u{3}available_keymaps\0\u{3}available_tables\0\u{4}\u{2}xdg_config_home_path\0\u{3}available_zenzai_backend_devices\0\u{3}zenzai_model_available\0\u{3}zenzai_model_path\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1799,6 +1796,251 @@ extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftProtobuf._Mes
     if lhs.zenzaiModelAvailable != rhs.zenzaiModelAvailable {return false}
     if lhs.zenzaiModelPath != rhs.zenzaiModelPath {return false}
     if lhs.xdgConfigHomePath != rhs.xdgConfigHomePath {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_GetLearningHistory: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".GetLearningHistory"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}profile_id\0\u{1}query\0\u{1}offset\0\u{1}limit\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.profileID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.query) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.offset) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.profileID.isEmpty {
+      try visitor.visitSingularStringField(value: self.profileID, fieldNumber: 1)
+    }
+    if !self.query.isEmpty {
+      try visitor.visitSingularStringField(value: self.query, fieldNumber: 2)
+    }
+    if self.offset != 0 {
+      try visitor.visitSingularUInt32Field(value: self.offset, fieldNumber: 3)
+    }
+    if self.limit != 0 {
+      try visitor.visitSingularUInt32Field(value: self.limit, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_GetLearningHistory, rhs: Hazkey_Config_GetLearningHistory) -> Bool {
+    if lhs.profileID != rhs.profileID {return false}
+    if lhs.query != rhs.query {return false}
+    if lhs.offset != rhs.offset {return false}
+    if lhs.limit != rhs.limit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_LearningEntryKey: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".LearningEntryKey"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reading\0\u{1}word\0\u{1}lcid\0\u{1}rcid\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.reading) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.word) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.lcid) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.rcid) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.reading.isEmpty {
+      try visitor.visitSingularStringField(value: self.reading, fieldNumber: 1)
+    }
+    if !self.word.isEmpty {
+      try visitor.visitSingularStringField(value: self.word, fieldNumber: 2)
+    }
+    if self.lcid != 0 {
+      try visitor.visitSingularUInt32Field(value: self.lcid, fieldNumber: 3)
+    }
+    if self.rcid != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rcid, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_LearningEntryKey, rhs: Hazkey_Config_LearningEntryKey) -> Bool {
+    if lhs.reading != rhs.reading {return false}
+    if lhs.word != rhs.word {return false}
+    if lhs.lcid != rhs.lcid {return false}
+    if lhs.rcid != rhs.rcid {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_DeleteLearningEntries: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".DeleteLearningEntries"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}profile_id\0\u{1}entries\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.profileID) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.entries) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.profileID.isEmpty {
+      try visitor.visitSingularStringField(value: self.profileID, fieldNumber: 1)
+    }
+    if !self.entries.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.entries, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_DeleteLearningEntries, rhs: Hazkey_Config_DeleteLearningEntries) -> Bool {
+    if lhs.profileID != rhs.profileID {return false}
+    if lhs.entries != rhs.entries {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_LearningHistoryEntry: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".LearningHistoryEntry"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reading\0\u{1}word\0\u{1}lcid\0\u{1}rcid\0\u{1}count\0\u{3}last_used_unix_day\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.reading) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.word) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.lcid) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.rcid) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.count) }()
+      case 6: try { try decoder.decodeSingularUInt32Field(value: &self.lastUsedUnixDay) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.reading.isEmpty {
+      try visitor.visitSingularStringField(value: self.reading, fieldNumber: 1)
+    }
+    if !self.word.isEmpty {
+      try visitor.visitSingularStringField(value: self.word, fieldNumber: 2)
+    }
+    if self.lcid != 0 {
+      try visitor.visitSingularUInt32Field(value: self.lcid, fieldNumber: 3)
+    }
+    if self.rcid != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rcid, fieldNumber: 4)
+    }
+    if self.count != 0 {
+      try visitor.visitSingularUInt32Field(value: self.count, fieldNumber: 5)
+    }
+    if self.lastUsedUnixDay != 0 {
+      try visitor.visitSingularUInt32Field(value: self.lastUsedUnixDay, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_LearningHistoryEntry, rhs: Hazkey_Config_LearningHistoryEntry) -> Bool {
+    if lhs.reading != rhs.reading {return false}
+    if lhs.word != rhs.word {return false}
+    if lhs.lcid != rhs.lcid {return false}
+    if lhs.rcid != rhs.rcid {return false}
+    if lhs.count != rhs.count {return false}
+    if lhs.lastUsedUnixDay != rhs.lastUsedUnixDay {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_GetLearningHistoryResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".GetLearningHistoryResult"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}entries\0\u{3}total_count\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.entries) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.totalCount) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.entries.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.entries, fieldNumber: 1)
+    }
+    if self.totalCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.totalCount, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_GetLearningHistoryResult, rhs: Hazkey_Config_GetLearningHistoryResult) -> Bool {
+    if lhs.entries != rhs.entries {return false}
+    if lhs.totalCount != rhs.totalCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Config_DeleteLearningEntriesResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".DeleteLearningEntriesResult"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}deleted_count\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.deletedCount) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.deletedCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.deletedCount, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Config_DeleteLearningEntriesResult, rhs: Hazkey_Config_DeleteLearningEntriesResult) -> Bool {
+    if lhs.deletedCount != rhs.deletedCount {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -45,6 +45,7 @@ final class PerfProbe: @unchecked Sendable {
         case .deleteLeft: return "deleteLeft"
         case .deleteRight: return "deleteRight"
         case .prefixComplete: return "prefixComplete"
+        case .acceptPrediction: return "acceptPrediction"
         case .moveCursor: return "moveCursor"
         case .adjustClauseBoundary: return "adjustClauseBoundary"
         case .getHiraganaWithCursor: return "getHiraganaWithCursor"
@@ -57,7 +58,7 @@ final class PerfProbe: @unchecked Sendable {
         case .clearAllHistory_p: return "clearAllHistory"
         case .reloadZenzaiModel: return "reloadZenzaiModel"
         case .getDefaultProfile: return "getDefaultProfile"
-        case .none: return "none"
+        case .getLearningHistory, .deleteLearningEntries, .none: return "none"
         }
     }
 

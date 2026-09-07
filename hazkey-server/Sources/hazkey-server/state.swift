@@ -20,6 +20,40 @@ enum DisplayedCandidate {
     case fromKanaNumberProvider(word: String)
 }
 
+private enum LearningHistoryError: Error {
+    case invalidOffset
+    case unknownEntry
+    case unsupportedCID
+}
+
+private struct LearningHistoryKey: Hashable {
+    let reading: String
+    let word: String
+    let lcid: UInt32
+    let rcid: UInt32
+}
+
+func katakanaNormalized(_ text: String) -> String {
+    var normalized = String.UnicodeScalarView()
+    for scalar in text.unicodeScalars {
+        if (0x3041 ... 0x3096).contains(scalar.value),
+            let katakanaScalar = Unicode.Scalar(scalar.value + 0x60)
+        {
+            normalized.append(katakanaScalar)
+        } else {
+            normalized.append(scalar)
+        }
+    }
+    return String(normalized)
+}
+
+func learningHistoryMatches(query: String, reading: String, word: String) -> Bool {
+    let normalizedQuery = katakanaNormalized(query)
+    return normalizedQuery.isEmpty
+        || katakanaNormalized(reading).contains(normalizedQuery)
+        || katakanaNormalized(word).contains(normalizedQuery)
+}
+
 class HazkeyServerState {
     let serverConfig: HazkeyServerConfig
     let converter: KanaKanjiConverter
@@ -80,6 +114,16 @@ class HazkeyServerState {
 
         // Initialize base convert options
         self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
+        var learningInitializationOptions = baseConvertRequestOptions
+        learningInitializationOptions.zenzaiMode = .off
+        _ = converter.requestCandidates(
+            .init(
+                convertTargetCursorPosition: 1,
+                input: [.init(character: "ア", inputStyle: .direct)],
+                convertTarget: "ア"
+            ),
+            options: learningInitializationOptions
+        )
     }
 
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
@@ -204,12 +248,15 @@ class HazkeyServerState {
     }
 
     func completePrefix(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
-        guard let entry = currentCandidateList?[candidateIndex] else {
+        // Bounds check first: Swift array subscript traps on an out-of-range
+        // index, and a malformed client index must not crash the server.
+        guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Candidate index \(candidateIndex) not found."
             }
         }
+        let entry = list[candidateIndex]
         switch entry {
         case .fromConverter(let completedCandidate):
             composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
@@ -237,6 +284,42 @@ class HazkeyServerState {
             // commit: clear composing text, do not feed the learning store.
             composingText = ComposingTextBox()
         }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+        }
+    }
+
+    /// [community] Accept a prediction candidate as a fixed leading notation
+    /// (upstream ad714fe / #357). Unlike completePrefix this does not commit:
+    /// the candidate's remaining ruby is appended to the composing text and
+    /// the accepted notation becomes the leading constraint of subsequent
+    /// Zenzai conversions. No learning data is updated because nothing is
+    /// committed yet.
+    func acceptPrediction(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
+        // Bounds check first: Swift array subscript (and optional chaining on
+        // it) traps on an out-of-range index instead of returning nil, and a
+        // malformed client index must not crash the server.
+        guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Candidate index \(candidateIndex) not found."
+            }
+        }
+        guard case .fromConverter(let candidate) = list[candidateIndex] else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Candidate index \(candidateIndex) is not a converter candidate."
+            }
+        }
+        var composing = composingText.value
+        guard converter.acceptPredictionCandidate(candidate, composingText: &composing) else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Candidate \(candidate.text) is not an applicable prediction."
+            }
+        }
+        composingText.value = composing
+        currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -760,6 +843,81 @@ class HazkeyServerState {
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
+    }
+
+    func listLearningEntries(
+        query: String,
+        offset: UInt32,
+        limit: UInt32
+    ) throws -> (entries: [Hazkey_Config_LearningHistoryEntry], totalCount: Int) {
+        guard offset <= 65_536 else {
+            throw LearningHistoryError.invalidOffset
+        }
+        let pageLimit = min(max(Int(limit), 1), 200)
+        let filteredEntries = try allLearningMemoryEntries().filter {
+            learningHistoryMatches(query: query, reading: $0.data.ruby, word: $0.data.word)
+        }
+        let pageStart = min(Int(offset), filteredEntries.count)
+        let pageEnd = min(pageStart + pageLimit, filteredEntries.count)
+        let entries = filteredEntries[pageStart..<pageEnd].map { entry in
+            Hazkey_Config_LearningHistoryEntry.with {
+                $0.reading = entry.data.ruby
+                $0.word = entry.data.word
+                $0.lcid = UInt32(clamping: entry.data.lcid)
+                $0.rcid = UInt32(clamping: entry.data.rcid)
+                $0.count = UInt32(entry.count)
+                $0.lastUsedUnixDay = UInt32(clamping: max(0, Int(entry.lastUsed.timeIntervalSince1970 / 86_400)))
+            }
+        }
+        return (entries, filteredEntries.count)
+    }
+
+    func forgetLearningEntries(
+        _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
+    ) throws -> UInt32 {
+        var uniqueKeys: [LearningHistoryKey] = []
+        var seenKeys: Set<LearningHistoryKey> = []
+        for key in keys {
+            let historyKey = LearningHistoryKey(
+                reading: key.reading, word: key.word, lcid: key.lcid, rcid: key.rcid)
+            if seenKeys.insert(historyKey).inserted {
+                uniqueKeys.append(historyKey)
+            }
+        }
+
+        let existingKeys = Set(try allLearningMemoryEntries().map {
+            LearningHistoryKey(
+                reading: $0.data.ruby,
+                word: $0.data.word,
+                lcid: UInt32(clamping: $0.data.lcid),
+                rcid: UInt32(clamping: $0.data.rcid))
+        })
+        guard uniqueKeys.allSatisfy(existingKeys.contains) else {
+            throw LearningHistoryError.unknownEntry
+        }
+
+        for key in uniqueKeys {
+            guard let lcid = Int(exactly: key.lcid), let rcid = Int(exactly: key.rcid) else {
+                throw LearningHistoryError.unsupportedCID
+            }
+            try converter.forgetLearningMemory(
+                reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
+        }
+        return UInt32(uniqueKeys.count)
+    }
+
+    private func allLearningMemoryEntries() throws -> [LearningMemoryEntry] {
+        var entries: [LearningMemoryEntry] = []
+        var offset = 0
+        repeat {
+            let page = try converter.learningMemoryEntries(offset: offset, limit: 65_536)
+            entries.append(contentsOf: page.entries)
+            guard let nextOffset = page.nextOffset else {
+                return entries
+            }
+            offset = nextOffset
+        } while offset < 65_536
+        return entries
     }
 
     func reinitializeConfiguration() {

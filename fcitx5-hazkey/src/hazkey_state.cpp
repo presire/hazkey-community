@@ -165,6 +165,16 @@ void HazkeyState::preeditKeyEvent(
             engine_->server().deleteRight();
             showPreeditCandidateList();
             break;
+        case FcitxKey_F5:
+            // [community] Accept the focused prediction candidate as a
+            // fixed leading notation and keep composing (upstream ad714fe
+            // / #357). Unlike Return this does not commit; the preedit and
+            // the candidate list are refreshed from the grown composition.
+            if (PredictCandidateList != nullptr && PredictCandidateList->focused()) {
+                engine_->server().acceptPrediction(PredictCandidateList->globalCursorIndex());
+                showPreeditCandidateList();
+            }
+            break;
         case FcitxKey_F6:
         case FcitxKey_F7:
         case FcitxKey_F8:

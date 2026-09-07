@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QMessageBox>
 #include <QProcess>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <mutex>
@@ -364,6 +365,49 @@ bool ServerConnector::clearAllHistory(const std::string& profileId) {
     }
     auto responseVal = response.value();
     return responseVal.status() == hazkey::SUCCESS;
+}
+
+std::optional<hazkey::config::GetLearningHistoryResult>
+ServerConnector::getLearningHistory(const std::string& profileId,
+                                    const std::string& query, uint32_t offset,
+                                    uint32_t limit) {
+    hazkey::RequestEnvelope request;
+    auto* historyRequest = request.mutable_get_learning_history();
+    historyRequest->set_profile_id(profileId);
+    historyRequest->set_query(query);
+    historyRequest->set_offset(offset);
+    historyRequest->set_limit(std::clamp(limit, uint32_t{1}, uint32_t{200}));
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        return std::nullopt;
+    }
+    const auto& responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS ||
+        !responseVal.has_get_learning_history_result()) {
+        return std::nullopt;
+    }
+    return responseVal.get_learning_history_result();
+}
+
+std::optional<uint32_t> ServerConnector::deleteLearningEntries(
+    const std::string& profileId,
+    const std::vector<hazkey::config::LearningEntryKey>& entries) {
+    hazkey::RequestEnvelope request;
+    auto* deleteRequest = request.mutable_delete_learning_entries();
+    deleteRequest->set_profile_id(profileId);
+    for (const auto& entry : entries) {
+        *deleteRequest->add_entries() = entry;
+    }
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        return std::nullopt;
+    }
+    const auto& responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS ||
+        !responseVal.has_delete_learning_entries_result()) {
+        return std::nullopt;
+    }
+    return responseVal.delete_learning_entries_result().deleted_count();
 }
 
 bool ServerConnector::reloadZenzaiModel() {

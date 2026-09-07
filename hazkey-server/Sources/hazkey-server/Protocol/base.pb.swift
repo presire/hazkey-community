@@ -15,12 +15,12 @@ import SwiftProtobuf
 // incompatible with the version of SwiftProtobuf to which you are linking.
 // Please ensure that you are building against the same version of the API
 // that was used to generate this file.
-fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
+fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
   struct _2: SwiftProtobuf.ProtobufAPIVersion_2 {}
   typealias Version = _2
 }
 
-enum Hazkey_StatusCode: SwiftProtobuf.Enum, Swift.CaseIterable {
+nonisolated enum Hazkey_StatusCode: SwiftProtobuf.Enum, Swift.CaseIterable {
   typealias RawValue = Int
   case unspecified // = 0
   case success // = 1
@@ -58,7 +58,7 @@ enum Hazkey_StatusCode: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
-struct Hazkey_RequestEnvelope: Sendable {
+nonisolated struct Hazkey_RequestEnvelope: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -177,6 +177,14 @@ struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .adjustClauseBoundary(newValue)}
   }
 
+  var acceptPrediction: Hazkey_Commands_AcceptPrediction {
+    get {
+      if case .acceptPrediction(let v)? = payload {return v}
+      return Hazkey_Commands_AcceptPrediction()
+    }
+    set {payload = .acceptPrediction(newValue)}
+  }
+
   var getConfig: Hazkey_Config_GetConfig {
     get {
       if case .getConfig(let v)? = payload {return v}
@@ -217,9 +225,25 @@ struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .reloadZenzaiModel(newValue)}
   }
 
+  var getLearningHistory: Hazkey_Config_GetLearningHistory {
+    get {
+      if case .getLearningHistory(let v)? = payload {return v}
+      return Hazkey_Config_GetLearningHistory()
+    }
+    set {payload = .getLearningHistory(newValue)}
+  }
+
+  var deleteLearningEntries: Hazkey_Config_DeleteLearningEntries {
+    get {
+      if case .deleteLearningEntries(let v)? = payload {return v}
+      return Hazkey_Config_DeleteLearningEntries()
+    }
+    set {payload = .deleteLearningEntries(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum OneOf_Payload: Equatable, Sendable {
+  nonisolated enum OneOf_Payload: Equatable, Sendable {
     case newComposingText(Hazkey_Commands_NewComposingText)
     case setContext(Hazkey_Commands_SetContext)
     case inputChar(Hazkey_Commands_InputChar)
@@ -234,18 +258,21 @@ struct Hazkey_RequestEnvelope: Sendable {
     case getCurrentInputMode(Hazkey_Commands_GetCurrentInputModeInfo)
     case saveLearningData(Hazkey_Commands_SaveLearningData)
     case adjustClauseBoundary(Hazkey_Commands_AdjustClauseBoundary)
+    case acceptPrediction(Hazkey_Commands_AcceptPrediction)
     case getConfig(Hazkey_Config_GetConfig)
     case setConfig(Hazkey_Config_SetConfig)
     case getDefaultProfile(Hazkey_Config_GetDefaultProfile)
     case clearAllHistory_p(Hazkey_Config_ClearAllHistory)
     case reloadZenzaiModel(Hazkey_Config_ReloadZenzaiModel)
+    case getLearningHistory(Hazkey_Config_GetLearningHistory)
+    case deleteLearningEntries(Hazkey_Config_DeleteLearningEntries)
 
   }
 
   init() {}
 }
 
-struct Hazkey_ResponseEnvelope: Sendable {
+nonisolated struct Hazkey_ResponseEnvelope: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -304,15 +331,33 @@ struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .currentConfig(newValue)}
   }
 
+  var getLearningHistoryResult: Hazkey_Config_GetLearningHistoryResult {
+    get {
+      if case .getLearningHistoryResult(let v)? = payload {return v}
+      return Hazkey_Config_GetLearningHistoryResult()
+    }
+    set {payload = .getLearningHistoryResult(newValue)}
+  }
+
+  var deleteLearningEntriesResult: Hazkey_Config_DeleteLearningEntriesResult {
+    get {
+      if case .deleteLearningEntriesResult(let v)? = payload {return v}
+      return Hazkey_Config_DeleteLearningEntriesResult()
+    }
+    set {payload = .deleteLearningEntriesResult(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum OneOf_Payload: Equatable, Sendable {
+  nonisolated enum OneOf_Payload: Equatable, Sendable {
     case text(String)
     case candidates(Hazkey_Commands_CandidatesResult)
     case textWithCursor(Hazkey_Commands_TextWithCursor)
     case currentInputModeInfo(Hazkey_Commands_CurrentInputModeInfo)
     case clauseBoundaryResult(Hazkey_Commands_ClauseBoundaryResult)
     case currentConfig(Hazkey_Config_CurrentConfig)
+    case getLearningHistoryResult(Hazkey_Config_GetLearningHistoryResult)
+    case deleteLearningEntriesResult(Hazkey_Config_DeleteLearningEntriesResult)
 
   }
 
@@ -321,39 +366,15 @@ struct Hazkey_ResponseEnvelope: Sendable {
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
-fileprivate let _protobuf_package = "hazkey"
+fileprivate nonisolated let _protobuf_package = "hazkey"
 
-extension Hazkey_StatusCode: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "UNSPECIFIED"),
-    1: .same(proto: "SUCCESS"),
-    2: .same(proto: "FAILED"),
-  ]
+nonisolated extension Hazkey_StatusCode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0UNSPECIFIED\0\u{1}SUCCESS\0\u{1}FAILED\0")
 }
 
-extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".RequestEnvelope"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "new_composing_text"),
-    2: .standard(proto: "set_context"),
-    3: .standard(proto: "input_char"),
-    4: .standard(proto: "modifier_event"),
-    5: .standard(proto: "move_cursor"),
-    6: .standard(proto: "prefix_complete"),
-    7: .standard(proto: "delete_left"),
-    8: .standard(proto: "delete_right"),
-    9: .standard(proto: "get_composing_string"),
-    10: .standard(proto: "get_hiragana_with_cursor"),
-    11: .standard(proto: "get_candidates"),
-    12: .standard(proto: "get_current_input_mode"),
-    13: .standard(proto: "save_learning_data"),
-    14: .standard(proto: "adjust_clause_boundary"),
-    100: .standard(proto: "get_config"),
-    101: .standard(proto: "set_config"),
-    102: .standard(proto: "get_default_profile"),
-    103: .standard(proto: "clear_all_history"),
-    104: .standard(proto: "reload_zenzai_model"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}new_composing_text\0\u{3}set_context\0\u{3}input_char\0\u{3}modifier_event\0\u{3}move_cursor\0\u{3}prefix_complete\0\u{3}delete_left\0\u{3}delete_right\0\u{3}get_composing_string\0\u{3}get_hiragana_with_cursor\0\u{3}get_candidates\0\u{3}get_current_input_mode\0\u{3}save_learning_data\0\u{3}adjust_clause_boundary\0\u{3}accept_prediction\0\u{4}U\u{1}get_config\0\u{3}set_config\0\u{3}get_default_profile\0\u{3}clear_all_history\0\u{3}reload_zenzai_model\0\u{3}get_learning_history\0\u{3}delete_learning_entries\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -543,6 +564,19 @@ extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
           self.payload = .adjustClauseBoundary(v)
         }
       }()
+      case 15: try {
+        var v: Hazkey_Commands_AcceptPrediction?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .acceptPrediction(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .acceptPrediction(v)
+        }
+      }()
       case 100: try {
         var v: Hazkey_Config_GetConfig?
         var hadOneofValue = false
@@ -606,6 +640,32 @@ extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
         if let v = v {
           if hadOneofValue {try decoder.handleConflictingOneOf()}
           self.payload = .reloadZenzaiModel(v)
+        }
+      }()
+      case 105: try {
+        var v: Hazkey_Config_GetLearningHistory?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .getLearningHistory(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .getLearningHistory(v)
+        }
+      }()
+      case 106: try {
+        var v: Hazkey_Config_DeleteLearningEntries?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .deleteLearningEntries(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .deleteLearningEntries(v)
         }
       }()
       default: break
@@ -675,6 +735,10 @@ extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       guard case .adjustClauseBoundary(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
     }()
+    case .acceptPrediction?: try {
+      guard case .acceptPrediction(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+    }()
     case .getConfig?: try {
       guard case .getConfig(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 100)
@@ -695,6 +759,14 @@ extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
       guard case .reloadZenzaiModel(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 104)
     }()
+    case .getLearningHistory?: try {
+      guard case .getLearningHistory(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 105)
+    }()
+    case .deleteLearningEntries?: try {
+      guard case .deleteLearningEntries(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 106)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -707,18 +779,9 @@ extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageI
   }
 }
 
-extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ResponseEnvelope"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "status"),
-    2: .standard(proto: "error_message"),
-    3: .same(proto: "text"),
-    4: .same(proto: "candidates"),
-    5: .standard(proto: "text_with_cursor"),
-    6: .standard(proto: "current_input_mode_info"),
-    7: .standard(proto: "clause_boundary_result"),
-    100: .standard(proto: "current_config"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}error_message\0\u{1}text\0\u{1}candidates\0\u{3}text_with_cursor\0\u{3}current_input_mode_info\0\u{3}clause_boundary_result\0\u{4}]\u{1}current_config\0\u{3}get_learning_history_result\0\u{3}delete_learning_entries_result\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -801,6 +864,32 @@ extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._Message
           self.payload = .currentConfig(v)
         }
       }()
+      case 101: try {
+        var v: Hazkey_Config_GetLearningHistoryResult?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .getLearningHistoryResult(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .getLearningHistoryResult(v)
+        }
+      }()
+      case 102: try {
+        var v: Hazkey_Config_DeleteLearningEntriesResult?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .deleteLearningEntriesResult(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .deleteLearningEntriesResult(v)
+        }
+      }()
       default: break
       }
     }
@@ -841,6 +930,14 @@ extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._Message
     case .currentConfig?: try {
       guard case .currentConfig(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 100)
+    }()
+    case .getLearningHistoryResult?: try {
+      guard case .getLearningHistoryResult(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 101)
+    }()
+    case .deleteLearningEntriesResult?: try {
+      guard case .deleteLearningEntriesResult(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 102)
     }()
     case nil: break
     }

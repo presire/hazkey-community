@@ -71,6 +71,12 @@ class HazkeyServerConnector {
 
     void completePrefix(int index);
 
+    // [community] Accepts the prediction candidate at `index` as a fixed
+    // leading notation and keeps composing (upstream ad714fe / #357).
+    // Returns false when the candidate is not an applicable prediction
+    // (e.g. a regular candidate or a user-dictionary entry).
+    bool acceptPrediction(int index);
+
     void saveLearningData();
 
     struct CandidateData {

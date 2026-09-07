@@ -37,6 +37,8 @@ set(PROJECT_SOURCES
     mainwindow.ui
     serverconnector.cpp
     serverconnector.h
+    learninghistorydialog.cpp
+    learninghistorydialog.h
     config_definitions.h
     config_macros.h
     keysequence_util.cpp
@@ -159,3 +161,40 @@ qt_add_executable(userdict_model_test
 )
 target_link_libraries(userdict_model_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME userdict_model_test COMMAND userdict_model_test)
+
+qt_add_executable(learninghistorydialog_test
+    learninghistorydialog_test.cpp
+    learninghistorydialog.cpp
+    serverconnector.cpp
+)
+if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
+    protobuf_generate(
+        TARGET learninghistorydialog_test
+        LANGUAGE cpp
+        PROTOS ${PROTO_FILES}
+        IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+        PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+    )
+else()
+    target_sources(learninghistorydialog_test PRIVATE ${PROTO_SRCS} ${PROTO_HDRS})
+endif()
+target_include_directories(learninghistorydialog_test PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS}
+)
+target_link_libraries(learninghistorydialog_test PRIVATE
+    Qt6::Test
+    Qt6::Widgets
+    Qt6::Network
+    protobuf::libprotobuf-lite
+)
+target_compile_definitions(learninghistorydialog_test PRIVATE
+    HAZKEY_SERVER_BINARY="${CMAKE_BINARY_DIR}/hazkey-server/swift-build/release/hazkey-server"
+    HAZKEY_LLAMA_LIBRARY_DIR="${CMAKE_BINARY_DIR}/bin"
+    HAZKEY_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+add_dependencies(learninghistorydialog_test build_hazkey_server)
+add_test(NAME learninghistorydialog_test COMMAND learninghistorydialog_test)
+set_tests_properties(learninghistorydialog_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)

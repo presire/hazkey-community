@@ -46,6 +46,8 @@ class ProtocolHandler {
             response = state.deleteRight()
         case .prefixComplete(let req):
             response = state.completePrefix(candidateIndex: Int(req.index))
+        case .acceptPrediction(let req):
+            response = state.acceptPrediction(candidateIndex: Int(req.index))
         case .moveCursor(let req):
             response = state.moveCursor(offset: Int(req.offset))
         case .adjustClauseBoundary(let req):
@@ -75,6 +77,35 @@ class ProtocolHandler {
             }
         case .getDefaultProfile:
             response = HazkeyServerConfig.getDefaultProfile()
+        case .getLearningHistory(let req):
+            do {
+                let result = try state.listLearningEntries(
+                    query: req.query, offset: req.offset, limit: req.limit)
+                response = Hazkey_ResponseEnvelope.with {
+                    $0.status = .success
+                    $0.getLearningHistoryResult.entries = result.entries
+                    $0.getLearningHistoryResult.totalCount = UInt32(result.totalCount)
+                }
+            } catch {
+                response = Hazkey_ResponseEnvelope.with {
+                    $0.status = .failed
+                    $0.errorMessage = "Failed to list learning history: \(error)"
+                }
+            }
+        case .deleteLearningEntries(let req):
+            do {
+                let deletedCount = try state.forgetLearningEntries(
+                    req.entries.map { ($0.reading, $0.word, $0.lcid, $0.rcid) })
+                response = Hazkey_ResponseEnvelope.with {
+                    $0.status = .success
+                    $0.deleteLearningEntriesResult.deletedCount = deletedCount
+                }
+            } catch {
+                response = Hazkey_ResponseEnvelope.with {
+                    $0.status = .failed
+                    $0.errorMessage = "Failed to forget learning history: \(error)"
+                }
+            }
         case .none:
             NSLog("Payload not specified")
             response = Hazkey_ResponseEnvelope.with {

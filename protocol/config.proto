@@ -160,3 +160,43 @@ message CurrentConfig {
     string zenzai_model_path = 9;
     string xdg_config_home_path = 6;
 }
+
+message GetLearningHistory {
+    string profile_id = 1;
+    // Partial match on reading or word is applied before pagination.
+    string query = 2;
+    uint32 offset = 3;
+    // The server clamps this value to at most 200.
+    uint32 limit = 4;
+}
+
+message LearningEntryKey {
+    string reading = 1;
+    string word = 2;
+    uint32 lcid = 3;
+    uint32 rcid = 4;
+}
+
+message DeleteLearningEntries {
+    string profile_id = 1;
+    repeated LearningEntryKey entries = 2;
+}
+
+message LearningHistoryEntry {
+    string reading = 1;
+    string word = 2;
+    uint32 lcid = 3;
+    uint32 rcid = 4;
+    uint32 count = 5;
+    // Days since the Unix epoch.
+    uint32 last_used_unix_day = 6;
+}
+
+message GetLearningHistoryResult {
+    repeated LearningHistoryEntry entries = 1;
+    uint32 total_count = 2;
+}
+
+message DeleteLearningEntriesResult {
+    uint32 deleted_count = 1;
+}

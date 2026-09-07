@@ -45,6 +45,14 @@ message PrefixComplete {
     int32 index = 1;
 }
 
+// [community] Accept a prediction candidate as a fixed leading notation.
+// Unlike PrefixComplete this does not commit: the candidate's remaining
+// ruby is appended to the composing text and the accepted notation becomes
+// the leading constraint of subsequent Zenzai conversions.
+message AcceptPrediction {
+    int32 index = 1;
+}
+
 message DeleteLeft {}
 
 message DeleteRight {}

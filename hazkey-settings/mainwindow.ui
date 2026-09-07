@@ -506,12 +506,35 @@
               </widget>
              </item>
               <item row="4" column="1">
-               <widget class="QPushButton" name="clearLearningData">
-               <property name="text">
-                <string>Clear all input history data</string>
-               </property>
-              </widget>
-             </item>
+                <layout class="QVBoxLayout" name="learningHistoryButtons">
+                 <item>
+                  <widget class="QPushButton" name="clearLearningData">
+                   <property name="minimumSize">
+                    <size>
+                     <width>240</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="text">
+                    <string>Clear all input history data</string>
+                   </property>
+                 </widget>
+                </item>
+                 <item>
+                  <widget class="QPushButton" name="selectiveLearningHistory">
+                   <property name="minimumSize">
+                    <size>
+                     <width>240</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="text">
+                    <string>Select entries...</string>
+                   </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
              <item row="0" column="0" colspan="2">
               <widget class="QLabel" name="personalizationNote">
                <property name="font">

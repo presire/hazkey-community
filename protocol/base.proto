@@ -23,12 +23,15 @@ message RequestEnvelope {
         hazkey.commands.GetCurrentInputModeInfo get_current_input_mode = 12;
         hazkey.commands.SaveLearningData save_learning_data = 13;
         hazkey.commands.AdjustClauseBoundary adjust_clause_boundary = 14;
+        hazkey.commands.AcceptPrediction accept_prediction = 15;
 
         hazkey.config.GetConfig get_config = 100;
         hazkey.config.SetConfig set_config = 101;
         hazkey.config.GetDefaultProfile get_default_profile = 102;
         hazkey.config.ClearAllHistory clear_all_history = 103;
         hazkey.config.ReloadZenzaiModel reload_zenzai_model = 104;
+        hazkey.config.GetLearningHistory get_learning_history = 105;
+        hazkey.config.DeleteLearningEntries delete_learning_entries = 106;
     }
 }
 
@@ -48,5 +51,7 @@ message ResponseEnvelope {
         hazkey.commands.CurrentInputModeInfo current_input_mode_info = 6;
         hazkey.commands.ClauseBoundaryResult clause_boundary_result = 7;
         hazkey.config.CurrentConfig current_config = 100;
+        hazkey.config.GetLearningHistoryResult get_learning_history_result = 101;
+        hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;
     }
 }

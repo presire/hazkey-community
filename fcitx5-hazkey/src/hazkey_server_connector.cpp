@@ -50,6 +50,8 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
         case hazkey::RequestEnvelope::kClearAllHistory: return "clear_all_history";
         case hazkey::RequestEnvelope::kReloadZenzaiModel: return "reload_zenzai_model";
         case hazkey::RequestEnvelope::kGetDefaultProfile: return "get_default_profile";
+        case hazkey::RequestEnvelope::kGetLearningHistory: return "get_learning_history";
+        case hazkey::RequestEnvelope::kDeleteLearningEntries: return "delete_learning_entries";
         case hazkey::RequestEnvelope::PAYLOAD_NOT_SET: return "none";
     }
     return "none";
@@ -673,6 +675,28 @@ void HazkeyServerConnector::completePrefix(int index) {
         return;
     }
     return;
+}
+
+bool HazkeyServerConnector::acceptPrediction(int index) {
+    // [community] Accept a prediction candidate as a fixed leading notation.
+    // Unlike completePrefix() this keeps the composition open; the client
+    // must refresh the preedit and the candidate list afterwards.
+    invalidateCache();
+    hazkey::RequestEnvelope request;
+    auto props = request.mutable_accept_prediction();
+    props->set_index(index);
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR() << "Error while transacting acceptPrediction().";
+        return false;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_DEBUG() << "acceptPrediction: Server returned an error: "
+                      << responseVal.error_message();
+        return false;
+    }
+    return true;
 }
 
 void HazkeyServerConnector::saveLearningData() {

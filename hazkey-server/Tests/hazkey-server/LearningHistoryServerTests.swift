@@ -1,0 +1,288 @@
+import Foundation
+import Glibc
+import KanaKanjiConverterModule
+import SwiftProtobuf
+import XCTest
+
+@testable import hazkey_server
+
+final class LearningHistoryServerTests: XCTestCase {
+    private func withTemporaryXDG<T>(_ body: (URL) throws -> T) throws -> T {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "hazkey-learning-history-server-tests-\(UUID().uuidString)", isDirectory: true)
+        let configDirectory = root.appendingPathComponent("config", isDirectory: true)
+        let stateDirectory = root.appendingPathComponent("state", isDirectory: true)
+        let originalConfigDirectory = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let originalStateDirectory = ProcessInfo.processInfo.environment["XDG_STATE_HOME"]
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        setenv("XDG_CONFIG_HOME", configDirectory.path, 1)
+        setenv("XDG_STATE_HOME", stateDirectory.path, 1)
+        defer {
+            if let originalConfigDirectory {
+                setenv("XDG_CONFIG_HOME", originalConfigDirectory, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+            if let originalStateDirectory {
+                setenv("XDG_STATE_HOME", originalStateDirectory, 1)
+            } else {
+                unsetenv("XDG_STATE_HOME")
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        return try body(root)
+    }
+
+    private func makeState(memoryURL: URL) -> HazkeyServerState {
+        let state = HazkeyServerState()
+        let sharedURL = memoryURL.deletingLastPathComponent().appendingPathComponent(
+            "shared", isDirectory: true)
+        try? FileManager.default.createDirectory(at: memoryURL, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: sharedURL, withIntermediateDirectories: true)
+        let options = ConvertRequestOptions(
+            N_best: 1,
+            requireJapanesePrediction: .disabled,
+            requireEnglishPrediction: .disabled,
+            keyboardLanguage: .none,
+            learningType: .inputAndOutput,
+            maxMemoryCount: 64,
+            memoryDirectoryURL: memoryURL,
+            sharedContainerURL: sharedURL,
+            textReplacer: .empty,
+            specialCandidateProviders: [],
+            zenzaiMode: .off,
+            typoCorrectionMode: .disabled,
+            metadata: nil
+        )
+        let composingText = ComposingText(
+            convertTargetCursorPosition: 1,
+            input: [.init(character: "ア", inputStyle: .direct)],
+            convertTarget: "ア"
+        )
+        _ = state.converter.requestCandidates(composingText, options: options)
+        return state
+    }
+
+    private func seed(_ elements: [DicdataElement], in state: HazkeyServerState) {
+        for element in elements {
+            state.converter.updateLearningData(
+                .init(
+                    text: element.word,
+                    value: element.value(),
+                    composingCount: .inputCount(1),
+                    lastMid: element.mid,
+                    data: [element]
+                )
+            )
+            state.converter.stopComposition()
+        }
+        state.converter.commitUpdateLearningData()
+    }
+
+    private func send(
+        _ request: Hazkey_RequestEnvelope,
+        to state: HazkeyServerState
+    ) throws -> Hazkey_ResponseEnvelope {
+        let bytes = try request.serializedData()
+        return try Hazkey_ResponseEnvelope(serializedBytes: ProtocolHandler(state: state).processProto(data: bytes))
+    }
+
+    private func historyRequest(query: String, offset: UInt32 = 0, limit: UInt32 = 20)
+        -> Hazkey_RequestEnvelope
+    {
+        Hazkey_RequestEnvelope.with {
+            $0.getLearningHistory = Hazkey_Config_GetLearningHistory.with {
+                $0.query = query
+                $0.offset = offset
+                $0.limit = limit
+            }
+        }
+    }
+
+    private func deleteRequest(_ entries: [Hazkey_Config_LearningEntryKey]) -> Hazkey_RequestEnvelope {
+        Hazkey_RequestEnvelope.with {
+            $0.deleteLearningEntries = Hazkey_Config_DeleteLearningEntries.with {
+                $0.entries = entries
+            }
+        }
+    }
+
+    private func key(for element: DicdataElement) -> Hazkey_Config_LearningEntryKey {
+        Hazkey_Config_LearningEntryKey.with {
+            $0.reading = element.ruby
+            $0.word = element.word
+            $0.lcid = UInt32(element.lcid)
+            $0.rcid = UInt32(element.rcid)
+        }
+    }
+
+    func testHistoryFiltersByReadingSubstring() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            seed([
+                .init(word: "漢字", ruby: "カンジ", lcid: 10, rcid: 11, mid: 1, value: -5),
+                .init(word: "仮名", ruby: "カナ", lcid: 12, rcid: 13, mid: 1, value: -5),
+            ], in: state)
+
+            let response = try send(historyRequest(query: "ンジ"), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.map(\.word), ["漢字"])
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 1)
+        }
+    }
+
+    func testGetLearningHistoryMatchesHiraganaQueryAgainstKatakanaReading() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            seed([.init(word: "切符", ruby: "キリン", lcid: 10, rcid: 11, mid: 1, value: -5)], in: state)
+
+            let response = try send(historyRequest(query: "きりん"), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.map(\.word), ["切符"])
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 1)
+        }
+    }
+
+    func testGetLearningHistoryMatchesKatakanaQueryAgainstHiraganaReading() throws {
+        XCTAssertTrue(learningHistoryMatches(query: "キリン", reading: "きりん", word: "切符"))
+    }
+
+    func testHistoryFiltersByWordSubstring() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            seed([
+                .init(word: "東京都", ruby: "トウキョウト", lcid: 10, rcid: 11, mid: 1, value: -5),
+                .init(word: "京都府", ruby: "キョウトフ", lcid: 12, rcid: 13, mid: 1, value: -5),
+            ], in: state)
+
+            let response = try send(historyRequest(query: "京都府"), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.map(\.word), ["京都府"])
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 1)
+        }
+    }
+
+    func testHistoryReturnsEmptyResultForNoMatch() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            seed([.init(word: "漢字", ruby: "カンジ", lcid: 10, rcid: 11, mid: 1, value: -5)], in: state)
+
+            let response = try send(historyRequest(query: "不存在"), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertTrue(response.getLearningHistoryResult.entries.isEmpty)
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 0)
+        }
+    }
+
+    func testInitialHistoryDoesNotRequireCandidateRequest() throws {
+        try withTemporaryXDG { _ in
+            let response = try send(historyRequest(query: ""), to: HazkeyServerState())
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertTrue(response.getLearningHistoryResult.entries.isEmpty)
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 0)
+        }
+    }
+
+    func testHistoryPaginatesFilteredEntriesAndPreservesTotalCount() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            let elements = (0 ..< 7).map {
+                DicdataElement(word: "候補\($0)", ruby: "コウホ\($0)", lcid: 10 + $0, rcid: 20 + $0, mid: 1, value: -5)
+            }
+            seed(elements, in: state)
+
+            let response = try send(historyRequest(query: "候補", offset: 2, limit: 3), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.count, 3)
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 7)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.map(\.word), ["候補2", "候補3", "候補4"])
+        }
+    }
+
+    func testGetLearningHistoryClampsLimitToServerMaximum() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            let elements = (0 ..< 210).map {
+                DicdataElement(word: "候補\($0)", ruby: "コウホ\($0)", lcid: 10, rcid: 11, mid: 1, value: -5)
+            }
+            seed(elements, in: state)
+
+            let response = try send(historyRequest(query: "", offset: 0, limit: 10000), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.count, 200)
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 210)
+        }
+    }
+
+    func testDeleteRemovesEntryAndPersistsForFreshState() throws {
+        try withTemporaryXDG { root in
+            let memoryURL = root.appendingPathComponent("memory", isDirectory: true)
+            let target = DicdataElement(word: "削除", ruby: "サクジョ", lcid: 10, rcid: 11, mid: 1, value: -5)
+            let survivor = DicdataElement(word: "保持", ruby: "ホジ", lcid: 12, rcid: 13, mid: 1, value: -5)
+            let state = makeState(memoryURL: memoryURL)
+            seed([target, survivor], in: state)
+
+            let deletion = try send(deleteRequest([key(for: target)]), to: state)
+            let freshState = makeState(memoryURL: memoryURL)
+            let listing = try send(historyRequest(query: ""), to: freshState)
+
+            XCTAssertEqual(deletion.status, .success)
+            XCTAssertEqual(deletion.deleteLearningEntriesResult.deletedCount, 1)
+            XCTAssertEqual(listing.status, .success)
+            XCTAssertEqual(listing.getLearningHistoryResult.entries.map(\.word), [survivor.word])
+        }
+    }
+
+    func testDeleteInProfileDirectoryLeavesSharedDirectoryUnchanged() throws {
+        try withTemporaryXDG { root in
+            var profile = Hazkey_Config_Profile()
+            profile.profileID = "separated"
+            profile.useProfileIndependentHistory = true
+            let sharedURL = HazkeyServerConfig.memoryDirectory(
+                for: Hazkey_Config_Profile(), stateDirectory: root)
+            let profileURL = HazkeyServerConfig.memoryDirectory(for: profile, stateDirectory: root)
+            let sharedEntry = DicdataElement(word: "共有", ruby: "キョウユウ", lcid: 10, rcid: 11, mid: 1, value: -5)
+            let profileEntry = DicdataElement(word: "分離", ruby: "ブンリ", lcid: 12, rcid: 13, mid: 1, value: -5)
+            let sharedState = makeState(memoryURL: sharedURL)
+            let profileState = makeState(memoryURL: profileURL)
+            seed([sharedEntry], in: sharedState)
+            seed([profileEntry], in: profileState)
+
+            let deletion = try send(deleteRequest([key(for: profileEntry)]), to: profileState)
+            let sharedListing = try send(historyRequest(query: ""), to: sharedState)
+
+            XCTAssertEqual(deletion.status, .success)
+            XCTAssertEqual(sharedListing.status, .success)
+            XCTAssertEqual(sharedListing.getLearningHistoryResult.entries.map(\.word), [sharedEntry.word])
+        }
+    }
+
+    func testInvalidOffsetReturnsFailedStatusWithoutCrashing() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+
+            let response = try send(historyRequest(query: "", offset: UInt32.max), to: state)
+
+            XCTAssertEqual(response.status, .failed)
+        }
+    }
+
+    func testUnknownEntryDeleteReturnsFailedStatusWithoutCrashing() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            let unknown = DicdataElement(word: "未知", ruby: "ミチ", lcid: 10, rcid: 11, mid: 1, value: -5)
+
+            let response = try send(deleteRequest([key(for: unknown)]), to: state)
+
+            XCTAssertEqual(response.status, .failed)
+        }
+    }
+}

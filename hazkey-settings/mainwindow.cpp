@@ -45,6 +45,7 @@
 #include "config_macros.h"
 #include "constants.h"
 #include "constants.h.in"
+#include "learninghistorydialog.h"
 #include "keysequence_util.h"
 #include "serverconnector.h"
 #include "userdict_model.h"
@@ -337,6 +338,8 @@ void MainWindow::connectSignals() {
     // Connect clear learning data button
     connect(ui_->clearLearningData, &QPushButton::clicked, this,
             &MainWindow::onClearLearningData);
+    connect(ui_->selectiveLearningHistory, &QPushButton::clicked, this,
+            &MainWindow::onSelectiveLearningHistory);
 
     // Connect Zenzai model management button
     connect(ui_->manageZenzaiModels, &QPushButton::clicked, this,
@@ -1908,6 +1911,25 @@ void MainWindow::onClearLearningData() {
                    "connection to the hazkey server."));
         }
     }
+}
+
+void MainWindow::onSelectiveLearningHistory() {
+    if (!currentProfile_) {
+        QMessageBox::warning(this, tr("Error"),
+                             tr("No configuration profile loaded."));
+        return;
+    }
+
+    if (!learningHistoryDialog_) {
+        learningHistoryDialog_ = new LearningHistoryDialog(
+            &server_,
+            {currentProfile_->profile_id(),
+             currentProfile_->use_profile_independent_history()}, this);
+        learningHistoryDialog_->setAttribute(Qt::WA_DeleteOnClose);
+    }
+    learningHistoryDialog_->show();
+    learningHistoryDialog_->raise();
+    learningHistoryDialog_->activateWindow();
 }
 
 QString MainWindow::translateKeymapName(const QString& keymapName,

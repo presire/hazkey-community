@@ -15,12 +15,12 @@ import SwiftProtobuf
 // incompatible with the version of SwiftProtobuf to which you are linking.
 // Please ensure that you are building against the same version of the API
 // that was used to generate this file.
-fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
+fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAPIVersionCheck {
   struct _2: SwiftProtobuf.ProtobufAPIVersion_2 {}
   typealias Version = _2
 }
 
-struct Hazkey_Commands_NewComposingText: Sendable {
+nonisolated struct Hazkey_Commands_NewComposingText: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -30,7 +30,7 @@ struct Hazkey_Commands_NewComposingText: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_SetContext: Sendable {
+nonisolated struct Hazkey_Commands_SetContext: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -44,7 +44,7 @@ struct Hazkey_Commands_SetContext: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_InputChar: Sendable {
+nonisolated struct Hazkey_Commands_InputChar: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -56,7 +56,7 @@ struct Hazkey_Commands_InputChar: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_ModifierEvent: Sendable {
+nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -67,7 +67,7 @@ struct Hazkey_Commands_ModifierEvent: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum ModifierType: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum ModifierType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case unspecified // = 0
     case shift // = 1
@@ -101,7 +101,7 @@ struct Hazkey_Commands_ModifierEvent: Sendable {
 
   }
 
-  enum EventType: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum EventType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case unspecified // = 0
     case press // = 1
@@ -142,7 +142,7 @@ struct Hazkey_Commands_ModifierEvent: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_MoveCursor: Sendable {
+nonisolated struct Hazkey_Commands_MoveCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -154,7 +154,7 @@ struct Hazkey_Commands_MoveCursor: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_AdjustClauseBoundary: Sendable {
+nonisolated struct Hazkey_Commands_AdjustClauseBoundary: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -166,7 +166,7 @@ struct Hazkey_Commands_AdjustClauseBoundary: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_PrefixComplete: Sendable {
+nonisolated struct Hazkey_Commands_PrefixComplete: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -178,7 +178,23 @@ struct Hazkey_Commands_PrefixComplete: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_DeleteLeft: Sendable {
+/// [community] Accept a prediction candidate as a fixed leading notation.
+/// Unlike PrefixComplete this does not commit: the candidate's remaining
+/// ruby is appended to the composing text and the accepted notation becomes
+/// the leading constraint of subsequent Zenzai conversions.
+nonisolated struct Hazkey_Commands_AcceptPrediction: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var index: Int32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Commands_DeleteLeft: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -188,7 +204,7 @@ struct Hazkey_Commands_DeleteLeft: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_DeleteRight: Sendable {
+nonisolated struct Hazkey_Commands_DeleteRight: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -198,7 +214,7 @@ struct Hazkey_Commands_DeleteRight: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_GetComposingString: Sendable {
+nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -209,7 +225,7 @@ struct Hazkey_Commands_GetComposingString: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum CharType: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum CharType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case hiragana // = 0
     case katakanaFull // = 1
@@ -258,7 +274,7 @@ struct Hazkey_Commands_GetComposingString: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_GetHiraganaWithCursor: Sendable {
+nonisolated struct Hazkey_Commands_GetHiraganaWithCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -268,7 +284,7 @@ struct Hazkey_Commands_GetHiraganaWithCursor: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_GetCandidates: Sendable {
+nonisolated struct Hazkey_Commands_GetCandidates: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -280,7 +296,7 @@ struct Hazkey_Commands_GetCandidates: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_GetCurrentInputModeInfo: Sendable {
+nonisolated struct Hazkey_Commands_GetCurrentInputModeInfo: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -290,7 +306,7 @@ struct Hazkey_Commands_GetCurrentInputModeInfo: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_SaveLearningData: Sendable {
+nonisolated struct Hazkey_Commands_SaveLearningData: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -300,7 +316,7 @@ struct Hazkey_Commands_SaveLearningData: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_Text: Sendable {
+nonisolated struct Hazkey_Commands_Text: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -312,7 +328,7 @@ struct Hazkey_Commands_Text: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_TextWithCursor: Sendable {
+nonisolated struct Hazkey_Commands_TextWithCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -328,7 +344,7 @@ struct Hazkey_Commands_TextWithCursor: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_CandidatesResult: Sendable {
+nonisolated struct Hazkey_Commands_CandidatesResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -343,7 +359,7 @@ struct Hazkey_Commands_CandidatesResult: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  struct Candidate: Sendable {
+  nonisolated struct Candidate: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
@@ -360,17 +376,17 @@ struct Hazkey_Commands_CandidatesResult: Sendable {
   init() {}
 }
 
-struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
+nonisolated struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   var candidates: Hazkey_Commands_CandidatesResult {
-    get {return _candidates ?? Hazkey_Commands_CandidatesResult()}
+    get {_candidates ?? Hazkey_Commands_CandidatesResult()}
     set {_candidates = newValue}
   }
   /// Returns true if `candidates` has been explicitly set.
-  var hasCandidates: Bool {return self._candidates != nil}
+  var hasCandidates: Bool {self._candidates != nil}
   /// Clears the value of `candidates`. Subsequent reads from it will return its default value.
   mutating func clearCandidates() {self._candidates = nil}
 
@@ -383,7 +399,7 @@ struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
   fileprivate var _candidates: Hazkey_Commands_CandidatesResult? = nil
 }
 
-struct Hazkey_Commands_CurrentInputModeInfo: Sendable {
+nonisolated struct Hazkey_Commands_CurrentInputModeInfo: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
@@ -392,7 +408,7 @@ struct Hazkey_Commands_CurrentInputModeInfo: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  enum InputMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+  nonisolated enum InputMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
     case normal // = 0
     case direct // = 1
@@ -431,9 +447,9 @@ struct Hazkey_Commands_CurrentInputModeInfo: Sendable {
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
-fileprivate let _protobuf_package = "hazkey.commands"
+fileprivate nonisolated let _protobuf_package = "hazkey.commands"
 
-extension Hazkey_Commands_NewComposingText: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_NewComposingText: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".NewComposingText"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -452,12 +468,9 @@ extension Hazkey_Commands_NewComposingText: SwiftProtobuf.Message, SwiftProtobuf
   }
 }
 
-extension Hazkey_Commands_SetContext: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_SetContext: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".SetContext"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "context"),
-    2: .same(proto: "anchor"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}context\0\u{1}anchor\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -490,11 +503,9 @@ extension Hazkey_Commands_SetContext: SwiftProtobuf.Message, SwiftProtobuf._Mess
   }
 }
 
-extension Hazkey_Commands_InputChar: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_InputChar: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".InputChar"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "text"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -522,12 +533,9 @@ extension Hazkey_Commands_InputChar: SwiftProtobuf.Message, SwiftProtobuf._Messa
   }
 }
 
-extension Hazkey_Commands_ModifierEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_ModifierEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ModifierEvent"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "mod_type"),
-    2: .standard(proto: "event_type"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}mod_type\0\u{3}event_type\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -560,26 +568,17 @@ extension Hazkey_Commands_ModifierEvent: SwiftProtobuf.Message, SwiftProtobuf._M
   }
 }
 
-extension Hazkey_Commands_ModifierEvent.ModifierType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "MODIFIER_TYPE_UNSPECIFIED"),
-    1: .same(proto: "SHIFT"),
-  ]
+nonisolated extension Hazkey_Commands_ModifierEvent.ModifierType: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0MODIFIER_TYPE_UNSPECIFIED\0\u{1}SHIFT\0")
 }
 
-extension Hazkey_Commands_ModifierEvent.EventType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "EVENT_TYPE_UNSPECIFIED"),
-    1: .same(proto: "PRESS"),
-    2: .same(proto: "RELEASE"),
-  ]
+nonisolated extension Hazkey_Commands_ModifierEvent.EventType: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}PRESS\0\u{1}RELEASE\0")
 }
 
-extension Hazkey_Commands_MoveCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_MoveCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".MoveCursor"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "offset"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}offset\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -607,11 +606,9 @@ extension Hazkey_Commands_MoveCursor: SwiftProtobuf.Message, SwiftProtobuf._Mess
   }
 }
 
-extension Hazkey_Commands_AdjustClauseBoundary: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_AdjustClauseBoundary: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".AdjustClauseBoundary"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "offset"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}offset\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -639,11 +636,9 @@ extension Hazkey_Commands_AdjustClauseBoundary: SwiftProtobuf.Message, SwiftProt
   }
 }
 
-extension Hazkey_Commands_PrefixComplete: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_PrefixComplete: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".PrefixComplete"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "index"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}index\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -671,7 +666,37 @@ extension Hazkey_Commands_PrefixComplete: SwiftProtobuf.Message, SwiftProtobuf._
   }
 }
 
-extension Hazkey_Commands_DeleteLeft: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_AcceptPrediction: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".AcceptPrediction"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}index\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.index) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.index != 0 {
+      try visitor.visitSingularInt32Field(value: self.index, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Commands_AcceptPrediction, rhs: Hazkey_Commands_AcceptPrediction) -> Bool {
+    if lhs.index != rhs.index {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Commands_DeleteLeft: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".DeleteLeft"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -690,7 +715,7 @@ extension Hazkey_Commands_DeleteLeft: SwiftProtobuf.Message, SwiftProtobuf._Mess
   }
 }
 
-extension Hazkey_Commands_DeleteRight: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_DeleteRight: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".DeleteRight"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -709,12 +734,9 @@ extension Hazkey_Commands_DeleteRight: SwiftProtobuf.Message, SwiftProtobuf._Mes
   }
 }
 
-extension Hazkey_Commands_GetComposingString: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_GetComposingString: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetComposingString"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "char_type"),
-    2: .standard(proto: "current_preedit"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}char_type\0\u{3}current_preedit\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -747,17 +769,11 @@ extension Hazkey_Commands_GetComposingString: SwiftProtobuf.Message, SwiftProtob
   }
 }
 
-extension Hazkey_Commands_GetComposingString.CharType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "HIRAGANA"),
-    1: .same(proto: "KATAKANA_FULL"),
-    2: .same(proto: "KATAKANA_HALF"),
-    3: .same(proto: "ALPHABET_FULL"),
-    4: .same(proto: "ALPHABET_HALF"),
-  ]
+nonisolated extension Hazkey_Commands_GetComposingString.CharType: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0HIRAGANA\0\u{1}KATAKANA_FULL\0\u{1}KATAKANA_HALF\0\u{1}ALPHABET_FULL\0\u{1}ALPHABET_HALF\0")
 }
 
-extension Hazkey_Commands_GetHiraganaWithCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_GetHiraganaWithCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetHiraganaWithCursor"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -776,11 +792,9 @@ extension Hazkey_Commands_GetHiraganaWithCursor: SwiftProtobuf.Message, SwiftPro
   }
 }
 
-extension Hazkey_Commands_GetCandidates: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_GetCandidates: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetCandidates"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "is_suggest"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}is_suggest\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -808,7 +822,7 @@ extension Hazkey_Commands_GetCandidates: SwiftProtobuf.Message, SwiftProtobuf._M
   }
 }
 
-extension Hazkey_Commands_GetCurrentInputModeInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_GetCurrentInputModeInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".GetCurrentInputModeInfo"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -827,7 +841,7 @@ extension Hazkey_Commands_GetCurrentInputModeInfo: SwiftProtobuf.Message, SwiftP
   }
 }
 
-extension Hazkey_Commands_SaveLearningData: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_SaveLearningData: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".SaveLearningData"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
@@ -846,11 +860,9 @@ extension Hazkey_Commands_SaveLearningData: SwiftProtobuf.Message, SwiftProtobuf
   }
 }
 
-extension Hazkey_Commands_Text: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_Text: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Text"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "text"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -878,13 +890,9 @@ extension Hazkey_Commands_Text: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
   }
 }
 
-extension Hazkey_Commands_TextWithCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_TextWithCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".TextWithCursor"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "beforeCursosr"),
-    2: .same(proto: "onCursor"),
-    3: .same(proto: "afterCursor"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}beforeCursosr\0\u{1}onCursor\0\u{1}afterCursor\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -922,14 +930,9 @@ extension Hazkey_Commands_TextWithCursor: SwiftProtobuf.Message, SwiftProtobuf._
   }
 }
 
-extension Hazkey_Commands_CandidatesResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_CandidatesResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".CandidatesResult"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "candidates"),
-    2: .standard(proto: "live_text"),
-    3: .standard(proto: "live_text_index"),
-    4: .standard(proto: "page_size"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0\u{3}live_text\0\u{3}live_text_index\0\u{3}page_size\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -972,12 +975,9 @@ extension Hazkey_Commands_CandidatesResult: SwiftProtobuf.Message, SwiftProtobuf
   }
 }
 
-extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Commands_CandidatesResult.protoMessageName + ".Candidate"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "text"),
-    2: .standard(proto: "sub_hiragana"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}sub_hiragana\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1010,12 +1010,9 @@ extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.Message, Swi
   }
 }
 
-extension Hazkey_Commands_ClauseBoundaryResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_ClauseBoundaryResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ClauseBoundaryResult"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .same(proto: "candidates"),
-    2: .same(proto: "hiragana"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}candidates\0\u{1}hiragana\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1052,11 +1049,9 @@ extension Hazkey_Commands_ClauseBoundaryResult: SwiftProtobuf.Message, SwiftProt
   }
 }
 
-extension Hazkey_Commands_CurrentInputModeInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+nonisolated extension Hazkey_Commands_CurrentInputModeInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".CurrentInputModeInfo"
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    1: .standard(proto: "input_mode"),
-  ]
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_mode\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1084,9 +1079,6 @@ extension Hazkey_Commands_CurrentInputModeInfo: SwiftProtobuf.Message, SwiftProt
   }
 }
 
-extension Hazkey_Commands_CurrentInputModeInfo.InputMode: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
-    0: .same(proto: "NORMAL"),
-    1: .same(proto: "DIRECT"),
-  ]
+nonisolated extension Hazkey_Commands_CurrentInputModeInfo.InputMode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0NORMAL\0\u{1}DIRECT\0")
 }
