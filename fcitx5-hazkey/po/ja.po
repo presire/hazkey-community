@@ -17,6 +17,9 @@ msgstr "Hazkey"
 msgid "[Direct Input]"
 msgstr "[直接入力]"
 
+msgid "削除可"
+msgstr "削除可"
+
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"
 

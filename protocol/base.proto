@@ -24,6 +24,7 @@ message RequestEnvelope {
         hazkey.commands.SaveLearningData save_learning_data = 13;
         hazkey.commands.AdjustClauseBoundary adjust_clause_boundary = 14;
         hazkey.commands.AcceptPrediction accept_prediction = 15;
+        hazkey.commands.DeleteCandidateLearningData delete_candidate_learning_data = 16;
 
         hazkey.config.GetConfig get_config = 100;
         hazkey.config.SetConfig set_config = 101;
@@ -50,6 +51,7 @@ message ResponseEnvelope {
         hazkey.commands.TextWithCursor text_with_cursor = 5;
         hazkey.commands.CurrentInputModeInfo current_input_mode_info = 6;
         hazkey.commands.ClauseBoundaryResult clause_boundary_result = 7;
+        hazkey.commands.DeleteCandidateLearningDataResult delete_candidate_learning_data_result = 8;
         hazkey.config.CurrentConfig current_config = 100;
         hazkey.config.GetLearningHistoryResult get_learning_history_result = 101;
         hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;

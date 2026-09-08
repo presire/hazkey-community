@@ -58,7 +58,8 @@ final class PerfProbe: @unchecked Sendable {
         case .clearAllHistory_p: return "clearAllHistory"
         case .reloadZenzaiModel: return "reloadZenzaiModel"
         case .getDefaultProfile: return "getDefaultProfile"
-        case .getLearningHistory, .deleteLearningEntries, .none: return "none"
+        case .getLearningHistory, .deleteLearningEntries, .deleteCandidateLearningData, .none:
+            return "none"
         }
     }
 

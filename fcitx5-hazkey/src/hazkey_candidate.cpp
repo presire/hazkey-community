@@ -1,5 +1,7 @@
 #include "hazkey_candidate.h"
 
+#include <fcitx-utils/i18n.h>
+
 #include <vector>
 
 #include "commands.pb.h"
@@ -34,7 +36,6 @@ HazkeyCandidateList::HazkeyCandidateList(
         i++;
     }
 }
-
 CandidateLayoutHint HazkeyCandidateList::layoutHint() const {
     return CandidateLayoutHint::Vertical;
 }

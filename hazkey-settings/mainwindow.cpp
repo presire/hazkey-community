@@ -226,6 +226,8 @@ QString MainWindow::uiStateKey() const {
     state.insert("zenzaiWeightPath", ui_->zenzaiWeightPath->text());
     state.insert("liveConvertHotkey",
                  ui_->liveConvertHotkey->keySequence().toString());
+    state.insert("deleteLearningHotkey",
+                 ui_->deleteLearningHotkey->keySequence().toString());
     state.insert("zenzaiBackendDevice",
                  ui_->zenzaiBackendDevice->currentData().toString());
     // Ordered enabled input tables (name + built-in flag).
@@ -435,6 +437,8 @@ void MainWindow::connectSignals() {
 
     connect(ui_->liveConvertHotkey, &QKeySequenceEdit::keySequenceChanged, this,
             [this](const QKeySequence&) { recomputeDirtyState(); });
+    connect(ui_->deleteLearningHotkey, &QKeySequenceEdit::keySequenceChanged,
+            this, [this](const QKeySequence&) { recomputeDirtyState(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -730,6 +734,17 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
             qKeySequenceFromFcitxKeyString(fcitxStr));
     }
 
+    {
+        // [community] Learning-data delete hotkey; empty falls back to the
+        // client's built-in default.
+        const std::string storedDeleteHotkey =
+            currentProfile_->delete_learning_hotkey();
+        const QString fcitxStr = QString::fromStdString(
+            storedDeleteHotkey.empty() ? "Control+Shift+D" : storedDeleteHotkey);
+        ui_->deleteLearningHotkey->setKeySequence(
+            qKeySequenceFromFcitxKeyString(fcitxStr));
+    }
+
     // Load input table configuration
     loadInputTables();
 
@@ -841,6 +856,10 @@ bool MainWindow::saveCurrentConfig() {
         GET_LINEEDIT_STRING(ui_->zenzaiWeightPath));
     currentProfile_->set_auto_convert_hotkey(
         fcitxKeyStringFromQKeySequence(ui_->liveConvertHotkey->keySequence())
+            .toStdString());
+    currentProfile_->set_delete_learning_hotkey(
+        fcitxKeyStringFromQKeySequence(
+            ui_->deleteLearningHotkey->keySequence())
             .toStdString());
 
     // Save zenzai backend device

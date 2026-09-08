@@ -129,6 +129,8 @@ message Profile {
     optional string zenzai_topic = 121;
     optional string zenzai_style = 122;
     optional string zenzai_preference = 123;
+    // [community] Hotkey for deleting the focused candidate's learning data.
+    optional string delete_learning_hotkey = 124;
 }
 
 // Request messages

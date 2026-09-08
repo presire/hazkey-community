@@ -17,9 +17,37 @@ makeCandidates(int count) {
     return candidates;
 }
 
+google::protobuf::RepeatedPtrField<
+    hazkey::commands::CandidatesResult_Candidate>
+makeCandidatesWithLearningMetadata() {
+    google::protobuf::RepeatedPtrField<
+        hazkey::commands::CandidatesResult_Candidate>
+        candidates;
+    auto* learnedCandidate = candidates.Add();
+    learnedCandidate->set_text("learned");
+    learnedCandidate->set_has_learning_entry(true);
+    candidates.Add()->set_text("ordinary");
+    return candidates;
+}
+
 }  // namespace
 
 int main() {
+    // Given: learned and ordinary candidates.
+    fcitx::HazkeyCandidateList candidatesWithLearningMetadata(
+        makeCandidatesWithLearningMetadata());
+
+    // When: their learning metadata is inspected for focused-candidate UI.
+    const auto& learnedCandidate = candidatesWithLearningMetadata.getCandidate(0);
+    const auto& ordinaryCandidate = candidatesWithLearningMetadata.getCandidate(1);
+
+    // Then: the read-only accessor matches server metadata without adding an
+    // inline comment; AuxDown owns the focused-candidate affordance.
+    assert(learnedCandidate.hasLearningEntry());
+    assert(!ordinaryCandidate.hasLearningEntry());
+    assert(learnedCandidate.comment().toString().empty());
+    assert(ordinaryCandidate.comment().toString().empty());
+
     // Given: thirteen candidates displayed five at a time.
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
     candidates.setPageSize(5);

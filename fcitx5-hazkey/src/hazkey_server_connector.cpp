@@ -618,6 +618,41 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
     return result;
 }
 
+std::optional<HazkeyServerConnector::DeleteCandidateLearningDataResult>
+HazkeyServerConnector::deleteCandidateLearningData(int index) {
+    invalidateCache();
+    hazkey::RequestEnvelope request;
+    auto props = request.mutable_delete_candidate_learning_data();
+    props->set_index(index);
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR()
+            << "Error while transacting deleteCandidateLearningData().";
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_ERROR() << "deleteCandidateLearningData: "
+                      << "Server returned an error: "
+                      << responseVal.error_message();
+        return std::nullopt;
+    }
+    if (!responseVal.has_delete_candidate_learning_data_result()) {
+        FCITX_ERROR() << "deleteCandidateLearningData: "
+                      << "Server returned unexpected response";
+        return std::nullopt;
+    }
+
+    DeleteCandidateLearningDataResult result;
+    result.deleted_count =
+        responseVal.delete_candidate_learning_data_result().deleted_count();
+    result.candidates =
+        responseVal.delete_candidate_learning_data_result().candidates();
+    result.hiragana =
+        responseVal.delete_candidate_learning_data_result().hiragana();
+    return result;
+}
+
 void HazkeyServerConnector::setContext(std::string context, int anchor) {
     invalidateCache();
     hazkey::RequestEnvelope request;

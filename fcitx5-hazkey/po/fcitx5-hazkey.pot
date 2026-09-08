@@ -17,6 +17,9 @@ msgstr ""
 msgid "[Direct Input]"
 msgstr ""
 
+msgid "削除可"
+msgstr ""
+
 msgid "[Press Tab to Select]"
 msgstr ""
 

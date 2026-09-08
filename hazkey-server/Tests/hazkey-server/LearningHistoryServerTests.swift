@@ -285,4 +285,167 @@ final class LearningHistoryServerTests: XCTestCase {
             XCTAssertEqual(response.status, .failed)
         }
     }
+
+    // MARK: [community] DeleteCandidateLearningData
+
+    private func getCandidatesRequest(isSuggest: Bool) -> Hazkey_RequestEnvelope {
+        Hazkey_RequestEnvelope.with {
+            $0.getCandidates = Hazkey_Commands_GetCandidates.with { $0.isSuggest = isSuggest }
+        }
+    }
+
+    private func deleteCandidateRequest(index: Int32) -> Hazkey_RequestEnvelope {
+        Hazkey_RequestEnvelope.with {
+            $0.deleteCandidateLearningData = Hazkey_Commands_DeleteCandidateLearningData.with {
+                $0.index = index
+            }
+        }
+    }
+
+    private func makeInputState(_ reading: String) throws -> HazkeyServerState {
+        let state = HazkeyServerState()
+        XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        for character in reading {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+        return state
+    }
+
+    private func appendSyntheticCandidate(
+        _ state: HazkeyServerState, word: String, ruby: String
+    ) throws -> Int32 {
+        state.currentCandidateList?.append(
+            .fromConverter(
+                Candidate(
+                    text: word,
+                    value: 0,
+                    composingCount: .surfaceCount(ruby.count),
+                    lastMid: MIDData.一般.mid,
+                    data: [
+                        .init(
+                            word: word, ruby: ruby, cid: CIDData.固有名詞.cid,
+                            mid: MIDData.一般.mid, value: 0)
+                    ]
+                )))
+        return Int32(try XCTUnwrap(state.currentCandidateList?.indices.last))
+    }
+
+    /// One request deletes every stored CID variant of the same (reading,
+    /// word) pair, the rebuilt list no longer contains the word, and the
+    /// learning memory no longer holds the entries.
+    func testDeleteCandidateLearningDataDeletesAllVariantEntriesAndPersists() throws {
+        try withTemporaryXDG { _ in
+            let state = try makeInputState("てすとてきご")
+            let variant1 = DicdataElement(
+                word: "テスト的語", ruby: "テストテキゴ", lcid: 10, rcid: 11, mid: 1, value: -5)
+            let variant2 = DicdataElement(
+                word: "テスト的語", ruby: "テストテキゴ", lcid: 20, rcid: 21, mid: 1, value: -5)
+            seed([variant1, variant2], in: state)
+            XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
+
+            // The engine may or may not surface a made-up word from the system
+            // dictionary, so the candidate backed by the seeded learning is
+            // injected synthetically (AcceptPredictionTests pattern).
+            let index = try appendSyntheticCandidate(state, word: "テスト的語", ruby: "テストテキゴ")
+
+            let response = try send(deleteCandidateRequest(index: index), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 2)
+            let rebuiltMatches = response.deleteCandidateLearningDataResult.candidates.candidates
+                .filter { $0.text == "テスト的語" }
+            if getZenzaiModelPath() == nil {
+                // Without Zenzai the rebuilt list is computed from the fresh
+                // lattice alone: the deleted word cannot appear at all.
+                XCTAssertTrue(rebuiltMatches.isEmpty)
+            } else {
+                // With Zenzai the fresh draft may regenerate a similar
+                // candidate, but it must no longer carry the learning
+                // annotation.
+                XCTAssertTrue(rebuiltMatches.allSatisfy { !$0.hasLearningEntry_p })
+            }
+            XCTAssertEqual(response.deleteCandidateLearningDataResult.hiragana, "てすとてきご")
+
+            let listing = try send(historyRequest(query: "テスト"), to: state)
+            XCTAssertEqual(listing.getLearningHistoryResult.totalCount, 0)
+        }
+    }
+
+    /// A candidate without a matching learning entry reports "nothing
+    /// deleted" as a normal success result.
+    func testDeleteCandidateLearningDataOnUnlearnedCandidateReturnsZero() throws {
+        try withTemporaryXDG { _ in
+            let state = try makeInputState("みらぼご")
+            XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
+            let index = try appendSyntheticCandidate(state, word: "未学習語", ruby: "ミラボゴ")
+
+            let response = try send(deleteCandidateRequest(index: index), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 0)
+        }
+    }
+
+    /// Annotation flags follow the same matching rule as deletion: a learned
+    /// candidate is flagged deletable, plain dictionary candidates are not,
+    /// and after deletion the rebuilt list has the flag cleared.
+    func testDeleteCandidateLearningDataUpdatesAnnotationFlags() throws {
+        try withTemporaryXDG { _ in
+            let state = HazkeyServerState()
+            let learned = DicdataElement(
+                word: "今日", ruby: "キョウ", lcid: 10, rcid: 11, mid: 1, value: -5)
+            seed([learned], in: state)
+            XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+            for character in "きょう" {
+                XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+            }
+
+            let initial = try send(getCandidatesRequest(isSuggest: false), to: state)
+            XCTAssertEqual(initial.status, .success)
+            let todayIndex = try XCTUnwrap(
+                initial.candidates.candidates.firstIndex { $0.text == "今日" },
+                "dictionary candidate 今日 not found")
+            XCTAssertTrue(initial.candidates.candidates[todayIndex].hasLearningEntry_p)
+            XCTAssertTrue(initial.candidates.candidates.contains { !$0.hasLearningEntry_p })
+
+            let response = try send(deleteCandidateRequest(index: Int32(todayIndex)), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 1)
+            if let rebuiltToday = response.deleteCandidateLearningDataResult.candidates.candidates
+                .first(where: { $0.text == "今日" })
+            {
+                XCTAssertFalse(rebuiltToday.hasLearningEntry_p)
+            }
+            let listing = try send(historyRequest(query: "キョウ"), to: state)
+            XCTAssertEqual(listing.getLearningHistoryResult.totalCount, 0)
+        }
+    }
+
+    func testDeleteCandidateLearningDataRejectsInvalidIndex() throws {
+        try withTemporaryXDG { _ in
+            let state = try makeInputState("あ")
+            XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
+
+            let response = try send(deleteCandidateRequest(index: 9999), to: state)
+
+            XCTAssertEqual(response.status, .failed)
+        }
+    }
+
+    /// Non-converter candidates (date provider etc.) carry no learning
+    /// backing: "nothing deleted" instead of an error.
+    func testDeleteCandidateLearningDataOnNonConverterCandidateReturnsZero() throws {
+        try withTemporaryXDG { _ in
+            let state = try makeInputState("きょう")
+            XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
+            state.currentCandidateList?.append(.fromDateProvider(word: "2026年9月8日"))
+            let index = Int32(try XCTUnwrap(state.currentCandidateList?.indices.last))
+
+            let response = try send(deleteCandidateRequest(index: index), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 0)
+        }
+    }
 }

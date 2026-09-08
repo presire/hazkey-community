@@ -54,6 +54,11 @@ class HazkeyState : public InputContextProperty {
     void loadServerProfile();
     // toggle live conversion via hotkey (synchronous get/mutate/set)
     void handleLiveConvertToggle([[maybe_unused]] KeyEvent& event);
+    // [community] delete the focused candidate's AzooKey learning memory
+    // entries via hotkey, then rebuild the candidate list in the same
+    // display mode (suggest vs non-predict conversion)
+    void handleDeleteCandidateLearningData(
+        std::shared_ptr<HazkeyCandidateList> candidateList);
 
     bool ctrlShortcutHandler(KeyEvent& keyEvent);
     // f6-f10 key handler
@@ -168,6 +173,13 @@ class HazkeyState : public InputContextProperty {
     int livePreeditIndex_ = -1;
 
     fcitx::Key liveConvertHotkey_{"Control+Shift+L"};
+    // [community] Hotkey for deleting the focused candidate's AzooKey
+    // learning memory entries (the list is rebuilt afterwards).
+    fcitx::Key deleteLearningHotkey_{"Control+Shift+D"};
+    // Display mode (suggest vs non-predict conversion) of the candidate list
+    // currently shown. Mirrors the server's currentCandidateListIsSuggest so
+    // the learning-data delete rebuild shows the same kind of list.
+    bool currentListIsSuggest_ = false;
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
     bool serverProfileLoaded_ = false;

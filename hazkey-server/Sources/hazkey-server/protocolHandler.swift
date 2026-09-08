@@ -106,6 +106,8 @@ class ProtocolHandler {
                     $0.errorMessage = "Failed to forget learning history: \(error)"
                 }
             }
+        case .deleteCandidateLearningData(let req):
+            response = state.deleteCandidateLearningData(candidateIndex: Int(req.index))
         case .none:
             NSLog("Payload not specified")
             response = Hazkey_ResponseEnvelope.with {

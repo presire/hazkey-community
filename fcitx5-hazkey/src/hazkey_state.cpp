@@ -77,8 +77,9 @@ void HazkeyState::keyEvent(KeyEvent& event) {
         preeditKeyEvent(event, candidateList);
     } else if (!event.isRelease()) {
         noPreeditKeyEvent(event);
+    } else if (candidateList != nullptr && candidateList->focused()) {
+        setCandidateCursorAUX(candidateList);
     } else if (composingText != "" && candidateList != nullptr &&
-               !candidateList->focused() &&
                engine_->config().showTabToSelect.value()) {
         setAuxDownText(std::string(_("[Press Tab to Select]")));
     } else {
@@ -273,6 +274,14 @@ void HazkeyState::candidateKeyEvent(
     auto key = event.key();
     auto keysym = key.sym();
 
+    // [community] Delete the focused candidate's learning data. Must be
+    // checked before the switch: a Ctrl combo falls into the default
+    // clause's ctrlShortcutHandler, which would consume the event first.
+    if (key.check(deleteLearningHotkey_)) {
+        handleDeleteCandidateLearningData(candidateList);
+        return event.filterAndAccept();
+    }
+
     std::vector<std::string> preedit;
     switch (keysym) {
         case FcitxKey_Right:
@@ -397,6 +406,12 @@ void HazkeyState::loadServerProfile() {
     const auto& profile = configOpt->profiles(0);
     const std::string& hotkey = profile.auto_convert_hotkey();
     liveConvertHotkey_ = Key(hotkey.empty() ? "Control+Shift+L" : hotkey);
+    // [community] Learning-data delete hotkey. Read once per input context
+    // like liveConvertHotkey_, so GUI changes take effect from the next
+    // input context (fcitx5 restart applies it reliably).
+    const std::string& deleteHotkey = profile.delete_learning_hotkey();
+    deleteLearningHotkey_ =
+        Key(deleteHotkey.empty() ? "Control+Shift+D" : deleteHotkey);
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     using M = hazkey::config::Profile_AutoConvertMode;
     // Only update the remembered "ON" mode when the server's mode is not
@@ -554,6 +569,7 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
 /// Show Candidate List
 
 bool HazkeyState::showCandidateList(bool isSuggest) {
+    currentListIsSuggest_ = isSuggest;
     auto response = engine_->server().getCandidates(isSuggest);
     return showCandidateList(response);
 }
@@ -641,6 +657,7 @@ void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
 void HazkeyState::showNonPredictCandidateList(
     const hazkey::commands::CandidatesResult& response,
     const std::string& hiragana) {
+    currentListIsSuggest_ = false;
     if (!showCandidateList(response, hiragana)) {
         return;
     }
@@ -825,6 +842,40 @@ void HazkeyState::moveSegmentBoundary(bool expand) {
     showNonPredictCandidateList(result->candidates, result->hiragana);
 }
 
+/// [community] Delete the focused candidate's AzooKey learning memory
+/// entries and rebuild the candidate list from the server response. The
+/// server rebuilds its list in the mode it was created in (suggest vs
+/// non-predict conversion) and this side mirrors that mode so the
+/// live-conversion preedit state survives the rebuild. Nothing changes
+/// visually when nothing was deleted (candidate not backed by learning
+/// data).
+void HazkeyState::handleDeleteCandidateLearningData(
+    std::shared_ptr<HazkeyCandidateList> candidateList) {
+    FCITX_DEBUG() << "HazkeyState handleDeleteCandidateLearningData";
+
+    auto result = engine_->server().deleteCandidateLearningData(
+        candidateList->globalCursorIndex());
+    if (result == std::nullopt || result->deleted_count == 0) {
+        return;
+    }
+    if (currentListIsSuggest_) {
+        // Suggest-mode list: showCandidateList restores the preedit from
+        // live_text (same as the pre-delete display), then re-focus the
+        // rebuilt list exactly like the Tab-focus path does.
+        if (!showCandidateList(result->candidates)) {
+            return;
+        }
+        auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
+            ic_->inputPanel().candidateList());
+        newCandidateList->focus();
+        updateCandidateCursor(newCandidateList);
+    } else {
+        // Non-predict conversion list: the standard rebuild path (same as
+        // moveSegmentBoundary).
+        showNonPredictCandidateList(result->candidates, result->hiragana);
+    }
+}
+
 /// AUX
 
 void HazkeyState::setCandidateCursorAUX(
@@ -832,7 +883,10 @@ void HazkeyState::setCandidateCursorAUX(
     auto label = "[" + std::to_string(candidateList->globalCursorIndex() + 1) +
                  "/" + std::to_string(candidateList->totalSize()) + "]";
     ic_->inputPanel().setAuxUp(Text(label));
-    setAuxDownText(std::nullopt);
+    setAuxDownText(candidateList->getCandidate(candidateList->cursorIndex())
+                       .hasLearningEntry()
+                       ? std::optional<std::string>(_("削除可"))
+                       : std::nullopt);
 }
 
 void HazkeyState::setAuxDownText(std::optional<std::string> optText) {
@@ -859,6 +913,7 @@ void HazkeyState::reset() {
     livePreeditIndex_ = -1;
     isCursorMoving_ = false;
     isClauseBoundaryAdjusting_ = false;
+    currentListIsSuggest_ = false;
     // Explicit cancellation (do not rely on RAII alone): reset() is called
     // from many keyEvent branches and from both HazkeyEngine::activate()
     // and HazkeyEngine::deactivate() (the latter is the focus-out-equivalent

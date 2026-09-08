@@ -30,6 +30,7 @@ class HazkeyCandidateWord : public CandidateWord {
           index_(index),
           candidate_(std::move(data.text())),
           hiragana_(std::move(data.sub_hiragana())),
+          hasLearningEntry_(data.has_learning_entry()),
           selectCandidate_(std::move(selectCandidate)) {
         setText(Text(data.text()));
     }
@@ -38,6 +39,7 @@ class HazkeyCandidateWord : public CandidateWord {
     void select(InputContext* ic) const override;
 
     std::vector<std::string> getPreedit() const;
+    bool hasLearningEntry() const { return hasLearningEntry_; }
 
     // int correspondingCount() const { return corresponding_count_; }
 
@@ -45,6 +47,7 @@ class HazkeyCandidateWord : public CandidateWord {
     const int index_;
     const std::string candidate_;
     const std::string hiragana_;
+    const bool hasLearningEntry_;
     const std::function<void(int)> selectCandidate_;
     // const int corresponding_count_;
     // const std::vector<std::string> parts_;

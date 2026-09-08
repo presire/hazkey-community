@@ -438,6 +438,16 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiPreference`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiPreference() {_uniqueStorage()._zenzaiPreference = nil}
 
+  /// [community] Hotkey for deleting the focused candidate's learning data.
+  var deleteLearningHotkey: String {
+    get {_storage._deleteLearningHotkey ?? String()}
+    set {_uniqueStorage()._deleteLearningHotkey = newValue}
+  }
+  /// Returns true if `deleteLearningHotkey` has been explicitly set.
+  var hasDeleteLearningHotkey: Bool {_storage._deleteLearningHotkey != nil}
+  /// Clears the value of `deleteLearningHotkey`. Subsequent reads from it will return its default value.
+  mutating func clearDeleteLearningHotkey() {_uniqueStorage()._deleteLearningHotkey = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum AutoConvertMode: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -1115,7 +1125,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1155,6 +1165,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _zenzaiTopic: String? = nil
     var _zenzaiStyle: String? = nil
     var _zenzaiPreference: String? = nil
+    var _deleteLearningHotkey: String? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1202,6 +1213,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _zenzaiTopic = source._zenzaiTopic
       _zenzaiStyle = source._zenzaiStyle
       _zenzaiPreference = source._zenzaiPreference
+      _deleteLearningHotkey = source._deleteLearningHotkey
     }
   }
 
@@ -1257,6 +1269,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 121: try { try decoder.decodeSingularStringField(value: &_storage._zenzaiTopic) }()
         case 122: try { try decoder.decodeSingularStringField(value: &_storage._zenzaiStyle) }()
         case 123: try { try decoder.decodeSingularStringField(value: &_storage._zenzaiPreference) }()
+        case 124: try { try decoder.decodeSingularStringField(value: &_storage._deleteLearningHotkey) }()
         default: break
         }
       }
@@ -1380,6 +1393,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._zenzaiPreference {
         try visitor.visitSingularStringField(value: v, fieldNumber: 123)
       } }()
+      try { if let v = _storage._deleteLearningHotkey {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 124)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1426,6 +1442,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._zenzaiTopic != rhs_storage._zenzaiTopic {return false}
         if _storage._zenzaiStyle != rhs_storage._zenzaiStyle {return false}
         if _storage._zenzaiPreference != rhs_storage._zenzaiPreference {return false}
+        if _storage._deleteLearningHotkey != rhs_storage._deleteLearningHotkey {return false}
         return true
       }
       if !storagesAreEqual {return false}

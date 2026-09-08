@@ -54,11 +54,32 @@ func learningHistoryMatches(query: String, reading: String, word: String) -> Boo
         || katakanaNormalized(word).contains(normalizedQuery)
 }
 
+/// [community] (reading, word) surface key identifying a candidate's learning
+/// entries across CID variants. Reading is katakana-normalized so that a
+/// hiragana reading from the composing text matches the katakana ruby stored
+/// in the learning memory. Shared by the "deletable" annotation and the
+/// delete handler, so a candidate shown as deletable is always deletable.
+struct LearningSurfaceKey: Hashable {
+    let reading: String
+    let word: String
+
+    init(reading: String, word: String) {
+        self.reading = katakanaNormalized(reading)
+        self.word = word
+    }
+}
+
 class HazkeyServerState {
     let serverConfig: HazkeyServerConfig
     let converter: KanaKanjiConverter
     let userDictionary: UserDictionary = UserDictionary()
     var currentCandidateList: [DisplayedCandidate]?
+    /// [community] Mode (suggest vs conversion) of `currentCandidateList`.
+    /// Deleting a candidate's learning data must rebuild the list in the same
+    /// mode — rebuilding a suggest-mode list as a non-predict list would break
+    /// live-conversion state. Remembered on every `makeCandidatesResult` call,
+    /// i.e. kept in sync with every non-nil `currentCandidateList`.
+    var currentCandidateListIsSuggest = false
     var composingText: ComposingTextBox = ComposingTextBox()
 
     var isShiftPressedAlone = false
@@ -462,6 +483,7 @@ class HazkeyServerState {
     private func makeCandidatesResult(
         is_suggest: Bool
     ) -> (Hazkey_Commands_CandidatesResult, [DisplayedCandidate]) {
+        self.currentCandidateListIsSuggest = is_suggest
         let perfProbe = PerfProbe.shared
         let candidateStartedAt = perfProbe?.now()
         var userDictionaryStartedAt = candidateStartedAt
@@ -473,6 +495,17 @@ class HazkeyServerState {
         // word also surfaces as a prediction of its own best node), so the
         // concatenated list must skip later duplicates.
         var appendedTexts: Set<String> = []
+
+        // [community] Learning-entry surface keys for the "deletable"
+        // annotation. One in-memory scan per request; a failed enumeration
+        // leaves candidates unannotated (conservative, no functional harm).
+        let learningEntryKeys: Set<LearningSurfaceKey>
+        do {
+            learningEntryKeys = try learningSurfaceKeys()
+        } catch {
+            NSLog("Failed to enumerate learning memory for annotations: \(error)")
+            learningEntryKeys = []
+        }
 
         func canAppend(
             isSuggest: Bool,
@@ -496,6 +529,13 @@ class HazkeyServerState {
 
             let endIndex = min(candidate.rubyCount, requestHiraganaPreeditLen)
             clientCandidate.subHiragana = String(fullHiraganaPreedit.dropFirst(endIndex))
+            // [community] "deletable" annotation: true when the learning
+            // memory holds an entry matching the candidate's (reading, word)
+            // pair. Same matching rule as the delete handler.
+            clientCandidate.hasLearningEntry_p = learningEntryKeys.contains(
+                LearningSurfaceKey(
+                    reading: String(fullHiraganaPreedit.prefix(endIndex)),
+                    word: candidate.text))
 
             clientCandidates.append(clientCandidate)
             serverCandidates.append(.fromConverter(candidate))
@@ -822,6 +862,91 @@ class HazkeyServerState {
         }
     }
 
+    /// [community] Delete the learning-memory entries backing the focused
+    /// candidate and rebuild the candidate list in the remembered mode.
+    ///
+    /// Matching is by (reading, word) surface pair across CID variants — the
+    /// same rule the "deletable" annotation uses, so a candidate shown as
+    /// deletable is always deletable. `forgetLearningMemory` persists to disk
+    /// immediately and resets the converter's memory cache, so the rebuilt
+    /// list reflects the deletion.
+    func deleteCandidateLearningData(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
+        // Bounds check first: Swift array subscript traps on an out-of-range
+        // index, and a malformed client index must not crash the server.
+        guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Candidate index \(candidateIndex) not found."
+            }
+        }
+        // Only converter candidates can carry learning entries. Legacy
+        // user-dictionary / date / kana-number injections have no learning
+        // backing: report "nothing deleted" instead of an error.
+        guard case .fromConverter(let candidate) = list[candidateIndex] else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .success
+                $0.deleteCandidateLearningDataResult = Hazkey_Commands_DeleteCandidateLearningDataResult.with {
+                    $0.deletedCount = 0
+                }
+            }
+        }
+
+        // Reading of the candidate, with the same formula as appendCandidate.
+        let fullHiraganaPreedit = composingText.value.toHiragana()
+        let requestHiraganaPreeditLen = candidateRequestText(
+            is_suggest: currentCandidateListIsSuggest
+        ).toHiragana().count
+        let reading = String(
+            fullHiraganaPreedit.prefix(min(candidate.rubyCount, requestHiraganaPreeditLen)))
+
+        // Collect every (reading, word) match across CID variants. An empty
+        // match (not learned) is a normal "nothing deleted" result, not an
+        // error.
+        let matchingKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
+        do {
+            matchingKeys = try matchingLearningEntryKeys(reading: reading, word: candidate.text)
+        } catch {
+            NSLog("Failed to enumerate learning memory for deletion: \(error)")
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Failed to enumerate learning memory: \(error)"
+            }
+        }
+        guard !matchingKeys.isEmpty else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .success
+                $0.deleteCandidateLearningDataResult = Hazkey_Commands_DeleteCandidateLearningDataResult.with {
+                    $0.deletedCount = 0
+                }
+            }
+        }
+
+        let deletedCount: UInt32
+        do {
+            deletedCount = try forgetLearningEntries(matchingKeys)
+        } catch {
+            NSLog("Failed to forget learning entries: \(error)")
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Failed to forget learning entries: \(error)"
+            }
+        }
+
+        // Rebuild the candidate list in the same mode as before the deletion.
+        let (candidatesResult, serverCandidates) = makeCandidatesResult(
+            is_suggest: currentCandidateListIsSuggest)
+        currentCandidateList = serverCandidates
+
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+            $0.deleteCandidateLearningDataResult = Hazkey_Commands_DeleteCandidateLearningDataResult.with {
+                $0.deletedCount = deletedCount
+                $0.candidates = candidatesResult
+                $0.hiragana = composingText.value.toHiragana()
+            }
+        }
+    }
+
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
         if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
             let memoryDirectory = serverConfig.memoryDirectory()
@@ -903,6 +1028,15 @@ class HazkeyServerState {
             try converter.forgetLearningMemory(
                 reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
         }
+        // Deleted entries must not surface in subsequent conversions. The
+        // converter reuses its session lattice (and the Zenzai draft/memoized
+        // constraint) when the composing text is unchanged, so a rebuilt
+        // candidate list would otherwise resurrect the deleted entries from
+        // the stale caches. Resetting the active session drops only cached
+        // conversion state — the composing text lives in HazkeyServerState
+        // and the learning memory on disk, both unaffected.
+        converter.stopComposition()
+        converter.purgeZenzaiMemoizationCache()
         return UInt32(uniqueKeys.count)
     }
 
@@ -918,6 +1052,36 @@ class HazkeyServerState {
             offset = nextOffset
         } while offset < 65_536
         return entries
+    }
+
+    /// [community] Surface keys of every stored learning-memory entry, used to
+    /// annotate converter candidates as "deletable".
+    private func learningSurfaceKeys() throws -> Set<LearningSurfaceKey> {
+        Set(
+            try allLearningMemoryEntries().map { entry in
+                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
+            })
+    }
+
+    /// [community] Every stored learning entry matching a candidate's
+    /// (reading, word) pair regardless of CID, as keys for
+    /// `forgetLearningEntries`. Same surface normalization as
+    /// `learningSurfaceKeys`, so annotation and deletion agree.
+    private func matchingLearningEntryKeys(
+        reading: String,
+        word: String
+    ) throws -> [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] {
+        let target = LearningSurfaceKey(reading: reading, word: word)
+        return try allLearningMemoryEntries().compactMap { entry in
+            guard
+                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word) == target
+            else { return nil }
+            return (
+                reading: entry.data.ruby, word: entry.data.word,
+                lcid: UInt32(clamping: entry.data.lcid),
+                rcid: UInt32(clamping: entry.data.rcid)
+            )
+        }
     }
 
     func reinitializeConfiguration() {

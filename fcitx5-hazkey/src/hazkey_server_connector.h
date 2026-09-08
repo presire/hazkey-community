@@ -62,6 +62,20 @@ class HazkeyServerConnector {
 
     std::optional<ClauseBoundaryResult> adjustClauseBoundary(int offset);
 
+    // [community] Deletes the learning-memory entries backing the candidate
+    // at `index` and returns the rebuilt candidate list. Returns nullopt on
+    // transport/server errors; a deleted_count of 0 means nothing was
+    // deleted (the candidate has no learning entries) and the caller should
+    // keep the current list.
+    struct DeleteCandidateLearningDataResult {
+        uint32_t deleted_count;
+        hazkey::commands::CandidatesResult candidates;
+        std::string hiragana;
+    };
+
+    std::optional<DeleteCandidateLearningDataResult> deleteCandidateLearningData(
+        int index);
+
     void setContext(std::string context, int anchor);
 
     std::optional<hazkey::config::CurrentConfig> getServerConfig();

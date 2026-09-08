@@ -53,6 +53,19 @@ message AcceptPrediction {
     int32 index = 1;
 }
 
+// [community] Delete the AzooKey learning-memory entries backing the focused
+// candidate, then rebuild the candidate list. Matching covers every stored
+// CID variant of the same (reading, surface) pair.
+message DeleteCandidateLearningData {
+    int32 index = 1;
+}
+
+message DeleteCandidateLearningDataResult {
+    uint32 deleted_count = 1;
+    CandidatesResult candidates = 2;
+    string hiragana = 3;
+}
+
 message DeleteLeft {}
 
 message DeleteRight {}
@@ -96,6 +109,9 @@ message CandidatesResult {
     message Candidate {
         string text = 1;
         string sub_hiragana = 2;
+        // [community] True when the AzooKey learning memory holds an entry
+        // matching this candidate (shown as a "deletable" annotation).
+        optional bool has_learning_entry = 3;
     }
 
     repeated Candidate candidates = 1;

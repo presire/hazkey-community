@@ -194,6 +194,46 @@ nonisolated struct Hazkey_Commands_AcceptPrediction: Sendable {
   init() {}
 }
 
+/// [community] Delete the AzooKey learning-memory entries backing the focused
+/// candidate, then rebuild the candidate list. Matching covers every stored
+/// CID variant of the same (reading, surface) pair.
+nonisolated struct Hazkey_Commands_DeleteCandidateLearningData: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var index: Int32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+nonisolated struct Hazkey_Commands_DeleteCandidateLearningDataResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var deletedCount: UInt32 = 0
+
+  var candidates: Hazkey_Commands_CandidatesResult {
+    get {_candidates ?? Hazkey_Commands_CandidatesResult()}
+    set {_candidates = newValue}
+  }
+  /// Returns true if `candidates` has been explicitly set.
+  var hasCandidates: Bool {self._candidates != nil}
+  /// Clears the value of `candidates`. Subsequent reads from it will return its default value.
+  mutating func clearCandidates() {self._candidates = nil}
+
+  var hiragana: String = String()
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+
+  fileprivate var _candidates: Hazkey_Commands_CandidatesResult? = nil
+}
+
 nonisolated struct Hazkey_Commands_DeleteLeft: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -368,9 +408,22 @@ nonisolated struct Hazkey_Commands_CandidatesResult: Sendable {
 
     var subHiragana: String = String()
 
+    /// [community] True when the AzooKey learning memory holds an entry
+    /// matching this candidate (shown as a "deletable" annotation).
+    var hasLearningEntry_p: Bool {
+      get {_hasLearningEntry_p ?? false}
+      set {_hasLearningEntry_p = newValue}
+    }
+    /// Returns true if `hasLearningEntry_p` has been explicitly set.
+    var hasHasLearningEntry_p: Bool {self._hasLearningEntry_p != nil}
+    /// Clears the value of `hasLearningEntry_p`. Subsequent reads from it will return its default value.
+    mutating func clearHasLearningEntry_p() {self._hasLearningEntry_p = nil}
+
     var unknownFields = SwiftProtobuf.UnknownStorage()
 
     init() {}
+
+    fileprivate var _hasLearningEntry_p: Bool? = nil
   }
 
   init() {}
@@ -696,6 +749,80 @@ nonisolated extension Hazkey_Commands_AcceptPrediction: SwiftProtobuf.Message, S
   }
 }
 
+nonisolated extension Hazkey_Commands_DeleteCandidateLearningData: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".DeleteCandidateLearningData"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}index\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.index) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.index != 0 {
+      try visitor.visitSingularInt32Field(value: self.index, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Commands_DeleteCandidateLearningData, rhs: Hazkey_Commands_DeleteCandidateLearningData) -> Bool {
+    if lhs.index != rhs.index {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hazkey_Commands_DeleteCandidateLearningDataResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".DeleteCandidateLearningDataResult"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}deleted_count\0\u{1}candidates\0\u{1}hiragana\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.deletedCount) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._candidates) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.hiragana) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.deletedCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.deletedCount, fieldNumber: 1)
+    }
+    try { if let v = self._candidates {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if !self.hiragana.isEmpty {
+      try visitor.visitSingularStringField(value: self.hiragana, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Hazkey_Commands_DeleteCandidateLearningDataResult, rhs: Hazkey_Commands_DeleteCandidateLearningDataResult) -> Bool {
+    if lhs.deletedCount != rhs.deletedCount {return false}
+    if lhs._candidates != rhs._candidates {return false}
+    if lhs.hiragana != rhs.hiragana {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Hazkey_Commands_DeleteLeft: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".DeleteLeft"
   static let _protobuf_nameMap = SwiftProtobuf._NameMap()
@@ -977,7 +1104,7 @@ nonisolated extension Hazkey_Commands_CandidatesResult: SwiftProtobuf.Message, S
 
 nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Commands_CandidatesResult.protoMessageName + ".Candidate"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}sub_hiragana\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}sub_hiragana\0\u{3}has_learning_entry\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -987,24 +1114,33 @@ nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.subHiragana) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self._hasLearningEntry_p) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.text.isEmpty {
       try visitor.visitSingularStringField(value: self.text, fieldNumber: 1)
     }
     if !self.subHiragana.isEmpty {
       try visitor.visitSingularStringField(value: self.subHiragana, fieldNumber: 2)
     }
+    try { if let v = self._hasLearningEntry_p {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 3)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Hazkey_Commands_CandidatesResult.Candidate, rhs: Hazkey_Commands_CandidatesResult.Candidate) -> Bool {
     if lhs.text != rhs.text {return false}
     if lhs.subHiragana != rhs.subHiragana {return false}
+    if lhs._hasLearningEntry_p != rhs._hasLearningEntry_p {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
