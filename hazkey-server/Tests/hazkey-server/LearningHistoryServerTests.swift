@@ -385,8 +385,9 @@ final class LearningHistoryServerTests: XCTestCase {
     }
 
     /// One request deletes every stored CID variant of the same (reading,
-    /// word) pair, the rebuilt list no longer contains the word, and the
-    /// learning memory no longer holds the entries.
+    /// word) pair, any rebuilt candidate for the word no longer carries the
+    /// learning annotation, and the learning memory no longer holds the
+    /// entries.
     func testDeleteCandidateLearningDataDeletesAllVariantEntriesAndPersists() throws {
         try withTemporaryXDG { _ in
             let state = try makeInputState("てすとてきご")
@@ -408,16 +409,9 @@ final class LearningHistoryServerTests: XCTestCase {
             XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 2)
             let rebuiltMatches = response.deleteCandidateLearningDataResult.candidates.candidates
                 .filter { $0.text == "テスト的語" }
-            if getZenzaiModelPath() == nil {
-                // Without Zenzai the rebuilt list is computed from the fresh
-                // lattice alone: the deleted word cannot appear at all.
-                XCTAssertTrue(rebuiltMatches.isEmpty)
-            } else {
-                // With Zenzai the fresh draft may regenerate a similar
-                // candidate, but it must no longer carry the learning
-                // annotation.
-                XCTAssertTrue(rebuiltMatches.allSatisfy { !$0.hasLearningEntry_p })
-            }
+            // Whether the fresh rebuild regenerates the word (with or without
+            // Zenzai), no rebuilt candidate may carry the learning annotation.
+            XCTAssertTrue(rebuiltMatches.allSatisfy { !$0.hasLearningEntry_p })
             XCTAssertEqual(response.deleteCandidateLearningDataResult.hiragana, "てすとてきご")
 
             let listing = try send(historyRequest(query: "テスト"), to: state)

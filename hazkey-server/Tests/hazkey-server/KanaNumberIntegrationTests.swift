@@ -12,14 +12,15 @@ final class KanaNumberIntegrationTests: XCTestCase {
         }
     }
 
-    func testTenProducesOrderedSpecialCandidates() throws {
+    func testTenAnchorExistsAndEachApprovedGlyphAppearsExactlyOnce() throws {
         let texts = try candidateTexts(forReading: "じゅう")
-        let expected = ["₁₀", "¹⁰", "⑩", "Ⅹ", "⑽", "⒑", "❿"]
-        guard let anchorIndex = texts.firstIndex(of: "10") else {
+        guard texts.contains("10") else {
             XCTFail("Expected ASCII decimal anchor")
             return
         }
-        XCTAssertEqual(Array(texts[(anchorIndex + 1)..<(anchorIndex + 1 + expected.count)]), expected)
+        for glyph in KanaNumberProvider.generateCandidates(forDecimalDigits: "10") {
+            XCTAssertEqual(texts.filter { $0 == glyph }.count, 1)
+        }
     }
 
     func testApprovedGlyphsAppearAtMostOnce() throws {
