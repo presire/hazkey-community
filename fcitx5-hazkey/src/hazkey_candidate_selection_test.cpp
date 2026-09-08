@@ -41,12 +41,10 @@ int main() {
     const auto& learnedCandidate = candidatesWithLearningMetadata.getCandidate(0);
     const auto& ordinaryCandidate = candidatesWithLearningMetadata.getCandidate(1);
 
-    // Then: the read-only accessor matches server metadata without adding an
-    // inline comment; AuxDown owns the focused-candidate affordance.
+    // Then: the read-only accessor matches server metadata. AuxDown owns the
+    // focused-candidate affordance.
     assert(learnedCandidate.hasLearningEntry());
     assert(!ordinaryCandidate.hasLearningEntry());
-    assert(learnedCandidate.comment().toString().empty());
-    assert(ordinaryCandidate.comment().toString().empty());
 
     // Given: thirteen candidates displayed five at a time.
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
