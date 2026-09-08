@@ -143,6 +143,16 @@ jobs:
           ctest --output-on-failure --schedule-random \
             --parallel "$(nproc)"
 
+      - name: Install system dictionary
+        # The learning-memory and history XCTest suites read the real
+        # dictionary from the system location /usr/share/hazkey/Dictionary;
+        # without it they fail their assertions, so stage the repository
+        # dictionary right before running the Swift tests.
+        run: |
+          set -eux
+          sudo mkdir -p /usr/share/hazkey
+          sudo cp -a hazkey-server/azooKey_dictionary_storage/Dictionary /usr/share/hazkey/
+
       - name: Run Swift XCTest (ZenzaiSupport)
         run: |
           set -eux

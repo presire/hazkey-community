@@ -157,9 +157,12 @@ jobs:
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
 
           # Build the installed artifacts (hazkey-settings, fcitx5-hazkey,
-          # build_hazkey_server) serially from the root build tree, then
-          # install them once into the staging directory.
-          cmake --build build --target hazkey-settings fcitx5-hazkey build_hazkey_server --parallel 1
+          # fcitx5-hazkey-translation, build_hazkey_server) serially from
+          # the root build tree, then install them once into the staging
+          # directory.  fcitx5-hazkey-translation is an ALL target that
+          # compiles the gettext .po catalogs into fcitx5-hazkey-ja.mo, so
+          # it must be built explicitly for cmake --install to find it.
+          cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
           ref_name="${GITHUB_REF_NAME#v}"
