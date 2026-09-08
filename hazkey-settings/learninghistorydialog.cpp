@@ -28,13 +28,12 @@ LearningHistoryDialog::LearningHistoryDialog(
     : QDialog(parent), server_(server), target_(std::move(target)) {
     setModal(true);
     setWindowTitle(tr("入力履歴を選択して削除"));
-    resize(920, 790);
+    resize(700, 850);
 
     auto* layout = new QVBoxLayout(this);
-    modeLabel_ = new QLabel(
-        target_.useProfileIndependentHistory ? tr("分離モード")
-                                              : tr("共有モード"),
-        this);
+    modeLabel_ = new QLabel(target_.useProfileIndependentHistory ? tr("分離モード")
+                                                                 : tr("共有モード"),
+                            this);
     modeLabel_->setObjectName("learningHistoryModeLabel");
     layout->addWidget(modeLabel_);
 
@@ -196,11 +195,11 @@ LearningHistoryDialog::checkedEntries() const {
     for (int row = 0; row < historyTable_->rowCount(); ++row) {
         if (historyTable_->item(row, 0)->checkState() != Qt::Checked) continue;
         const auto& entry = entries_[row];
+        // Rows are merged across CID variants, so the server keys deletion on
+        // (reading, word) only and removes every variant of the surface.
         hazkey::config::LearningEntryKey key;
         key.set_reading(entry.reading());
         key.set_word(entry.word());
-        key.set_lcid(entry.lcid());
-        key.set_rcid(entry.rcid());
         keys.push_back(std::move(key));
     }
     return keys;

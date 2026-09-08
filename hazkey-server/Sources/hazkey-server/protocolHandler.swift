@@ -94,8 +94,10 @@ class ProtocolHandler {
             }
         case .deleteLearningEntries(let req):
             do {
-                let deletedCount = try state.forgetLearningEntries(
-                    req.entries.map { ($0.reading, $0.word, $0.lcid, $0.rcid) })
+                // Entries are merged rows keyed by (reading, word); every CID
+                // variant of each surface is deleted.
+                let deletedCount = try state.forgetLearningSurfaces(
+                    req.entries.map { ($0.reading, $0.word) })
                 response = Hazkey_ResponseEnvelope.with {
                     $0.status = .success
                     $0.deleteLearningEntriesResult.deletedCount = deletedCount

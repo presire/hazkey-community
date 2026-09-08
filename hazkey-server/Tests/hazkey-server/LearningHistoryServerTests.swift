@@ -265,6 +265,56 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
+    // MARK: [community] Surface-key merging (one row per reading+word)
+
+    /// Rows with the same (reading, word) but different CIDs — e.g. the
+    /// clause-bigram and whole-string entries of one commit — merge into a
+    /// single history row with summed counts.
+    func testHistoryMergesCidVariantsIntoSingleSurfaceRow() throws {
+        try withTemporaryXDG { root in
+            let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
+            seed([
+                .init(word: "気円", ruby: "キエン", lcid: 10, rcid: 11, mid: 1, value: -5),
+                .init(word: "気円", ruby: "キエン", lcid: 20, rcid: 21, mid: 1, value: -5),
+                .init(word: "別語", ruby: "ベツゴ", lcid: 30, rcid: 31, mid: 1, value: -5),
+            ], in: state)
+
+            let response = try send(historyRequest(query: "キエン"), to: state)
+
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.count, 1)
+            XCTAssertEqual(response.getLearningHistoryResult.totalCount, 1)
+            XCTAssertEqual(response.getLearningHistoryResult.entries.first?.word, "気円")
+            XCTAssertEqual(response.getLearningHistoryResult.entries.first?.count, 2)
+        }
+    }
+
+    /// Deleting a merged row removes every CID variant of the surface, even
+    /// when the request key carries no CIDs (the dialog sends merged rows).
+    func testDeleteSurfaceRemovesAllCidVariants() throws {
+        try withTemporaryXDG { root in
+            let memoryURL = root.appendingPathComponent("memory", isDirectory: true)
+            let variant1 = DicdataElement(word: "気円", ruby: "キエン", lcid: 10, rcid: 11, mid: 1, value: -5)
+            let variant2 = DicdataElement(word: "気円", ruby: "キエン", lcid: 20, rcid: 21, mid: 1, value: -5)
+            let survivor = DicdataElement(word: "保持", ruby: "ホジ", lcid: 12, rcid: 13, mid: 1, value: -5)
+            let state = makeState(memoryURL: memoryURL)
+            seed([variant1, variant2, survivor], in: state)
+            let surfaceKey = Hazkey_Config_LearningEntryKey.with {
+                $0.reading = "キエン"
+                $0.word = "気円"
+            }
+
+            let deletion = try send(deleteRequest([surfaceKey]), to: state)
+            let deletedListing = try send(historyRequest(query: "キエン"), to: state)
+            let survivorListing = try send(historyRequest(query: "ホジ"), to: state)
+
+            XCTAssertEqual(deletion.status, .success)
+            XCTAssertEqual(deletion.deleteLearningEntriesResult.deletedCount, 2)
+            XCTAssertEqual(deletedListing.getLearningHistoryResult.totalCount, 0)
+            XCTAssertEqual(survivorListing.getLearningHistoryResult.totalCount, 1)
+        }
+    }
+
     func testInvalidOffsetReturnsFailedStatusWithoutCrashing() throws {
         try withTemporaryXDG { root in
             let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
@@ -275,14 +325,18 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    func testUnknownEntryDeleteReturnsFailedStatusWithoutCrashing() throws {
+    /// A surface with no stored entry is skipped: deletion is best-effort per
+    /// surface key, so an unknown (or already deleted) row reports success
+    /// with zero deletions instead of failing the whole batch.
+    func testUnknownSurfaceDeleteReturnsSuccessWithZeroCount() throws {
         try withTemporaryXDG { root in
             let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
             let unknown = DicdataElement(word: "未知", ruby: "ミチ", lcid: 10, rcid: 11, mid: 1, value: -5)
 
             let response = try send(deleteRequest([key(for: unknown)]), to: state)
 
-            XCTAssertEqual(response.status, .failed)
+            XCTAssertEqual(response.status, .success)
+            XCTAssertEqual(response.deleteLearningEntriesResult.deletedCount, 0)
         }
     }
 

@@ -970,6 +970,13 @@ class HazkeyServerState {
         }
     }
 
+    /// Learning history merged to one row per (reading, word) surface key.
+    /// The learning memory stores one row per (ruby, word, lcid, rcid), so the
+    /// same surface can surface as several CID-variant rows (e.g. the
+    /// clause-bigram entry and the whole-string entry of one commit). The
+    /// dialog displays one merged row per surface and deletion removes every
+    /// variant — the same semantics as the candidate delete hotkey — so
+    /// lcid/rcid are not exposed to clients.
     func listLearningEntries(
         query: String,
         offset: UInt32,
@@ -979,22 +986,33 @@ class HazkeyServerState {
             throw LearningHistoryError.invalidOffset
         }
         let pageLimit = min(max(Int(limit), 1), 200)
-        let filteredEntries = try allLearningMemoryEntries().filter {
-            learningHistoryMatches(query: query, reading: $0.data.ruby, word: $0.data.word)
-        }
-        let pageStart = min(Int(offset), filteredEntries.count)
-        let pageEnd = min(pageStart + pageLimit, filteredEntries.count)
-        let entries = filteredEntries[pageStart..<pageEnd].map { entry in
-            Hazkey_Config_LearningHistoryEntry.with {
-                $0.reading = entry.data.ruby
-                $0.word = entry.data.word
-                $0.lcid = UInt32(clamping: entry.data.lcid)
-                $0.rcid = UInt32(clamping: entry.data.rcid)
-                $0.count = UInt32(entry.count)
-                $0.lastUsedUnixDay = UInt32(clamping: max(0, Int(entry.lastUsed.timeIntervalSince1970 / 86_400)))
+        var surfaceOrder: [LearningSurfaceKey] = []
+        var mergedSurfaces: [LearningSurfaceKey: (reading: String, word: String, count: Int, lastUsed: Date)] = [:]
+        for entry in try allLearningMemoryEntries()
+        where learningHistoryMatches(query: query, reading: entry.data.ruby, word: entry.data.word) {
+            let key = LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
+            if mergedSurfaces[key] == nil {
+                surfaceOrder.append(key)
+                mergedSurfaces[key] = (entry.data.ruby, entry.data.word, Int(entry.count), entry.lastUsed)
+            } else {
+                mergedSurfaces[key]!.count += Int(entry.count)
+                if mergedSurfaces[key]!.lastUsed < entry.lastUsed {
+                    mergedSurfaces[key]!.lastUsed = entry.lastUsed
+                }
             }
         }
-        return (entries, filteredEntries.count)
+        let pageStart = min(Int(offset), surfaceOrder.count)
+        let pageEnd = min(pageStart + pageLimit, surfaceOrder.count)
+        let entries = surfaceOrder[pageStart..<pageEnd].map { key in
+            Hazkey_Config_LearningHistoryEntry.with {
+                let surface = mergedSurfaces[key]!
+                $0.reading = surface.reading
+                $0.word = surface.word
+                $0.count = UInt32(clamping: surface.count)
+                $0.lastUsedUnixDay = UInt32(clamping: max(0, Int(surface.lastUsed.timeIntervalSince1970 / 86_400)))
+            }
+        }
+        return (entries, surfaceOrder.count)
     }
 
     func forgetLearningEntries(
@@ -1038,6 +1056,25 @@ class HazkeyServerState {
         converter.stopComposition()
         converter.purgeZenzaiMemoizationCache()
         return UInt32(uniqueKeys.count)
+    }
+
+    /// [community] Delete every learning entry matching each (reading, word)
+    /// surface key, regardless of CID — the same semantics as the candidate
+    /// delete hotkey (`deleteCandidateLearningData`). Used by the settings
+    /// dialog, whose rows are merged across CID variants by
+    /// `listLearningEntries`. Surfaces with no stored entry are skipped so a
+    /// row deleted in the meantime cannot fail the whole batch; the returned
+    /// count is the number of exact entries actually removed.
+    func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
+        var requestedSurfaces: Set<LearningSurfaceKey> = []
+        var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
+        for surface in surfaces {
+            let key = LearningSurfaceKey(reading: surface.reading, word: surface.word)
+            guard requestedSurfaces.insert(key).inserted else { continue }
+            resolvedKeys.append(contentsOf: try matchingLearningEntryKeys(reading: surface.reading, word: surface.word))
+        }
+        guard !resolvedKeys.isEmpty else { return 0 }
+        return try forgetLearningEntries(resolvedKeys)
     }
 
     private func allLearningMemoryEntries() throws -> [LearningMemoryEntry] {
