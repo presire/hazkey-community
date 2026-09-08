@@ -167,6 +167,11 @@ class HazkeyServerState {
         zenzaiLeftContext = ""
         isSubInputMode = false
         isShiftPressedAlone = false
+        // New-composition boundary: drop the converter session so an identical
+        // input does not reuse the prior composition's lattice and hide newly
+        // learned candidates. Incremental conversion within a composition keeps
+        // reusing the session.
+        converter.stopComposition()
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
