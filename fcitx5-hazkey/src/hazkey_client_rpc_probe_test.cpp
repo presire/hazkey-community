@@ -32,6 +32,8 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
         case hazkey::RequestEnvelope::kPrefixComplete: return "prefix_complete";
         case hazkey::RequestEnvelope::kMoveCursor: return "move_cursor";
         case hazkey::RequestEnvelope::kAdjustClauseBoundary: return "adjust_clause_boundary";
+        case hazkey::RequestEnvelope::kAcceptPrediction: return "accept_prediction";
+        case hazkey::RequestEnvelope::kDeleteCandidateLearningData: return "delete_candidate_learning_data";
         case hazkey::RequestEnvelope::kGetHiraganaWithCursor: return "get_hiragana_with_cursor";
         case hazkey::RequestEnvelope::kGetComposingString: return "get_composing_string";
         case hazkey::RequestEnvelope::kGetCandidates: return "get_candidates";
