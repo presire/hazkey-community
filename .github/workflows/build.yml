@@ -136,31 +136,19 @@ jobs:
           export PATH="/work/swift/usr/bin:$PATH"
           swift --version
 
-          rm -rf hazkey-settings/build fcitx5-hazkey/build hazkey-server/build
+          rm -rf build workdir packages
           mkdir -p workdir packages
 
           sed -i "s/Qt::Orientation::/Qt::/g" hazkey-settings/mainwindow.ui
 
-          cmake -S hazkey-settings -B hazkey-settings/build \
+          # Configure once from the repository root so that targets which
+          # depend on the root-only server build (learninghistorydialog_test
+          # -> build_hazkey_server) resolve correctly.
+          cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DProtobuf_USE_STATIC_LIBS=OFF
-          cmake --build hazkey-settings/build --parallel
-          DESTDIR=/work/workdir cmake --install hazkey-settings/build
-
-          cmake -S fcitx5-hazkey -B fcitx5-hazkey/build \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DProtobuf_USE_STATIC_LIBS=OFF
-          cmake --build fcitx5-hazkey/build --parallel
-          DESTDIR=/work/workdir cmake --install fcitx5-hazkey/build
-
-          cmake -S hazkey-server -B hazkey-server/build \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr
 
           # vulkan-shaders-gen forks up to 16 glslc subprocesses in parallel,
           # which can exceed the process-table limit in constrained CI
@@ -168,14 +156,17 @@ jobs:
           # compilation everywhere to keep the fork load predictable.
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
 
-          cmake --build hazkey-server/build --parallel 1
-          DESTDIR=/work/workdir cmake --install hazkey-server/build
+          # Build the installed artifacts (hazkey-settings, fcitx5-hazkey,
+          # build_hazkey_server) serially from the root build tree, then
+          # install them once into the staging directory.
+          cmake --build build --target hazkey-settings fcitx5-hazkey build_hazkey_server --parallel 1
+          DESTDIR=/work/workdir cmake --install build
 
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
             [0-9]*.[0-9]*.[0-9]* ) ;;
-            * ) version="0.2.18" ;;
+            * ) version="0.2.20" ;;
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then
