@@ -2,18 +2,12 @@
 
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)  
 
+Hazkey input method for fcitx5  
+
 > このプロジェクトは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたカスタマイズ版です。(v0.2.2-community以降)  
 > ユーザ辞書 (品詞・動詞活用対応)・動詞活用エンジン、候補ウィンドウでのマウス選択、ライブ変換トグルホットキー、文節境界調整・自動変換の改善、  
 > Zenzai設定の拡充 (トピック・文体・好み・カスタムモデル・リッチ候補)、プロファイルごとの学習履歴分離、設定UI強化 (辞書タブ・動詞活用情報表示・設定リセット)、  
 > サーバ設定の堅牢化、サーバプロセス管理の安定化、マルチGPU環境でのSIGILLクラッシュ回避 ([Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) 等の追加機能を含みます。  
-
-Hazkey input method for fcitx5  
-
-> **対応環境**:  
-> ***動作確認およびサポート対象は、Fedora 44、openSUSE Leap 16 / SLE 16、Debian 13 (Trixie) のみです。***  
-> openSUSE Tumbleweed および Ubuntu 26.04向けパッケージも頒布していますが、動作確認・サポートの対象外です。  
-> パッケージの頒布は、これらの環境での動作保証を意味しません。  
-> その他のディストリビューションでの動作は保証しません。  
 
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を利用したIMEです。
 
@@ -21,6 +15,14 @@ Hazkey input method for fcitx5
 > [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
 > ドキュメント (上流版)  
 > [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs)  
+
+<br>
+
+> **対応環境**:  
+> ***動作確認およびサポート対象は、Fedora 44、openSUSE Leap 16 / SLE 16、Debian 13 (Trixie) のみです。***  
+> openSUSE Tumbleweed および Ubuntu 26.04向けパッケージも頒布していますが、動作確認・サポートの対象外です。  
+> パッケージの頒布は、これらの環境での動作保証を意味しません。  
+> その他のディストリビューションでの動作は保証しません。  
 
 <br>
 
@@ -42,7 +44,7 @@ Hazkey input method for fcitx5
 | サーバ設定の堅牢化 | 不正な形式のJSONファイルやカスタムキーマップファイルを読み込んでもクラッシュせず、安全にパース。<br><br>プロファイルが空の場合や、列挙値・数値範囲が不正な設定値は保存時に拒否。<br><br>これらの検証ロジックに対する回帰テストも追加。 |
 | サーバプロセス管理の安定化 | クライアント (fcitx5-hazkey) 更新時にhazkey-serverを自動再起動する仕組みを追加し、<br>プロセス起動検出・再起動ハンドリング・学習データ保存の信頼性を向上。<br><br>バージョンアップ時の再起動トラブルを軽減。 |
 | マルチGPU環境でのSIGILLクラッシュ回避 ([Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) | NVIDIA GPUとAMD/Intel iGPUが同居するLinux環境において、<br>hazkey-serverが起動直後にSIGILLでクラッシュする問題を、<br>ラッパースクリプトによるICDピン留め・Zenzaiビルド時パッチ・CPUフォールバック (`-DGGML_VULKAN=OFF`) の3層で自動回避。<br><br>詳細は下記「トラブルシューティング」セクションを参照。 |
-| 予測候補の先頭表記固定 (`F5`) | 変換中のサジェスト (予測) 候補にカーソルを合わせて `F5` を押すと、その候補の表記を「先頭の固定表記」として受理し、確定せずに続きを入力できる。<br><br>受理された表記は以降のZenzai変換で先頭制約として維持されるため、予測をたたみかけて伸ばした後も書き出しの表記を保ったまま残りを推敲できる。<br><br>`Enter` による確定は従来通り別動作として維持。 |
+| 予測候補の先頭表記固定 (`F5`) | 変換中のサジェスト (予測) 候補にカーソルを合わせて `F5` を押すと、<br>その候補の表記を「先頭の固定表記」として受理し、確定せずに続きを入力できる。<br><br>受理された表記は、以降のZenzai変換で先頭制約として維持されるため、<br>予測をたたみかけて伸ばした後も書き出しの表記を保ったまま残りを推敲できる。<br><br>[Enter]キーによる確定は従来通り別動作として維持 |
 
 <br>
 
@@ -374,29 +376,11 @@ v3.1-smallは互換維持用と捉え、新規利用はv3.2-smallを選んでく
 
 <br>
 
-- **zenz-v3.2-small (Q5_K_M, 73.9 [MB], 推奨・最新・最高精度)**:  
-  上記の共通最低ラインをそのまま適用してください。  
-  
-  GTX 1660 SUPER / RTX 3050 6[GB]、RX 6600 8[GB]、Arc A380 6[GB]以上が目安です。  
-  RX 550級 (2[GB]、帯域 ~112[GB/s]、FP16が弱い) ではモデル自体 (74[MB]弱) はVRAMに載っても、  
-  KV cache・PCIe転送・弱いシェーダ性能がボトルネックになり、CPU (`HAZKEY_ZENZAI_CPU_THREADS=4` 程度) より遅くなります。  
-  
-- **zenz-v3.2-xsmall (Q5_K_M, 21 [MB], 軽量・CPU高速・やや低精度)**:  
-  パラメータがsmallの約1/4 (95.1M → 25.6M) のため要求は一段低くなります。  
-  
-  目安はVRAM 2〜4[GB]以上・Vulkan 1.2以上で、UHD 770 / Iris Xe / Radeon 760M/780M級の現行iGPUや、  
-  GTX 1650 / RX 6400 / Arc A310級でも実用になります。  
-  
-  ただし、計算量が小さい分、転送オーバーヘッドの比率が上がるため、  
-  RX 550級の弱いdGPUよりCPU (4スレッド程度) や現行iGPUの方が速い・安定な場合が多く、あえて弱いdGPUを選ぶ必要はありません。  
-  
-  CPU専用でも十分速いモデルです。
-  
-- **zenz-v3.1-small (Q5_K_M, 73.9 [MB], 旧世代・互換維持用)**:  
-  GGUFの実測サイズ・パラメータ数がv3.2-smallと同一 (95.1M / 73.9[MB]) のため、推奨性能はv3.2-smallと同じです。  
-  共通最低ライン (GTX 1660 SUPER / RX 6600 / Arc A380以上) を適用してください。  
-  
-  ***※ただし、新規に選ぶ理由は薄く、既存環境の再現用と割り切ってください。***  
+| モデル | 推奨性能・注意点 |
+|---|---|
+| **zenz-v3.2-small** (Q5_K_M, 73.9[MB], 推奨・最新・最高精度) | 上記の共通最低ラインをそのまま適用してください。<br><br>GTX 1660 SUPER / RTX 3050 6[GB]、RX 6600 8[GB]、Arc A380 6[GB]以上が目安です。<br><br>RX 550級 (2[GB]、帯域 ~112[GB/s]、FP16が弱い) ではモデル自体 (74[MB]弱) はVRAMに載っても、KV cache・PCIe転送・弱いシェーダ性能がボトルネックになり、CPU (`HAZKEY_ZENZAI_CPU_THREADS=4` 程度) より遅くなります。 |
+| **zenz-v3.2-xsmall** (Q5_K_M, 21[MB], 軽量・CPU高速・やや低精度) | パラメータがsmallの約1/4 (95.1M → 25.6M) のため要求は一段低くなります。<br><br>目安はVRAM 2〜4[GB]以上・Vulkan 1.2以上で、UHD 770 / Iris Xe / Radeon 760M/780M級の現行iGPUや、GTX 1650 / RX 6400 / Arc A310級でも実用になります。<br><br>ただし、計算量が小さい分、転送オーバーヘッドの比率が上がるため、RX 550級の弱いdGPUよりCPU (4スレッド程度) や現行iGPUの方が速い・安定な場合が多く、あえて弱いdGPUを選ぶ必要はありません。<br><br>CPU専用でも十分速いモデルです。 |
+| **zenz-v3.1-small** (Q5_K_M, 73.9[MB], 旧世代・互換維持用) | GGUFの実測サイズ・パラメータ数がv3.2-smallと同一 (95.1M / 73.9[MB]) のため、推奨性能はv3.2-smallと同じです。共通最低ライン (GTX 1660 SUPER / RX 6600 / Arc A380以上) を適用してください。<br><br>***※ただし、新規に選ぶ理由は薄く、既存環境の再現用と割り切ってください。*** |
 
 <br>
 
@@ -409,17 +393,16 @@ v3.1-smallは互換維持用と捉え、新規利用はv3.2-smallを選んでく
 
 **デバイス名の例 (設定UIの選択肢・`vulkaninfo --summary` / `lspci`表示の目安)**:  
 
-- デスクトップ向けグラフィックボード:  
-  - Intel: Arc A380 / A580 / A750 / A770 / Battlemage B580  
-  - NVIDIA: GeForce GTX 1660 SUPER / RTX 3060 / RTX 4060 / RTX 4070  
-  - AMD: RX 6600 / RX 7600 / RX 6700 XT  
-- CPU内蔵iGPU:
-  - Intel: UHD Graphics 730 / 770 / Iris Xe Graphics / Core Ultra内蔵Arc Graphics (140V/140T等)  
-  - AMD: Radeon Vega 8 / Radeon 760M / 780M / Ryzen 8600G内蔵 Radeon Graphics  
-- ラップトップ向けdGPU (モバイル):  
-  - Intel: Arc A370M / A550M / A730M  
-  - NVIDIA: GeForce MX550 / RTX 3050 Laptop / RTX 4050/4060 Laptop / RTX 3060 Laptop  
-  - AMD: Radeon RX 6500M / RX 6600M / RX 7600M XT / RX 6800M  
+| 区分 | ベンダー | 例 |
+|---|---|---|
+| デスクトップ向けグラフィックボード | Intel | Arc A380 / A580 / A750 / A770 / Battlemage B580 |
+| デスクトップ向けグラフィックボード | NVIDIA | GeForce GTX 1660 SUPER / RTX 3060 / RTX 4060 / RTX 4070 |
+| デスクトップ向けグラフィックボード | AMD | RX 6600 / RX 7600 / RX 6700 XT |
+| CPU内蔵iGPU | Intel | UHD Graphics 730 / 770 / Iris Xe Graphics / Core Ultra内蔵Arc Graphics (140V/140T等) |
+| CPU内蔵iGPU | AMD | Radeon Vega 8 / Radeon 760M / 780M / Ryzen 8600G内蔵 Radeon Graphics |
+| ラップトップ向けdGPU (モバイル) | Intel | Arc A370M / A550M / A730M |
+| ラップトップ向けdGPU (モバイル) | NVIDIA | GeForce MX550 / RTX 3050 Laptop / RTX 4050/4060 Laptop / RTX 3060 Laptop |
+| ラップトップ向けdGPU (モバイル) | AMD | Radeon RX 6500M / RX 6600M / RX 7600M XT / RX 6800M |
 
 <br>
 
