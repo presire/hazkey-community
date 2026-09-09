@@ -173,6 +173,9 @@ class HazkeyState : public InputContextProperty {
     int livePreeditIndex_ = -1;
 
     fcitx::Key liveConvertHotkey_{"Control+Shift+L"};
+    // [community] Hotkey for accepting the focused prediction candidate as a
+    // fixed leading notation while keeping the composition open.
+    fcitx::Key acceptPredictionHotkey_{"F5"};
     // [community] Hotkey for deleting the focused candidate's AzooKey
     // learning memory entries (the list is rebuilt afterwards).
     fcitx::Key deleteLearningHotkey_{"Control+Shift+D"};

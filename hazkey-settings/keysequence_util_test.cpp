@@ -25,6 +25,8 @@ void KeySequenceUtilTest::testQtToFcitxRoundTrip_data() {
         << QStringLiteral("Alt+Shift+X") << QStringLiteral("Alt+Shift+X");
     QTest::newRow("meta k") << QStringLiteral("Meta+K")
                             << QStringLiteral("Super+K");
+    QTest::newRow("f5 single key") << QStringLiteral("F5")
+                                     << QStringLiteral("F5");
 }
 
 void KeySequenceUtilTest::testQtToFcitxRoundTrip() {

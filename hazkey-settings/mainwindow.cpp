@@ -228,6 +228,8 @@ QString MainWindow::uiStateKey() const {
                  ui_->liveConvertHotkey->keySequence().toString());
     state.insert("deleteLearningHotkey",
                  ui_->deleteLearningHotkey->keySequence().toString());
+    state.insert("acceptPredictionHotkey",
+                 ui_->acceptPredictionHotkey->keySequence().toString());
     state.insert("zenzaiBackendDevice",
                  ui_->zenzaiBackendDevice->currentData().toString());
     // Ordered enabled input tables (name + built-in flag).
@@ -439,6 +441,9 @@ void MainWindow::connectSignals() {
             [this](const QKeySequence&) { recomputeDirtyState(); });
     connect(ui_->deleteLearningHotkey, &QKeySequenceEdit::keySequenceChanged,
             this, [this](const QKeySequence&) { recomputeDirtyState(); });
+    connect(ui_->acceptPredictionHotkey,
+            &QKeySequenceEdit::keySequenceChanged, this,
+            [this](const QKeySequence&) { recomputeDirtyState(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -747,6 +752,17 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
             qKeySequenceFromFcitxKeyString(fcitxStr));
     }
 
+    {
+        // [community] Prediction-accept hotkey; empty falls back to the
+        // client's built-in default.
+        const std::string storedAcceptHotkey =
+            currentProfile_->accept_prediction_hotkey();
+        const QString fcitxAcceptStr = QString::fromStdString(
+            storedAcceptHotkey.empty() ? "F5" : storedAcceptHotkey);
+        ui_->acceptPredictionHotkey->setKeySequence(
+            qKeySequenceFromFcitxKeyString(fcitxAcceptStr));
+    }
+
     // Load input table configuration
     loadInputTables();
 
@@ -862,6 +878,10 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_delete_learning_hotkey(
         fcitxKeyStringFromQKeySequence(
             ui_->deleteLearningHotkey->keySequence())
+            .toStdString());
+    currentProfile_->set_accept_prediction_hotkey(
+        fcitxKeyStringFromQKeySequence(
+            ui_->acceptPredictionHotkey->keySequence())
             .toStdString());
 
     // Save zenzai backend device

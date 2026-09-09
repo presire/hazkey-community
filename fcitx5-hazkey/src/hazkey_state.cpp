@@ -166,16 +166,6 @@ void HazkeyState::preeditKeyEvent(
             engine_->server().deleteRight();
             showPreeditCandidateList();
             break;
-        case FcitxKey_F5:
-            // [community] Accept the focused prediction candidate as a
-            // fixed leading notation and keep composing (upstream ad714fe
-            // / #357). Unlike Return this does not commit; the preedit and
-            // the candidate list are refreshed from the grown composition.
-            if (PredictCandidateList != nullptr && PredictCandidateList->focused()) {
-                engine_->server().acceptPrediction(PredictCandidateList->globalCursorIndex());
-                showPreeditCandidateList();
-            }
-            break;
         case FcitxKey_F6:
         case FcitxKey_F7:
         case FcitxKey_F8:
@@ -279,6 +269,14 @@ void HazkeyState::candidateKeyEvent(
     // clause's ctrlShortcutHandler, which would consume the event first.
     if (key.check(deleteLearningHotkey_)) {
         handleDeleteCandidateLearningData(candidateList);
+        return event.filterAndAccept();
+    }
+
+    // [community] Accept only focused suggest-mode candidates. Unlike Return,
+    // this preserves the composition and refreshes it from the server.
+    if (currentListIsSuggest_ && key.check(acceptPredictionHotkey_)) {
+        engine_->server().acceptPrediction(candidateList->globalCursorIndex());
+        showPreeditCandidateList();
         return event.filterAndAccept();
     }
 
@@ -406,6 +404,10 @@ void HazkeyState::loadServerProfile() {
     const auto& profile = configOpt->profiles(0);
     const std::string& hotkey = profile.auto_convert_hotkey();
     liveConvertHotkey_ = Key(hotkey.empty() ? "Control+Shift+L" : hotkey);
+    const std::string& acceptPredictionHotkey =
+        profile.accept_prediction_hotkey();
+    acceptPredictionHotkey_ =
+        Key(acceptPredictionHotkey.empty() ? "F5" : acceptPredictionHotkey);
     // [community] Learning-data delete hotkey. Read once per input context
     // like liveConvertHotkey_, so GUI changes take effect from the next
     // input context (fcitx5 restart applies it reliably).
