@@ -747,7 +747,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         const std::string storedDeleteHotkey =
             currentProfile_->delete_learning_hotkey();
         const QString fcitxStr = QString::fromStdString(
-            storedDeleteHotkey.empty() ? "Control+Shift+D" : storedDeleteHotkey);
+        storedDeleteHotkey.empty() ? "Control+D" : storedDeleteHotkey);
         ui_->deleteLearningHotkey->setKeySequence(
             qKeySequenceFromFcitxKeyString(fcitxStr));
     }

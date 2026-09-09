@@ -413,7 +413,7 @@ void HazkeyState::loadServerProfile() {
     // input context (fcitx5 restart applies it reliably).
     const std::string& deleteHotkey = profile.delete_learning_hotkey();
     deleteLearningHotkey_ =
-        Key(deleteHotkey.empty() ? "Control+Shift+D" : deleteHotkey);
+        Key(deleteHotkey.empty() ? "Control+D" : deleteHotkey);
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     using M = hazkey::config::Profile_AutoConvertMode;
     // Only update the remembered "ON" mode when the server's mode is not

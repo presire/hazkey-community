@@ -178,7 +178,7 @@ class HazkeyState : public InputContextProperty {
     fcitx::Key acceptPredictionHotkey_{"F5"};
     // [community] Hotkey for deleting the focused candidate's AzooKey
     // learning memory entries (the list is rebuilt afterwards).
-    fcitx::Key deleteLearningHotkey_{"Control+Shift+D"};
+    fcitx::Key deleteLearningHotkey_{"Control+D"};
     // Display mode (suggest vs non-predict conversion) of the candidate list
     // currently shown. Mirrors the server's currentCandidateListIsSuggest so
     // the learning-data delete rebuild shows the same kind of list.
