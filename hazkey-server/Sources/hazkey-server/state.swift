@@ -18,6 +18,12 @@ enum DisplayedCandidate {
     /// `.fromDateProvider` at commit time (clear composing text, no
     /// learning) but kept distinct for clarity.
     case fromKanaNumberProvider(word: String)
+    /// [community] Emoji 17.0 direct-conversion candidate injected by
+    /// `EmojiCandidateProvider`. Consumes only the matched normalized-query
+    /// prefix (`composingCount`) at commit time via `prefixComplete`, leaving
+    /// any trailing suffix in the composition; never learns. Kept distinct
+    /// for clarity and deletion routing.
+    case fromEmoji(word: String, composingCount: ComposingCount)
 }
 
 private enum LearningHistoryError: Error {
@@ -91,9 +97,21 @@ class HazkeyServerState {
     var keymap: Keymap
     var currentTableName: String
     var baseConvertRequestOptions: ConvertRequestOptions
+    /// [community] Cached immutable emoji provider. Built once per state;
+    /// never refreshed thereafter (asset refresh happens only when the
+    /// server state itself is recreated).
+    let emojiProvider: EmojiCandidateProvider?
 
-    init() {
+    convenience init() {
+        self.init(emojiDictionaryURL: nil)
+    }
+
+    /// - Parameter emojiDictionaryURL: Injected dictionary URL for tests.
+    ///   `nil` uses the production E17 asset.
+    init(emojiDictionaryURL: URL?) {
         self.serverConfig = HazkeyServerConfig()
+        self.emojiProvider = EmojiCandidateProvider(
+            dictionaryURL: emojiDictionaryURL ?? EmojiCandidateProvider.defaultDictionaryURL)
 
         self.converter = KanaKanjiConverter.init(dictionaryURL: serverConfig.dictionaryPath)
 
@@ -309,6 +327,12 @@ class HazkeyServerState {
             // reading of a kana numeral. Behaves like `.fromDateProvider` at
             // commit: clear composing text, do not feed the learning store.
             composingText = ComposingTextBox()
+        case .fromEmoji(_, let composingCount):
+            // [community] Emoji direct-conversion candidates consume only the
+            // matched normalized-query prefix, retaining any trailing suffix.
+            // Never touches the converter's completion/learning APIs.
+            composingText.value.prefixComplete(composingCount: composingCount)
+            learningDataNeedsCommit = false
         }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -679,6 +703,36 @@ class HazkeyServerState {
             )
         }
 
+        // === [community] Emoji 17.0 direct-candidate injection ===
+        // Normal conversion only (`is_suggest == false`), gated by the
+        // `extended_emoji` setting. Appended after the converter's main
+        // candidates and before the date/number post-processors. Exact-string
+        // deduped against `appendedTexts`; liveText/liveTextIndex untouched;
+        // no learning annotation. Text is preserved byte-for-byte.
+        if !is_suggest, serverConfig.currentProfile.extendedEmojiEffective,
+            let emojiProvider
+        {
+            let emojiItems = emojiProvider.emojiCandidates(for: hiraganaPreedit)
+            if !emojiItems.isEmpty {
+                for item in emojiItems {
+                    guard !appendedTexts.contains(item.text) else { continue }
+                    appendedTexts.insert(item.text)
+                    // Matched normalized-query length drives both the remaining
+                    // preedit and the prefix completion of the same candidate.
+                    let matchedCount = item.query.count
+                    let remaining = String(
+                        fullHiraganaPreedit.dropFirst(min(matchedCount, fullHiraganaPreedit.count)))
+                    var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                    clientCandidate.text = item.text
+                    clientCandidate.subHiragana = remaining
+                    serverCandidates.append(
+                        .fromEmoji(
+                            word: item.text, composingCount: .inputCount(matchedCount)))
+                    clientCandidates.append(clientCandidate)
+                }
+            }
+        }
+
         // === [community] Relative-date candidate injection (post-process) ===
         // Inject formatted date strings (yyyy年M月d日, yyyy-MM-dd, ...) when the
         // composing hiragana exactly matches a relative-date trigger word
@@ -885,8 +939,8 @@ class HazkeyServerState {
             }
         }
         // Only converter candidates can carry learning entries. Legacy
-        // user-dictionary / date / kana-number injections have no learning
-        // backing: report "nothing deleted" instead of an error.
+        // user-dictionary / date / kana-number / emoji injections have no
+        // learning backing: report "nothing deleted" instead of an error.
         guard case .fromConverter(let candidate) = list[candidateIndex] else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .success
