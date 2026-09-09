@@ -23,9 +23,29 @@ concurrency:
 
 jobs:
   test:
-    name: Build & Test
-    runs-on: ubuntu-24.04
+    name: Build & Test (${{ matrix.expected_machine }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      # Native (non-emulated) runners: x86_64 on ubuntu-24.04 and native
+      # AArch64 on ubuntu-24.04-arm.  fail-fast is disabled so a regression
+      # on one architecture still reports the other architecture's result.
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 / amd64: existing coverage, unchanged behaviour.
+          - runner: ubuntu-24.04
+            dpkg_arch: amd64
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+          # AArch64 / arm64: native ARM64 runner using the official
+          # AArch64 Swift 6.3.3 archive for Ubuntu 24.04.
+          - runner: ubuntu-24.04-arm
+            dpkg_arch: arm64
+            expected_machine: aarch64
+            swift_target: aarch64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404-aarch64/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04-aarch64.tar.gz
 
     steps:
       - name: Checkout repository
@@ -35,6 +55,18 @@ jobs:
 
       - name: Update submodules
         run: git submodule update --init --recursive
+
+      - name: Assert runner architecture
+        env:
+          EXPECTED_MACHINE: ${{ matrix.expected_machine }}
+          DPKG_ARCH: ${{ matrix.dpkg_arch }}
+        run: |
+          set -eux
+          # Early guard against a misconfigured matrix/runner pairing,
+          # e.g. an emulated runner or a matrix row accidentally landing
+          # on the wrong architecture.
+          test "$(uname -m)" = "${EXPECTED_MACHINE}"
+          test "$(dpkg --print-architecture)" = "${DPKG_ARCH}"
 
       - name: Install build dependencies
         run: |
@@ -51,22 +83,37 @@ jobs:
             spirv-headers
 
       - name: Install Swift 6.3.3 toolchain
+        env:
+          SWIFT_URL: ${{ matrix.swift_url }}
         run: |
           set -eux
           # Download the official Swift 6.3.3 release for Ubuntu 24.04.
           # The project requires Swift >= 6.1 (swift-tools-version: 6.1
           # in hazkey-server/Package.swift).  build.yml uses the same
-          # 6.3.3-RELEASE toolchain.
-          SWIFT_TARBALL="/tmp/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+          # 6.3.3-RELEASE toolchain.  Both the URL and the temporary
+          # filename are architecture-aware via the matrix (the official
+          # per-architecture archive basename embeds the target, e.g.
+          # ...-ubuntu24.04-aarch64.tar.gz for the ARM64 runner).
+          SWIFT_TARBALL="/tmp/$(basename "${SWIFT_URL}")"
           curl -fL --retry 5 --retry-all-errors \
             -o "${SWIFT_TARBALL}" \
-            "https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+            "${SWIFT_URL}"
           mkdir -p /opt/swift
           tar -xzf "${SWIFT_TARBALL}" --strip-components=1 -C /opt/swift
           echo "/opt/swift/usr/bin" >> "${GITHUB_PATH}"
 
-      - name: Verify Swift version
-        run: swift --version
+      - name: Verify Swift version and target architecture
+        env:
+          SWIFT_TARGET: ${{ matrix.swift_target }}
+        run: |
+          set -eux
+          swift --version
+          # The official Swift archive is architecture-specific, so assert
+          # that the downloaded toolchain exactly targets the triple this
+          # matrix row requested.  swiftc -print-target-info emits the
+          # resolved target triple (e.g. aarch64-unknown-linux-gnu or
+          # x86_64-unknown-linux-gnu).
+          swiftc -print-target-info 2>/dev/null | grep -qF -- "${SWIFT_TARGET}"
 
       - name: Fix llama.cpp safe.directory
         # git submodule operations inside nested repos trigger

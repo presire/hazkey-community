@@ -10,7 +10,7 @@ permissions:
 jobs:
   distro-packages:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -21,30 +21,60 @@ jobs:
             package_type: deb
             package_suffix: trixie
             package_arch: amd64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+          - name: Debian 13 Trixie (ARM64)
+            distro: debian
+            image: debian:trixie
+            package_type: deb
+            package_suffix: trixie
+            package_arch: arm64
+            runner: ubuntu-24.04-arm
+            expected_machine: aarch64
+            swift_target: aarch64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404-aarch64/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04-aarch64.tar.gz
           - name: Ubuntu 26.04
             distro: debian
             image: ubuntu:26.04
             package_type: deb
             package_suffix: ubuntu2604
             package_arch: amd64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
           - name: Fedora 44
             distro: fedora
             image: fedora:44
             package_type: rpm
             package_suffix: fc44
             package_arch: x86_64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
           - name: openSUSE Leap 16
             distro: opensuse
             image: opensuse/leap:16
             package_type: rpm
             package_suffix: leap16
             package_arch: x86_64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
           - name: openSUSE Tumbleweed
             distro: opensuse
             image: opensuse/tumbleweed:latest
             package_type: rpm
             package_suffix: tumbleweed
             package_arch: x86_64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -59,6 +89,9 @@ jobs:
           PACKAGE_TYPE: ${{ matrix.package_type }}
           PACKAGE_SUFFIX: ${{ matrix.package_suffix }}
           PACKAGE_ARCH: ${{ matrix.package_arch }}
+          EXPECTED_MACHINE: ${{ matrix.expected_machine }}
+          SWIFT_TARGET: ${{ matrix.swift_target }}
+          SWIFT_URL: ${{ matrix.swift_url }}
           GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
         run: |
           rm -rf workdir packages rpmbuild hazkey.spec
@@ -73,6 +106,9 @@ jobs:
             -e PACKAGE_TYPE="$PACKAGE_TYPE" \
             -e PACKAGE_SUFFIX="$PACKAGE_SUFFIX" \
             -e PACKAGE_ARCH="$PACKAGE_ARCH" \
+            -e EXPECTED_MACHINE="$EXPECTED_MACHINE" \
+            -e SWIFT_TARGET="$SWIFT_TARGET" \
+            -e SWIFT_URL="$SWIFT_URL" \
             -e GITHUB_REF_NAME="$GITHUB_REF_NAME_VALUE" \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
@@ -126,15 +162,25 @@ jobs:
               /usr/lib/x86_64-linux-gnu/libxml2.so.2
           fi
 
+          # Assert that the container architecture matches the runner
+          # selected for this matrix row.
+          test "$(uname -m)" = "$EXPECTED_MACHINE"
+          if [ "$PACKAGE_TYPE" = "deb" ]; then
+            test "$(dpkg-architecture -qDEB_HOST_ARCH)" = "$PACKAGE_ARCH"
+          fi
+
           git config --global --add safe.directory /work/hazkey-server/llama.cpp
 
           rm -rf /work/swift
           mkdir -p /work/swift
           curl -fL --retry 5 --retry-all-errors -o /tmp/swift.tar.gz \
-            https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            "$SWIFT_URL"
           tar -xzf /tmp/swift.tar.gz --strip-components=1 -C /work/swift
           export PATH="/work/swift/usr/bin:$PATH"
           swift --version
+
+          # Assert that the Swift toolchain target matches this matrix row.
+          swiftc -print-target-info | grep -Fq "$SWIFT_TARGET"
 
           rm -rf build workdir packages
           mkdir -p workdir packages
@@ -191,6 +237,9 @@ jobs:
             } > workdir/DEBIAN/control
             dpkg-deb --build --root-owner-group workdir \
               "packages/fcitx5-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            # Assert that the built package metadata reports the expected
+            # architecture for this matrix row.
+            test "$(dpkg-deb --field packages/*.deb Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info packages/*.deb
             dpkg-deb --contents packages/*.deb
           else
