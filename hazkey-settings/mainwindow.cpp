@@ -689,8 +689,10 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->halfwidthKatakanaConversion,
                  specialConversions->halfwidth_katakana(),
                  ConfigDefs::CheckboxDefaults::HALFWIDTH_KATAKANA);
-    SET_CHECKBOX(ui_->extendedEmojiConversion,
-                 specialConversions->extended_emoji(),
+    const bool extendedEmoji = specialConversions->has_extended_emoji()
+                                   ? specialConversions->extended_emoji()
+                                   : ConfigDefs::CheckboxDefaults::EXTENDED_EMOJI;
+    SET_CHECKBOX(ui_->extendedEmojiConversion, extendedEmoji,
                  ConfigDefs::CheckboxDefaults::EXTENDED_EMOJI);
     SET_CHECKBOX(ui_->commaSeparatedNumCoversion,
                  specialConversions->comma_separated_number(),

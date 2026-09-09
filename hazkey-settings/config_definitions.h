@@ -156,7 +156,7 @@ struct CheckboxDefaults {
     static constexpr bool ZENZAI_CONTEXTUAL = false;
     static constexpr bool USE_ZENZAI_CUSTOM_WEIGHT = false;
     static constexpr bool HALFWIDTH_KATAKANA = false;
-    static constexpr bool EXTENDED_EMOJI = false;
+    static constexpr bool EXTENDED_EMOJI = true;
     static constexpr bool COMMA_SEPARATED_NUMBER = false;
     static constexpr bool CALENDER = false;
     static constexpr bool TIME = false;
