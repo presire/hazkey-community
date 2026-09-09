@@ -195,5 +195,5 @@ if(HAZKEY_SERVER_INSTALL_DICTIONARY)
 endif()
 
 #install emoji dictionary
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_emoji_dictionary_storage/EmojiDictionary/emoji_all_E16.0.txt
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_emoji_dictionary_storage/EmojiDictionary/emoji_all_E17.0.txt
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)

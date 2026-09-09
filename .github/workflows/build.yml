@@ -163,6 +163,11 @@ jobs:
           cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in-fmt build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
+          # Emoji 17 staged-install assertion: the E17 asset must be present
+          # in the staged tree and the E16 asset must be absent.
+          test -f /work/workdir/usr/share/hazkey/emoji_all_E17.0.txt
+          test ! -e /work/workdir/usr/share/hazkey/emoji_all_E16.0.txt
+
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
