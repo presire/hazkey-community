@@ -37,6 +37,8 @@ jobs:
           - runner: ubuntu-24.04
             dpkg_arch: amd64
             expected_machine: x86_64
+            cc: cc
+            cxx: c++
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
           # AArch64 / arm64: native ARM64 runner using the official
@@ -44,6 +46,8 @@ jobs:
           - runner: ubuntu-24.04-arm
             dpkg_arch: arm64
             expected_machine: aarch64
+            cc: gcc-14
+            cxx: g++-14
             swift_target: aarch64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404-aarch64/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04-aarch64.tar.gz
 
@@ -130,7 +134,27 @@ jobs:
           sed -i 's/Qt::Orientation::/Qt::/g' \
             hazkey-settings/mainwindow.ui
 
+      - name: Install GCC 14 (arm64)
+        if: matrix.dpkg_arch == 'arm64'
+        run: |
+          set -eux
+          sudo apt-get install -y gcc-14 g++-14
+
+      - name: Verify GCC 14 accepts SME compiler flags (arm64)
+        if: matrix.dpkg_arch == 'arm64'
+        run: |
+          set -eux
+          gcc-14 --version
+          g++-14 --version
+          printf 'int main(void) { return 0; }\n' |
+            gcc-14 -x c -march=armv9.2-a+dotprod+fp16+sve+i8mm+sme -fsyntax-only -
+          printf 'int main(void) { return 0; }\n' |
+            g++-14 -x c++ -march=armv9.2-a+dotprod+fp16+sve+i8mm+sme -fsyntax-only -
+
       - name: Configure project (CMake)
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
         run: |
           set -eux
           cmake -S . -B build \
