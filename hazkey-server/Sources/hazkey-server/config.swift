@@ -424,6 +424,10 @@ class HazkeyServerConfig {
             normalized.specialConversionMode.halfwidthKatakana =
                 defaults.specialConversionMode.halfwidthKatakana
         }
+        if !normalized.specialConversionMode.hasExtendedEmoji {
+            normalized.specialConversionMode.extendedEmoji =
+                defaults.specialConversionMode.extendedEmoji
+        }
 
         try validateEnums(normalized)
         try validateRange(normalized.numSuggestions, field: "numSuggestions", range: 1...10)
@@ -766,6 +770,13 @@ extension Hazkey_Config_Profile {
     /// Legacy or missing config keeps history shared between profiles.
     var useProfileIndependentHistoryEffective: Bool {
         hasUseProfileIndependentHistory ? useProfileIndependentHistory : false
+    }
+
+    /// [community] Effective value of the extended-emoji candidate setting.
+    /// Legacy or missing config defaults to true to preserve existing behavior.
+    var extendedEmojiEffective: Bool {
+        let mode = specialConversionMode
+        return mode.hasExtendedEmoji ? mode.extendedEmoji : true
     }
 }
 

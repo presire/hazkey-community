@@ -220,4 +220,41 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertFalse(HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: true))
         XCTAssertTrue(HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: false))
     }
+
+    // MARK: - [community] Emoji 17 direct conversion (test-first, RED)
+
+    func testDefaultExtendedEmojiIsEnabled() {
+        // The factory default keeps extended emoji conversion enabled.
+        XCTAssertTrue(HazkeyServerConfig.genDefaultConfig().specialConversionMode.extendedEmoji)
+        XCTAssertTrue(HazkeyServerConfig.genDefaultConfig().extendedEmojiEffective)
+    }
+
+    func testAbsentExtendedEmojiNormalizesToEnabled() throws {
+        // Given: a legacy profile whose extended_emoji optional is absent.
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.specialConversionMode.clearExtendedEmoji()
+        XCTAssertFalse(profile.specialConversionMode.hasExtendedEmoji)
+
+        // When: it crosses the configuration boundary.
+        let normalized = try HazkeyServerConfig.normalizeProfile(profile)
+
+        // Then: the enabled default becomes explicit.
+        XCTAssertTrue(normalized.specialConversionMode.hasExtendedEmoji)
+        XCTAssertTrue(normalized.specialConversionMode.extendedEmoji)
+        XCTAssertTrue(normalized.extendedEmojiEffective)
+    }
+
+    func testExplicitFalseExtendedEmojiIsPreserved() throws {
+        // Given: a profile that explicitly disables extended emoji.
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.specialConversionMode.extendedEmoji = false
+
+        // When: it crosses the configuration boundary.
+        let normalized = try HazkeyServerConfig.normalizeProfile(profile)
+
+        // Then: the explicit opt-out survives normalization.
+        XCTAssertTrue(normalized.specialConversionMode.hasExtendedEmoji)
+        XCTAssertFalse(normalized.specialConversionMode.extendedEmoji)
+        XCTAssertFalse(normalized.extendedEmojiEffective)
+    }
 }
