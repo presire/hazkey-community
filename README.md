@@ -110,8 +110,8 @@ Zenzaiモデルは、設定UIの[AI]タブにある[Zenzaiモデルの管理]か
 
 | モデル | サイズ | 特徴 | ライセンス |
 |---|---|---|---|
-| **zenz-v3.2-small** | 約 74 MB | 推奨<br>最新世代の標準モデル | Apache-2.0 |
-| **zenz-v3.2-xsmall** | 約 21 MB | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
+| **zenz-v3.2-small** | 約 74 [MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
+| **zenz-v3.2-xsmall** | 約 21 [MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
 | zenz-v3.1-small | 約 74 MB | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
 
 新規利用は **zenz-v3.2-small** を推奨します。  
@@ -129,6 +129,52 @@ v3.1はv3.2の後継に置き換えられているため、既存環境の再現
 
 Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANVなど) が必要です。  
 `vulkaninfo --summary` (パッケージ `vulkan-tools`) でGPUが列挙されれば利用可能です。  
+
+### GPU / iGPU の最低要件と性能の目安
+
+GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応し、システムとHazkeyから認識できることです。  
+
+#### 動作上の最低条件
+
+GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要があります。  
+
+- Vulkan 1.2以上に対応したGPUまたはiGPUと、対応するVulkanドライバがインストールされていること  
+- hazkey-serverが `GGML_VULKAN=ON` でビルドされていること  
+- `vulkaninfo --summary` で対象デバイスが列挙されること  
+- Fcitx 5再起動後、`hazkey-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
+
+これらはVulkanバックエンドを利用できるかの確認条件であり、変換速度や安定性を保証するものではありません。  
+
+#### 一般的なVulkan対応例
+
+以下は、Vulkan 1.2以上に対応する構成の代表例です。  
+***hazkey-communityでZenzaiの動作を確認・認定した機種一覧ではなく、最低要件や推奨機種を示すものでもありません。***  
+
+| 区分 | 型番・製品系列の例 |
+|---|---|
+| NVIDIA GeForce (dGPU) | GeForce GTX 1050<br>GTX 1650<br>GTX 1660 SUPER<br>RTX 3060<br>RTX 4060 |
+| AMD Radeon (dGPU) | Radeon RX 560<br>RX 6400<br>RX 6600<br>RX 7600 |
+| Intel iGPU | Intel UHD Graphics 630<br>UHD Graphics 730<br>UHD Graphics 770<br>Iris Xe Graphics |
+| AMD iGPU | Radeon Vega 8<br>Radeon 680M<br>Radeon 760M<br>Radeon 780M |
+
+Vulkan対応状況の確認には、[NVIDIA Vulkan Driver Support](https://developer.nvidia.com/vulkan-driver)、[Mesa RADV](https://docs.mesa3d.org/drivers/radv.html)、[Intel Supported APIs](https://www.intel.com/content/www/us/en/support/articles/000005524/graphics.html)、[Khronosの適合製品一覧](https://www.khronos.org/conformance/adopters/conformant-products)を参照してください。  
+
+同じ型番でも、OS、Vulkanドライバの種類とバージョン、デスクトップ版・モバイル版・OEM版によって結果が異なります。  
+llama.cppの実行時のデバイス機能検査により、Vulkan 1.2対応のデバイスでも利用できない場合があります。  
+
+上記はVulkan API対応の目安であり、Hazkeyでの変換速度や安定性を示すものではありません。  
+iGPUはシステムメモリを共有するため、専用VRAMのGPUとは利用可能なメモリ容量や帯域が異なります。  
+
+#### 性能について
+
+本リポジトリでは、特定のGPU型番・世代、GPU/iGPUの最低性能、VRAM容量、最低処理速度を定めていません。  
+モデルファイルのサイズ（約 21 [MB] / 約 74 [MB]）は、実行時に必要なVRAM容量を示すものではありません。  
+
+GPU/iGPUの性能、専用メモリまたは共有メモリの空き容量、Vulkanドライバ、CPU、システムの負荷によって、変換速度や安定性は変わります。  
+ローエンドのGPU/iGPUではCPUより遅くなる場合もあるため、実際の環境でCPUバックエンドとVulkanバックエンドを比較し、  
+より速く安定して動作するバックエンドを選択してください。  
+
+GPU/iGPUが条件を満たさない場合や、GPU/iGPUよりCPUの方が適している場合でも、CPUバックエンドでZenzaiを使用できます。  
 
 ### モデルの保存場所とアクティブモデル
 
