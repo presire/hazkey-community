@@ -1,5 +1,9 @@
-#include <QtTest/QtTest>
+/**
+ * @file userdict_model_test.cpp
+ * @brief ユーザ辞書TSV保存処理のQtテスト
+ */
 
+#include <QtTest/QtTest>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -16,46 +20,79 @@
 
 namespace {
 
+/**
+ * @brief ファイルをバイト列として読み込むテスト用ヘルパー
+ *
+ * @param path 読み込むファイルのパス
+ * @return 読込に失敗した場合、または空のファイルを読み込んだ場合は空のQByteArray、それ以外はファイル全体のバイト列
+ */
 QByteArray readFileBytes(const QString& path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return QByteArray();
     return file.readAll();
 }
 
-// Removes the write permission of a directory for the guarded scope and
-// always restores it on destruction, so cleanup (QTemporaryDir) works even
-// when the test returns early (QSKIP / failing QVERIFY).
+/**
+ * @brief ディレクトリを一時的に読み取り専用にするテスト用ガード
+ *
+ * 生成時に所有者の読込・実行権限だけを設定し、設定に成功した場合は破棄時に所有者の読込・書込・実行権限へ戻す
+ * これにより、テストがQSKIPや失敗したQVERIFYで早期終了しても一時ディレクトリを後処理できる
+ */
 class ReadOnlyDirGuard {
    public:
+    /**
+     * @brief 指定ディレクトリを読み取り専用として設定する
+     * @param dir ガード対象のディレクトリ
+     */
     explicit ReadOnlyDirGuard(const QString& dir) : dir_(dir) {
         QFile file(dir);
         active_ = file.setPermissions(
             QFile::Permissions(QFile::ReadOwner | QFile::ExeOwner));
     }
+
+    /**
+     * @brief 設定に成功している場合、所有者の読込・書込・実行権限へ戻す
+     */
     ~ReadOnlyDirGuard() {
         if (active_) {
             QFile(dir_).setPermissions(QFile::Permissions(
                 QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         }
     }
+
+    /**
+     * @brief 読み取り専用権限の設定に成功したかを返す
+     * @return setPermissionsが成功していればtrue
+     */
     bool isActive() const { return active_; }
 
    private:
+    /** @brief 復元対象のディレクトリパス */
     QString dir_;
+    /** @brief 生成時の権限設定に成功したか */
     bool active_ = false;
 };
 
 }  // namespace
 
+/**
+ * @brief ユーザ辞書TSV保存処理のQtテストフィクスチャ
+ *
+ * 各テストは共有の一時ディレクトリへファイルを作成し、保存結果または保存失敗時の既存ファイル保持を直接確認する
+ */
 class UserDictModelTest : public QObject {
     Q_OBJECT
 
 private slots:
+    /** @brief 正規TSVの全列形式、UTF-8、LF終端、空辞書を確認する */
     void testExactOutput();
+    /** @brief 既存のより長いファイルが完全に置き換わることを確認する */
     void testReplacesExistingLongerFile();
+    /** @brief 保存失敗時に既存ファイルと一時ファイル状態が保持されることを確認する */
     void testFailureRetainsExistingFile();
 
 private:
+    /** @brief テスト間で利用する自動削除対象の一時ディレクトリ */
     QTemporaryDir tempDir_;
 };
 
@@ -77,10 +114,8 @@ void UserDictModelTest::testExactOutput() {
     const QString path = tempDir_.path() + "/exact.tsv";
     QVERIFY2(writeUserDictionaryFile(path, entries), "helper must succeed");
 
-    // Canonical bytes derived by hand from the format spec, not by calling
-    // the helper: header line, entry order, noun/empty-pos comment column
-    // omitted when empty, non-noun always keeps the fourth POS column, one
-    // trailing newline per row, UTF-8, LF line endings.
+    // ヘルパーを呼び出さず、形式仕様から手作業で期待バイト列を構成する
+    // ヘッダ、エントリ順、noun / 空POSで空コメント列を省略する規則、非nounで4列目のPOSを常に保持する規則、各行の末尾改行、UTF-8、LFを確認する
     const QString expected =
         QStringLiteral("# reading<TAB>word<TAB>comment[<TAB>pos]\n"
                        "にほん\t日本\tにっぽん\n"
@@ -91,11 +126,11 @@ void UserDictModelTest::testExactOutput() {
                        "かんがえる\t考える\tじてん\tverb\n");
     QCOMPARE(readFileBytes(path), expected.toUtf8());
 
-    // A committed QSaveFile leaves no temporary files behind.
+    // commit済みのQSaveFileが一時ファイルを残さないことを確認する
     QCOMPARE(QDir(tempDir_.path()).entryList(QDir::Files),
              QStringList{QStringLiteral("exact.tsv")});
 
-    // An empty dictionary writes the header line only.
+    // 空の辞書ではヘッダ行だけが書き込まれることを確認する
     const QString emptyPath = tempDir_.path() + "/empty.tsv";
     QVERIFY2(writeUserDictionaryFile(emptyPath, {}),
              "empty dictionary write must succeed");
@@ -155,8 +190,8 @@ void UserDictModelTest::testFailureRetainsExistingFile() {
     QVERIFY2(!writeUserDictionaryFile(path, entries),
              "write into a read-only directory must fail");
 
-    // The pre-existing file must survive byte-for-byte with no temporary
-    // leftovers (direct-write fallback is disabled).
+    // 既存ファイルがバイト単位で保持され、一時ファイルも残らないことを確認する
+    // （直接書込フォールバックは無効）
     QCOMPARE(readFileBytes(path), original);
     QCOMPARE(QDir(dir).entryList(QDir::Files),
              QStringList{QStringLiteral("user_dictionary.tsv")});

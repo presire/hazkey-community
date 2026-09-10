@@ -1,14 +1,24 @@
-#include "userdict_model.h"
+/**
+ * @file userdict_model.cpp
+ * @brief ユーザ辞書TSVの正規化された保存処理の実装
+ */
 
 #include <QIODevice>
 #include <QSaveFile>
 #include <QTextStream>
+#include "userdict_model.h"
 
 namespace {
 
-// Canonical per-row rendering shared by saves and exports.  noun (or an
-// empty pos) omits the trailing columns; any other POS always keeps the
-// fourth column.
+/**
+ * @brief 1件のユーザ辞書エントリを正規TSV行として書き出す
+ *
+ * nounまたは空のPOSでは、コメントが空ならコメント列も省略する
+ * それ以外のPOSでは、コメントの有無にかかわらずコメント列とPOS列を出力する
+ *
+ * @param out TSV行の出力先ストリーム
+ * @param e 書き出すユーザ辞書エントリ
+ */
 void writeUserDictEntry(QTextStream& out, const UserDictEntry& e) {
     if (e.pos == QStringLiteral("noun") || e.pos.isEmpty()) {
         out << e.reading << '\t' << e.word;

@@ -18,8 +18,8 @@ Hazkeyは、Linux向けデスクトップ環境 [Fcitx 5](https://fcitx-im.org/)
 
 | 区分 | ディストリビューション |
 |---|---|
-| **動作確認・サポート対象** | Fedora 44<br>openSUSE Leap 16<br>Debian 13 (Trixie) |
-| **CI ビルド・パッケージ頒布対象** (動作確認・サポート対象外) | 上記に加えて、Ubuntu 26.04、openSUSE Tumbleweed |
+| **動作確認・サポート対象** | Fedora 44<br>openSUSE Leap 16<br>Debian 13 (Trixie) x64 |
+| **CI ビルド・パッケージ頒布対象** (動作確認・サポート対象外) | 上記に加えて、<br>Debian 13 (Trixie) AArch64<br>Ubuntu 26.04<br>openSUSE Tumbleweed |
 
 - パッケージの頒布は、その環境での動作保証を意味しません。  
 - その他のディストリビューションでの動作は保証しません。  

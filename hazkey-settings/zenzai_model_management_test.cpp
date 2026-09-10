@@ -1,33 +1,73 @@
+/**
+ * @file zenzai_model_management_test.cpp
+ * @brief Zenzaiモデル管理APIのQt Test
+ *
+ * 一時ディレクトリを環境変数XDG_DATA_HOMEとして使い、パス生成、SHA256計算、
+ * シンボリックリンク操作、旧形式モデルの移行、削除、ラベル整形を実ファイルで確認する
+ */
+
 #include <QtTest/QtTest>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include "zenzai_models.h"
 
+/**
+ * @brief Zenzaiモデル管理のファイルシステム動作を検証するテストクラス
+ *
+ * @details テスト全体では、環境変数XDG_DATA_HOMEを一時ディレクトリに差し替え、各テストの開始時にその内容を削除して再作成し、
+ *          モデル移行の既定カタログに依存しないケースでは、catalog引数付きオーバーロードに小さなテスト用カタログを渡す
+ */
 class ZenzaiModelManagementTest : public QObject {
     Q_OBJECT
 
 private slots:
+    /**
+     * @brief テスト全体の開始時に環境変数を保存して一時ディレクトリを設定する
+     */
     void initTestCase();
+    /**
+     * @brief テスト全体の終了時に環境変数XDG_DATA_HOMEを元の状態へ戻す
+     */
     void cleanupTestCase();
+    /**
+     * @brief 各テストの開始時に一時ディレクトリの内容を初期化する
+     */
     void init();
+    /**
+     * @brief 各テストの終了処理を行う (現在は空のfixtureフック)
+     */
     void cleanup();
 
+    /** @brief XDGデータディレクトリから導出される4種類のパスを検証する */
     void testPaths();
+    /** @brief 固定データのSHA256が期待する16進文字列になることを検証する */
     void testSHA256();
+    /** @brief 管理対象モデルのアクティベーションでリンクとキーが設定されることを検証する */
     void testSymlinkPromotion();
+    /** @brief 管理対象のシンボリックリンクだけが解除されることを検証する */
     void testSymlinkRemoval();
+    /** @brief 既定カタログでは未知の旧形式ファイルを移行しないことを検証する */
     void testLegacyMigration();
+    /** @brief SHA256が一致する注入カタログの旧形式ファイルを移行することを検証する */
     void testKnownLegacyMigration();
+    /** @brief 同一内容の管理対象ファイルがある場合に旧形式ファイルを整理して有効化することを検証する */
     void testKnownLegacyMigrationExisting();
+    /** @brief 移動先のSHA256が異なる場合に旧形式ファイルを保持することを検証する */
     void testKnownLegacyMigrationExistingMismatched();
+    /** @brief 既定カタログにないカスタム旧形式ファイルを保持することを検証する */
     void testUnknownPreservation();
+    /** @brief 非アクティブモデルの削除とアクティブモデル削除時のリンク解除を検証する */
     void testDeletionMechanics();
+    /** @brief 既存モデルの明示的なアクティベーションと切り替えを検証する */
     void testExplicitActivation();
+    /** @brief 推奨・ダウンロード済みフラグを含むラベル整形結果を検証する */
     void testLabelFormatting();
 
 private:
+    /** @brief 全テストでファイルを作成する一時ディレクトリ */
     QTemporaryDir tempDir;
+    /** @brief initTestCase()前の環境変数XDG_DATA_HOME値 空の場合は未設定を表す */
     QString originalXdgDataHome;
 };
 

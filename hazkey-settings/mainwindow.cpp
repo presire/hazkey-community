@@ -1,8 +1,13 @@
-#include "mainwindow.h"
+/**
+ * @file mainwindow.cpp
+ * @brief MainWindowの設定編集、辞書、Zenzai管理実装を定義する
+ *
+ * ヘッダで宣言したMainWindow APIの実装と、この翻訳単位だけで使う辞書品詞およびdirty状態用の補助処理を配置する
+ */
 
+#include "mainwindow.h"
 #include <qlabel.h>
 #include <qnamespace.h>
-
 #include <QAbstractButton>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -39,7 +44,6 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
-
 #include "./ui_mainwindow.h"
 #include "config_definitions.h"
 #include "config_macros.h"
@@ -53,8 +57,18 @@
 
 namespace {
 
+/**
+ * @brief ユーザ辞書TSVで許可する正規化済み品詞トークン
+ * @internal この翻訳単位の読込と編集ダイアログだけで使用する
+ */
 const QStringList POS_TOKENS = QStringLiteral("noun,person,place,verb").split(',');
 
+/**
+ * @brief 入力品詞を許可済みの小文字トークンへ正規化する
+ * @param t TSV または編集結果から得た品詞文字列
+ * @return 許可済みトークン、空または未知値はnoun
+ * @internal 不正値は警告して安全な既定品詞へフォールバックする
+ */
 QString normalizePosToken(QString t) {
     t = t.trimmed().toLower();
     if (t.isEmpty() || !POS_TOKENS.contains(t)) {
@@ -66,6 +80,12 @@ QString normalizePosToken(QString t) {
     return t;
 }
 
+/**
+ * @brief 品詞トークンを翻訳済みの表示名へ変換する
+ * @param pos 正規化済みの品詞トークン
+ * @return ユーザ辞書表と編集コンボボックスに表示する名前
+ * @internal nounと未知値は固有名詞の表示へ対応付ける
+ */
 QString posToDisplay(const QString& pos) {
     if (pos == QStringLiteral("person")) return QCoreApplication::translate("MainWindow", "人名");
     if (pos == QStringLiteral("place")) return QCoreApplication::translate("MainWindow", "地名");
@@ -73,21 +93,28 @@ QString posToDisplay(const QString& pos) {
     return QCoreApplication::translate("MainWindow", "固有名詞");
 }
 
+/**
+ * @section zenzai_download_catalog Zenzaiダウンロードカタログ
+ * @brief モデル一覧は、zenzai_models.hの固定カタログを利用する
+ * @internal ダウンロード前にユーザが選択し、SHA256を完了時に照合する
+ */
 // Catalog of Zenzai GGUF models the GUI can download. Sorted with the
 // recommended option first; the user can pick any entry from the
 // selection dialog before each download.
 //
-// `sha256` is the SHA256 of the file downloaded from `url` (computed from
-// the actual bytes, not the HuggingFace LFS oid). `isLegacyGen` is set for
+// sha256 is the SHA256 of the file downloaded from url (computed from
+// the actual bytes, not the HuggingFace LFS oid). isLegacyGen is set for
 // known older-generation models that should trigger an "Update" warning
 // when installed; current-generation non-recommended variants (e.g.
 //         xsmall) do not trigger the warning even though they are not the
 //         recommended default.
 
-// Build the structural state of an enabled-items list (input tables or
-// keymaps) for uiStateKey(): each entry becomes a JSON array holding the
-// item name (an arbitrary user-visible string) and its built-in flag, so
-// no delimiter escaping is involved.
+/**
+ * @brief 有効入力テーブルまたはキーマップ一覧を構造的JSON状態へ変換する
+ * @param list 有効項目を順序付きで保持する一覧
+ * @return 項目名と組み込みフラグから成るJSON配列
+ * @internal uiStateKeyのdirty比較で区切り文字衝突を避けるために使用する
+ */
 QJsonArray enabledListState(const QListWidget* list) {
     QJsonArray entries;
     for (int i = 0; i < list->count(); ++i) {
@@ -258,7 +285,7 @@ void MainWindow::recomputeDirtyState() {
 
 void MainWindow::connectSignals() {
     // Connect dialog buttons. Ok is routed only through the single
-    // `clicked` -> onButtonClicked path so it triggers at most one save;
+    // clicked -> onButtonClicked path so it triggers at most one save;
     // the QDialogButtonBox::accepted signal is intentionally not wired here.
     connect(ui_->dialogButtonBox, &QDialogButtonBox::clicked, this,
             &MainWindow::onButtonClicked);
@@ -1798,14 +1825,14 @@ void MainWindow::applyBasicPunctuationStyle() {
     int punctuationIndex = ui_->punctuationStyle->currentIndex();
 
     switch (punctuationIndex) {
-        case 0:  // Kuten+Toten: 。、
+        case 0:  // Japanese period and comma
             // No additional keymaps needed
             break;
         case 1:  // Period+Comma: ．，
             addKeymapIfAvailable("Fullwidth Period", true);
             addKeymapIfAvailable("Fullwidth Comma", true);
             break;
-        case 2:  // Kuten+Comma: 。，
+        case 2:  // Japanese period and ASCII comma
             addKeymapIfAvailable("Fullwidth Comma", true);
             break;
         case 3:  // Period+Toten: ．、

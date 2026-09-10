@@ -1,5 +1,9 @@
-#include "learninghistorydialog.h"
+/**
+ * @file learninghistorydialog.cpp
+ * @brief 入力履歴ダイアログのUI構築、ページング、選択削除の実装
+ */
 
+#include "learninghistorydialog.h"
 #include <QDate>
 #include <QDialogButtonBox>
 #include <QHeaderView>
@@ -11,11 +15,16 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
 namespace {
 
+/**
+ * @brief Unixエポックタイムからの日数を現在のロケールの日付文字列へ変換する
+ * @internal 入力履歴ダイアログの最終使用日表示だけで使う実装専用ヘルパー
+ * @param unixDay Unixエポックタイムからの経過日数
+ * @return 現在のロケールによる短い日付表記
+ */
 QString localizedLastUsedDate(uint32_t unixDay) {
     const QDate date = QDate(1970, 1, 1).addDays(unixDay);
     return QLocale().toString(date, QLocale::ShortFormat);

@@ -774,10 +774,6 @@
         <translation>更新をダウンロード</translation>
     </message>
     <message>
-        <source>Choose a model to download or delete a downloaded model:</source>
-        <translation type="vanished">ダウンロードするモデルを選択するか、ダウンロード済みのモデルを削除してください:</translation>
-    </message>
-    <message>
         <location filename="zenzai_models.cpp" line="212"/>
         <source>Recommended: %1</source>
         <translation>推奨: %1</translation>
@@ -899,18 +895,6 @@
         <translation>ダウンロードエラー</translation>
     </message>
     <message>
-        <source>Failed to create directory: %1</source>
-        <translation type="vanished">ディレクトリの作成に失敗しました: %1</translation>
-    </message>
-    <message>
-        <source>File Exists</source>
-        <translation type="vanished">ファイルが存在します</translation>
-    </message>
-    <message>
-        <source>Overwrite the existing Zenzai model?</source>
-        <translation type="vanished">既存のZenzaiモデルファイルを上書きしますか?</translation>
-    </message>
-    <message>
         <location filename="mainwindow.cpp" line="2236"/>
         <source>Downloading Zenzai model...</source>
         <translation>Zenzaiモデルをダウンロード中...</translation>
@@ -961,12 +945,6 @@ Got: %2</source>
         <translation>ダウンロード完了</translation>
     </message>
     <message>
-        <source>Zenzai model has been downloaded successfully.
-Please push &apos;Reload&apos; to refresh the UI.</source>
-        <translation type="vanished">Zenzaiモデルが正常にダウンロードされました。
-UIを更新するには再読み込みボタンを押してください。</translation>
-    </message>
-    <message>
         <location filename="mainwindow.cpp" line="2549"/>
         <source>Reset Configuration</source>
         <translation>設定をリセット</translation>
@@ -990,10 +968,6 @@ UIを更新するには再読み込みボタンを押してください。</tran
         <location filename="mainwindow.cpp" line="2570"/>
         <source>Failed to load default configuration from server.</source>
         <translation>サーバーからデフォルト設定を読み込めませんでした。</translation>
-    </message>
-    <message>
-        <source>No profile found in configuration.</source>
-        <translation type="vanished">設定にプロファイルが見つかりません。</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2586"/>
@@ -1196,10 +1170,6 @@ Open Manage Zenzai Models to activate it.</source>
         <translation>モデル「%1」を削除してもよろしいですか？</translation>
     </message>
     <message>
-        <source>All known models are already downloaded.</source>
-        <translation type="vanished">すべての既知のモデルがダウンロード済みです。</translation>
-    </message>
-    <message>
         <location filename="mainwindow.cpp" line="2142"/>
         <source>Download</source>
         <translation>ダウンロード</translation>
@@ -1222,38 +1192,14 @@ Do you want to preserve it before downloading a new one?</source>
         <translation>カスタムモデルの保存に失敗しました。</translation>
     </message>
     <message>
-        <source>Failed to activate the downloaded model.</source>
-        <translation type="vanished">ダウンロードされたモデルの有効化に失敗しました。</translation>
-    </message>
-    <message>
-        <source>Use This Model</source>
-        <translation type="vanished">このモデルを使用</translation>
-    </message>
-    <message>
-        <source>In Use</source>
-        <translation type="vanished">使用中</translation>
-    </message>
-    <message>
         <location filename="mainwindow.cpp" line="2329"/>
         <source>Failed to activate model.</source>
         <translation>モデルの有効化に失敗しました。</translation>
     </message>
     <message>
-        <source>Zenzai model has been downloaded successfully.
-The management dialog will reopen; please select &quot;Use This Model&quot; to activate it.</source>
-        <translation type="vanished">Zenzaiモデルが正常にダウンロードされました。
-管理ダイアログが再開されます。「このモデルを使用」を選択して有効化してください。</translation>
-    </message>
-    <message>
         <location filename="mainwindow.cpp" line="2106"/>
         <source>Select a downloaded model to use, or download a new one:</source>
         <translation>使用するダウンロード済みモデルを選択するか、新しいモデルをダウンロードしてください：</translation>
-    </message>
-    <message>
-        <source>Zenzai model has been downloaded successfully.
-Select the model with the radio button and click OK to activate it.</source>
-        <translation type="vanished">Zenzaiモデルが正常にダウンロードされました。
-ラジオボタンでモデルを選択してOKを押すと有効化されます。</translation>
     </message>
 </context>
 </TS>

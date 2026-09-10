@@ -1,9 +1,25 @@
+/**
+ * @file zenzai_models.cpp
+ * @brief Zenzaiモデルカタログとローカル管理処理の実装
+ *
+ * 固定カタログのメタデータを提供し、XDGのデータディレクトリ配下で
+ * 管理対象モデルとアクティブモデル用シンボリックリンクを操作する
+ */
+
 #include "zenzai_models.h"
 #include <QCoreApplication>
 #include <QFileInfo>
 
 const QVector<ZenzaiModelOption>& availableZenzaiModels() {
+    /**
+     * @brief アプリケーションが提供する固定モデルカタログ
+     *
+     * @details 各エントリのURL、SHA256、表示サイズ、推奨フラグ、旧世代フラグはアプリケーションデータ契約の一部であり、
+     *          実行時には変更されない
+     *          先頭は推奨の現行smallモデル、2番目は小容量のxsmallモデル、3番目は旧世代smallモデルである
+     */
     static const QVector<ZenzaiModelOption> options = {
+        /** @brief 推奨される現行smallモデル (約74[MB]) */
         {
             QStringLiteral("zenz-v3.2-small"),
             QStringLiteral("zenz-v3.2-small (Q5_K_M)"),
@@ -19,6 +35,7 @@ const QVector<ZenzaiModelOption>& availableZenzaiModels() {
             true,
             false,
         },
+        /** @brief 小容量でCPU上の高速動作を意図したxsmallモデル (約21[MB]) */
         {
             QStringLiteral("zenz-v3.2-xsmall"),
             QStringLiteral("zenz-v3.2-xsmall (Q5_K_M)"),
@@ -34,6 +51,7 @@ const QVector<ZenzaiModelOption>& availableZenzaiModels() {
             false,
             false,
         },
+        /** @brief 旧世代との互換性を担うsmallモデル (約74[MB]) */
         {
             QStringLiteral("zenz-v3.1-small"),
             QStringLiteral("zenz-v3.1-small (Q5_K_M)"),

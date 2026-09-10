@@ -1,5 +1,11 @@
-#include "serverconnector.h"
+/**
+ * @file serverconnector.cpp
+ * @brief ServerConnectorのUNIXドメインソケット搬送実装
+ *
+ * ヘッダで宣言した設定RPCに加え、長さプレフィックス付きprotobufの送受信、接続リトライ、セッションソケットの寿命管理を実装する
+ */
 
+#include "serverconnector.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -8,7 +14,6 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 #include <QCoreApplication>
 #include <QDir>
 #include <QMessageBox>
@@ -19,10 +24,14 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
-
 #include "qdir.h"
 #include "qlogging.h"
 
+/**
+ * @brief ServerConnectorのソケット操作を直列化する内部ミューテックス
+ * @internal 翻訳単位内の実装詳細
+ *           通常のRPCとセッション操作が共有する
+ */
 static std::mutex transact_mutex;
 
 ServerConnector::ServerConnector() : session_socket_(-1) {}
@@ -40,6 +49,19 @@ std::string ServerConnector::getSocketPath() {
     }
 }
 
+/**
+ * @brief 指定バイト数をソケットへ書き切る内部ヘルパー
+ *
+ * 部分書き込みを繰り返し、EAGAIN/EWOULDBLOCKでは書き込み可能になるまで最大2秒ずつ待つ
+ * その他の書き込みエラーまたは待機タイムアウトでは失敗する
+ * この関数はソケットを閉じず、呼び出し元が所有権を保持する
+ *
+ * @param fd 書き込み対象のソケットディスクリプター
+ * @param data 送信バッファ
+ * @param len 送信するバイト数
+ * @return lenバイトを書き終えた場合はtrue、それ以外はfalse
+ * @internal ServerConnectorのフレーム搬送専用
+ */
 bool writeAll(int fd, const void* data, size_t len) {
     size_t sent = 0;
     while (sent < len) {
@@ -63,6 +85,19 @@ bool writeAll(int fd, const void* data, size_t len) {
     return true;
 }
 
+/**
+ * @brief 指定バイト数をソケットから読み切る内部ヘルパー
+ *
+ * 部分読み込みを繰り返し、EAGAIN/EWOULDBLOCKでは読み込み可能になるまで最大10秒ずつ待つ
+ * その他の読み込みエラー、待機タイムアウト、またはEOFでは失敗する
+ * この関数はソケットを閉じず、呼び出し元が所有権を保持する
+ *
+ * @param fd 読み込み元のソケットディスクリプター
+ * @param data 受信バッファ
+ * @param len 受信するバイト数
+ * @return lenバイトを読み終えた場合はtrue、それ以外はfalse
+ * @internal ServerConnectorのフレーム搬送専用
+ */
 bool readAll(int fd, void* data, size_t len) {
     size_t recved = 0;
     while (recved < len) {

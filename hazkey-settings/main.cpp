@@ -2,9 +2,27 @@
 #include <QLocale>
 #include <QLibraryInfo>
 #include <QTranslator>
-
 #include "mainwindow.h"
 
+/**
+ * @file main.cpp
+ * @brief hazkey-settingsアプリケーションの起動処理を定義する
+ *
+ * Qt標準翻訳とリソースに埋め込んだアプリケーション翻訳を優先言語順に導入してからMainWindowを表示し、
+ * Qtのイベントループへ制御を渡す
+ */
+
+/**
+ * @brief hazkey-settingsを初期化してイベントループを実行する
+ *
+ * QApplicationを生成後、標準ウィジェット用のqtbase翻訳と、
+ * `:/i18n` に埋め込まれたアプリケーション翻訳を読み込む利用可能な最初のUIロケールを採用してMainWindowを表示し、
+ * イベントループの終了コードをそのまま返す
+ *
+ * @param argc コマンドライン引数の個数
+ * @param argv コマンドライン引数の配列
+ * @return QApplication のイベントループが返した終了コード
+ */
 int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
