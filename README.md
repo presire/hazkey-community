@@ -39,7 +39,7 @@ Hazkeyは、Linux向けデスクトップ環境 [Fcitx 5](https://fcitx-im.org/)
 | ライブ変換トグル | `Ctrl+Shift+L` (デフォルト、設定で変更可能) でライブ変換のON / OFFを即座に切替え<br>OFF時のモードは記憶され、アプリ間の切替をまたいで維持される |
 | 予測候補の先頭表記固定 | サジェスト候補にカーソルを合わせて `F5` (変更可能) を押すと、その表記を先頭の固定表記として受理しつつ続きを入力できる |
 | 学習データの削除・履歴管理 | 候補フォーカス中に `Ctrl+D` (設定で変更可能、「候補学習削除ホットキー」) でその候補の学習データを削除<br>設定UIの「入力履歴データの管理」から入力履歴を選択して削除するダイアログも利用可能 |
-| Emoji 17直接変換 | Emoji 17.0辞書による絵文字の直接変換候補を追加 (設定UI「拡張絵文字」、デフォルトON)。通常変換の候補にのみ注入され、サジェスト・ライブ変換には混入しない |
+| Emoji 17直接変換 | Emoji 17.0辞書による絵文字の直接変換候補を追加 (設定UI「拡張絵文字」、デフォルトON)<br>通常変換の候補にのみ注入され、サジェスト・ライブ変換には混入しない |
 | 候補ウィンドウのマウス選択 | 変換候補ウィンドウの候補をマウスクリックでも選択できる |
 | Zenzai設定の拡充 | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、リッチ候補の候補一覧 / サジェスト個別切替、GUIからのZenzaiモデル管理 (ダウンロード・有効化・削除) |
 | プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
@@ -330,7 +330,155 @@ pkill -u $USER -x hazkey-server
 - Vulkan SDKヘッダ (`libvulkan-dev` / `vulkan-headers`)  
   `GGML_VULKAN=ON` (デフォルト) のビルドで必要  
 
-各ディストリビューションでの依存パッケージの導入は、CIの定義 (`.github/workflows/build.yml`) が参照になります。  
+以下では、CI (`.github/workflows/build.yml`) で実際にビルド確認済みの4ディストリビューション向けに、  
+Swiftのインストールから依存パッケージの導入までを個別に示します。  
+
+### Swiftのインストール
+
+Hazkeyのビルドには Swift 6.1 以上が必要です。  
+公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
+
+> **2026年9月時点の注意**:  
+> Fedora 44 / openSUSE Leap 16 / Debian 13 (Trixie) / Ubuntu 26.04 は、  
+> いずれも [swift.orgの公式リリースtoolchain](https://www.swift.org/platform-support/) が未公開、  
+> または、swiftly (現行配布版 v1.1.3) の自動検出リストに未登録のため、`swiftly init` は「非公式プラットフォーム」と判定します。  
+> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのtoolchainを明示指定してください。  
+> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform` 指定は不要になります)  
+
+#### Fedora 44
+
+```sh
+sudo dnf install git curl
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar zxf swiftly-$(uname -m).tar.gz
+./swiftly init --quiet-shell-followup --platform fedora39
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> Fedora 44は`fedora44`として自動検出されないため、公式リリースtoolchainが存在する`fedora39`を明示指定します。  
+> `fedora39` ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
+> (`fedora41` ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
+
+#### openSUSE Leap 16
+
+```sh
+sudo zypper install pkg-config binutils gcc gcc-c++ git gzip glibc-static \
+                    libbsd-devel libedit-devel libicu-devel libcurl-devel \
+                    ncurses-devel sqlite3-devel zlib-devel python3
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar xf swiftly-$(uname -m).tar.gz
+```
+
+`./swiftly init` 実行時に以下のエラーが表示される場合、  
+openSUSEは証明書パスがDebian系と異なるため、シンボリックリンクの作成が必要です。  
+
+```sh
+# Error: The ca-certificates package is not installed. Swiftly won't be able to trust the sites ...
+sudo ln -s /var/lib/ca-certificates/ca-bundle.pem \
+           /etc/ssl/certs/ca-certificates.crt
+```
+
+```sh
+./swiftly init --quiet-shell-followup --platform ubi9
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> openSUSE / SLE系は、swift.orgで公式サポートされたことが1度もないため、  
+> **RHEL 9 (`ubi9`) のtoolchainを選択してください**。  
+> 
+> openSUSE Leap 16でのRHEL 9 toolchain選択は動作確認済みです。  
+> `swiftly`/`swift`実行時に `libxml2.so.2` が見つからないエラーが出た場合は、以下を試してください。  
+
+> ```sh
+> sudo zypper install libxml2-16
+> sudo ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
+> ```
+
+#### Debian 13 (Trixie) / Ubuntu 26.04
+
+```sh
+sudo apt update
+sudo apt install build-essential ca-certificates curl git
+
+curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+tar zxf swiftly-$(uname -m).tar.gz
+```
+
+```sh
+# Debian 13 (Trixie): Debian 13向けの公式toolchainは未公開のため、Debian 12を指定
+./swiftly init --quiet-shell-followup --platform debian12
+
+# Ubuntu 26.04: Ubuntu 26.04向けの公式toolchainは未公開のため、Ubuntu 24.04を指定
+./swiftly init --quiet-shell-followup --platform ubuntu24.04
+```
+
+```sh
+. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
+
+swiftly install latest
+swift --version
+```
+
+> **Ubuntu 26.04のみ追加対応が必要**:  
+> `ubuntu24.04`向けtoolchainは`libxml2.so.2`を要求しますが、  
+> Ubuntu 26.04は soname が上がった `libxml2.so.16` のみを同梱しているため、シンボリックリンクを作成してください。  
+
+> ```sh
+> sudo apt install libxml2-16
+> sudo ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
+>             /usr/lib/x86_64-linux-gnu/libxml2.so.2
+> ```
+
+### 依存パッケージのインストール
+
+各ディストリビューションでの依存パッケージの導入コマンドは以下の通りです。  
+`-DGGML_VULKAN=OFF` のCPU専用ビルドでは、  
+Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` など) のインストールを省略できます。  
+
+#### Fedora 44
+
+```sh
+sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
+                 protobuf-devel protobuf-compiler protobuf-lite-devel \
+                 fcitx5-devel fcitx5-qt-devel \
+                 qt6-qtbase-devel qt6-qttools-devel \
+                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
+                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
+                 spirv-headers-devel
+```
+
+#### openSUSE Leap 16
+
+```sh
+sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
+                    qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
+                    shaderc glslang-devel spirv-headers
+```
+
+#### Debian 13 (Trixie) / Ubuntu 26.04
+
+```sh
+sudo apt install cmake ninja-build pkg-config gettext \
+                 protobuf-compiler libprotobuf-dev \
+                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+                 qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+                 libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc \
+                 spirv-headers
+```
+
+`spirv-headers` 系パッケージは、  
+内蔵のllama.cppがVulkanバックエンドのCMake configure時に `find_package(SPIRV-Headers)` を要求するため、  
+Vulkanビルドでは必須です。  
+
+パッケージ名の最新の定義は、CIの定義 (`.github/workflows/build.yml`) も参照してください。  
 
 ### ビルド手順
 
