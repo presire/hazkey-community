@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    env:
+      RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+      RPM_GPG_PASSPHRASE: ${{ secrets.RPM_GPG_PASSPHRASE }}
     steps:
       - name: Download packages
         uses: actions/download-artifact@v6
@@ -27,6 +32,47 @@ jobs:
           pattern: fcitx5-hazkey-*
           path: packages
           merge-multiple: true
+
+      - name: Check RPM GPG config
+        id: rpm-gpg
+        run: |
+          if [ -n "${RPM_GPG_PRIVATE_KEY:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RPM_GPG_PRIVATE_KEY is not set - publishing unsigned RPMs"
+          fi
+
+      - name: Sign RPMs with GPG
+        if: steps.rpm-gpg.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rpm gnupg
+          export GNUPGHOME="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          printf '%s\n' "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
+          KEYID="$(gpg --batch --list-keys --with-colons | awk -F: '/^pub:/ { getline; print $10; exit }')"
+          test -n "$KEYID"
+          {
+            printf '%%_gpg_name %s\n' "$KEYID"
+            printf '%%_gpgbin %s\n' /usr/bin/gpg
+            printf '%%__gpg_sign_cmd %s\n' '%{__gpg} gpg --force-mdc --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-fd 3 --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}'
+          } > ~/.rpmmacros
+          rpmsign --addsign packages/*.rpm 3<<< "${RPM_GPG_PASSPHRASE:-}"
+          rpm -K packages/*.rpm
+          gpg --armor --export "$KEYID" > packages/RPM-GPG-KEY-hazkey
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd packages
+          sha256sum fcitx5-hazkey-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'packages/fcitx5-hazkey-*'
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
