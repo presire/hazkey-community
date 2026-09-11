@@ -6,11 +6,12 @@ the fork branches, not as an apply-at-build patch:
 - **llama.cpp submodule:** `27d0bacc595e46cca1de100f2041e1b5ea207773`, commit
   `27d0bac hazkey: add non-spinning CPU threadpool helper`.
 - **Converter dependency:** pinned by `hazkey-server/Package.resolved` at
-  `2cef753a03e73560e1c83137aabf0416936dd64d` (2026-09-08), which includes
+  `0dfc0e5a37dbe38ce87a65a6d67f943901a4867b` (2026-09-11), which includes
   `07eb1bc hazkey: reuse a non-spinning CPU ggml threadpool`,
   `71181e8 hazkey: make CPU threadpool storage concurrency-safe`, and
   `39854fe hazkey: store CPU threadpool state safely`, plus the upstream
-  `ad714fe` merge and the baked 0006 fix (`2cef753`).
+  `ad714fe` merge, the baked 0006 fix (`2cef753`), and the vendor-aware
+  Vulkan ICD pin (`0dfc0e5`).
 
 The converter acquires the pool only for CPU contexts, reuses it across
 compatible contexts, and releases the final lease during context teardown.
@@ -58,7 +59,7 @@ e4fba90 hazkey: minimal compile fixes for llama.cpp pin 00842b94
 ```
 (`53128a2` is a new capability — GPU/CPU device selection — not a port of any retired patch; it is listed here because it sits on the same fork branch between the header refresh and the ICD-pin/perf-seam commits.)
 
-**Fork availability.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch is pushed to GitHub at `https://github.com/presire/AzooKeyKanaKanjiConverter`, with tip `2cef753a03e73560e1c83137aabf0416936dd64d` (merged upstream `ad714fe` and the baked 0006 fix on 2026-09-08). `hazkey-server/Package.swift` resolves that remote URL directly with `branch: "hazkey"`; no local `/tmp` clone is required to build or resolve the converter dependency.
+**Fork availability.** `presire/AzooKeyKanaKanjiConverter`'s `hazkey` branch is pushed to GitHub at `https://github.com/presire/AzooKeyKanaKanjiConverter`, with tip `0dfc0e5a37dbe38ce87a65a6d67f943901a4867b` (vendor-aware Vulkan ICD pin on 2026-09-11; previously `2cef753a03e73560e1c83137aabf0416936dd64d`, merged upstream `ad714fe` and the baked 0006 fix on 2026-09-08). `hazkey-server/Package.swift` resolves that remote URL directly with `branch: "hazkey"`; no local `/tmp` clone is required to build or resolve the converter dependency.
 
 ## Apply-order narrative (current state)
 
