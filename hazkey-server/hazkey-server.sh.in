@@ -21,16 +21,23 @@ fi
 # HAZKEY_ZENZAI_CPU_THREADS=1..8
 # HAZKEY_ZENZAI_DEADLINE_MS=0..2000 (0 disables the deadline)
 
-# Mitigate SIGILL crash on multi-GPU systems where multiple Vulkan ICDs
-# (e.g. nvidia_icd.json + radeon_icd.json) coexist.
+# Mitigate SIGILL crash on multi-GPU systems where Vulkan ICDs from
+# different vendors (e.g. nvidia_icd.json + radeon_icd.json) coexist.
 # Ref: https://github.com/7ka-Hiira/hazkey/issues/29
-# When neither VK_DRIVER_FILES nor VK_ICD_FILENAMES is set, pin the Vulkan
-# loader to the first detected ICD so that ggml_backend_load_all() does not
-# initialize conflicting vendor drivers simultaneously (which triggers a
-# Swift runtime precondition failure -> SIGILL).
+# When neither VK_DRIVER_FILES nor VK_ICD_FILENAMES is set, restrict the
+# loader to the ICDs of the first vendor found so that
+# ggml_backend_load_all() does not initialize conflicting vendor drivers
+# simultaneously (which triggers a Swift runtime precondition failure ->
+# SIGILL). All ICDs of that vendor are kept because same-vendor ICDs
+# coexist safely, while pinning a single file can pick the wrong driver:
+# intel_hasvk_icd.x86_64.json sorts before intel_icd.x86_64.json, and
+# HASVK only supports Gen7/8, so a Kaby Lake (Gen9.5) iGPU would become
+# invisible even though ANV supports it.
 # User-provided values (via shell env or $XDG_CONFIG_HOME/hazkey/env) are
 # always respected.
 if [ -z "${VK_DRIVER_FILES:-}" ] && [ -z "${VK_ICD_FILENAMES:-}" ]; then
+    # Collect installed ICD manifests in search order.
+    _icds=""
     for icd_dir in \
         /usr/share/vulkan/icd.d \
         /usr/local/share/vulkan/icd.d \
@@ -39,12 +46,44 @@ if [ -z "${VK_DRIVER_FILES:-}" ] && [ -z "${VK_ICD_FILENAMES:-}" ]; then
         [ -d "$icd_dir" ] || continue
         for f in "$icd_dir"/*.json; do
             [ -f "$f" ] || continue
-            VK_DRIVER_FILES="$f"
-            VK_ICD_FILENAMES="$f"
-            export VK_DRIVER_FILES VK_ICD_FILENAMES
-            break 2
+            _icds="${_icds}${f}
+"
         done
     done
+
+    # Keep every ICD that belongs to the same vendor as the first one
+    # (e.g. intel_icd + intel_hasvk on Intel, radeon_icd + amd_icd on AMD).
+    # Unrecognized filenames form their own single-file group, preserving
+    # the previous first-ICD behavior for unknown drivers.
+    _selected=""
+    _vendor=""
+    while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        case "${_f##*/}" in
+            intel*) _v="intel" ;;
+            *nvidia*) _v="nvidia" ;;
+            *radeon*|*amd*) _v="amd" ;;
+            *lvp*) _v="lvp" ;;
+            *) _v="$_f" ;;
+        esac
+        if [ -z "$_vendor" ]; then
+            _vendor="$_v"
+        fi
+        [ "$_v" = "$_vendor" ] || continue
+        if [ -z "$_selected" ]; then
+            _selected="$_f"
+        else
+            _selected="${_selected}:${_f}"
+        fi
+    done <<EOF
+${_icds}
+EOF
+
+    if [ -n "$_selected" ]; then
+        VK_DRIVER_FILES="$_selected"
+        VK_ICD_FILENAMES="$_selected"
+        export VK_DRIVER_FILES VK_ICD_FILENAMES
+    fi
 fi
 
 exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey/hazkey-server" "$@"
