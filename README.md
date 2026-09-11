@@ -159,6 +159,52 @@ v3.1はv3.2の後継に置き換えられているため、既存環境の再現
 Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANVなど) が必要です。  
 `vulkaninfo --summary` (パッケージ `vulkan-tools`) でGPUが列挙されれば利用可能です。  
 
+#### Vulkanドライバのインストール例
+
+使用するGPUとディストリビューションに応じて、以下を参考にインストールしてください。  
+`vulkan-tools`は、デバイスの確認に使用する`vulkaninfo`コマンドを含みます。  
+
+**openSUSE Leap 16**  
+
+```sh
+# Intel GPU/iGPU
+sudo zypper install libvulkan_intel vulkan-tools
+
+# AMD GPU/iGPU
+sudo zypper install libvulkan_radeon vulkan-tools
+
+# NVIDIA GPU (NVIDIAリポジトリの登録と再起動が必要)
+sudo zypper addrepo https://download.nvidia.com/opensuse/leap/16.0/ nvidia
+sudo zypper --gpg-auto-import-keys refresh
+sudo zypper install nvidia-open-driver-G06-signed-kmp-default nvidia-video-G06 nvidia-gl-G06 vulkan-tools
+```
+
+**Fedora 44**  
+
+```sh
+# Intel GPU/iGPU / AMD GPU/iGPU (Mesa ANV / RADV)
+sudo dnf install mesa-vulkan-drivers vulkan-tools
+
+# NVIDIA GPU (RPM Fusionの登録と再起動が必要)
+sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+                 https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf install akmod-nvidia vulkan-tools
+```
+
+**Debian 13 (Trixie)**  
+
+```sh
+# Intel GPU/iGPU / AMD GPU/iGPU (Mesa ANV / RADV)
+sudo apt install mesa-vulkan-drivers vulkan-tools
+
+# NVIDIA GPU (non-freeコンポーネントの有効化と再起動が必要)
+sudo apt install nvidia-kernel-dkms nvidia-driver nvidia-vulkan-icd vulkan-tools
+```
+
+NVIDIAドライバは、GPU世代によって必要なパッケージや対応状況が異なります。  
+詳細は各ディストリビューションのドキュメントを参照してください。  
+([openSUSE](https://en.opensuse.org/SDB:NVIDIA_drivers)、[Fedora](https://rpmfusion.org/Howto/NVIDIA)、[Debian](https://wiki.debian.org/NvidiaGraphicsDrivers))  
+
 ### GPU / iGPUの最低要件と性能の目安
 
 GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応し、システムとHazkeyから認識できることです。  
