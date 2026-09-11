@@ -50,7 +50,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq rpm gnupg
           export GNUPGHOME="$(mktemp -d)"
-          trap 'rm -rf "$GNUPGHOME"' EXIT
+          RPMVERIFYDB="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME" "$RPMVERIFYDB"' EXIT
           printf '%s\n' "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
           KEYID="$(gpg --batch --list-keys --with-colons | awk -F: '/^pub:/ { getline; print $10; exit }')"
           test -n "$KEYID"
@@ -60,8 +61,14 @@ jobs:
             printf '%%__gpg_sign_cmd %s\n' '%{__gpg} gpg --force-mdc --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-fd 3 --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}'
           } > ~/.rpmmacros
           rpmsign --addsign packages/*.rpm 3<<< "${RPM_GPG_PASSPHRASE:-}"
-          rpm -K packages/*.rpm
           gpg --armor --export "$KEYID" > packages/RPM-GPG-KEY-hazkey
+
+          # rpm -K verifies against the rpmdb keyring, not GnuPG's keyring,
+          # so import the exported public key into a throwaway rpmdb before
+          # checking the freshly added signatures.
+          rpm --dbpath "$RPMVERIFYDB" --initdb
+          rpm --dbpath "$RPMVERIFYDB" --import packages/RPM-GPG-KEY-hazkey
+          rpm --dbpath "$RPMVERIFYDB" -Kv packages/*.rpm
 
       - name: Generate SHA256SUMS
         run: |
