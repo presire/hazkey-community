@@ -144,12 +144,26 @@ if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
     # install time via install(CODE ...), installs the full chain (every
     # intermediate symlink plus the final real file) and is a no-op for any
     # of these paths that is already a plain file rather than a symlink.
+    # NOTE: install(CODE ...) runs raw CMake script at install time, so
+    # $ENV{DESTDIR} must be referenced as \$ENV{DESTDIR} (escaped) to expand
+    # at install time, not configure time. Without the DESTDIR prefix,
+    # file(COPY ... DESTINATION "/usr/...") writes to the build host's /usr
+    # instead of the staging tree, and the staged package silently misses
+    # the three main libraries (leap16 RPM self-dependency failure:
+    # 'libggml-base.so.0()(64bit)' unmet). install(DIRECTORY ...) below is
+    # DESTDIR-aware automatically and needs no such handling.
     install(CODE "
+        foreach(_llama_lib libggml-base.so libggml.so libllama.so)
+            if(NOT EXISTS \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/\${_llama_lib}\")
+                message(FATAL_ERROR \"Missing llama library: ${HAZKEY_SERVER_LIBLLAMA_BINDIR}/\${_llama_lib} (HAZKEY_SERVER_LIBLLAMA_BINDIR wrong or llama build failed)\")
+            endif()
+        endforeach()
+        file(MAKE_DIRECTORY \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\")
         file(COPY
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml-base.so\"
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml.so\"
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libllama.so\"
-            DESTINATION \"${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\"
+            DESTINATION \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\"
             FOLLOW_SYMLINK_CHAIN
         )
     ")

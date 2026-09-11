@@ -214,6 +214,18 @@ jobs:
           test -f /work/workdir/usr/share/hazkey/emoji_all_E17.0.txt
           test ! -e /work/workdir/usr/share/hazkey/emoji_all_E16.0.txt
 
+          # libllama staged-install assertion: the three main libraries must
+          # be present in the staging tree (regression guard for the leap16
+          # RPM self-dependency failure where install(CODE) ignored DESTDIR
+          # and only backends/ landed in the package). GNUInstallDirs puts
+          # them under lib, lib64, or lib/<triplet> depending on distro.
+          for _lib in libggml-base.so libggml.so libllama.so; do
+            _found="$(find /work/workdir/usr -path "*/hazkey/libllama/${_lib}*" -print -quit)"
+            test -n "$_found" || { echo "missing staged lib: $_lib" >&2; exit 1; }
+            test -e "$_found" || { echo "dangling staged lib: $_found" >&2; exit 1; }
+          done
+          test -n "$(find /work/workdir/usr -path '*/hazkey/libllama/backends/*.so' -print -quit)"
+
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
@@ -242,6 +254,9 @@ jobs:
             test "$(dpkg-deb --field packages/*.deb Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info packages/*.deb
             dpkg-deb --contents packages/*.deb
+            # The bundled libllama runtime must be inside the deb; otherwise
+            # hazkey-server fails at startup with missing libllama.so.0.
+            dpkg-deb --contents packages/*.deb | grep -Fq 'hazkey/libllama/libllama.so'
           else
             topdir=/work/rpmbuild
             mkdir -p "$topdir"
@@ -284,6 +299,14 @@ jobs:
             fi
             rpm -qp --requires packages/*.rpm
             rpm -qp --filesbypkg packages/*.rpm
+            # Self-dependency guard: the package bundles libllama privately,
+            # so the auto-generated Requires on its SONAMEs must be satisfied
+            # by its own Provides. If the staged tree missed the three main
+            # libraries, Provides lacks them and zypper reports e.g.
+            # "'libggml-base.so.0()(64bit)' not found" (leap16 0.2.21).
+            for _soname in 'libggml-base.so.0()(64bit)' 'libggml.so.0()(64bit)' 'libllama.so.0()(64bit)'; do
+              rpm -qp --provides packages/*.rpm | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
+            done
           fi
 
           chmod -R a+rX packages
