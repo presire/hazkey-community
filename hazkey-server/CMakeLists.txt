@@ -91,7 +91,8 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
         set(GGML_LTO ON CACHE BOOL "")
     endif()
 
-    set(CMAKE_INSTALL_RPATH "$ORIGIN")
+    # Backend DSOs are installed one directory below the main llama libraries.
+    set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/..")
     set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
     set(CMAKE_SKIP_BUILD_RPATH OFF)
 
