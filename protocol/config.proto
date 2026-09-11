@@ -132,6 +132,7 @@ message Profile {
     // [community] Hotkey for deleting the focused candidate's learning data.
     optional string delete_learning_hotkey = 124;
     optional string accept_prediction_hotkey = 125;
+    optional string zenzai_toggle_hotkey = 126;
 }
 
 // Request messages

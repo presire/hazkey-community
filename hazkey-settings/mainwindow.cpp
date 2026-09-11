@@ -257,6 +257,8 @@ QString MainWindow::uiStateKey() const {
                  ui_->deleteLearningHotkey->keySequence().toString());
     state.insert("acceptPredictionHotkey",
                  ui_->acceptPredictionHotkey->keySequence().toString());
+    state.insert("zenzaiToggleHotkey",
+                 ui_->zenzaiToggleHotkey->keySequence().toString());
     state.insert("zenzaiBackendDevice",
                  ui_->zenzaiBackendDevice->currentData().toString());
     // Ordered enabled input tables (name + built-in flag).
@@ -471,6 +473,8 @@ void MainWindow::connectSignals() {
     connect(ui_->acceptPredictionHotkey,
             &QKeySequenceEdit::keySequenceChanged, this,
             [this](const QKeySequence&) { recomputeDirtyState(); });
+    connect(ui_->zenzaiToggleHotkey, &QKeySequenceEdit::keySequenceChanged,
+            this, [this](const QKeySequence&) { recomputeDirtyState(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -573,6 +577,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiWeightPath->setEnabled(false);
         ui_->browseZenzaiWeightPath->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
+        ui_->zenzaiToggleHotkey->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(false);
         ui_->manageZenzaiModels->setVisible(false);
 
@@ -591,6 +596,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiWeightPath->setEnabled(false);
         ui_->browseZenzaiWeightPath->setEnabled(false);
         ui_->zenzaiBackendDevice->setEnabled(false);
+        ui_->zenzaiToggleHotkey->setEnabled(false);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(false);
 
@@ -608,6 +614,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiPreference->setEnabled(true);
         ui_->useZenzaiCustomWeight->setEnabled(true);
         ui_->zenzaiBackendDevice->setEnabled(true);
+        ui_->zenzaiToggleHotkey->setEnabled(true);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(true);
 
@@ -790,6 +797,18 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
             qKeySequenceFromFcitxKeyString(fcitxAcceptStr));
     }
 
+    {
+        // [community] Zenzai toggle hotkey; empty falls back to the
+        // client's built-in default.
+        const std::string storedZenzaiToggleHotkey =
+            currentProfile_->zenzai_toggle_hotkey();
+        const QString fcitxZenzaiToggleStr = QString::fromStdString(
+            storedZenzaiToggleHotkey.empty() ? "Control+Alt+Z"
+                                             : storedZenzaiToggleHotkey);
+        ui_->zenzaiToggleHotkey->setKeySequence(
+            qKeySequenceFromFcitxKeyString(fcitxZenzaiToggleStr));
+    }
+
     // Load input table configuration
     loadInputTables();
 
@@ -909,6 +928,9 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_accept_prediction_hotkey(
         fcitxKeyStringFromQKeySequence(
             ui_->acceptPredictionHotkey->keySequence())
+            .toStdString());
+    currentProfile_->set_zenzai_toggle_hotkey(
+        fcitxKeyStringFromQKeySequence(ui_->zenzaiToggleHotkey->keySequence())
             .toStdString());
 
     // Save zenzai backend device

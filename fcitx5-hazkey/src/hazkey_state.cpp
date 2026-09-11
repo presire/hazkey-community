@@ -52,6 +52,11 @@ void HazkeyState::keyEvent(KeyEvent& event) {
             event.filterAndAccept();
             return;
         }
+        if (event.key().check(zenzaiToggleHotkey_)) {
+            handleZenzaiToggle();
+            event.filterAndAccept();
+            return;
+        }
     }
 
     std::string composingText = engine_->server().getComposingText(
@@ -408,6 +413,9 @@ void HazkeyState::loadServerProfile() {
         profile.accept_prediction_hotkey();
     acceptPredictionHotkey_ =
         Key(acceptPredictionHotkey.empty() ? "F5" : acceptPredictionHotkey);
+    const std::string& zenzaiToggleHotkey = profile.zenzai_toggle_hotkey();
+    zenzaiToggleHotkey_ =
+        Key(zenzaiToggleHotkey.empty() ? "Control+Alt+Z" : zenzaiToggleHotkey);
     // [community] Learning-data delete hotkey. Read once per input context
     // like liveConvertHotkey_, so GUI changes take effect from the next
     // input context (fcitx5 restart applies it reliably).
@@ -466,6 +474,17 @@ void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     }
     showCandidateList(true);
     ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+}
+
+void HazkeyState::handleZenzaiToggle() {
+    FCITX_DEBUG() << "HazkeyState handleZenzaiToggle";
+
+    const auto enabled = engine_->server().toggleZenzai();
+    if (!enabled.has_value()) {
+        return;
+    }
+    engine_->instance()->showCustomInputMethodInformation(
+        ic_, enabled.value() ? _("Zenzai enabled") : _("Zenzai disabled"));
 }
 
 bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {

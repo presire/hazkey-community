@@ -48,6 +48,8 @@ void KeySequenceUtilTest::testQtToFcitxRoundTrip_data() {
         << QStringLiteral("Alt+Shift+X") << QStringLiteral("Alt+Shift+X");
     QTest::newRow("meta k") << QStringLiteral("Meta+K")
                             << QStringLiteral("Super+K");
+    QTest::newRow("ctrl alt z") << QStringLiteral("Ctrl+Alt+Z")
+                                << QStringLiteral("Control+Alt+Z");
     QTest::newRow("f5 single key") << QStringLiteral("F5")
                                      << QStringLiteral("F5");
 }
@@ -108,6 +110,7 @@ void KeySequenceUtilTest::testRoundTripPreserves() {
     const QStringList inputs = {
         QStringLiteral("Ctrl+Shift+L"),
         QStringLiteral("Ctrl+L"),
+        QStringLiteral("Ctrl+Alt+Z"),
         QStringLiteral("Alt+Shift+X"),
         QStringLiteral("Meta+K"),
         QStringLiteral("L"),

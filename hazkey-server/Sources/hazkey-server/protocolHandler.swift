@@ -110,6 +110,8 @@ class ProtocolHandler {
             }
         case .deleteCandidateLearningData(let req):
             response = state.deleteCandidateLearningData(candidateIndex: Int(req.index))
+        case .toggleZenzai:
+            response = state.serverConfig.toggleZenzai()
         case .none:
             NSLog("Payload not specified")
             response = Hazkey_ResponseEnvelope.with {

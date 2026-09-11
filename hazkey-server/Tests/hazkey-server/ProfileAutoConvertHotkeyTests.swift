@@ -74,4 +74,16 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
 
         XCTAssertFalse(decoded.hasAcceptPredictionHotkey)
     }
+
+    func testZenzaiToggleHotkeyJSONRoundTrip() throws {
+        // Given: the persisted profile contains the dedicated toggle hotkey.
+        var profile = Hazkey_Config_Profile()
+        profile.zenzaiToggleHotkey = "Control+Alt+Z"
+
+        // When: the profile crosses the JSON persistence boundary.
+        let decoded = try Hazkey_Config_Profile(jsonUTF8Data: profile.jsonUTF8Data())
+
+        // Then: the exact fcitx5 key string is retained.
+        XCTAssertEqual(decoded.zenzaiToggleHotkey, "Control+Alt+Z")
+    }
 }

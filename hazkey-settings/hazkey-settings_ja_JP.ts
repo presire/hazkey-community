@@ -570,6 +570,11 @@
         <translation>バックエンド</translation>
     </message>
     <message>
+        <location filename="mainwindow.ui" line="1888"/>
+        <source>Zenzai toggle hotkey</source>
+        <translation>Zenzai切替ホットキー</translation>
+    </message>
+    <message>
         <location filename="mainwindow.ui" line="2017"/>
         <source>0.0.0</source>
         <translation>0.0.0</translation>

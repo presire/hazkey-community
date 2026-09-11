@@ -93,6 +93,14 @@ message GetCurrentInputModeInfo {}
 
 message SaveLearningData {}
 
+// [community] Toggle only the active profile's Zenzai enablement without
+// resetting the current composition or candidate list.
+message ToggleZenzai {}
+
+message ToggleZenzaiResult {
+    bool enabled = 1;
+}
+
 // Response messages
 
 message Text {

@@ -19,5 +19,6 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertEqual(profile.autoConvertMinChars, 2)
         XCTAssertEqual(profile.autoConvertHotkey, "Control+Shift+L")
         XCTAssertEqual(profile.acceptPredictionHotkey, "F5")
+        XCTAssertEqual(profile.zenzaiToggleHotkey, "Control+Alt+Z")
     }
 }

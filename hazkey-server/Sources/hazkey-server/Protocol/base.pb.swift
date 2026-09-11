@@ -193,6 +193,14 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .deleteCandidateLearningData(newValue)}
   }
 
+  var toggleZenzai: Hazkey_Commands_ToggleZenzai {
+    get {
+      if case .toggleZenzai(let v)? = payload {return v}
+      return Hazkey_Commands_ToggleZenzai()
+    }
+    set {payload = .toggleZenzai(newValue)}
+  }
+
   var getConfig: Hazkey_Config_GetConfig {
     get {
       if case .getConfig(let v)? = payload {return v}
@@ -268,6 +276,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     case adjustClauseBoundary(Hazkey_Commands_AdjustClauseBoundary)
     case acceptPrediction(Hazkey_Commands_AcceptPrediction)
     case deleteCandidateLearningData(Hazkey_Commands_DeleteCandidateLearningData)
+    case toggleZenzai(Hazkey_Commands_ToggleZenzai)
     case getConfig(Hazkey_Config_GetConfig)
     case setConfig(Hazkey_Config_SetConfig)
     case getDefaultProfile(Hazkey_Config_GetDefaultProfile)
@@ -340,6 +349,14 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .deleteCandidateLearningDataResult(newValue)}
   }
 
+  var toggleZenzaiResult: Hazkey_Commands_ToggleZenzaiResult {
+    get {
+      if case .toggleZenzaiResult(let v)? = payload {return v}
+      return Hazkey_Commands_ToggleZenzaiResult()
+    }
+    set {payload = .toggleZenzaiResult(newValue)}
+  }
+
   var currentConfig: Hazkey_Config_CurrentConfig {
     get {
       if case .currentConfig(let v)? = payload {return v}
@@ -373,6 +390,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     case currentInputModeInfo(Hazkey_Commands_CurrentInputModeInfo)
     case clauseBoundaryResult(Hazkey_Commands_ClauseBoundaryResult)
     case deleteCandidateLearningDataResult(Hazkey_Commands_DeleteCandidateLearningDataResult)
+    case toggleZenzaiResult(Hazkey_Commands_ToggleZenzaiResult)
     case currentConfig(Hazkey_Config_CurrentConfig)
     case getLearningHistoryResult(Hazkey_Config_GetLearningHistoryResult)
     case deleteLearningEntriesResult(Hazkey_Config_DeleteLearningEntriesResult)
@@ -392,7 +410,7 @@ nonisolated extension Hazkey_StatusCode: SwiftProtobuf._ProtoNameProviding {
 
 nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".RequestEnvelope"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}new_composing_text\0\u{3}set_context\0\u{3}input_char\0\u{3}modifier_event\0\u{3}move_cursor\0\u{3}prefix_complete\0\u{3}delete_left\0\u{3}delete_right\0\u{3}get_composing_string\0\u{3}get_hiragana_with_cursor\0\u{3}get_candidates\0\u{3}get_current_input_mode\0\u{3}save_learning_data\0\u{3}adjust_clause_boundary\0\u{3}accept_prediction\0\u{3}delete_candidate_learning_data\0\u{4}T\u{1}get_config\0\u{3}set_config\0\u{3}get_default_profile\0\u{3}clear_all_history\0\u{3}reload_zenzai_model\0\u{3}get_learning_history\0\u{3}delete_learning_entries\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}new_composing_text\0\u{3}set_context\0\u{3}input_char\0\u{3}modifier_event\0\u{3}move_cursor\0\u{3}prefix_complete\0\u{3}delete_left\0\u{3}delete_right\0\u{3}get_composing_string\0\u{3}get_hiragana_with_cursor\0\u{3}get_candidates\0\u{3}get_current_input_mode\0\u{3}save_learning_data\0\u{3}adjust_clause_boundary\0\u{3}accept_prediction\0\u{3}delete_candidate_learning_data\0\u{3}toggle_zenzai\0\u{4}S\u{1}get_config\0\u{3}set_config\0\u{3}get_default_profile\0\u{3}clear_all_history\0\u{3}reload_zenzai_model\0\u{3}get_learning_history\0\u{3}delete_learning_entries\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -608,6 +626,19 @@ nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtob
           self.payload = .deleteCandidateLearningData(v)
         }
       }()
+      case 17: try {
+        var v: Hazkey_Commands_ToggleZenzai?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .toggleZenzai(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .toggleZenzai(v)
+        }
+      }()
       case 100: try {
         var v: Hazkey_Config_GetConfig?
         var hadOneofValue = false
@@ -774,6 +805,10 @@ nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtob
       guard case .deleteCandidateLearningData(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
     }()
+    case .toggleZenzai?: try {
+      guard case .toggleZenzai(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+    }()
     case .getConfig?: try {
       guard case .getConfig(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 100)
@@ -816,7 +851,7 @@ nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ResponseEnvelope"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}error_message\0\u{1}text\0\u{1}candidates\0\u{3}text_with_cursor\0\u{3}current_input_mode_info\0\u{3}clause_boundary_result\0\u{3}delete_candidate_learning_data_result\0\u{4}\\\u{1}current_config\0\u{3}get_learning_history_result\0\u{3}delete_learning_entries_result\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}error_message\0\u{1}text\0\u{1}candidates\0\u{3}text_with_cursor\0\u{3}current_input_mode_info\0\u{3}clause_boundary_result\0\u{3}delete_candidate_learning_data_result\0\u{3}toggle_zenzai_result\0\u{4}[\u{1}current_config\0\u{3}get_learning_history_result\0\u{3}delete_learning_entries_result\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -899,6 +934,19 @@ nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProto
           self.payload = .deleteCandidateLearningDataResult(v)
         }
       }()
+      case 9: try {
+        var v: Hazkey_Commands_ToggleZenzaiResult?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .toggleZenzaiResult(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .toggleZenzaiResult(v)
+        }
+      }()
       case 100: try {
         var v: Hazkey_Config_CurrentConfig?
         var hadOneofValue = false
@@ -978,6 +1026,10 @@ nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProto
     case .deleteCandidateLearningDataResult?: try {
       guard case .deleteCandidateLearningDataResult(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+    }()
+    case .toggleZenzaiResult?: try {
+      guard case .toggleZenzaiResult(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
     }()
     case .currentConfig?: try {
       guard case .currentConfig(let v)? = self.payload else { preconditionFailure() }

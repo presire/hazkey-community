@@ -23,5 +23,11 @@ msgstr "削除可"
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"
 
+msgid "Zenzai enabled"
+msgstr "Zenzaiを有効化しました"
+
+msgid "Zenzai disabled"
+msgstr "Zenzaiを無効化しました"
+
 msgid "Show [Press Tab to Select] indicator"
 msgstr "[Tabキーで選択] インジケーターを表示する"

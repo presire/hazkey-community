@@ -54,6 +54,7 @@ class HazkeyState : public InputContextProperty {
     void loadServerProfile();
     // toggle live conversion via hotkey (synchronous get/mutate/set)
     void handleLiveConvertToggle([[maybe_unused]] KeyEvent& event);
+    void handleZenzaiToggle();
     // [community] delete the focused candidate's AzooKey learning memory
     // entries via hotkey, then rebuild the candidate list in the same
     // display mode (suggest vs non-predict conversion)
@@ -173,6 +174,7 @@ class HazkeyState : public InputContextProperty {
     int livePreeditIndex_ = -1;
 
     fcitx::Key liveConvertHotkey_{"Control+Shift+L"};
+    fcitx::Key zenzaiToggleHotkey_{"Control+Alt+Z"};
     // [community] Hotkey for accepting the focused prediction candidate as a
     // fixed leading notation while keeping the composition open.
     fcitx::Key acceptPredictionHotkey_{"F5"};

@@ -91,6 +91,11 @@ class HazkeyServerConnector {
     // (e.g. a regular candidate or a user-dictionary entry).
     bool acceptPrediction(int index);
 
+    // Toggles Zenzai without recreating the server composition. A missing or
+    // failed response is represented by nullopt; otherwise the returned value
+    // is the persisted enabled state.
+    std::optional<bool> toggleZenzai();
+
     void saveLearningData();
 
     struct CandidateData {

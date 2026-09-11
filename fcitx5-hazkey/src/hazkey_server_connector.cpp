@@ -51,6 +51,7 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
         case hazkey::RequestEnvelope::kSetConfig: return "set_config";
         case hazkey::RequestEnvelope::kClearAllHistory: return "clear_all_history";
         case hazkey::RequestEnvelope::kReloadZenzaiModel: return "reload_zenzai_model";
+        case hazkey::RequestEnvelope::kToggleZenzai: return "toggle_zenzai";
         case hazkey::RequestEnvelope::kGetDefaultProfile: return "get_default_profile";
         case hazkey::RequestEnvelope::kGetLearningHistory: return "get_learning_history";
         case hazkey::RequestEnvelope::kDeleteLearningEntries: return "delete_learning_entries";
@@ -734,6 +735,27 @@ bool HazkeyServerConnector::acceptPrediction(int index) {
         return false;
     }
     return true;
+}
+
+std::optional<bool> HazkeyServerConnector::toggleZenzai() {
+    hazkey::RequestEnvelope request;
+    request.mutable_toggle_zenzai();
+    auto response = transact(request);
+    if (response == std::nullopt) {
+        FCITX_ERROR() << "Error while transacting toggleZenzai().";
+        return std::nullopt;
+    }
+    auto responseVal = response.value();
+    if (responseVal.status() != hazkey::SUCCESS) {
+        FCITX_ERROR() << "toggleZenzai: Server returned an error: "
+                      << responseVal.error_message();
+        return std::nullopt;
+    }
+    if (!responseVal.has_toggle_zenzai_result()) {
+        FCITX_ERROR() << "toggleZenzai: Server returned unexpected response";
+        return std::nullopt;
+    }
+    return responseVal.toggle_zenzai_result().enabled();
 }
 
 void HazkeyServerConnector::saveLearningData() {

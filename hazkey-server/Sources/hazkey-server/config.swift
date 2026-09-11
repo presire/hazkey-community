@@ -225,6 +225,31 @@ class HazkeyServerConfig {
         }
     }
 
+    func toggleZenzai() -> Hazkey_ResponseEnvelope {
+        var updatedProfiles = profiles
+        guard !updatedProfiles.isEmpty else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "No active profile"
+            }
+        }
+        updatedProfiles[0].zenzaiEnable.toggle()
+
+        do {
+            try saveConfig(updatedProfiles)
+        } catch {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "\(error)"
+            }
+        }
+
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+            $0.toggleZenzaiResult.enabled = currentProfile.zenzaiEnable
+        }
+    }
+
     static func genDefaultConfig() -> Hazkey_Config_Profile {
         var newConf = Hazkey_Config_Profile.init()
         newConf.profileName = "Default"
@@ -233,6 +258,7 @@ class HazkeyServerConfig {
         newConf.autoConvertMinChars = 2
         newConf.autoConvertHotkey = "Control+Shift+L"
         newConf.acceptPredictionHotkey = "F5"
+        newConf.zenzaiToggleHotkey = "Control+Alt+Z"
         newConf.auxTextMode = Hazkey_Config_Profile.AuxTextMode.auxTextShowWhenCursorNotAtEnd
         newConf.suggestionListMode =
             Hazkey_Config_Profile.SuggestionListMode.suggestionListShowPredictiveResults
@@ -420,6 +446,9 @@ class HazkeyServerConfig {
         }
         if !normalized.hasZenzaiInferLimit {
             normalized.zenzaiInferLimit = defaults.zenzaiInferLimit
+        }
+        if !normalized.hasZenzaiToggleHotkey {
+            normalized.zenzaiToggleHotkey = defaults.zenzaiToggleHotkey
         }
         if !normalized.specialConversionMode.hasHalfwidthKatakana {
             normalized.specialConversionMode.halfwidthKatakana =
