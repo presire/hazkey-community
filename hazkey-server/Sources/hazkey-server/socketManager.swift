@@ -130,23 +130,31 @@ class SocketManager {
                 break
             }
 
+            // Snapshot the polled client before accepting a new connection.
+            // handleNewConnection() may evict and replace the current client,
+            // but pollFds[2] still describes the fd that was current when
+            // poll() was called. Without this guard, stale events from an
+            // evicted client (e.g. POLLHUP) would be applied to the freshly
+            // accepted connection and close it before it receives a response.
+            let polledClientFd = pollFds.count > 2 ? currentClientFd : nil
+
             // Check if server socket has a new connection
             if pollFds[0].revents & Int16(POLLIN) != 0 {
                 handleNewConnection()
             }
 
             // Check if current client has data
-            if pollFds.count > 2, let clientFd = currentClientFd {
+            if let polledClientFd, polledClientFd == currentClientFd {
                 let clientEvents = Int32(pollFds[2].revents)
 
                 if clientEvents & POLLHUP != 0 || clientEvents & POLLERR != 0 {
-                    NSLog("Client disconnected or error: \(clientFd)")
-                    closeClient(clientFd)
+                    NSLog("Client disconnected or error: \(polledClientFd)")
+                    closeClient(polledClientFd)
                     continue
                 }
 
                 if clientEvents & POLLIN != 0 {
-                    handleClientData(clientFd)
+                    handleClientData(polledClientFd)
                 }
             }
         }
