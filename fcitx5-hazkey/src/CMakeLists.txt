@@ -63,6 +63,14 @@ configure_file(hazkey_constants.h.in hazkey_constants.h @ONLY)
 target_include_directories(fcitx5-hazkey PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${Protobuf_INCLUDE_DIRS})
 target_link_libraries(fcitx5-hazkey PRIVATE Fcitx5::Core Fcitx5::Config ${Protobuf_LITE_LIBRARIES})
 
+# Instance::showCustomInputMethodInformation() exists since fcitx5 5.1.11.
+# Distributions with older fcitx5 (e.g. Ubuntu 24.04 ships 5.1.7) must still
+# build, so the Zenzai toggle notification is compiled only when available.
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.11")
+    target_compile_definitions(fcitx5-hazkey PRIVATE
+        HAZKEY_HAS_SHOW_CUSTOM_IM_INFO=1)
+endif()
+
 if(BUILD_TESTING)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(ProtobufLite REQUIRED IMPORTED_TARGET protobuf-lite)

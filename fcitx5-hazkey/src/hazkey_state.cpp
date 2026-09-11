@@ -483,8 +483,14 @@ void HazkeyState::handleZenzaiToggle() {
     if (!enabled.has_value()) {
         return;
     }
+#if defined(HAZKEY_HAS_SHOW_CUSTOM_IM_INFO)
     engine_->instance()->showCustomInputMethodInformation(
         ic_, enabled.value() ? _("Zenzai enabled") : _("Zenzai disabled"));
+#else
+    // fcitx5 < 5.1.11 has no showCustomInputMethodInformation() (e.g. Ubuntu
+    // 24.04 ships 5.1.7). The toggle itself works; only the transient status
+    // notification is unavailable on those releases.
+#endif
 }
 
 bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
