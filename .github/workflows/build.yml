@@ -257,6 +257,14 @@ jobs:
             # The bundled libllama runtime must be inside the deb; otherwise
             # hazkey-server fails at startup with missing libllama.so.0.
             dpkg-deb --contents packages/*.deb | grep -Fq 'hazkey/libllama/libllama.so'
+            # Debian 13 and Ubuntu 26.04 provide the protobuf lite runtime
+            # under this package name. The compiler and headers are build
+            # dependencies only and must not be runtime dependencies.
+            dpkg-deb --field packages/*.deb Depends | grep -Fq 'libprotobuf-lite32t64'
+            if dpkg-deb --field packages/*.deb Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev)(,|$)'; then
+              echo "DEB contains a protobuf compiler/development dependency" >&2
+              exit 1
+            fi
           else
             topdir=/work/rpmbuild
             mkdir -p "$topdir"
@@ -268,7 +276,13 @@ jobs:
               printf '%s\n' 'License: MIT'
               printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
               printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
-              printf '%s\n' 'Requires: fcitx5, qt6-qtbase, protobuf, vulkan-loader'
+              # Keep only the non-ELF integration dependency explicit.
+              # rpmbuild derives Qt, Vulkan, protobuf-lite, and other runtime
+              # requirements from the ELF SONAMEs in %files. Package names
+              # differ between Fedora and openSUSE, so do not hard-code the
+              # build-time `protobuf` package or a distro-specific runtime
+              # package name here.
+              printf '%s\n' 'Requires: fcitx5'
               printf '\n'
               printf '%s\n' '%description'
               printf '%s\n' 'Japanese input method using AzooKeyKanaKanjiConverter.'
@@ -299,6 +313,13 @@ jobs:
             fi
             rpm -qp --requires packages/*.rpm
             rpm -qp --filesbypkg packages/*.rpm
+            for _bad_dep in protobuf protobuf-devel protobuf-compiler protobuf-lite-devel; do
+              if rpm -qp --requires packages/*.rpm | grep -Fqx "$_bad_dep"; then
+                echo "RPM contains a build-time protobuf dependency: $_bad_dep" >&2
+                exit 1
+              fi
+            done
+            rpm -qp --requires packages/*.rpm | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$'
             # Self-dependency guard: the package bundles libllama privately,
             # so the auto-generated Requires on its SONAMEs must be satisfied
             # by its own Provides. If the staged tree missed the three main
