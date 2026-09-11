@@ -69,6 +69,7 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
         case hazkey::RequestEnvelope::kSetConfig: return "set_config";
         case hazkey::RequestEnvelope::kClearAllHistory: return "clear_all_history";
         case hazkey::RequestEnvelope::kReloadZenzaiModel: return "reload_zenzai_model";
+        case hazkey::RequestEnvelope::kToggleZenzai: return "toggle_zenzai";
         case hazkey::RequestEnvelope::kGetDefaultProfile: return "get_default_profile";
         case hazkey::RequestEnvelope::kGetLearningHistory: return "get_learning_history";
         case hazkey::RequestEnvelope::kDeleteLearningEntries: return "delete_learning_entries";
