@@ -3,13 +3,14 @@
 常駐型の非スピンCPU ggmlスレッドプールは、ビルド時適用パッチ (apply-at-build patch) としてではなく、フォークブランチ上に恒久的に実装されています:  
 
 - **llama.cppサブモジュール:**  
-  `27d0bacc595e46cca1de100f2041e1b5ea207773`  
-  コミット `27d0bac hazkey: add non-spinning CPU threadpool helper`  
+  `1e148afff8ecbe9d2e861c16e967d84954550e75` (2026-09-12)  
+  コミット `1e148aff hazkey: add non-spinning CPU threadpool helper`  
 - **コンバータ依存 (converter dependency):**  
-  `hazkey-server/Package.resolved` により `0dfc0e5a37dbe38ce87a65a6d67f943901a4867b` (2026-09-11) にピン留めされています。
+  `hazkey-server/Package.resolved` により `134db06040ae4c22145286df812afe73dce402b2` (2026-09-12) にピン留めされています。
   これには、`07eb1bc hazkey: reuse a non-spinning CPU ggml threadpool`、`71181e8 hazkey: make CPU threadpool storage concurrency-safe`、  
   `39854fe hazkey: store CPU threadpool state safely`、および上流 `ad714fe` のマージ、  
-  焼き込み済みの0006修正 (`2cef753`)、ベンダー対応Vulkan ICDピン留め (`0dfc0e5`) が含まれます。  
+  焼き込み済みの0006修正 (`2cef753`)、ベンダー対応Vulkan ICDピン留め (`0dfc0e5`)、および  
+  `134db06 hazkey: refresh vendored llama.cpp headers to hazkey pin 1e148aff` が含まれます。  
 
 コンバータはCPUコンテキストでのみプールを取得し、互換性のあるコンテキスト間で再利用し、コンテキスト破棄時に最後のリースを解放します。  
 このスレッドプール配線を実装する `patches/*.patch` ファイルは存在しません。  
@@ -99,6 +100,7 @@
 **フォークコミット (順序: tipが先頭):**  
 
 ```
+134db06 hazkey: refresh vendored llama.cpp headers to hazkey pin 1e148aff
 2cef753 hazkey: preserve explicitly registered user-dictionary candidates across constraint retries
 cfebb64 Merge commit 'ad714fe' into hazkey   (brings upstream ad714fe #357)
 20dc65d feat: add learning memory enumeration API
@@ -119,12 +121,23 @@ e4fba90 hazkey: minimal compile fixes for llama.cpp pin 00842b94
 > `53128a2` は新しい機能 - GPU/CPUデバイス選択 - であり、廃止されたパッチの移植ではありません。  
 > ヘッダリフレッシュとICDピン留め/perfシームのコミットの間で同じフォークブランチ上にあるため、ここに記載しています。  
 
+### 2026-09-12 llama.cpp 上流再同期
+
+`presire/llama.cpp` の `hazkey` ブランチは、2026-09-12に凍結した上流 `master` の
+`718f7b4175bf8b6af6f5eac09fee10754b3ecddd` へ再同期されました。旧ベース
+`e4b9af007` から、`0f63b8fc` (gpt2-small-japanese-char対応)、`3c327ba4`
+(`GGML_VULKAN_SHADER_MAX_PARALLEL` 環境変数)、`1e148aff` (非スピンCPUスレッドプール)
+の3コミットを再適用し、上流の `SPARK2_5 = 58` の後に
+`GPT2_SMALL_JAPANESE_CHAR = 59` を割り当てました。リモート更新は旧tipに対する
+`--force-with-lease` で実行されています。
+
 **フォークの公開状況 (fork availability)**  
 `presire/AzooKeyKanaKanjiConverter` の `hazkey` ブランチは `https://github.com/presire/AzooKeyKanaKanjiConverter` にプッシュされており、  
-tipは `0dfc0e5a37dbe38ce87a65a6d67f943901a4867b` です。  
+tipは `134db06040ae4c22145286df812afe73dce402b2` です。  
 
-> 2026-09-11のベンダー対応Vulkan ICDピン留め。  
-> 以前は `2cef753a03e73560e1c83137aabf0416936dd64d` で、2026-09-08に上流 `ad714fe` をマージし、  
+> 2026-09-12のヘッダリフレッシュ。直前のtipは2026-09-11のベンダー対応Vulkan ICDピン留め
+> `0dfc0e5a` でした。  
+> それ以前は `2cef753a03e73560e1c83137aabf0416936dd64d` で、2026-09-08に上流 `ad714fe` をマージし、  
 > 焼き込み済み0006修正を含んでいました。  
 
 `hazkey-server/Package.swift` はそのリモートURLを `branch: "hazkey"` で直接解決するため、  
@@ -166,21 +179,22 @@ tipは `0dfc0e5a37dbe38ce87a65a6d67f943901a4867b` です。
 
 C APIはヘッダABIの境界でもあります。  
 コンバータフォークは独自の `Sources/llama.cpp/module.modulemap` を同梱しており  
-(フォークコミット `903cf04` がピン `9d4f2c3f5` 向けに、続いて `2bd54a6` がピン `00842b94` 向けにリフレッシュし、さらに `07eb1bc` がピン `27d0bacc` のCPUスレッドプールヘルパー向けに拡張)、  
+ (フォークコミット `903cf04` がピン `9d4f2c3f5` 向けに、続いて `2bd54a6` がピン `00842b94` 向けにリフレッシュし、`07eb1bc` が後に `1e148aff` へ再同期されるCPUスレッドプールヘルパーを公開するために拡張、さらに `134db06` がピン `1e148aff` 向けにリフレッシュ)、  
 現在は7つのヘッダ — `llama.h`、`ggml.h`、`ggml-alloc.h`、`ggml-backend.h`、`ggml-cpu.h`、`ggml-opt.h`、`gguf.h` (ピン `00842b94` で新規追加) — を公開し、  
 `llama`、`ggml`、`ggml-base` をリンクします。  
+`134db06` では `llama.h`、`ggml.h`、`ggml-backend.h` の3件だけが更新され、残る4ヘッダと `module.modulemap` はbyte-identicalでした。`ZenzContext.swift` の変更は不要で、traited / untraited の両ビルドが追加修正なしで成功しています。  
 
 ヘッダリフレッシュは現在パッチではなくフォークコミットであるため、将来llama.cppを更新する場合は、パッチファイルを編集するのではなく、  
 フォークのベンダリング済みヘッダを直接更新します。(後述の「今後の更新手順」参照)  
 
 モデルフォーマットの軸は独立していますが、アップグレード判断とは結合しています:  
-サブモジュールは `presire/llama.cpp` の `hazkey` ブランチを `27d0bacc595e46cca1de100f2041e1b5ea207773`  
-(`hazkey: add non-spinning CPU threadpool helper`。2026-09-02に `00842b94eaa7c7c6b2f11c394f049711f6d20718` から更新) にピン留めしており、  
+サブモジュールは `presire/llama.cpp` の `hazkey` ブランチを `1e148afff8ecbe9d2e861c16e967d84954550e75`  
+(`hazkey: add non-spinning CPU threadpool helper`。2026-09-12に上流再同期、これ以前は2026-09-02に `00842b94eaa7c7c6b2f11c394f049711f6d20718` から更新) にピン留めしており、  
 インストールされる `zenzai.gguf` はそのライブラリでロード可能であり続ける必要があります。  
 
 互換性はCMakeのコンパイルが通っただけでは判断できません。  
 
-ピン `27d0bacc` で引き継がれているビルド時要件:  
+ピン `1e148aff` で引き継がれているビルド時要件:  
 上流の `ggml/src/ggml-vulkan/CMakeLists.txt` が `find_package(SPIRV-Headers CONFIG REQUIRED)` を実行し、  
 `ggml-vulkan` ターゲットは見つけたパッケージのインクルードディレクトリをコンパイラへ伝播しないため、  
 ローカルに用意したSPIRV-HeadersプレフィックスをCMake *と* コンパイラの両方に渡す必要があります。  
@@ -210,6 +224,13 @@ Zenzaiの経路は現在、以下のllama.cpp APIファミリに依存してい�
 2026-09-01のllama.cpp上流同期で `2bd54a6` (ピン `00842b94` 向けヘッダリフレッシュ) と `e4fba90` (同ピン向けの最小コンパイル修正) が追加されました。  
 その後Todo 6で、常駐CPUプールとその並行安全なストレージのために `07eb1bc`、`71181e8`、`39854fe` が追加されました。  
 
+2026-09-12の再同期では、`CandidateParityTests` が切替前ベースラインと **COMPLETE MATCH**
+(2回ともexit 0) であり、`zenzai.gguf` はgpt2-small-japanese-char pre-tokenizerでロードできました。
+`HAZKEY_BENCH` のON候補生成p50は3.130488 msから3.152048 ms (+0.689%) で、2倍の阻止閾値は未到達です。
+`OutputParityTests` 全体での4件の失敗は旧production `libllama` でも同一に再現したため、この更新ではなく
+チェックアウトに元からある未コミット状態に起因します。`GGML_VULKAN=OFF` のCPU専用ビルドと
+`InferenceSeamTests` は成功しました。SIGILLマルチICDゲートは、このホストがradeon 1 ICDのみのためBLOCKEDです。
+
 今後のメンテナンスは、`presire/llama.cpp` フォークが既に採用しているのと同じモデルに従います:  
 
 1. 上流 `azooKey/AzooKeyKanaKanjiConverter` の変更を取り込むには、  
@@ -220,10 +241,11 @@ Zenzaiの経路は現在、以下のllama.cpp APIファミリに依存してい�
    その新しいピンからフォークのベンダリング済みヘッダ (`Sources/llama.cpp/llama.h`、`ggml.h`、`ggml-alloc.h`、`ggml-backend.h`、`ggml-cpu.h`、`ggml-opt.h`、`gguf.h`) と  
    `module.modulemap` をリフレッシュします。  
    フォークコミット `903cf04` がピン `9d4f2c3f5` に対して行ったこと、`2bd54a6` がピン `00842b94` に対して行ったこと、  
-   `07eb1bc` が `27d0bacc` のCPUスレッドプールヘルパーを公開するために行ったことを踏襲してください。  
-   そのための新しい `hazkey:` コミットを追加します。  
-   `ggml-vulkan` が `find_package(SPIRV-Headers)` を要求するピン (`27d0bacc` など) では、  
-   configureの前に「llama.cpp の依存サーフェス」節の手順に従ってローカルSPIRV-Headersプレフィックスとビルド時環境を用意します。  
+    `07eb1bc` が後に `1e148aff` へ再同期されるCPUスレッドプールヘルパーを公開するために行ったことを踏襲してください。  
+    そのための新しい `hazkey:` コミットを追加します。  
+    `ggml-vulkan` が `find_package(SPIRV-Headers)` を要求するピン (`1e148aff` など) では、  
+    configureの前に「llama.cpp の依存サーフェス」節の手順に従ってローカルSPIRV-Headersプレフィックスとビルド時環境を用意します。  
+    さらに、この上流以降のGCC 15 C++20モジュール走査では、物理的なビルドディレクトリ自体が角括弧を含まないASCIIパスでなければなりません。ソースへのsymlinkだけでは不十分です。正準ビルドツリーをASCIIパスに置き、`<repo>/build` はそこへのsymlinkとします。  
 3. 0003だけが唯一のスタンドアロンパッチとして残ります。  
    `build_swift.cmake` の冪等性チェック (`JapaneseNumber.swift` 内の汎用文字列 `hazkey-community patch` を使用) を信頼する前に、  
    新しいフォークtipに対して0003を再検証してください。  
