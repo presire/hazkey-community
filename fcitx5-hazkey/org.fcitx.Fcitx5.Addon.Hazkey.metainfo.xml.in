@@ -16,6 +16,7 @@
   <url type="bugtracker">https://github.com/7ka-Hiira/fcitx5-hazkey/issues</url>
   <url type="vcs-browser">https://github.com/7ka-Hiira/fcitx5-hazkey</url>
   <releases>
+    <release version="0.2.24" date="2026-09-12"/>
     <release version="0.2.23" date="2026-09-11"/>
     <release version="0.2.22" date="2026-09-11"/>
     <release version="0.2.21" date="2026-09-09"/>

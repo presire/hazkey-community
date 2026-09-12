@@ -6,7 +6,7 @@ Hazkeyは、Linux向けデスクトップ環境 [Fcitx 5](https://fcitx-im.org/)
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
 オプションでZenzaiニューラル変換 (llama.cppバックエンド、Vulkan GPU / CPU対応) を利用できます。  
 
-本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.23** です。  
+本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.24** です。  
 
 > **上流版 (hazkey 公式) の情報**  
 > - ホームページ: [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
@@ -459,8 +459,9 @@ sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
 
 ```sh
 sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
-                    qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
-                    shaderc glslang-devel spirv-headers
+                    qt6-base-devel qt6-tools-devel qt6-linguist-devel \
+                    patterns-devel-vulkan-devel_vulkan \
+                    vulkan-headers shaderc glslang-devel spirv-headers
 ```
 
 #### Debian 13 (Trixie) / Ubuntu 26.04
