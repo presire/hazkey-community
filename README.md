@@ -5,11 +5,13 @@
 Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
 オプションでZenzaiニューラル変換 (llama.cppバックエンド、Vulkan GPU / CPU対応) を利用できます。  
-Fcitx 5 フロントエンド (`fcitx5-hazkey`) に加え、実験的な IBus フロントエンド (`ibus-hazkey`) を同梱します (IBus 版のソースビルドにはビルドオプション `ENABLE_IBUS` が必要、既定OFF。バイナリパッケージは両フロントエンド分を頒布します)。  
+
+Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフロントエンド (ibus-hazkey) を同梱します。  
+(IBus版のソースビルドにはビルドオプション `ENABLE_IBUS` オプションが必要。既定はOFF。バイナリパッケージは両フロントエンド分を頒布します)  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.25** です。  
 
-> **上流版 (hazkey 公式) の情報**  
+> **上流版 (hazkey公式) の情報**  
 > - ホームページ: [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
 > - ドキュメント: [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs)  
 
@@ -20,7 +22,7 @@ Fcitx 5 フロントエンド (`fcitx5-hazkey`) に加え、実験的な IBus �
 | 区分 | ディストリビューション |
 |---|---|
 | **動作確認・サポート対象** | Fedora 44<br>openSUSE Leap 16<br>Debian 13 (Trixie) x64 |
-| **CI ビルド・パッケージ頒布対象** (動作確認・サポート対象外) | 上記に加えて、<br>Debian 13 (Trixie) AArch64<br>Ubuntu 26.04<br>openSUSE Tumbleweed |
+| **CIビルド・パッケージ頒布対象** (動作確認・サポート対象外) | 上記に加えて、<br>Debian 13 (Trixie) AArch64<br>Ubuntu 26.04<br>openSUSE Tumbleweed |
 
 - パッケージの頒布は、その環境での動作保証を意味しません。  
 - その他のディストリビューションでの動作は保証しません。  
@@ -45,18 +47,22 @@ Fcitx 5 フロントエンド (`fcitx5-hazkey`) に加え、実験的な IBus �
 | Zenzai設定の拡充 | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、リッチ候補の候補一覧 / サジェスト個別切替、GUIからのZenzaiモデル管理 (ダウンロード・有効化・削除) |
 | プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
 | サーバ管理の安定化 | クライアント更新時のhazkey-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
-| マルチ GPU 環境の SIGILL 回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を3層の自動回避で解消 (下記トラブルシューティング参照) |
+| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を3層の自動回避で解消 (下記トラブルシューティング参照) |
 
 <br>
 
-## クイックスタート (GitHub Releases からインストール)
+## クイックスタート (GitHub Releasesからインストール)
 
 サポート対象環境では、ソースビルド不要でGitHub Releasesのパッケージをインストールできます。  
 
-1. [Releases ページ](https://github.com/presire/hazkey-community/releases) から最新版 (`v0.2.20-community` 以降) を開きます。  
+1. [Releases ページ](https://github.com/presire/hazkey-community/releases) から最新版 (**v0.2.20-community**以降) を開きます。  
 2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
    パッケージは、Debian 13 / Ubuntu 26.04向けに `.deb`、Fedora 44 / openSUSE Leap 16 / Tumbleweed 向けに `.rpm` が頒布されます。  
-   フロントエンドごとにパッケージが分かれています (`fcitx5-hazkey`: Fcitx 5用、`ibus-hazkey`: IBus用)。使うフレームワークのパッケージを選んでください (両方入れてもかまいませんが、同時使用は非サポートです。下記「IBus フロントエンドの既知の制約」参照)。  
+   
+   フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey: Fcitx 5用、ibus-hazkey: IBus用)  
+   
+   使用するフレームワークのパッケージを選んでください。  
+   (両方入れてもかまいませんが、同時使用は非サポートです。下記の「IBus フロントエンドの既知の制約」参照)  
 3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
    
    ```sh
@@ -70,7 +76,8 @@ Fcitx 5 フロントエンド (`fcitx5-hazkey`) に加え、実験的な IBus �
    sudo apt install ./fcitx5-hazkey_*_amd64.deb ./ibus-hazkey_*_amd64.deb
    ```
    
-4. 使っているフレームワークを再起動します。(Fcitx 5 はログアウト / ログイン、または下記「初回の有効化」の手順。IBus は `ibus restart` など)  
+4. 使用しているフレームワークを再起動します。  
+   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` など)  
 
 > インストール後、設定UI (hazkey-settings) と サーバ (hazkey-server) は同じバージョンで揃います。  
 > クライアントとサーバのバージョンが不一致になった場合は、hazkey-server が自動的に再起動されます。  
@@ -127,14 +134,14 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
 
 ### IBus に登録 (実験的)
 
-1. `ibus-daemon` を再起動します。  
+1. ibus-daemonを再起動します。  
    
    ```sh
    ibus restart
    # またはログアウト / ログイン
    ```
    
-2. `ibus list-engine` に `hazkey` が表示されることを確認します。  
+2. ibus list-engineに **hazkey** が表示されることを確認します。  
    
    ```sh
    ibus list-engine | grep hazkey
@@ -150,11 +157,13 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
 
 <br>
 
-## IBus フロントエンド (実験的)
+## IBusフロントエンド (実験的)
 
-Fcitx 5 と同じ `hazkey-server` を利用する実験的な IBus フロントエンド (`ibus-hazkey`) です。  
-GitHub Releases の `ibus-hazkey` パッケージ (`.deb` / `.rpm`) で導入するのが手軽です (上記「クイックスタート」参照)。  
-ソースからビルドする場合は、CMake で `-DENABLE_IBUS=ON` を指定します (既定は `OFF`、`pkg-config ibus-1.0` が必要)。  
+Fcitx 5と同じhazkey-serverを利用する実験的なIBusフロントエンド (`ibus-hazkey`) です。  
+GitHub Releasesのibus-hazkeyパッケージ (`.deb` / `.rpm`) で導入するのが手軽です。(上記「クイックスタート」参照)  
+
+ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションを指定します。  
+(既定は**OFF**、**pkg-config ibus-1.0**が必要)  
 
 ```sh
 cmake -G Ninja \
@@ -166,18 +175,35 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後は `ibus-daemon` を再起動し、`ibus list-engine` に `hazkey` が表示されることを確認してください。  
-エンジンは `${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey/ibus-engine-hazkey`、component XML は `${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml` に配置されます。  
+インストール後はibus-daemonを再起動し、ibus list-engineに**hazkey**が表示されることを確認してください。  
+エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey/ibus-engine-hazkey`、  
+component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml` に配置されます。  
 
-トランスポートは Fcitx 5 版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です (`hazkey-frontend-common/candidate_refresh_coalescer.h — hazkey::frontend::CandidateRefreshCoalescer`、30ms の leading-edge debounce)。IBus 版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマーのみ GLib (`g_timeout_add`) のアダプタで駆動します。
+トランスポートはFcitx 5版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です。  
+(`hazkey-frontend-common/candidate_refresh_coalescer.h - hazkey::frontend::CandidateRefreshCoalescer`、30[ms]の立ち上がりエッジ型デバウンス)  
 
-### IBus フロントエンドの既知の制約
+IBus版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマのみGLib (`g_timeout_add`) のアダプタで駆動します。  
 
-- **Fcitx 5 と IBus の同時有効化による入力は非サポートです。**  
-  `hazkey-server` は単一クライアント前提 (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.handleNewConnection()` が新規接続時に既存クライアントを close する) のため、両フロントエンドを同時に有効化すると接続を奪い合います。同居インストールは可能ですが、入力に使うのはどちらか一方にしてください。  
-- **Fcitx 5 版の主要な入力操作は IBus 版にも移植済みです。**  
-  ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、`F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、`Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (Fcitx の AuxUp/AuxDown) を含みます。  
-- 同期 RPC が `process_key_event` をブロックします (read timeout 最大 10 秒)。現状は許容しています。  
+> 立ち上がりエッジ型デバウンス (リーディングエッジ方式のデバウンス) とは  
+> デバウンスとは、短時間に連続して発生するイベントを1回にまとめる (間引く) 手法のことです。  
+> 元々は、チャタリングする物理スイッチの信号処理用語で、ソフトウェアではリサイズ・スクロール・キー入力時の連続リフレッシュ抑制などに使われます。  
+>  
+> 連続キー入力中に候補表示の更新要求が連発しても、先頭の1件はすぐ反映し、30[ms]以内の後続要求は捨てることにより、  
+> 入力応答性を落とさず描画負荷だけを抑えている。  
+
+### IBusフロントエンドの既知の制約
+
+- **Fcitx 5 と IBusの同時有効化による入力は非サポートです。**  
+  hazkey-serverは、単一クライアント前提 (`hazkey-server/Sources/hazkey-server/socketManager.swift - SocketManager.handleNewConnection()` が新規接続時に既存クライアントをクローズする) のため、  
+  両フロントエンドを同時に有効化すると接続を奪い合います。  
+  
+  同居インストールは可能ですが、入力に使うのはどちらか一方にしてください。  
+- **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
+  ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
+  `F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、  
+  `Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp/AuxDown) を含みます。  
+- 同期RPCが、process_key_eventをブロックします。(read timeout 最大10秒)  
+  現状は許容しています。  
 
 <br>
 
