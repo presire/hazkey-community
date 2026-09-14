@@ -1,0 +1,305 @@
+// Tests for the IBus frontend's candidate index arithmetic.
+//
+// Mirrors fcitx5-hazkey/src/hazkey_candidate_selection_test.cpp for the IBus
+// side: the IBusLookupTable carries candidates with a page-local selection
+// index (number keys and candidate clicks), while the server's prefix-complete
+// RPC takes a global index. HazkeyState::pageLocalToGlobalIndex() is the single
+// pure mapping used by both selectDigit() and candidateClicked().
+//
+// No IBus daemon, engine instance, or hazkey-server is needed: only the pure
+// static mapper is exercised, so this test cannot disturb a live session.
+#include <cassert>
+#include <iostream>
+
+#include "hazkey_state.h"
+#include "live_convert_mode.h"
+
+namespace {
+
+using hazkey::ibus::HazkeyState;
+
+void testMultiPageResolution() {
+    // Given: 13 candidates displayed 5 at a time (pages 5 / 5 / 3).
+    // When/Then: page 0 resolves locals 0..4 to globals 0..4, rejects local 5.
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 0, 0) == 0);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 0, 4) == 4);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 0, 5) == -1);
+
+    // When/Then: page 1 (cursor 7) resolves locals 0..4 to globals 5..9.
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 7, 0) == 5);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 7, 2) == 7);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 7, 4) == 9);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 7, 5) == -1);
+
+    // When/Then: the final partial page (cursor 12 -> pageStart 10, 3
+    // candidates) resolves locals 0..2 to globals 10..12; local 3 is a number
+    // key for an absent slot and must NOT fall through to a later page.
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 12, 0) == 10);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 12, 2) == 12);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 12, 3) == -1);
+
+    // Then: an out-of-range global cursor is rejected rather than wrapped.
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 13, 13, 0) == -1);
+
+    std::cout << "[PASS] multi-page page-local -> global resolution\n";
+}
+
+void testServerPageShapes() {
+    // Given: non-suggest conversion (page_size 9) with 10 candidates.
+    // Then: key "0" (local 9) must not select the 10th candidate on page 0.
+    assert(HazkeyState::pageLocalToGlobalIndex(9, 10, 0, 8) == 8);
+    assert(HazkeyState::pageLocalToGlobalIndex(9, 10, 0, 9) == -1);
+
+    // Then: page 1 of that list is a single candidate (global 9).
+    assert(HazkeyState::pageLocalToGlobalIndex(9, 10, 9, 0) == 9);
+    assert(HazkeyState::pageLocalToGlobalIndex(9, 10, 9, 1) == -1);
+
+    // Given: a suggest list (page_size 3) that exactly fills one page.
+    assert(HazkeyState::pageLocalToGlobalIndex(3, 3, 0, 2) == 2);
+    assert(HazkeyState::pageLocalToGlobalIndex(3, 3, 0, 3) == -1);
+
+    std::cout << "[PASS] server page shapes (suggest/non-suggest)\n";
+}
+
+void testInvalidInput() {
+    assert(HazkeyState::pageLocalToGlobalIndex(0, 5, 0, 0) == -1);
+    assert(HazkeyState::pageLocalToGlobalIndex(-1, 5, 0, 0) == -1);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 0, 0, 0) == -1);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, -1, 0, 0) == -1);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 5, -1, 0) == -1);
+    assert(HazkeyState::pageLocalToGlobalIndex(5, 5, 0, -1) == -1);
+
+    std::cout << "[PASS] invalid input rejected\n";
+}
+
+void testLiveConvertModeTransition() {
+    // Port of fcitx5-hazkey's live_convert_mode policy (Phase C): the hotkey
+    // only ever switches ON<->DISABLED and restores whichever ON mode was last
+    // active.
+    using M = hazkey::config::Profile_AutoConvertMode;
+    using hazkey::ibus::computeNextAutoConvertMode;
+
+    // Toggle OFF: remembers the current ON mode and returns DISABLED.
+    M remembered = M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
+    assert(computeNextAutoConvertMode(
+               M::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS,
+               remembered) == M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED);
+    assert(remembered ==
+           M::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS);
+
+    // Toggle ON: restores the remembered mode without changing it.
+    assert(computeNextAutoConvertMode(
+               M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED,
+               remembered) ==
+           M::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS);
+    assert(remembered ==
+           M::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS);
+
+    // ALWAYS is restored independently of FOR_MULTIPLE_CHARS.
+    M rememberedAlways = M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
+    assert(computeNextAutoConvertMode(
+               M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED,
+               rememberedAlways) ==
+           M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS);
+
+    std::cout << "[PASS] live-convert mode toggle transition\n";
+}
+
+void testHotkeyParsingAndMatching() {
+    // fcitx5-style hotkey strings (written by hazkey-settings) parse into an
+    // IBus keyval + exact modifier mask, with case-insensitive letter matching
+    // and Mod4 folded into Super (Phase C loadServerProfile()).
+    const auto live = HazkeyState::parseHotkey("Control+Shift+L", "F5");
+    assert(live.keyval == IBUS_KEY_l);
+    assert(live.modifiers == (IBUS_CONTROL_MASK | IBUS_SHIFT_MASK));
+    assert(HazkeyState::hotkeyMatches(
+        IBUS_KEY_l, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK, live));
+    // Uppercase keyvals (Shift+letter) match too.
+    assert(HazkeyState::hotkeyMatches(
+        IBUS_KEY_L, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK, live));
+    // Exact modifier match: missing/extra modifiers do not match.
+    assert(!HazkeyState::hotkeyMatches(IBUS_KEY_l, IBUS_CONTROL_MASK, live));
+    assert(!HazkeyState::hotkeyMatches(
+        IBUS_KEY_l, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK | IBUS_MOD1_MASK,
+        live));
+    // Lock keys are ignored.
+    assert(HazkeyState::hotkeyMatches(
+        IBUS_KEY_l, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK | IBUS_LOCK_MASK,
+        live));
+
+    // Empty profile value falls back to the default string.
+    const auto accept = HazkeyState::parseHotkey("", "F5");
+    assert(accept.keyval == IBUS_KEY_F5);
+    assert(accept.modifiers == 0);
+    assert(HazkeyState::hotkeyMatches(IBUS_KEY_F5, 0, accept));
+    assert(!HazkeyState::hotkeyMatches(IBUS_KEY_F4, 0, accept));
+
+    // Control+Alt+Z (Zenzai default).
+    const auto zenzai = HazkeyState::parseHotkey("Control+Alt+Z", "F5");
+    assert(zenzai.modifiers == (IBUS_CONTROL_MASK | IBUS_MOD1_MASK));
+    assert(HazkeyState::hotkeyMatches(
+        IBUS_KEY_z, IBUS_CONTROL_MASK | IBUS_MOD1_MASK, zenzai));
+
+    // Super is matched whether the client reports SUPER or Mod4.
+    const auto super = HazkeyState::parseHotkey("Super+L", "F5");
+    assert(super.modifiers == IBUS_SUPER_MASK);
+    assert(HazkeyState::hotkeyMatches(IBUS_KEY_l, IBUS_MOD4_MASK, super));
+    assert(HazkeyState::hotkeyMatches(IBUS_KEY_l, IBUS_SUPER_MASK, super));
+
+    // Modifier tokens are matched case-insensitively ("Ctrl" == "Control").
+    const auto lower = HazkeyState::parseHotkey("ctrl+shift+l", "F5");
+    assert(lower.keyval == IBUS_KEY_l);
+    assert(lower.modifiers == (IBUS_CONTROL_MASK | IBUS_SHIFT_MASK));
+
+    // Qt PortableText spellings that differ from the IBus keysym names.
+    assert(HazkeyState::parseHotkey("Space", "F5").keyval == IBUS_KEY_space);
+    assert(HazkeyState::parseHotkey("PgUp", "F5").keyval == IBUS_KEY_Page_Up);
+    assert(HazkeyState::parseHotkey("Esc", "F5").keyval == IBUS_KEY_Escape);
+
+    // Meta keeps its own mask (distinct from Super).
+    const auto meta = HazkeyState::parseHotkey("Meta+L", "F5");
+    assert(meta.modifiers == IBUS_META_MASK);
+    assert(HazkeyState::hotkeyMatches(IBUS_KEY_l, IBUS_META_MASK, meta));
+
+    // Fail closed: an unknown token, more than one key token, or a missing
+    // key token produces a spec that never matches.
+    assert(HazkeyState::parseHotkey("Bogus+L", "F5").keyval == 0);
+    assert(HazkeyState::parseHotkey("L+M", "F5").keyval == 0);
+    assert(HazkeyState::parseHotkey("Control+Shift", "F5").keyval == 0);
+
+    // An unparsable/empty spec never matches.
+    const auto unset = HazkeyState::parseHotkey("", "");
+    assert(unset.keyval == 0);
+    assert(!HazkeyState::hotkeyMatches(IBUS_KEY_l, 0, unset));
+
+    std::cout << "[PASS] hotkey parse/match\n";
+}
+
+void testAltDigitKeyPredicate() {
+    // Alt+digit candidate selection (fcitx isAltDigitKeyEvent()): exactly Alt
+    // plus 1..9. Alt+0 and any other modifier combination are not selections.
+    for (guint k = IBUS_KEY_1; k <= IBUS_KEY_9; ++k) {
+        assert(HazkeyState::isAltDigitKey(k, IBUS_MOD1_MASK));
+    }
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_0, IBUS_MOD1_MASK));
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1,
+                                       IBUS_MOD1_MASK | IBUS_SHIFT_MASK));
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1,
+                                       IBUS_MOD1_MASK | IBUS_CONTROL_MASK));
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1, 0));
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_a, IBUS_MOD1_MASK));
+    // Lock keys are ignored like every other hotkey predicate.
+    assert(HazkeyState::isAltDigitKey(IBUS_KEY_1,
+                                      IBUS_MOD1_MASK | IBUS_LOCK_MASK));
+    // Mod4 folds to Super, so Mod4+digit is not Alt.
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1, IBUS_MOD4_MASK));
+    // AltGr-like Mod5 (ISO_Level3_Shift) / Mod3 are not part of "exactly Alt".
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1,
+                                       IBUS_MOD1_MASK | IBUS_MOD5_MASK));
+    assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1,
+                                       IBUS_MOD1_MASK | IBUS_MOD3_MASK));
+
+    std::cout << "[PASS] Alt-digit predicate\n";
+}
+
+void testDirectConversionShortcut() {
+    // Ctrl+U/I/O/P/T direct conversion (fcitx ctrlShortcutHandler()), matched
+    // case-insensitively because clients report Ctrl+letter as the unshifted
+    // lowercase keyval.
+    const guint shortcuts[] = {IBUS_KEY_u, IBUS_KEY_i, IBUS_KEY_o, IBUS_KEY_p,
+                               IBUS_KEY_t};
+    for (guint k : shortcuts) {
+        assert(HazkeyState::isDirectConversionShortcut(k, IBUS_CONTROL_MASK));
+        assert(HazkeyState::isDirectConversionShortcut(
+            k - 'a' + 'A', IBUS_CONTROL_MASK));
+    }
+    // Exact Ctrl only: Ctrl+Shift/Alt and no modifier are not shortcuts.
+    assert(!HazkeyState::isDirectConversionShortcut(
+        IBUS_KEY_u, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK));
+    assert(!HazkeyState::isDirectConversionShortcut(
+        IBUS_KEY_u, IBUS_CONTROL_MASK | IBUS_MOD1_MASK));
+    assert(!HazkeyState::isDirectConversionShortcut(IBUS_KEY_u, 0));
+    assert(!HazkeyState::isDirectConversionShortcut(IBUS_KEY_u, IBUS_MOD1_MASK));
+    // A non-shortcut letter stays with the application.
+    assert(!HazkeyState::isDirectConversionShortcut(IBUS_KEY_x,
+                                                    IBUS_CONTROL_MASK));
+    // Lock keys are ignored.
+    assert(HazkeyState::isDirectConversionShortcut(
+        IBUS_KEY_u, IBUS_CONTROL_MASK | IBUS_LOCK_MASK));
+    // AltGr-like Mod5 (ISO_Level3_Shift) / Mod3 are not part of "exactly Ctrl".
+    assert(!HazkeyState::isDirectConversionShortcut(
+        IBUS_KEY_u, IBUS_CONTROL_MASK | IBUS_MOD5_MASK));
+    assert(!HazkeyState::isDirectConversionShortcut(
+        IBUS_KEY_u, IBUS_CONTROL_MASK | IBUS_MOD3_MASK));
+
+    std::cout << "[PASS] Ctrl direct-conversion shortcut predicate\n";
+}
+
+void testAuxiliaryTextJoin() {
+    // fcitx has separate AuxUp/AuxDown panels; IBus has one aux slot, so the
+    // two are joined by HazkeyState::joinAuxiliaryText(). The existing focused
+    // display "[n/total] Deletable" must stay byte-identical.
+    assert(HazkeyState::joinAuxiliaryText("[1/3]", "Deletable") ==
+           "[1/3] Deletable");
+
+    // Composing (unfocused): raw hiragana AuxUp + the Tab hint.
+    assert(HazkeyState::joinAuxiliaryText("あい", "[Press Tab to Select]") ==
+           "あい [Press Tab to Select]");
+
+    // An EMPTY raw-hiragana AuxUp (auxTextMode disabled, or cursor at the end
+    // of the composition) must not leave a leading space before AuxDown.
+    assert(HazkeyState::joinAuxiliaryText("", "[Press Tab to Select]") ==
+           "[Press Tab to Select]");
+    assert(HazkeyState::joinAuxiliaryText("", "[Direct Input]") ==
+           "[Direct Input]");
+
+    // Only AuxUp present, or neither present.
+    assert(HazkeyState::joinAuxiliaryText("あい", "") == "あい");
+    assert(HazkeyState::joinAuxiliaryText("", "") == "");
+
+    std::cout << "[PASS] auxiliary text join (no leading space when empty)\n";
+}
+
+void testLoneShiftModifierState() {
+    // Drives whether a Shift release sends RELEASE (toggles Direct Input) or
+    // CANCEL. A lone Shift must be detected even when the toolkit reports the
+    // Shift KeyPress with the state sampled BEFORE Shift is applied (state 0).
+    using hazkey::ibus::isLoneShiftModifierState;
+
+    // Lone Shift, with or without the SHIFT bit present.
+    assert(isLoneShiftModifierState(IBUS_SHIFT_MASK));
+    assert(isLoneShiftModifierState(0));
+    // Lock keys are ignored.
+    assert(isLoneShiftModifierState(IBUS_SHIFT_MASK | IBUS_LOCK_MASK));
+
+    // Any other modifier (present before Shift) means it is not lone.
+    assert(!isLoneShiftModifierState(IBUS_CONTROL_MASK));
+    assert(!isLoneShiftModifierState(IBUS_CONTROL_MASK | IBUS_SHIFT_MASK));
+    assert(!isLoneShiftModifierState(IBUS_MOD1_MASK));
+    assert(!isLoneShiftModifierState(IBUS_MOD1_MASK | IBUS_SHIFT_MASK));
+    assert(!isLoneShiftModifierState(IBUS_SUPER_MASK));
+    assert(!isLoneShiftModifierState(IBUS_META_MASK));
+    // Mod4 folds into Super.
+    assert(!isLoneShiftModifierState(IBUS_MOD4_MASK));
+    // AltGr-like Mod5 / Mod3 disqualify a lone Shift.
+    assert(!isLoneShiftModifierState(IBUS_SHIFT_MASK | IBUS_MOD5_MASK));
+    assert(!isLoneShiftModifierState(IBUS_SHIFT_MASK | IBUS_MOD3_MASK));
+
+    std::cout << "[PASS] lone-Shift modifier state predicate\n";
+}
+
+}  // namespace
+
+int main() {
+    testMultiPageResolution();
+    testServerPageShapes();
+    testInvalidInput();
+    testLiveConvertModeTransition();
+    testHotkeyParsingAndMatching();
+    testAltDigitKeyPredicate();
+    testDirectConversionShortcut();
+    testAuxiliaryTextJoin();
+    testLoneShiftModifierState();
+    std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
+    return 0;
+}

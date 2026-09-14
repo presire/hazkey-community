@@ -89,7 +89,11 @@ class HazkeyServerState {
     var composingText: ComposingTextBox = ComposingTextBox()
 
     var isShiftPressedAlone = false
+    var shiftPressedAt: ContinuousClock.Instant?
     var isSubInputMode = false
+    /// Maximum hold duration for a Shift press-release to count as a tap.
+    /// A longer hold is treated as a long press and must not toggle sub-input mode.
+    private static let shiftTapMaxDuration: Duration = .milliseconds(500)
     var learningDataNeedsCommit = false
     var zenzaiLeftContext = ""
     private var userDictInjected = false
@@ -185,6 +189,7 @@ class HazkeyServerState {
         zenzaiLeftContext = ""
         isSubInputMode = false
         isShiftPressedAlone = false
+        shiftPressedAt = nil
         // New-composition boundary: drop the converter session so an identical
         // input does not reuse the prior composition's lattice and hide newly
         // learned candidates. Incremental conversion within a composition keeps
@@ -207,6 +212,7 @@ class HazkeyServerState {
             || (isShiftPressedAlone
                 && serverConfig.getSubModeEntryPointChars().contains(inputChar))
         isShiftPressedAlone = false
+        shiftPressedAt = nil
         if isSubInputMode {
             composingText.value.insertAtCursorPosition(String(inputChar), inputStyle: .direct)
         } else {
@@ -236,11 +242,24 @@ class HazkeyServerState {
             switch event {
             case .press:
                 isShiftPressedAlone = true
+                shiftPressedAt = ContinuousClock.now
             case .release:
                 if isShiftPressedAlone {
-                    isSubInputMode.toggle()
+                    if let start = shiftPressedAt {
+                        if ContinuousClock.now - start < Self.shiftTapMaxDuration {
+                            isSubInputMode.toggle()
+                        }
+                    } else {
+                        isSubInputMode.toggle()
+                    }
                     isShiftPressedAlone = false
+                    shiftPressedAt = nil
                 }
+            case .cancel:
+                // Shift was released while combined with another key (modifier or
+                // character); never toggle the sub-input (direct) mode.
+                isShiftPressedAlone = false
+                shiftPressedAt = nil
             case .unspecified, .UNRECOGNIZED(_):
                 NSLog("Unexpected event type")
                 return Hazkey_ResponseEnvelope.with {
@@ -384,6 +403,7 @@ class HazkeyServerState {
 
     func adjustClauseBoundary(offset: Int) -> Hazkey_ResponseEnvelope {
         isShiftPressedAlone = false
+        shiftPressedAt = nil
         if composingText.value.isEmpty {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .success
@@ -1200,6 +1220,7 @@ class HazkeyServerState {
         self.currentCandidateList = nil
         self.isSubInputMode = false
         self.isShiftPressedAlone = false
+        self.shiftPressedAt = nil
         self.zenzaiLeftContext = ""
 
         NSLog("State configuration reinitialized successfully")

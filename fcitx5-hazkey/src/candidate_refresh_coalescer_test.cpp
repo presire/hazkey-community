@@ -3,7 +3,7 @@
 
 #include "candidate_refresh_coalescer.h"
 
-using fcitx::CandidateRefreshCoalescer;
+using hazkey::frontend::CandidateRefreshCoalescer;
 
 int main() {
     // (a) the very first request runs immediately (leading edge): nothing is

@@ -1,0 +1,33 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: ibus-hazkey\n"
+"Report-Msgid-Bugs-To: https://github.com/presire/hazkey-community/issues\n"
+"POT-Creation-Date: 2026-09-14 00:00+0900\n"
+"PO-Revision-Date: 2026-09-14 00:00+0900\n"
+"Last-Translator: hazkey-community\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Hazkey"
+msgstr "Hazkey"
+
+msgid "Hazkey AI Japanese input method (hazkey-community)"
+msgstr "Hazkey AI 日本語入力メソッド (hazkey-community)"
+
+msgid "[Press Tab to Select]"
+msgstr "[Tabキーで選択]"
+
+msgid "[Direct Input]"
+msgstr "[直接入力]"
+
+msgid "Deletable"
+msgstr "削除可"
+
+msgid "Zenzai enabled"
+msgstr "Zenzaiを有効化しました"
+
+msgid "Zenzai disabled"
+msgstr "Zenzaiを無効化しました"

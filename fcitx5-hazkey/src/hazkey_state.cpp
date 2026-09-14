@@ -38,10 +38,20 @@ bool HazkeyState::isInputableEvent(const KeyEvent& event) {
     return false;
 }
 
-void HazkeyState::commitPreedit() { preedit_.commitPreedit(); }
+void HazkeyState::commitPreedit() {
+    // Resolve a deferred display refresh first: focus-out/deactivate commits
+    // the panel preedit, which would otherwise be stale.
+    flushPendingRefresh();
+    preedit_.commitPreedit();
+}
 
 void HazkeyState::keyEvent(KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState keyEvent";
+
+    if (!event.isRelease() && event.key().sym() != FcitxKey_Shift_L &&
+        event.key().sym() != FcitxKey_Shift_R) {
+        shiftPressedAlone_ = false;
+    }
 
     if (!event.isRelease()) {
         if (!serverProfileLoaded_) {
@@ -65,7 +75,21 @@ void HazkeyState::keyEvent(KeyEvent& event) {
 
     if (event.key().sym() == FcitxKey_Shift_L ||
         event.key().sym() == FcitxKey_Shift_R) {
-        engine_->server().shiftKeyEvent(event.isRelease());
+        if (!event.isRelease()) {
+            // "Lone Shift" = no modifier other than Shift is active. Do NOT
+            // require the Shift bit itself: a modifier key's own KeyPress may
+            // be reported with the state sampled before it is applied, so the
+            // held set can legitimately be empty for a lone Shift.
+            const KeyStates held =
+                event.key().states() &
+                (KeyStates(KeyState::SimpleMask) | KeyState::Mod5);
+            shiftPressedAlone_ =
+                (held == KeyState::Shift) || (held == KeyState::NoState);
+            engine_->server().shiftKeyEvent(false);
+        } else {
+            engine_->server().shiftKeyEvent(true, shiftPressedAlone_);
+            shiftPressedAlone_ = false;
+        }
         if (composingText == "") {
             setAuxDownText(std::nullopt);
             return;
@@ -157,6 +181,10 @@ void HazkeyState::preeditKeyEvent(
 
     switch (keysym) {
         case FcitxKey_Return:
+            // Resolve a deferred display refresh so the committed text is the
+            // latest composition, not the stale last-synchronously-refreshed
+            // preedit.
+            flushPendingRefresh();
             preedit_.commitPreedit();
             if (livePreeditIndex_ >= 0) {
                 engine_->server().completePrefix(livePreeditIndex_);
@@ -204,8 +232,22 @@ void HazkeyState::preeditKeyEvent(
             if (PredictCandidateList == nullptr) {
                 showNonPredictCandidateList();
             } else {
-                PredictCandidateList->focus();
-                updateCandidateCursor(PredictCandidateList);
+                // Resolve a deferred display refresh first: the list about to
+                // be focused must reflect every committed keystroke, or a
+                // following selection would commit a stale candidate and drop
+                // the trailing input.
+                flushPendingRefresh();
+                auto freshList =
+                    std::dynamic_pointer_cast<HazkeyCandidateList>(
+                        ic_->inputPanel().candidateList());
+                if (freshList != nullptr) {
+                    freshList->focus();
+                    updateCandidateCursor(freshList);
+                } else {
+                    // The refresh cleared the suggest list; fall back to a
+                    // non-predict conversion instead of swallowing the key.
+                    showNonPredictCandidateList();
+                }
             }
             break;
         case FcitxKey_Left:
@@ -230,14 +272,23 @@ void HazkeyState::preeditKeyEvent(
                 ctrlShortcutHandler(event);
             } else if (isAltDigitKeyEvent(event)) {
                 if (PredictCandidateList != nullptr) {
-                    auto localIndex = keysym - FcitxKey_1;
-                    if (localIndex < PredictCandidateList->pageSize()) {
-                        PredictCandidateList->setCursorIndex(localIndex);
-                        candidateCompleteHandler(PredictCandidateList);
+                    // Resolve a deferred refresh so Alt+digit selects from the
+                    // current list, not a stale one.
+                    flushPendingRefresh();
+                    auto freshList =
+                        std::dynamic_pointer_cast<HazkeyCandidateList>(
+                            ic_->inputPanel().candidateList());
+                    if (freshList != nullptr) {
+                        auto localIndex = keysym - FcitxKey_1;
+                        if (localIndex < freshList->pageSize()) {
+                            freshList->setCursorIndex(localIndex);
+                            candidateCompleteHandler(freshList);
+                        }
                     }
                 }
             } else if (isInputableEvent(event)) {
                 if (isDirectConversionMode_) {
+                    flushPendingRefresh();
                     preedit_.commitPreedit();
                     reset();
                 }
@@ -356,6 +407,9 @@ void HazkeyState::candidateKeyEvent(
                     candidateCompleteHandler(candidateList);
                 }
             } else if (isInputableEvent(event)) {
+                // Resolve a deferred refresh before capturing/committing, or
+                // the committed text and surrounding-text update would lag.
+                flushPendingRefresh();
                 auto committedText = preedit_.text();
                 preedit_.commitPreedit();
                 reset();
@@ -555,6 +609,9 @@ void HazkeyState::functionKeyHandler(KeyEvent& event) {
 }
 
 void HazkeyState::directCharactorConversion(ConversionMode mode) {
+    // Resolve a deferred refresh: the conversion below reads preedit_.text(),
+    // which would otherwise be stale.
+    flushPendingRefresh();
     std::string converted;
     // TODO: use protobuf type for all program
     switch (mode) {
@@ -610,6 +667,20 @@ bool HazkeyState::showCandidateList(
         std::make_unique<HazkeyCandidateList>(response.candidates());
 
     candidateResult->setSelectionHandler([this](int globalIndex) {
+        // A click on a list rendered before a still-pending display refresh
+        // would commit a stale candidate and drop the trailing input. Resolve
+        // the pending refresh and drop this stale click: the refreshed list is
+        // then shown for the user to click again.
+        if (coalescer_.hasPending()) {
+            // This handler runs outside HazkeyEngine::keyEvent(), so the
+            // refreshed preedit/input panel must be published explicitly --
+            // otherwise the screen keeps showing the stale list and a second
+            // click could map to the wrong candidate.
+            flushPendingRefresh();
+            ic_->updatePreedit();
+            ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
+            return;
+        }
         auto candidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
             ic_->inputPanel().candidateList());
         if (candidateList != nullptr &&
@@ -658,6 +729,12 @@ bool HazkeyState::showCandidateList(
 }
 
 void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
+    // A pending deferred suggest refresh must not fire after this and overwrite
+    // the non-predict list (exempted while the coalescer executes its own
+    // pending refresh, which may legitimately be a non-predict one).
+    if (!executingPendingRefresh_) {
+        cancelPendingRefresh();
+    }
     if (!preserveTarget) {
         engine_->server().moveCursor(1024);
         isClauseBoundaryAdjusting_ = false;
@@ -684,6 +761,9 @@ void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
 void HazkeyState::showNonPredictCandidateList(
     const hazkey::commands::CandidatesResult& response,
     const std::string& hiragana) {
+    if (!executingPendingRefresh_) {
+        cancelPendingRefresh();
+    }
     currentListIsSuggest_ = false;
     if (!showCandidateList(response, hiragana)) {
         return;
@@ -766,7 +846,7 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     // explicit push is needed (or wanted: it would be a redundant second
     // update of identical content).
     if (coalescer_.shouldRunImmediately(nowUsec,
-                                        kCandidateRefreshCoalesceUsec)) {
+                                        hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
         // An armed timer must not survive an immediate run: onRun() consumes
         // the pending slot, so the old callback would be a stale duplicate.
         refreshTimer_.reset();
@@ -775,14 +855,14 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
         return;
     }
 
-    if (coalescer_.shouldSchedule(nowUsec, kCandidateRefreshCoalesceUsec)) {
+    if (coalescer_.shouldSchedule(nowUsec, hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
         // Assigning to refreshTimer_ destroys any previously-owned
         // EventSourceTime first (std::unique_ptr::operator= semantics),
         // which cancels the old pending callback before the new one is
         // armed -- this is what makes "latest-wins" actually true at the
         // real-timer level, not just in the policy's bookkeeping.
         refreshTimer_ = engine_->instance()->eventLoop().addTimeEvent(
-            CLOCK_MONOTONIC, nowUsec + kCandidateRefreshCoalesceUsec, 0,
+            CLOCK_MONOTONIC, nowUsec + hazkey::frontend::kCandidateRefreshCoalesceUsec, 0,
             [this](EventSourceTime*, uint64_t) {
                 firePendingCandidateRefresh();
                 return true;
@@ -812,11 +892,13 @@ void HazkeyState::firePendingCandidateRefresh() {
 // paths so the leading-edge (synchronous) and trailing (timer) runs cannot
 // drift apart; the UI push differs between them and stays at the call site.
 void HazkeyState::runPendingCandidateRefresh() {
+    executingPendingRefresh_ = true;
     if (pendingRefreshIsSuggest_) {
         showPreeditCandidateList();
     } else {
         showNonPredictCandidateList(/*preserveTarget=*/true);
     }
+    executingPendingRefresh_ = false;
 }
 
 void HazkeyState::cancelPendingRefresh() {
@@ -835,6 +917,25 @@ void HazkeyState::cancelPendingRefresh() {
     // leading-edge predicate would read it as "a refresh just ran" and defer
     // the first keystroke of the new composition by a full quiet period.
     coalescer_.resetPolicy();
+}
+
+// Runs a pending coalesced refresh immediately instead of discarding it, so a
+// caller that is about to CONSUME the client-side preedit (Return commit,
+// focus-out commit, direct conversion) acts on the latest server state rather
+// than the stale last-synchronously-refreshed value. Without this, a keystroke
+// deferred within the coalesce window is dropped from the committed text
+// (e.g. a i u e o followed by an immediate Return previously committed only
+// the leading edge's first character).
+void HazkeyState::flushPendingRefresh() {
+    if (!coalescer_.hasPending()) {
+        return;
+    }
+    // Drop the armed timer first so the policy's onRun() below owns the slot
+    // and no stale callback can fire afterwards.
+    refreshTimer_.reset();
+    const uint64_t nowUsec = now(CLOCK_MONOTONIC);
+    coalescer_.onRun(nowUsec);
+    runPendingCandidateRefresh();
 }
 
 /// Candidate Cursor
@@ -928,8 +1029,11 @@ void HazkeyState::setAuxDownText(std::optional<std::string> optText) {
 }
 
 void HazkeyState::setHiraganaAUX() {
-    ic_->inputPanel().setAuxUp(
-        engine_->server().getComposingHiraganaWithCursor());
+    // The shared transport returns a neutral ComposingTextWithCursor; the
+    // fcitx adapter applies the cursor underline (was done inside the
+    // connector before the extraction).
+    ic_->inputPanel().setAuxUp(composingTextWithCursorToFcitxText(
+        engine_->server().getComposingHiraganaWithCursor()));
 }
 
 /// Reset

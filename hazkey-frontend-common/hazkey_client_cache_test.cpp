@@ -29,8 +29,6 @@
 #include <thread>
 #include <vector>
 
-#include <fcitx/text.h>
-
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
@@ -135,11 +133,18 @@ class FakeServer {
     void resetCounts() {
         std::lock_guard<std::mutex> lock(mutex_);
         counts_.clear();
+        modifierEvents_.clear();
     }
 
     std::map<std::string, int> counts() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return counts_;
+    }
+
+    std::vector<hazkey::commands::ModifierEvent_EventType> modifierEvents()
+        const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return modifierEvents_;
     }
 
     // Close the active client connection so the connector's next transact
@@ -186,6 +191,10 @@ class FakeServer {
                 std::lock_guard<std::mutex> lock(mutex_);
                 const std::string type = requestType(request);
                 ++counts_[type];  // count arrivals regardless of injected status
+                if (request.has_modifier_event()) {
+                    modifierEvents_.push_back(
+                        request.modifier_event().event_type());
+                }
                 if (type == "get_candidates" && failGetCandidates_ > 0) {
                     failGetCandidates_--;
                     response.set_status(hazkey::FAILED);
@@ -254,6 +263,7 @@ class FakeServer {
     std::thread thread_;
     mutable std::mutex mutex_;
     std::map<std::string, int> counts_;
+    std::vector<hazkey::commands::ModifierEvent_EventType> modifierEvents_;
     long arrivalSeq_ = 0;
     int failGetCandidates_ = 0;
     std::atomic<bool> stop_{false};
@@ -443,6 +453,22 @@ void reconnectInvalidates(FakeServer& server, HazkeyServerConnector& connector) 
     std::cout << "[PASS] reconnect invalidates the read cache" << std::endl;
 }
 
+// A Shift release reports RELEASE when the Shift was pressed alone (tap:
+// toggles the sub-input mode) and CANCEL when combined with another key.
+void shiftReleaseTypeTracksLoneState(FakeServer& server,
+                                     HazkeyServerConnector& connector) {
+    server.resetCounts();
+    connector.shiftKeyEvent(true, false);
+    connector.shiftKeyEvent(true, true);
+    const auto events = server.modifierEvents();
+    CHECK(events.size() == 2);
+    CHECK(events[0] ==
+          hazkey::commands::ModifierEvent_EventType_CANCEL);
+    CHECK(events[1] ==
+          hazkey::commands::ModifierEvent_EventType_RELEASE);
+    std::cout << "[PASS] shift release type tracks lone state" << std::endl;
+}
+
 }  // namespace
 
 int main() {
@@ -465,6 +491,7 @@ int main() {
         HazkeyServerConnector connector;
         readThroughHits(server, connector);
         mutationInvalidates(server, connector);
+        shiftReleaseTypeTracksLoneState(server, connector);
         suggestAndFullDistinctSlots(server, connector);
         failureNotCached(server, connector);
         reconnectInvalidates(server, connector);

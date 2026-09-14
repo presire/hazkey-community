@@ -24,8 +24,11 @@ HazkeyEngine::HazkeyEngine(Instance *instance)
     : instance_(instance), factory_([this](InputContext &ic) {
           return new HazkeyState(this, &ic);
       }) {
-    server_ = HazkeyServerConnector();
-
+    // server_ is already connected by its default constructor (member
+    // initialization runs before this body). The former
+    // `server_ = HazkeyServerConnector();` built a second connector and
+    // shallow-assigned its fd over the first, leaking a connection; the
+    // connector now owns its fd (non-copyable RAII) and that line is gone.
     instance->inputContextManager().registerProperty("hazkeyState", &factory_);
     reloadConfig();
 }
@@ -61,6 +64,25 @@ void HazkeyEngine::deactivate([[maybe_unused]] const InputMethodEntry &entry,
     if (hadVisiblePreedit) {
         state->commitPreedit();
     }
+    state->reset();
+    if (hadVisiblePreedit) {
+        inputContext->updatePreedit();
+    }
+    inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
+}
+
+void HazkeyEngine::reset([[maybe_unused]] const InputMethodEntry &entry,
+                         InputContextEvent &event) {
+    FCITX_DEBUG() << "HazkeyEngine reset";
+    auto inputContext = event.inputContext();
+    auto state = inputContext->propertyFor(&factory_);
+    // Mirrors KeyboardEngine::reset() and the IBus frontend's reset() vfunc:
+    // clear the composition and explicitly cancel any pending coalesced refresh
+    // so a stale callback cannot repaint the panel after the reset. The preedit
+    // push is gated on a visible preedit for the same reason activate()/
+    // deactivate() avoid empty preedit updates (PR #33): don't clear unrelated
+    // client input.
+    bool hadVisiblePreedit = hasVisiblePreedit(inputContext);
     state->reset();
     if (hadVisiblePreedit) {
         inputContext->updatePreedit();

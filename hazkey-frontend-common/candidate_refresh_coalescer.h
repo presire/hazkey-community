@@ -1,9 +1,9 @@
-#ifndef _FCITX5_HAZKEY_CANDIDATE_REFRESH_COALESCER_H_
-#define _FCITX5_HAZKEY_CANDIDATE_REFRESH_COALESCER_H_
+#ifndef _HAZKEY_FRONTEND_COMMON_CANDIDATE_REFRESH_COALESCER_H_
+#define _HAZKEY_FRONTEND_COMMON_CANDIDATE_REFRESH_COALESCER_H_
 
 #include <cstdint>
 
-namespace fcitx {
+namespace hazkey::frontend {
 
 // Default minimum quiet period (microseconds) a display-only candidate
 // refresh request must go unanswered by a newer request before it is
@@ -26,14 +26,18 @@ inline constexpr uint64_t kCandidateRefreshCoalesceUsec = 30000;  // 30ms
 // uncoalesced call site did, and only requests that arrive while the
 // previous refresh is still "fresh" are deferred and merged.
 //
-// This class holds NO timer, NO clock, and NO fcitx/protobuf types -- it
+// This class holds NO timer, NO clock, and NO fcitx/IBus/protobuf types -- it
 // only tracks timestamps supplied by the caller so it is fully unit
-// testable with synthetic values. The actual fcitx5 event-loop timer is
-// owned and driven by HazkeyState; this class only answers "can I run this
-// right now?", "should I (re)arm?" and "should I fire now?" questions.
+// testable with synthetic values. The actual event-loop timer is owned and
+// driven by the frontend's state object (fcitx5: an EventSourceTime on the
+// fcitx event loop; IBus: a GLib g_timeout_add source); this class only
+// answers "can I run this right now?", "should I (re)arm?" and "should I fire
+// now?" questions.
 //
-// Typical caller usage (see HazkeyState::scheduleCandidateRefresh /
-// HazkeyState::firePendingCandidateRefresh):
+// Typical caller usage (see fcitx5-hazkey/src/hazkey_state.cpp
+// HazkeyState::scheduleCandidateRefresh / firePendingCandidateRefresh and
+// ibus-hazkey/src/hazkey_state.cpp HazkeyState::scheduleCandidateRefresh /
+// firePendingCandidateRefresh):
 //   1. On every display-only refresh trigger, call
 //      shouldRunImmediately(now, interval) first. If it returns true, drop
 //      any armed timer, call onRun(now) and execute the refresh
@@ -46,9 +50,9 @@ inline constexpr uint64_t kCandidateRefreshCoalesceUsec = 30000;  // 30ms
 //   3. When the timer callback actually runs, call shouldFire(now) first.
 //      If false, do nothing (defends against a stale callback that
 //      shouldn't have run -- in practice this shouldn't happen because a
-//      fresh schedule() replaces the owning std::unique_ptr<EventSourceTime>
-//      before the old one could fire, but the check keeps the policy
-//      correct even if that invariant is ever relaxed).
+//      fresh schedule() replaces the owning timer before the old one could
+//      fire, but the check keeps the policy correct even if that invariant
+//      is ever relaxed).
 //   4. If shouldFire() was true, call onRun(now) to consume the pending slot
 //      and record the execution, then execute the latest pending refresh
 //      kind.
@@ -143,6 +147,6 @@ class CandidateRefreshCoalescer {
     uint64_t lastRunUsec_ = 0;
 };
 
-}  // namespace fcitx
+}  // namespace hazkey::frontend
 
-#endif  // _FCITX5_HAZKEY_CANDIDATE_REFRESH_COALESCER_H_
+#endif  // _HAZKEY_FRONTEND_COMMON_CANDIDATE_REFRESH_COALESCER_H_

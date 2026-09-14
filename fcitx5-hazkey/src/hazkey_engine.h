@@ -9,6 +9,7 @@
 #include <iconv.h>
 
 #include "hazkey_config.h"
+#include "hazkey_frontend_adapter.h"
 #include "hazkey_server_connector.h"
 #include "hazkey_state.h"
 
@@ -27,6 +28,13 @@ class HazkeyEngine : public InputMethodEngineV2 {
 
     // called when input method changes to another input method
     void deactivate(const InputMethodEntry &, InputContextEvent &) override;
+
+    // called when the input context needs its state reset (InputContextReset,
+    // e.g. an application- or framework-initiated reset). Without this override
+    // the inherited InputMethodEngine::reset() is a no-op, so HazkeyState (and
+    // the pending coalesced candidate refresh timer) would survive the reset and
+    // a stale callback could repaint the input panel afterwards.
+    void reset(const InputMethodEntry &, InputContextEvent &) override;
 
     auto factory() const { return &factory_; }
     auto instance() const { return instance_; }
@@ -51,6 +59,10 @@ class HazkeyEngine : public InputMethodEngineV2 {
     HazkeyEngineConfig config_;
     Instance *instance_;
     FactoryFor<HazkeyState> factory_;
+    // Declared before server_ on purpose: member-initialization order follows
+    // declaration order, so this installs the fcitx frontend hooks (log sink +
+    // server spawner) before HazkeyServerConnector is constructed.
+    HazkeyFrontendHooksGuard frontendHooksGuard_;
     HazkeyServerConnector server_;
     iconv_t conv_;
 };

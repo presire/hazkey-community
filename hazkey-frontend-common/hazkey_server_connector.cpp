@@ -2,9 +2,6 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
-#include <fcitx-utils/log.h>
-#include <fcitx-utils/textformatflags.h>
-#include <fcitx/text.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -20,10 +17,20 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
+
+// Transport-level logging goes through the injected frontend sink (default
+// no-op). The stream syntax mirrors the previous FCITX_* macros.
+#define HAZKEY_LOG_DEBUG() \
+    ::hazkey::frontend::LogStream(::hazkey::frontend::LogLevel::Debug)
+#define HAZKEY_LOG_INFO() \
+    ::hazkey::frontend::LogStream(::hazkey::frontend::LogLevel::Info)
+#define HAZKEY_LOG_ERROR() \
+    ::hazkey::frontend::LogStream(::hazkey::frontend::LogLevel::Error)
 
 static std::mutex transact_mutex;
 
@@ -91,6 +98,21 @@ class ClientPerfMeasurement {
 
 }  // namespace
 
+HazkeyServerConnector::HazkeyServerConnector() {
+    connectServer();
+    HAZKEY_LOG_DEBUG() << "Connector initialized";
+}
+
+HazkeyServerConnector::~HazkeyServerConnector() {
+    // Owns sock_; close it so a destroyed connector never leaks the fd. Every
+    // failure path already sets sock_ back to -1 after closing, so a valid
+    // sock_ here is closed exactly once.
+    if (sock_ >= 0) {
+        close(sock_);
+        sock_ = -1;
+    }
+}
+
 std::string HazkeyServerConnector::getSocketPath() {
     const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
     uid_t uid = getuid();
@@ -106,18 +128,13 @@ void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
     // Test-only hook (see setTestStartServerHook() in the header): lets
     // tests observe/intercept spawn decisions without launching a real
     // hazkey-server process. Unset (the production default) falls through
-    // to the real fcitx::startProcess() call below.
+    // to the injected frontend spawner (fcitx::startProcess for fcitx5,
+    // g_spawn_async for IBus).
     if (testStartServerHook_) {
         testStartServerHook_(force_restart);
         return;
     }
-    std::vector<std::string> args;
-    args.reserve(2);
-    args.push_back("hazkey-server");
-    if (force_restart) {
-        args.push_back("-r");
-    }
-    fcitx::startProcess(args, "/");
+    hazkey::frontend::spawnServer(force_restart);
 }
 
 bool writeAll(int fd, const void* data, size_t len) {
@@ -132,7 +149,7 @@ bool writeAll(int fd, const void* data, size_t len) {
                 timeval tv = {2, 0};  // 2sec write timeout ceiling
                 int r = select(fd + 1, NULL, &wfds, NULL, &tv);
                 if (r <= 0) {
-                    FCITX_ERROR() << "write timeout";
+                    HAZKEY_LOG_ERROR() << "write timeout";
                     return false;
                 }
                 continue;
@@ -168,7 +185,7 @@ bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
                 timeval tv = {timeoutSeconds, 0};  // 10sec read timeout ceiling
                 int r = select(fd + 1, &rfds, NULL, NULL, &tv);
                 if (r <= 0) {
-                    FCITX_ERROR() << "read timeout";
+                    HAZKEY_LOG_ERROR() << "read timeout";
                     return false;
                 }
                 continue;
@@ -197,7 +214,7 @@ void HazkeyServerConnector::connectServer() {
     for (attempt = 0; attempt < MAX_RETRIES; ++attempt) {
         sock_ = socket(AF_UNIX, SOCK_STREAM, 0);
         if (sock_ < 0) {
-            FCITX_ERROR() << "Failed to create socket";
+            HAZKEY_LOG_ERROR() << "Failed to create socket";
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(RETRY_INTERVAL_MS));
             continue;
@@ -205,7 +222,7 @@ void HazkeyServerConnector::connectServer() {
         int fcntlRes =
             fcntl(sock_, F_SETFL, fcntl(sock_, F_GETFL, 0) | O_NONBLOCK);
         if (fcntlRes != 0) {
-            FCITX_ERROR() << "fcntl() failed";
+            HAZKEY_LOG_ERROR() << "fcntl() failed";
             close(sock_);
             sock_ = -1;
             std::this_thread::sleep_for(
@@ -238,7 +255,7 @@ void HazkeyServerConnector::connectServer() {
                 }
             }
         }
-        FCITX_INFO() << "Failed to connect hazkey-server, retry "
+        HAZKEY_LOG_INFO() << "Failed to connect hazkey-server, retry "
                      << (attempt + 1);
         close(sock_);
         sock_ = -1;
@@ -265,7 +282,7 @@ void HazkeyServerConnector::connectServer() {
                     now - lastSuccessfulTransaction_)
                         .count() < contentionWindowMs;
             if (recentlyResponsive) {
-                FCITX_INFO()
+                HAZKEY_LOG_INFO()
                     << "Skipping force-restart: hazkey-server completed a "
                        "successful transaction within the last "
                     << contentionWindowMs
@@ -278,7 +295,7 @@ void HazkeyServerConnector::connectServer() {
         std::this_thread::sleep_for(
             std::chrono::milliseconds(RETRY_INTERVAL_MS));
     }
-    FCITX_INFO() << "Failed to connect hazkey-server after " << MAX_RETRIES
+    HAZKEY_LOG_INFO() << "Failed to connect hazkey-server after " << MAX_RETRIES
                  << " attempts";
 }
 
@@ -296,10 +313,10 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     std::lock_guard<std::mutex> lock(transact_mutex);
 
     if (sock_ == -1) {
-        FCITX_INFO() << "Socket not connected, attempting to connect...";
+        HAZKEY_LOG_INFO() << "Socket not connected, attempting to connect...";
         connectServer();
         if (sock_ == -1) {
-            FCITX_ERROR() << "Failed to establish connection to hazkey-server";
+            HAZKEY_LOG_ERROR() << "Failed to establish connection to hazkey-server";
             return std::nullopt;
         }
         // The server may have been (re)started while we were disconnected:
@@ -309,16 +326,16 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     std::string msg;
     if (!send_data.SerializeToString(&msg)) {
-        FCITX_ERROR() << "Failed to serialize protobuf message.";
+        HAZKEY_LOG_ERROR() << "Failed to serialize protobuf message.";
         return std::nullopt;
     }
 
-    FCITX_DEBUG() << "Sending message of size: " << msg.size();
+    HAZKEY_LOG_DEBUG() << "Sending message of size: " << msg.size();
 
     // write length
     uint32_t writeLen = htonl(msg.size());
     if (!writeAll(sock_, &writeLen, 4)) {
-        FCITX_INFO()
+        HAZKEY_LOG_INFO()
             << "Failed to communicate with server while writing data length. "
                "reconnecting to hazkey-server...";
         close(sock_);
@@ -331,7 +348,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     // write data
     if (!writeAll(sock_, msg.c_str(), msg.size())) {
-        FCITX_INFO() << "Failed to communicate with server while writing data. "
+        HAZKEY_LOG_INFO() << "Failed to communicate with server while writing data. "
                         "reconnecting to hazkey-server...";
         close(sock_);
         sock_ = -1;
@@ -341,7 +358,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         return std::nullopt;
     }
 
-    FCITX_DEBUG() << "Successfully wrote data to server";
+    HAZKEY_LOG_DEBUG() << "Successfully wrote data to server";
 
     // Production read-timeout ceiling is 10 seconds; only
     // hazkey_client_transact_safety_test overrides it, via
@@ -354,17 +371,17 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     // read response length
     uint32_t readLenBuf;
     if (!readAll(sock_, &readLenBuf, 4, readTimeoutSeconds)) {
-        FCITX_ERROR() << "Failed to read buffer length.";
+        HAZKEY_LOG_ERROR() << "Failed to read buffer length.";
         close(sock_);
         sock_ = -1;
         return std::nullopt;
     }
 
     uint32_t readLen = ntohl(readLenBuf);
-    FCITX_DEBUG() << "Server response size: " << readLen;
+    HAZKEY_LOG_DEBUG() << "Server response size: " << readLen;
 
     if (readLen > 2 * 1024 * 1024) {  // 2MB limit
-        FCITX_ERROR() << "Response size too large: " << readLen;
+        HAZKEY_LOG_ERROR() << "Response size too large: " << readLen;
         close(sock_);
         sock_ = -1;
         return std::nullopt;
@@ -372,7 +389,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     std::vector<char> buf(readLen);
     if (!readAll(sock_, buf.data(), readLen, readTimeoutSeconds)) {
-        FCITX_ERROR() << "Failed to read response body.";
+        HAZKEY_LOG_ERROR() << "Failed to read response body.";
         close(sock_);
         sock_ = -1;
         return std::nullopt;
@@ -380,7 +397,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     hazkey::ResponseEnvelope resp;
     if (!resp.ParseFromArray(buf.data(), readLen)) {
-        FCITX_ERROR() << "Failed to parse received data\n";
+        HAZKEY_LOG_ERROR() << "Failed to parse received data\n";
         return std::nullopt;
     }
 
@@ -391,7 +408,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     // accept on a recently-responsive server for a wedged one.
     lastSuccessfulTransaction_ = std::chrono::steady_clock::now();
 
-    FCITX_DEBUG() << "Successfully received and parsed response";
+    HAZKEY_LOG_DEBUG() << "Successfully received and parsed response";
     return resp;
 }
 
@@ -410,18 +427,18 @@ std::string HazkeyServerConnector::getComposingText(
     props->set_current_preedit(currentPreedit);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting getComposingText().";
+        HAZKEY_LOG_ERROR() << "Error while transacting getComposingText().";
         return "";
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "getComposingText: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "getComposingText: " << "Server returned an error: "
                       << responseVal.error_message();
         return "";
     }
     // old protobuf doesn't have has_text() method.
     // if (!responseVal.has_text()) {
-    //     FCITX_ERROR() << "getComposingText: "
+    //     HAZKEY_LOG_ERROR() << "getComposingText: "
     //                   << "Server returned unexpected response";
     //     return "";
     // }
@@ -429,44 +446,36 @@ std::string HazkeyServerConnector::getComposingText(
     return responseVal.text();
 }
 
-fcitx::Text HazkeyServerConnector::getComposingHiraganaWithCursor() {
+hazkey::frontend::ComposingTextWithCursor
+HazkeyServerConnector::getComposingHiraganaWithCursor() {
     if (cachedHiraganaWithCursor_.has_value()) {
-        const auto& parts = cachedHiraganaWithCursor_.value();
-        fcitx::Text text = fcitx::Text(parts.beforeCursor);
-        text.append(parts.onCursor, fcitx::TextFormatFlag::Underline);
-        text.append(parts.afterCursor);
-        return text;
+        return cachedHiraganaWithCursor_.value();
     }
     hazkey::RequestEnvelope request;
     request.mutable_get_hiragana_with_cursor();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR()
+        HAZKEY_LOG_ERROR()
             << "Error while transacting getComposingHiraganaWithCursor().";
-        return fcitx::Text();
+        return hazkey::frontend::ComposingTextWithCursor{};
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "getHiraganaWithCursor: "
-                      << "Server returned an error: "
-                      << responseVal.error_message();
-        return fcitx::Text();
+        HAZKEY_LOG_ERROR() << "getHiraganaWithCursor: "
+                           << "Server returned an error: "
+                           << responseVal.error_message();
+        return hazkey::frontend::ComposingTextWithCursor{};
     }
     if (!responseVal.has_text_with_cursor()) {
-        FCITX_ERROR() << "getHiraganaWithCursor: "
-                      << "Server returned unexpected response";
-        return fcitx::Text();
+        HAZKEY_LOG_ERROR() << "getHiraganaWithCursor: "
+                           << "Server returned unexpected response";
+        return hazkey::frontend::ComposingTextWithCursor{};
     }
-    cachedHiraganaWithCursor_ = TextWithCursorParts{
+    cachedHiraganaWithCursor_ = hazkey::frontend::ComposingTextWithCursor{
         responseVal.text_with_cursor().beforecursosr(),
         responseVal.text_with_cursor().oncursor(),
         responseVal.text_with_cursor().aftercursor()};
-    fcitx::Text text =
-        fcitx::Text(responseVal.text_with_cursor().beforecursosr());
-    text.append(responseVal.text_with_cursor().oncursor(),
-                fcitx::TextFormatFlag::Underline);
-    text.append(responseVal.text_with_cursor().aftercursor());
-    return text;
+    return cachedHiraganaWithCursor_.value();
 }
 
 void HazkeyServerConnector::inputChar(std::string text) {
@@ -477,34 +486,36 @@ void HazkeyServerConnector::inputChar(std::string text) {
     props->set_text(text);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting inputChar().";
+        HAZKEY_LOG_ERROR() << "Error while transacting inputChar().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "inputChar: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "inputChar: " << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
     return;
 }
 
-void HazkeyServerConnector::shiftKeyEvent(bool isRelease) {
+void HazkeyServerConnector::shiftKeyEvent(bool isRelease, bool alone) {
     invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_modifier_event();
-    props->set_event_type(
-        isRelease ? hazkey::commands::ModifierEvent_EventType_RELEASE
-                  : hazkey::commands::ModifierEvent_EventType_PRESS);
+    props->set_event_type(!isRelease
+                              ? hazkey::commands::ModifierEvent_EventType_PRESS
+                              : alone
+                                    ? hazkey::commands::ModifierEvent_EventType_RELEASE
+                                    : hazkey::commands::ModifierEvent_EventType_CANCEL);
     props->set_mod_type(hazkey::commands::ModifierEvent_ModifierType_SHIFT);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting shiftKeyEvent().";
+        HAZKEY_LOG_ERROR() << "Error while transacting shiftKeyEvent().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "shiftKeyEvent: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "shiftKeyEvent: " << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -519,12 +530,12 @@ bool HazkeyServerConnector::currentInputModeIsDirect() {
     auto _ = request.mutable_get_current_input_mode();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting currentInputModeIsDirect().";
+        HAZKEY_LOG_ERROR() << "Error while transacting currentInputModeIsDirect().";
         return false;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "currentInputModeIsDirect: "
+        HAZKEY_LOG_ERROR() << "currentInputModeIsDirect: "
                       << "Server returned an error: "
                       << responseVal.error_message();
         return false;
@@ -542,12 +553,12 @@ void HazkeyServerConnector::deleteLeft() {
     request.mutable_delete_left();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting deleteLeft().";
+        HAZKEY_LOG_ERROR() << "Error while transacting deleteLeft().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "deleteLeft: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "deleteLeft: " << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -560,12 +571,12 @@ void HazkeyServerConnector::deleteRight() {
     request.mutable_delete_right();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting deleteRight().";
+        HAZKEY_LOG_ERROR() << "Error while transacting deleteRight().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "deleteRight: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "deleteRight: " << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -579,12 +590,12 @@ void HazkeyServerConnector::moveCursor(int offset) {
     props->set_offset(offset);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting moveCursor().";
+        HAZKEY_LOG_ERROR() << "Error while transacting moveCursor().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "moveCursor:" << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "moveCursor:" << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -599,18 +610,18 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
     props->set_offset(offset);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting adjustClauseBoundary().";
+        HAZKEY_LOG_ERROR() << "Error while transacting adjustClauseBoundary().";
         return std::nullopt;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "adjustClauseBoundary: "
+        HAZKEY_LOG_ERROR() << "adjustClauseBoundary: "
                       << "Server returned an error: "
                       << responseVal.error_message();
         return std::nullopt;
     }
     if (!responseVal.has_clause_boundary_result()) {
-        FCITX_ERROR() << "adjustClauseBoundary: "
+        HAZKEY_LOG_ERROR() << "adjustClauseBoundary: "
                       << "Server returned unexpected response";
         return std::nullopt;
     }
@@ -629,19 +640,19 @@ HazkeyServerConnector::deleteCandidateLearningData(int index) {
     props->set_index(index);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR()
+        HAZKEY_LOG_ERROR()
             << "Error while transacting deleteCandidateLearningData().";
         return std::nullopt;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "deleteCandidateLearningData: "
+        HAZKEY_LOG_ERROR() << "deleteCandidateLearningData: "
                       << "Server returned an error: "
                       << responseVal.error_message();
         return std::nullopt;
     }
     if (!responseVal.has_delete_candidate_learning_data_result()) {
-        FCITX_ERROR() << "deleteCandidateLearningData: "
+        HAZKEY_LOG_ERROR() << "deleteCandidateLearningData: "
                       << "Server returned unexpected response";
         return std::nullopt;
     }
@@ -664,12 +675,12 @@ void HazkeyServerConnector::setContext(std::string context, int anchor) {
     props->set_anchor(anchor);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting setContext().";
+        HAZKEY_LOG_ERROR() << "Error while transacting setContext().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "setContext:" << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "setContext:" << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -682,13 +693,13 @@ void HazkeyServerConnector::newComposingText() {
     request.mutable_new_composing_text();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR()
+        HAZKEY_LOG_ERROR()
             << "Error while transacting createComposingTextInstance().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "createComposingTextInstance:"
+        HAZKEY_LOG_ERROR() << "createComposingTextInstance:"
                       << "Server returned an error: "
                       << responseVal.error_message();
         return;
@@ -703,12 +714,12 @@ void HazkeyServerConnector::completePrefix(int index) {
     props->set_index(index);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting completePrefix().";
+        HAZKEY_LOG_ERROR() << "Error while transacting completePrefix().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "completePrefix: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "completePrefix: " << "Server returned an error: "
                       << responseVal.error_message();
         return;
     }
@@ -725,12 +736,12 @@ bool HazkeyServerConnector::acceptPrediction(int index) {
     props->set_index(index);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting acceptPrediction().";
+        HAZKEY_LOG_ERROR() << "Error while transacting acceptPrediction().";
         return false;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_DEBUG() << "acceptPrediction: Server returned an error: "
+        HAZKEY_LOG_DEBUG() << "acceptPrediction: Server returned an error: "
                       << responseVal.error_message();
         return false;
     }
@@ -742,17 +753,17 @@ std::optional<bool> HazkeyServerConnector::toggleZenzai() {
     request.mutable_toggle_zenzai();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting toggleZenzai().";
+        HAZKEY_LOG_ERROR() << "Error while transacting toggleZenzai().";
         return std::nullopt;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "toggleZenzai: Server returned an error: "
+        HAZKEY_LOG_ERROR() << "toggleZenzai: Server returned an error: "
                       << responseVal.error_message();
         return std::nullopt;
     }
     if (!responseVal.has_toggle_zenzai_result()) {
-        FCITX_ERROR() << "toggleZenzai: Server returned unexpected response";
+        HAZKEY_LOG_ERROR() << "toggleZenzai: Server returned unexpected response";
         return std::nullopt;
     }
     return responseVal.toggle_zenzai_result().enabled();
@@ -764,12 +775,12 @@ void HazkeyServerConnector::saveLearningData() {
     request.mutable_save_learning_data();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting saveLearningData().";
+        HAZKEY_LOG_ERROR() << "Error while transacting saveLearningData().";
         return;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "saveLearningData:"
+        HAZKEY_LOG_ERROR() << "saveLearningData:"
                       << "Server returned an error: "
                       << responseVal.error_message();
         return;
@@ -782,12 +793,12 @@ std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerCon
     request.mutable_get_config();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting getServerConfig().";
+        HAZKEY_LOG_ERROR() << "Error while transacting getServerConfig().";
         return std::nullopt;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "getServerConfig: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "getServerConfig: " << "Server returned an error: "
                       << responseVal.error_message();
         return std::nullopt;
     }
@@ -803,12 +814,12 @@ bool HazkeyServerConnector::setServerConfig(
     *sc->mutable_file_hashes() = config.file_hashes();
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting setServerConfig().";
+        HAZKEY_LOG_ERROR() << "Error while transacting setServerConfig().";
         return false;
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "setServerConfig: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "setServerConfig: " << "Server returned an error: "
                       << responseVal.error_message();
         return false;
     }
@@ -833,20 +844,20 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     props->set_is_suggest(isSuggestMode);
     auto response = transact(request);
     if (response == std::nullopt) {
-        FCITX_ERROR() << "Error while transacting getCandidates().";
+        HAZKEY_LOG_ERROR() << "Error while transacting getCandidates().";
         std::vector<CandidateData> empty_vec;
         return hazkey::commands::CandidatesResult();
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        FCITX_ERROR() << "getCandidates: " << "Server returned an error: "
+        HAZKEY_LOG_ERROR() << "getCandidates: " << "Server returned an error: "
                       << responseVal.error_message();
         std::vector<CandidateData> empty_vec;
         return hazkey::commands::CandidatesResult();
     }
     // TODO: Error handling when response has no candidate
     // if (responseVal..has_candidates()) {
-    //     FCITX_ERROR() << "getCandidates: "
+    //     HAZKEY_LOG_ERROR() << "getCandidates: "
     //                   << "Server returned unexpected response";
     //     std::vector<CandidateData> empty_vec;
     //     return hazkey::commands::CandidatesResult();

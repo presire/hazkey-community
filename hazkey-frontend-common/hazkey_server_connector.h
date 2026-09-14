@@ -1,8 +1,6 @@
 #ifndef HAZKEY_SERVER_CONNECTOR_H
 #define HAZKEY_SERVER_CONNECTOR_H
 
-#include <fcitx-utils/log.h>
-#include <fcitx/text.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -16,17 +14,17 @@
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
+#include "hazkey_frontend_hooks.h"
 
 class HazkeyServerConnector {
    public:
-    // HazkeyServerConnector();
-    // ~HazkeyServerConnector();
+    HazkeyServerConnector();
+    ~HazkeyServerConnector();
 
-    HazkeyServerConnector() {
-        // kill_existing_hazkey_server();
-        connectServer();
-        FCITX_DEBUG() << "Connector initialized";
-    };
+    // Owns a socket fd: a shallow copy would double-close it. The connector is
+    // used via reference (HazkeyEngine::server()) and is never copied.
+    HazkeyServerConnector(const HazkeyServerConnector&) = delete;
+    HazkeyServerConnector& operator=(const HazkeyServerConnector&) = delete;
 
     std::string getSocketPath();
 
@@ -41,11 +39,15 @@ class HazkeyServerConnector {
         hazkey::commands::GetComposingString::CharType type,
         std::string currentPreedit);
 
-    fcitx::Text getComposingHiraganaWithCursor();
+    hazkey::frontend::ComposingTextWithCursor getComposingHiraganaWithCursor();
 
     void inputChar(std::string text);
 
-    void shiftKeyEvent(bool isRelease);
+    // Reports a Shift press/release to the server. A press with `isRelease =
+    // false` always sends PRESS; a release sends RELEASE when the Shift was
+    // pressed alone (tap: toggles the sub-input mode) and CANCEL when it was
+    // combined with another key (never toggles).
+    void shiftKeyEvent(bool isRelease, bool alone = true);
 
     bool currentInputModeIsDirect();
 
@@ -136,9 +138,9 @@ class HazkeyServerConnector {
         testForceRestartWindowMs_ = milliseconds;
     }
 
-    // Replaces the real fcitx::startProcess()-based server spawn in
-    // startHazkeyServer() with a test observer/no-op. Pass an empty
-    // std::function (or nullptr) to restore the real implementation.
+    // Replaces the injected frontend server spawn in startHazkeyServer()
+    // with a test observer/no-op. Pass an empty std::function (or nullptr)
+    // to restore the frontend implementation.
     static void setTestStartServerHook(std::function<void(bool)> hook) {
         testStartServerHook_ = std::move(hook);
     }
@@ -174,11 +176,6 @@ class HazkeyServerConnector {
     // recovers correctly.
     void invalidateCache();
 
-    struct TextWithCursorParts {
-        std::string beforeCursor;
-        std::string onCursor;
-        std::string afterCursor;
-    };
     int sock_ = -1;
     std::string socket_path_;
     hazkey::config::Profile_AutoConvertMode rememberedOnMode_ =
@@ -202,7 +199,8 @@ class HazkeyServerConnector {
     static inline int testReadTimeoutSeconds_ = 0;
     static inline long testForceRestartWindowMs_ = -1;
     static inline std::function<void(bool)> testStartServerHook_;
-    std::optional<TextWithCursorParts> cachedHiraganaWithCursor_;
+    std::optional<hazkey::frontend::ComposingTextWithCursor>
+        cachedHiraganaWithCursor_;
     // Keyed by (CharType, client preedit): alphabet conversions depend on
     // the preedit (cycleAlphabetCase); the other types only on server state,
     // which stays constant until the next state-mutating RPC.

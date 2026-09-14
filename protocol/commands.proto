@@ -27,6 +27,7 @@ message ModifierEvent {
         EVENT_TYPE_UNSPECIFIED = 0;
         PRESS = 1;
         RELEASE = 2;
+        CANCEL = 3;
     }
 
     ModifierType mod_type = 1;

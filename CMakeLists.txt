@@ -13,6 +13,19 @@ enable_testing()
 
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
 
-add_subdirectory(fcitx5-hazkey)
+option(ENABLE_FCITX5 "Build Fcitx5 frontend" ON)
+option(ENABLE_IBUS "Build IBus frontend" OFF)
+
+# Shared transport + protobuf generation: required by both frontends.
+add_subdirectory(hazkey-frontend-common)
 add_subdirectory(hazkey-server)
+
+if(ENABLE_FCITX5)
+    add_subdirectory(fcitx5-hazkey)
+endif()
+
+if(ENABLE_IBUS)
+    add_subdirectory(ibus-hazkey)
+endif()
+
 add_subdirectory(hazkey-settings)

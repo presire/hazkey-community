@@ -106,6 +106,7 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
     case unspecified // = 0
     case press // = 1
     case release // = 2
+    case cancel // = 3
     case UNRECOGNIZED(Int)
 
     init() {
@@ -117,6 +118,7 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
       case 0: self = .unspecified
       case 1: self = .press
       case 2: self = .release
+      case 3: self = .cancel
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -126,6 +128,7 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
       case .unspecified: return 0
       case .press: return 1
       case .release: return 2
+      case .cancel: return 3
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -135,6 +138,7 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
       .unspecified,
       .press,
       .release,
+      .cancel,
     ]
 
   }
@@ -650,7 +654,7 @@ nonisolated extension Hazkey_Commands_ModifierEvent.ModifierType: SwiftProtobuf.
 }
 
 nonisolated extension Hazkey_Commands_ModifierEvent.EventType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}PRESS\0\u{1}RELEASE\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}PRESS\0\u{1}RELEASE\0\u{1}CANCEL\0")
 }
 
 nonisolated extension Hazkey_Commands_MoveCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

@@ -5,6 +5,7 @@
 Hazkeyは、Linux向けデスクトップ環境 [Fcitx 5](https://fcitx-im.org/) で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
 オプションでZenzaiニューラル変換 (llama.cppバックエンド、Vulkan GPU / CPU対応) を利用できます。  
+Fcitx 5向けに加え、実験的な IBus フロントエンド (`ibus-hazkey`) も同梱します (ビルドオプション `ENABLE_IBUS`、既定OFF)。  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.24** です。  
 
@@ -120,6 +121,36 @@ gh attestation verify ./fcitx5-hazkey-*.rpm --owner presire
    ```sh
    hazkey-settings
    ```
+
+<br>
+
+## IBus フロントエンド (実験的)
+
+Fcitx 5 と同じ `hazkey-server` を利用する実験的な IBus フロントエンド (`ibus-hazkey`) を同梱します。  
+IBus 側をビルド・インストールするには、CMake で `-DENABLE_IBUS=ON` を指定します (既定は `OFF`、`pkg-config ibus-1.0` が必要)。  
+
+```sh
+cmake -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DENABLE_IBUS=ON \
+      ..
+ninja -j $(nproc)
+sudo ninja install
+```
+
+インストール後は `ibus-daemon` を再起動し、`ibus list-engine` に `hazkey` が表示されることを確認してください。  
+エンジンは `${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey/ibus-engine-hazkey`、component XML は `${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml` に配置されます。  
+
+トランスポートは Fcitx 5 版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です (`hazkey-frontend-common/candidate_refresh_coalescer.h — hazkey::frontend::CandidateRefreshCoalescer`、30ms の leading-edge debounce)。IBus 版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマーのみ GLib (`g_timeout_add`) のアダプタで駆動します。
+
+### IBus フロントエンドの既知の制約
+
+- **Fcitx 5 と IBus の同時有効化による入力は非サポートです。**  
+  `hazkey-server` は単一クライアント前提 (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.handleNewConnection()` が新規接続時に既存クライアントを close する) のため、両フロントエンドを同時に有効化すると接続を奪い合います。同居インストールは可能ですが、入力に使うのはどちらか一方にしてください。  
+- **Fcitx 5 版の主要な入力操作は IBus 版にも移植済みです。**  
+  ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、`F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、`Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (Fcitx の AuxUp/AuxDown) を含みます。  
+- 同期 RPC が `process_key_event` をブロックします (read timeout 最大 10 秒)。現状は許容しています。  
 
 <br>
 
@@ -502,6 +533,8 @@ sudo ninja install
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
+| `ENABLE_FCITX5` | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
+| `ENABLE_IBUS` | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
 | `GGML_VULKAN` | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
 | `HAZKEY_SERVER_ENABLE_ZENZAI` | `ON` | Zenzaiニューラル変換機能の有効化 |
 | `SWIFT_LINK_PATH` | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |
@@ -594,7 +627,8 @@ ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
 | [ensan-hcl/azooKey](https://github.com/ensan-hcl/azooKey) | 動詞活用エンジンの移植元 |
 | [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) / [zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) / [zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | Zenzaiモデル (GGUF) |
 | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Zenzaiの推論バックエンド |
-| [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | インプットメソッドフレームワーク |
+| [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | インプットメソッドフレームワーク (Fcitx 5 フロントエンド) |
+| [ibus/ibus](https://github.com/ibus/ibus) | インプットメソッドフレームワーク (実験的 IBus フロントエンド) |
 
 ## ライセンス
 

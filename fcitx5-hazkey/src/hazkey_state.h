@@ -123,6 +123,13 @@ class HazkeyState : public InputContextProperty {
     // hazkey_engine.cpp's activate()/deactivate(), both of which call
     // state->reset()).
     void cancelPendingRefresh();
+    // Runs a pending coalesced refresh immediately (if any) instead of
+    // cancelling it, so a caller that is about to CONSUME the client-side
+    // preedit (commit, direct conversion) acts on the latest server state
+    // rather than the stale last-synchronously-refreshed value. Without this a
+    // keystroke deferred inside the coalesce window is dropped from the
+    // committed text.
+    void flushPendingRefresh();
 
     // update the candidate cursor
     void updateCandidateCursor(
@@ -166,11 +173,18 @@ class HazkeyState : public InputContextProperty {
     // event-loop thread, so no locking is needed around these members (see
     // hazkey_state.cpp comment at scheduleCandidateRefresh() for the
     // detailed rationale).
-    CandidateRefreshCoalescer coalescer_;
+    hazkey::frontend::CandidateRefreshCoalescer coalescer_;
     std::unique_ptr<EventSourceTime> refreshTimer_;
     bool pendingRefreshIsSuggest_ = true;
+    // True while runPendingCandidateRefresh() executes, so the refresh targets
+    // can tell a coalescer-driven execution from a synchronous caller and not
+    // cancel the coalescer's own in-flight execution.
+    bool executingPendingRefresh_ = false;
 
     bool isDirectConversionMode_ = false;
+    // Tracks whether Shift is currently pressed without any other modifier or
+    // character key, so the release can report RELEASE (lone tap) vs CANCEL.
+    bool shiftPressedAlone_ = false;
     int livePreeditIndex_ = -1;
 
     fcitx::Key liveConvertHotkey_{"Control+Shift+L"};

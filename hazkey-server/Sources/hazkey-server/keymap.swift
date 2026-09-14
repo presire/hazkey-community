@@ -133,6 +133,10 @@ let fullwidthSymbolMap: Keymap = [
     "`": ("｀", nil),
     "~": ("〜", nil),
     "|": ("｜", nil),
+    "{": ("｛", nil),
+    "}": ("｝", nil),
+    "\"": ("＂", nil),
+    "'": ("＇", nil),
 ]
 
 let japaneseSymbolMap: Keymap = [

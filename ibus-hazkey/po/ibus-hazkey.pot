@@ -1,0 +1,45 @@
+# Translation template for the ibus-hazkey engine component.
+#
+# The msgids are the strings that IBus translates at runtime:
+#   * the <longname> and <description> emitted by
+#     `ibus-engine-hazkey --xml` (see src/main.cpp), translated by the panel
+#     via dgettext(engine_textdomain, longname);
+#   * the component <description> in ibus-hazkey.xml.in.
+# The domain is "ibus-hazkey" (the <textdomain> element in the engine XML).
+msgid ""
+msgstr ""
+"Project-Id-Version: ibus-hazkey\n"
+"Report-Msgid-Bugs-To: https://github.com/presire/hazkey-community/issues\n"
+"POT-Creation-Date: 2026-09-14 00:00+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Hazkey"
+msgstr ""
+
+msgid "Hazkey AI Japanese input method (hazkey-community)"
+msgstr ""
+
+# Auxiliary text (fcitx AuxUp/AuxDown equivalent) shown while composing.
+# Ports fcitx5-hazkey's "[Press Tab to Select]", "[Direct Input]" and
+# "削除可" indicators to the single IBus auxiliary bar.
+msgid "[Press Tab to Select]"
+msgstr ""
+
+msgid "[Direct Input]"
+msgstr ""
+
+msgid "Deletable"
+msgstr ""
+
+# Transient auxiliary text after the Zenzai toggle hotkey.
+msgid "Zenzai enabled"
+msgstr ""
+
+msgid "Zenzai disabled"
+msgstr ""
