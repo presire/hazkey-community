@@ -255,13 +255,16 @@ jobs:
           # Split the IBus payload out of the shared staging tree. IBus ships
           # as a separate ibus-hazkey package and must not be bundled into
           # the fcitx5-hazkey package.
+          # NOTE: this heredoc runs under `sh`, which is dash on
+          # Debian/Ubuntu, so keep the loop POSIX-sh compatible (no `read -d`;
+          # moved paths contain no newlines, so newline-delimited -print is safe).
           mkdir -p workdir-ibus
           (
             cd workdir
             find usr \( -path 'usr/share/ibus/component/ibus-hazkey.xml' \
               -o -path 'usr/libexec/ibus-hazkey/*' \
               -o -path 'usr/share/locale/*/LC_MESSAGES/ibus-hazkey.mo' \) \
-              \( -type f -o -type l \) -print0 | while IFS= read -r -d '' _f; do
+              \( -type f -o -type l \) -print | while IFS= read -r _f; do
               mkdir -p "../workdir-ibus/$(dirname "$_f")"
               mv "$_f" "../workdir-ibus/$_f"
             done
@@ -270,6 +273,65 @@ jobs:
           rmdir workdir/usr/libexec/ibus-hazkey workdir/usr/share/ibus/component 2>/dev/null || true
           test -z "$(cd workdir && find usr \( -path 'usr/share/ibus/*' -o -path 'usr/libexec/ibus-hazkey/*' -o -name 'ibus-hazkey*' \) -print -quit)" \
             || { echo "IBus payload remains in fcitx staging tree" >&2; exit 1; }
+
+          # Duplicate the shared server/settings payload into the ibus tree so
+          # that ibus-hazkey is installable standalone, like fcitx5-hazkey:
+          #   usr/bin/ (hazkey-server wrapper, hazkey-settings symlink)
+          #   usr/lib*/hazkey/ (server/settings binaries, libllama runtime)
+          #   usr/share/applications/, usr/share/hazkey/, usr/share/icons/
+          # Fcitx-specific payload (fcitx5 addon, metainfo, fcitx5 .mo) stays
+          # only in the fcitx tree. Duplication (cp, not mv) is intentional:
+          # both packages carry the same shared files.
+          mkdir -p workdir-ibus/usr
+          if [ -d workdir/usr/bin ]; then
+            cp -a workdir/usr/bin workdir-ibus/usr/
+          fi
+          for _shared in usr/share/applications usr/share/hazkey usr/share/icons; do
+            if [ -d "workdir/$_shared" ]; then
+              mkdir -p "workdir-ibus/$(dirname "$_shared")"
+              rm -rf "workdir-ibus/$_shared"
+              cp -a "workdir/$_shared" "workdir-ibus/$_shared"
+            fi
+          done
+          # The library dir varies by distro (/usr/lib64 on RPM,
+          # /usr/lib/<triplet> on DEB). Copy only the hazkey subdir, never
+          # the fcitx5 subdir. A non-matching glob stays literal under dash,
+          # so skip it explicitly.
+          for _libhazkey in workdir/usr/lib64/hazkey workdir/usr/lib/hazkey workdir/usr/lib/*/hazkey; do
+            case "$_libhazkey" in '*'*) continue;; esac
+            [ -d "$_libhazkey" ] || continue
+            _dest="workdir-ibus/${_libhazkey#workdir/}"
+            mkdir -p "$(dirname "$_dest")"
+            rm -rf "$_dest"
+            cp -a "$_libhazkey" "$_dest"
+          done
+          unset _shared _libhazkey _dest
+          # Staged-install assertions for the duplicated shared payload: the
+          # ibus tree must now carry the same directory groups as the fcitx
+          # tree, and the fcitx tree must still carry them (copied, not moved).
+          test -f workdir/usr/bin/hazkey-server
+          test -f workdir-ibus/usr/bin/hazkey-server
+          # hazkey-settings in usr/bin is a symlink to the libdir payload, so
+          # it dangles inside the staging tree (its target only exists after
+          # installation). test -e follows symlinks and would fail on the
+          # dangling link, so accept the symlink itself via test -L.
+          test -L workdir-ibus/usr/bin/hazkey-settings || test -e workdir-ibus/usr/bin/hazkey-settings \
+            || { echo "missing staged ibus usr/bin/hazkey-settings" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/applications/hazkey-settings.desktop \
+            || { echo "missing staged ibus applications desktop" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey/emoji_all_E17.0.txt \
+            || { echo "missing staged ibus emoji dict" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
+            || { echo "missing staged ibus icons" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr -path '*hazkey/libllama/libllama.so*' -print -quit)" \
+            || { echo "missing staged ibus libllama" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr -path '*hazkey/hazkey-server' -print -quit)" \
+            || { echo "missing staged ibus hazkey-server binary" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr -path '*hazkey/hazkey-settings' -print -quit)" \
+            || { echo "missing staged ibus hazkey-settings binary" >&2; exit 1; }
+          # The fcitx5 addon payload must not leak into the ibus tree.
+          test -z "$(cd workdir-ibus && find usr \( -path 'usr/share/fcitx5/*' -o -path 'usr/lib*/fcitx5/*' -o -path 'usr/share/metainfo/*Fcitx5*' -o -name 'fcitx5-hazkey*' \) -print -quit)" \
+            || { echo "fcitx payload leaked into ibus staging tree" >&2; exit 1; }
 
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
@@ -326,7 +388,11 @@ jobs:
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
               # libibus-1.0-5 is the libibus-1.0.so.5 runtime on both Debian 13
               # and Ubuntu 26.04 (SONAME-stable across the 1.5.x series).
-              printf '%s\n' 'Depends: ibus, libibus-1.0-5, libc6'
+              # The shared server/settings payload (hazkey-settings Qt app,
+              # hazkey-server vulkan/protobuf runtime) is duplicated into this
+              # package, so its Qt/Vulkan/protobuf/ncurses runtime
+              # dependencies mirror fcitx5-hazkey (minus fcitx5, plus ibus).
+              printf '%s\n' 'Depends: ibus, libibus-1.0-5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
               printf '%s\n' 'Description: Hazkey Japanese input method for IBus'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
@@ -340,6 +406,23 @@ jobs:
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/ibus/component/ibus-hazkey.xml'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'ibus-engine-hazkey'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libibus-1.0-5'
+            # The shared server/settings directory groups must be inside the
+            # ibus-hazkey package as well, like fcitx5-hazkey.
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-server'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-settings'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/hazkey-server'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/hazkey-settings'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/libllama/libllama.so'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/applications/hazkey-settings.desktop'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/emoji_all_E17.0.txt'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
+            dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
+            # The fcitx5 addon payload must not leak into the ibus-hazkey
+            # package.
+            if dpkg-deb --contents "$ibus_deb" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
+              echo "ibus-hazkey DEB bundles fcitx payload" >&2
+              exit 1
+            fi
             if dpkg-deb --field "$ibus_deb" Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev|fcitx5)(,|$)'; then
               echo "ibus-hazkey DEB contains a wrong-framework dependency" >&2
               exit 1
@@ -449,6 +532,27 @@ jobs:
               || { echo "ibus-hazkey RPM misses Requires: ibus" >&2; exit 1; }
             rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libibus-1\.0\.so\.5\(\)\(64bit\)$' \
               || { echo "ibus-hazkey RPM misses auto libibus SONAME require" >&2; exit 1; }
+            # The shared server/settings directory groups must be inside the
+            # ibus-hazkey package as well, like fcitx5-hazkey.
+            for _ibus_shared in /usr/bin/hazkey-server /usr/bin/hazkey-settings \
+                share/applications/hazkey-settings.desktop \
+                share/hazkey/emoji_all_E17.0.txt share/icons \
+                hazkey/hazkey-server hazkey/hazkey-settings \
+                hazkey/libllama/libllama.so; do
+              rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \
+                || { echo "ibus-hazkey RPM misses shared payload: $_ibus_shared" >&2; exit 1; }
+            done
+            # The fcitx5 addon payload must not leak into the ibus-hazkey
+            # package.
+            if rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
+              echo "ibus-hazkey RPM bundles fcitx payload" >&2
+              exit 1
+            fi
+            # The bundled libllama runtime must satisfy its own SONAME
+            # requires inside the ibus package too (same self-dependency
+            # guard as fcitx5-hazkey above).
+            rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$' \
+              || { echo "ibus-hazkey RPM misses auto libprotobuf-lite SONAME require" >&2; exit 1; }
             for _bad_dep in protobuf protobuf-devel protobuf-compiler protobuf-lite-devel; do
               if rpm -qp --requires "$rpm_target" | grep -Fqx "$_bad_dep"; then
                 echo "RPM contains a build-time protobuf dependency: $_bad_dep" >&2
@@ -463,6 +567,7 @@ jobs:
             # "'libggml-base.so.0()(64bit)' not found" (leap16 0.2.21).
             for _soname in 'libggml-base.so.0()(64bit)' 'libggml.so.0()(64bit)' 'libllama.so.0()(64bit)'; do
               rpm -qp --provides "$rpm_target" | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
+              rpm -qp --provides "$ibus_rpm_target" | grep -Fq "$_soname" || { echo "ibus RPM missing self-provide: $_soname" >&2; exit 1; }
             done
           fi
 
