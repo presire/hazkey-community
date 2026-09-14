@@ -122,6 +122,7 @@ jobs:
                 build-essential ca-certificates curl git gettext gzip tar ninja-build pkg-config \
                 cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+                libibus-1.0-dev \
                 libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev libncurses6 \
                 glslc protobuf-compiler libprotobuf-dev dpkg-dev \
                 spirv-headers
@@ -132,6 +133,7 @@ jobs:
                 ninja-build pkgconf-pkg-config cmake rpm-build \
                 qt6-qtbase-devel qt6-qttools-devel \
                 fcitx5-devel fcitx5-qt-devel \
+                ibus-devel \
                 protobuf-compiler protobuf-devel protobuf-lite-devel \
                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
@@ -144,6 +146,7 @@ jobs:
                 pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel libicu-devel \
                 libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \
                 cmake ninja gettext-tools protobuf-devel fcitx5-devel \
+                ibus-devel \
                 qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
                 shaderc glslang-devel spirv-headers
 
@@ -190,11 +193,16 @@ jobs:
           # Configure once from the repository root so that targets which
           # depend on the root-only server build (learninghistorydialog_test
           # -> build_hazkey_server) resolve correctly.
+          # The experimental IBus frontend is enabled so that these package
+          # jobs also produce the separate ibus-hazkey .deb/.rpm below.
+          # IBus files are NEVER bundled into fcitx5-hazkey (see the split
+          # step after the staged-install assertions).
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DProtobuf_USE_STATIC_LIBS=OFF
+            -DProtobuf_USE_STATIC_LIBS=OFF \
+            -DENABLE_IBUS=ON
 
           # vulkan-shaders-gen forks up to 16 glslc subprocesses in parallel,
           # which can exceed the process-table limit in constrained CI
@@ -206,7 +214,7 @@ jobs:
           # from the root build tree, then install them once into the staging
           # directory.  These generated files are ALL targets, so they must
           # be listed explicitly when using a targeted build.
-          cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in-fmt build_hazkey_server --parallel 1
+          cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in-fmt ibus-engine-hazkey ibus-hazkey-translations build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
           # Emoji 17 staged-install assertion: the E17 asset must be present
@@ -226,6 +234,43 @@ jobs:
           done
           test -n "$(find /work/workdir/usr -path '*/hazkey/libllama/backends/*.so' -print -quit)"
 
+          # IBus staged-install assertion: the component XML, the engine
+          # binary, and the gettext catalogs must be present in the staged
+          # tree. GNUInstallDirs puts the engine under libexec on every
+          # distro here, so locate it with find instead of a hard-coded path.
+          test -f /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
+          _ibus_engine="$(find /work/workdir/usr -path '*libexec/ibus-hazkey/ibus-engine-hazkey' -print -quit)"
+          test -n "$_ibus_engine" || { echo "missing staged IBus engine" >&2; exit 1; }
+          test -x "$_ibus_engine" || { echo "staged IBus engine not executable" >&2; exit 1; }
+          test -n "$(find /work/workdir/usr/share/locale -name 'ibus-hazkey.mo' -print -quit)" \
+            || { echo "missing staged ibus-hazkey.mo" >&2; exit 1; }
+          # The component file must declare this component's well-known bus
+          # name, and the installed engine must report its engine description
+          # without contacting hazkey-server (--xml prints the embedded
+          # engine description and exits before ibus_init(), see src/main.cpp;
+          # note it emits an <engines> snippet, not the component bus name).
+          grep -Fq 'org.freedesktop.IBus.Hazkey' /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
+          "$_ibus_engine" --xml | grep -Fq '<name>hazkey</name>'
+
+          # Split the IBus payload out of the shared staging tree. IBus ships
+          # as a separate ibus-hazkey package and must not be bundled into
+          # the fcitx5-hazkey package.
+          mkdir -p workdir-ibus
+          (
+            cd workdir
+            find usr \( -path 'usr/share/ibus/component/ibus-hazkey.xml' \
+              -o -path 'usr/libexec/ibus-hazkey/*' \
+              -o -path 'usr/share/locale/*/LC_MESSAGES/ibus-hazkey.mo' \) \
+              \( -type f -o -type l \) -print0 | while IFS= read -r -d '' _f; do
+              mkdir -p "../workdir-ibus/$(dirname "$_f")"
+              mv "$_f" "../workdir-ibus/$_f"
+            done
+          )
+          # Drop the now-empty IBus directories from the fcitx tree.
+          rmdir workdir/usr/libexec/ibus-hazkey workdir/usr/share/ibus/component 2>/dev/null || true
+          test -z "$(cd workdir && find usr \( -path 'usr/share/ibus/*' -o -path 'usr/libexec/ibus-hazkey/*' -o -name 'ibus-hazkey*' \) -print -quit)" \
+            || { echo "IBus payload remains in fcitx staging tree" >&2; exit 1; }
+
           ref_name="${GITHUB_REF_NAME#v}"
           version="${ref_name%%[!0-9.]*}"
           case "$version" in
@@ -234,6 +279,8 @@ jobs:
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then
+            fcitx_deb="packages/fcitx5-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            ibus_deb="packages/ibus-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
             mkdir -p workdir/DEBIAN
             {
               printf '%s\n' 'Package: fcitx5-hazkey'
@@ -247,22 +294,54 @@ jobs:
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
             } > workdir/DEBIAN/control
-            dpkg-deb --build --root-owner-group workdir \
-              "packages/fcitx5-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            dpkg-deb --build --root-owner-group workdir "$fcitx_deb"
             # Assert that the built package metadata reports the expected
             # architecture for this matrix row.
-            test "$(dpkg-deb --field packages/*.deb Architecture)" = "$PACKAGE_ARCH"
-            dpkg-deb --info packages/*.deb
-            dpkg-deb --contents packages/*.deb
+            test "$(dpkg-deb --field "$fcitx_deb" Architecture)" = "$PACKAGE_ARCH"
+            dpkg-deb --info "$fcitx_deb"
+            dpkg-deb --contents "$fcitx_deb"
+            # The IBus payload must not leak into the fcitx5-hazkey package.
+            if dpkg-deb --contents "$fcitx_deb" | grep -Eq 'ibus-hazkey|share/ibus/component'; then
+              echo "fcitx5-hazkey DEB bundles IBus payload" >&2
+              exit 1
+            fi
             # The bundled libllama runtime must be inside the deb; otherwise
             # hazkey-server fails at startup with missing libllama.so.0.
-            dpkg-deb --contents packages/*.deb | grep -Fq 'hazkey/libllama/libllama.so'
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey/libllama/libllama.so'
             # Debian 13 and Ubuntu 26.04 provide the protobuf lite runtime
             # under this package name. The compiler and headers are build
             # dependencies only and must not be runtime dependencies.
-            dpkg-deb --field packages/*.deb Depends | grep -Fq 'libprotobuf-lite32t64'
-            if dpkg-deb --field packages/*.deb Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev)(,|$)'; then
+            dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
+            if dpkg-deb --field "$fcitx_deb" Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev)(,|$)'; then
               echo "DEB contains a protobuf compiler/development dependency" >&2
+              exit 1
+            fi
+            mkdir -p workdir-ibus/DEBIAN
+            {
+              printf '%s\n' 'Package: ibus-hazkey'
+              printf 'Version: %s\n' "${version}-1~${PACKAGE_SUFFIX}"
+              printf '%s\n' 'Section: utils'
+              printf '%s\n' 'Priority: optional'
+              printf 'Architecture: %s\n' "$PACKAGE_ARCH"
+              printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
+              # libibus-1.0-5 is the libibus-1.0.so.5 runtime on both Debian 13
+              # and Ubuntu 26.04 (SONAME-stable across the 1.5.x series).
+              printf '%s\n' 'Depends: ibus, libibus-1.0-5, libc6'
+              printf '%s\n' 'Description: Hazkey Japanese input method for IBus'
+              printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
+              printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
+            } > workdir-ibus/DEBIAN/control
+            dpkg-deb --build --root-owner-group workdir-ibus "$ibus_deb"
+            test "$(dpkg-deb --field "$ibus_deb" Architecture)" = "$PACKAGE_ARCH"
+            dpkg-deb --info "$ibus_deb"
+            dpkg-deb --contents "$ibus_deb"
+            # The IBus component XML and engine binary must be inside the
+            # ibus-hazkey package; otherwise IBus cannot register the engine.
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/ibus/component/ibus-hazkey.xml'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'ibus-engine-hazkey'
+            dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libibus-1.0-5'
+            if dpkg-deb --field "$ibus_deb" Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev|fcitx5)(,|$)'; then
+              echo "ibus-hazkey DEB contains a wrong-framework dependency" >&2
               exit 1
             fi
           else
@@ -305,37 +384,101 @@ jobs:
               --define "_buildrootdir $topdir/BUILDROOT" \
               --define "_rpmdir $topdir/RPMS" \
               --define "_srcrpmdir $topdir/SRPMS"
-            find "$topdir/RPMS" -type f -name '*.rpm' -exec cp {} packages/ \;
-            rpm_file="$(find packages -type f -name '*.rpm' -print -quit)"
+            find "$topdir/RPMS" -type f -name 'fcitx5-hazkey-*.rpm' -exec cp {} packages/ \;
+            rpm_file="$(find packages -type f -name 'fcitx5-hazkey-*.rpm' -print -quit)"
             rpm_target="packages/fcitx5-hazkey-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
             if [ "$rpm_file" != "$rpm_target" ]; then
               mv "$rpm_file" "$rpm_target"
             fi
-            rpm -qp --requires packages/*.rpm
-            rpm -qp --filesbypkg packages/*.rpm
+            {
+              printf '%s\n' 'Name: ibus-hazkey'
+              printf 'Version: %s\n' "$version"
+              printf 'Release: %s\n' "1.${PACKAGE_SUFFIX}"
+              printf '%s\n' 'Summary: Hazkey Japanese input method for IBus'
+              printf '%s\n' 'License: MIT'
+              printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
+              printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
+              # Same policy as above: only the IBus integration dependency
+              # is explicit; libibus-1.0.so.5 and friends are auto-derived
+              # from the engine ELF SONAMEs.
+              printf '%s\n' 'Requires: ibus'
+              printf '\n'
+              printf '%s\n' '%description'
+              printf '%s\n' 'Japanese input method using AzooKeyKanaKanjiConverter.'
+              printf '\n'
+              printf '%s\n' '%prep'
+              printf '\n'
+              printf '%s\n' '%build'
+              printf '\n'
+              printf '%s\n' '%install'
+              printf '%s\n' 'rm -rf %{buildroot}'
+              printf '%s\n' 'mkdir -p %{buildroot}/usr'
+              printf '%s\n' 'cp -a /work/workdir-ibus/usr/. %{buildroot}/usr/'
+              printf '\n'
+              printf '%s\n' '%files'
+              find workdir-ibus/usr \( -type f -o -type l \) -printf '/usr/%P\n'
+            } > ibus-hazkey.spec
+            rpmbuild -bb ibus-hazkey.spec \
+              --define "_topdir $topdir" \
+              --define "_builddir $topdir/BUILD" \
+              --define "_buildrootdir $topdir/BUILDROOT" \
+              --define "_rpmdir $topdir/RPMS" \
+              --define "_srcrpmdir $topdir/SRPMS"
+            find "$topdir/RPMS" -type f -name 'ibus-hazkey-*.rpm' -exec cp {} packages/ \;
+            ibus_rpm_file="$(find packages -type f -name 'ibus-hazkey-*.rpm' -print -quit)"
+            ibus_rpm_target="packages/ibus-hazkey-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
+            if [ "$ibus_rpm_file" != "$ibus_rpm_target" ]; then
+              mv "$ibus_rpm_file" "$ibus_rpm_target"
+            fi
+            rpm -qp --requires "$rpm_target"
+            rpm -qp --filesbypkg "$rpm_target"
+            rpm -qp --requires "$ibus_rpm_target"
+            rpm -qp --filesbypkg "$ibus_rpm_target"
+            # The IBus payload must not leak into the fcitx5-hazkey package.
+            if rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'ibus-hazkey'; then
+              echo "fcitx5-hazkey RPM bundles IBus payload" >&2
+              exit 1
+            fi
+            # The IBus component XML and engine binary must be inside the
+            # ibus-hazkey package; otherwise IBus cannot register the engine.
+            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey.xml' \
+              || { echo "ibus-hazkey RPM misses component XML" >&2; exit 1; }
+            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus-engine-hazkey' \
+              || { echo "ibus-hazkey RPM misses engine binary" >&2; exit 1; }
+            rpm -qp --requires "$ibus_rpm_target" | grep -Fqx 'ibus' \
+              || { echo "ibus-hazkey RPM misses Requires: ibus" >&2; exit 1; }
+            rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libibus-1\.0\.so\.5\(\)\(64bit\)$' \
+              || { echo "ibus-hazkey RPM misses auto libibus SONAME require" >&2; exit 1; }
             for _bad_dep in protobuf protobuf-devel protobuf-compiler protobuf-lite-devel; do
-              if rpm -qp --requires packages/*.rpm | grep -Fqx "$_bad_dep"; then
+              if rpm -qp --requires "$rpm_target" | grep -Fqx "$_bad_dep"; then
                 echo "RPM contains a build-time protobuf dependency: $_bad_dep" >&2
                 exit 1
               fi
             done
-            rpm -qp --requires packages/*.rpm | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$'
+            rpm -qp --requires "$rpm_target" | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$'
             # Self-dependency guard: the package bundles libllama privately,
             # so the auto-generated Requires on its SONAMEs must be satisfied
             # by its own Provides. If the staged tree missed the three main
             # libraries, Provides lacks them and zypper reports e.g.
             # "'libggml-base.so.0()(64bit)' not found" (leap16 0.2.21).
             for _soname in 'libggml-base.so.0()(64bit)' 'libggml.so.0()(64bit)' 'libllama.so.0()(64bit)'; do
-              rpm -qp --provides packages/*.rpm | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
+              rpm -qp --provides "$rpm_target" | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
             done
           fi
 
           chmod -R a+rX packages
           EOF
 
-      - name: Upload package artifacts
+      - name: Upload fcitx5-hazkey package artifacts
         uses: actions/upload-artifact@v6
         with:
           name: fcitx5-hazkey-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
-          path: packages/*
+          path: packages/fcitx5-hazkey*
+          if-no-files-found: error
+
+      - name: Upload ibus-hazkey package artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ibus-hazkey-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
+          path: packages/ibus-hazkey*
           if-no-files-found: error

@@ -82,6 +82,7 @@ jobs:
             cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
             qt6-l10n-tools \
             libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+            libibus-1.0-dev \
             libglx-dev libgl1-mesa-dev libxkbcommon-dev libvulkan-dev \
             libncurses6 glslc protobuf-compiler libprotobuf-dev \
             spirv-headers
@@ -157,11 +158,15 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           set -eux
+          # The experimental IBus frontend is OFF by default; enable it here
+          # so CI builds ibus-engine-hazkey and runs ibus_hazkey_state_test
+          # via CTest below (no packaging impact: test.yml never packages).
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DProtobuf_USE_STATIC_LIBS=OFF
+            -DProtobuf_USE_STATIC_LIBS=OFF \
+            -DENABLE_IBUS=ON
 
       - name: Build C++ targets and tests
         run: |
@@ -175,12 +180,14 @@ jobs:
           # userdict_model_test, live_convert_mode_test,
           # hazkey_candidate_selection_test, hazkey_client_rpc_probe_test,
           # hazkey_client_cache_test, candidate_refresh_coalescer_test,
-          # hazkey_client_transact_safety_test, learninghistorydialog_test)
+          # hazkey_client_transact_safety_test, ibus_hazkey_state_test,
+          # learninghistorydialog_test)
           # in parallel for speed.  learninghistorydialog_test additionally
           # depends on the Swift server build (build_hazkey_server), so it is
           # built serially in the step below.
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
+          cmake --build build --target ibus-engine-hazkey --parallel
           cmake --build build --target zenzai_model_management_test --parallel
           cmake --build build --target keysequence_util_test --parallel
           cmake --build build --target userdict_model_test --parallel
@@ -190,6 +197,7 @@ jobs:
           cmake --build build --target hazkey_client_cache_test --parallel
           cmake --build build --target candidate_refresh_coalescer_test --parallel
           cmake --build build --target hazkey_client_transact_safety_test --parallel
+          cmake --build build --target ibus_hazkey_state_test --parallel
 
       - name: Build Swift server & learninghistorydialog_test (single-threaded)
         run: |

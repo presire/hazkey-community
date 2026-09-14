@@ -29,7 +29,7 @@ jobs:
       - name: Download packages
         uses: actions/download-artifact@v6
         with:
-          pattern: fcitx5-hazkey-*
+          pattern: "*-hazkey-*"
           path: packages
           merge-multiple: true
 
@@ -73,13 +73,13 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd packages
-          sha256sum fcitx5-hazkey-* > SHA256SUMS
+          sha256sum fcitx5-hazkey-* ibus-hazkey-* > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'packages/fcitx5-hazkey-*'
+          subject-path: 'packages/*-hazkey-*'
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
