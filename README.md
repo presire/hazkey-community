@@ -1,11 +1,11 @@
-# fcitx5-hazkey-community
+# hazkey-community
 
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)
 
-Hazkeyは、Linux向けデスクトップ環境 [Fcitx 5](https://fcitx-im.org/) で動作する日本語インプットメソッドです。  
+Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
 オプションでZenzaiニューラル変換 (llama.cppバックエンド、Vulkan GPU / CPU対応) を利用できます。  
-Fcitx 5向けに加え、実験的な IBus フロントエンド (`ibus-hazkey`) も同梱します (ビルドオプション `ENABLE_IBUS`、既定OFF)。  
+Fcitx 5 フロントエンド (`fcitx5-hazkey`) に加え、実験的な IBus フロントエンド (`ibus-hazkey`) を同梱します (IBus 版のソースビルドにはビルドオプション `ENABLE_IBUS` が必要、既定OFF。バイナリパッケージは両フロントエンド分を頒布します)。  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.25** です。  
 
@@ -56,20 +56,21 @@ Fcitx 5向けに加え、実験的な IBus フロントエンド (`ibus-hazkey`)
 1. [Releases ページ](https://github.com/presire/hazkey-community/releases) から最新版 (`v0.2.20-community` 以降) を開きます。  
 2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
    パッケージは、Debian 13 / Ubuntu 26.04向けに `.deb`、Fedora 44 / openSUSE Leap 16 / Tumbleweed 向けに `.rpm` が頒布されます。  
+   フロントエンドごとにパッケージが分かれています (`fcitx5-hazkey`: Fcitx 5用、`ibus-hazkey`: IBus用)。使うフレームワークのパッケージを選んでください (両方入れてもかまいませんが、同時使用は非サポートです。下記「IBus フロントエンドの既知の制約」参照)。  
 3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
    
    ```sh
-   # Fedora (ダウンロードした .rpm のパスを指定)
-   sudo dnf install ./fcitx5-hazkey-*.rpm
+   # Fedora (使うフレームワークのパッケージを指定。例は両方)
+   sudo dnf install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
    
-   # openSUSE (ダウンロードした .rpm のパスを指定)
-   sudo zypper install ./fcitx5-hazkey-*.rpm
+   # openSUSE (使うフレームワークのパッケージを指定。例は両方)
+   sudo zypper install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
    
-   # Debian / Ubuntu 系 (ダウンロードした .deb のパスを指定)
-   sudo apt install ./fcitx5-hazkey_*_amd64.deb
+   # Debian / Ubuntu 系 (使うフレームワークのパッケージを指定。例は両方)
+   sudo apt install ./fcitx5-hazkey_*_amd64.deb ./ibus-hazkey_*_amd64.deb
    ```
    
-4. Fcitx 5を再起動します。(ログアウト / ログイン、または下記「初回の有効化」の手順)  
+4. 使っているフレームワークを再起動します。(Fcitx 5 はログアウト / ログイン、または下記「初回の有効化」の手順。IBus は `ibus restart` など)  
 
 > インストール後、設定UI (hazkey-settings) と サーバ (hazkey-server) は同じバージョンで揃います。  
 > クライアントとサーバのバージョンが不一致になった場合は、hazkey-server が自動的に再起動されます。  
@@ -93,19 +94,21 @@ RPMパッケージはGPG署名付きで頒布されています。(DEBは署名�
 sudo rpm --import RPM-GPG-KEY-hazkey
 
 # 署名の確認 (任意)
-rpm -K ./fcitx5-hazkey-*.rpm
+rpm -K ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
 ```
 
 ビルドの来歴証明 (Artifact Attestation) も付与されています。  
 ghコマンドがある環境では、次のコマンドで「このCIでビルドされた」ことを検証できます。(任意)  
 
 ```sh
-gh attestation verify ./fcitx5-hazkey-*.rpm --owner presire
+gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
 ```
 
 <br>
 
-## 初回の有効化 (Fcitx 5に登録)
+## 初回の有効化
+
+### Fcitx 5に登録
 
 1. Fcitx 5を再起動します。  
    
@@ -122,12 +125,36 @@ gh attestation verify ./fcitx5-hazkey-*.rpm --owner presire
    hazkey-settings
    ```
 
+### IBus に登録 (実験的)
+
+1. `ibus-daemon` を再起動します。  
+   
+   ```sh
+   ibus restart
+   # またはログアウト / ログイン
+   ```
+   
+2. `ibus list-engine` に `hazkey` が表示されることを確認します。  
+   
+   ```sh
+   ibus list-engine | grep hazkey
+   ```
+   
+3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]など) または `ibus-setup` から **Hazkey** を追加します。  
+4. 入力メソッドの切替 (デフォルトでは `Super+Space` など、環境の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
+5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-settings** を起動します。  
+   
+   ```sh
+   hazkey-settings
+   ```
+
 <br>
 
 ## IBus フロントエンド (実験的)
 
-Fcitx 5 と同じ `hazkey-server` を利用する実験的な IBus フロントエンド (`ibus-hazkey`) を同梱します。  
-IBus 側をビルド・インストールするには、CMake で `-DENABLE_IBUS=ON` を指定します (既定は `OFF`、`pkg-config ibus-1.0` が必要)。  
+Fcitx 5 と同じ `hazkey-server` を利用する実験的な IBus フロントエンド (`ibus-hazkey`) です。  
+GitHub Releases の `ibus-hazkey` パッケージ (`.deb` / `.rpm`) で導入するのが手軽です (上記「クイックスタート」参照)。  
+ソースからビルドする場合は、CMake で `-DENABLE_IBUS=ON` を指定します (既定は `OFF`、`pkg-config ibus-1.0` が必要)。  
 
 ```sh
 cmake -G Ninja \
@@ -184,8 +211,8 @@ v3.1はv3.2の後継に置き換えられているため、既存環境の再現
 1. `hazkey-settings` を起動し、[AI]タブを開きます。  
 2. [Zenzaiモデルの管理]から利用したいモデルをダウンロードします。  
 3. [Zenzaiを有効化]にチェックを入れ、バックエンドデバイス (CPUまたはVulkan GPU) を選択して、[適用]または[OK]を押します。  
-4. GPUバックエンドの選択肢に表示されない場合は、Vulkanドライバの導入状態を確認した上でFcitx 5を再起動します。  
-   (`systemctl --user restart fcitx5.service`)  
+4. GPUバックエンドの選択肢に表示されない場合は、Vulkanドライバの導入状態を確認した上で、使用中のフレームワークを再起動します。
+   (Fcitx 5: `systemctl --user restart fcitx5.service`、IBus: `ibus restart`)
 
 Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANVなど) が必要です。  
 `vulkaninfo --summary` (パッケージ `vulkan-tools`) でGPUが列挙されれば利用可能です。  
@@ -247,7 +274,7 @@ GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要
 - Vulkan 1.2以上に対応したGPUまたはiGPUと、対応するVulkanドライバがインストールされていること  
 - hazkey-serverが `GGML_VULKAN=ON` でビルドされていること  
 - `vulkaninfo --summary` で対象デバイスが列挙されること  
-- Fcitx 5再起動後、`hazkey-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
+- フレームワーク再起動後、`hazkey-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
 
 これらはVulkanバックエンドを利用できるかの確認条件であり、変換速度や安定性を保証するものではありません。  
 
@@ -352,7 +379,8 @@ pkill -u $USER -x hazkey-server
 ### 依存関係
 
 - Swift >= 6.1  
-- Fcitx 5 >= 5.0.4 (開発ヘッダ含む)  
+- Fcitx 5 >= 5.0.4 (開発ヘッダ含む。`ENABLE_FCITX5=ON` 時に必要)  
+- IBus (開発ヘッダ `libibus-1.0-dev` / `ibus-devel`。`ENABLE_IBUS=ON` 時に必要)  
 - Qt >= 6.7 (6.2 以降でもビルド可能ですが表示が崩れる場合があります)  
 - CMake >= 3.21 (4.x以降推奨)  
 - Protobuf >= 3.12  
@@ -480,20 +508,26 @@ Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` 
 sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
                  protobuf-devel protobuf-compiler protobuf-lite-devel \
                  fcitx5-devel fcitx5-qt-devel \
+                 ibus-devel \
                  qt6-qtbase-devel qt6-qttools-devel \
                  vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
                  libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
                  spirv-headers-devel
 ```
 
+> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
+
 #### openSUSE Leap 16
 
 ```sh
 sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
+                    ibus-devel \
                     qt6-base-devel qt6-tools-devel qt6-linguist-devel \
                     patterns-devel-vulkan-devel_vulkan \
                     vulkan-headers shaderc glslang-devel spirv-headers
 ```
+
+> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
 
 #### Debian 13 (Trixie) / Ubuntu 26.04
 
@@ -501,10 +535,13 @@ sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
 sudo apt install cmake ninja-build pkg-config gettext \
                  protobuf-compiler libprotobuf-dev \
                  libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
+                 libibus-1.0-dev \
                  qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
                  libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc \
                  spirv-headers
 ```
+
+> `libibus-1.0-dev` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
 
 `spirv-headers` 系パッケージは、  
 内蔵のllama.cppがVulkanバックエンドのCMake configure時に `find_package(SPIRV-Headers)` を要求するため、  
@@ -527,7 +564,8 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後は、Fcitx 5を再起動して入力メソッドに登録してください。(上記「初回の有効化」参照)  
+インストール後は、使用中のフレームワークを再起動して入力メソッドに登録してください。(Fcitx 5・IBus とも上記「初回の有効化」参照)  
+既定のビルドは Fcitx 5 版のみで、IBus 版が必要な場合は `-DENABLE_IBUS=ON` を付けてください。  
 
 ### ビルドオプション
 
@@ -594,6 +632,15 @@ systemctl --user restart fcitx5.service   # 完全再起動
 
 学習データは `~/.local/state/hazkey/` に保持されるため失われません。  
 
+### IBus が新しいバージョンを認識しない
+
+```sh
+ibus restart                              # デーモン再起動
+ibus list-engine | grep hazkey            # Hazkey が出なければ component 登録を確認
+```
+
+component XML (`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml`) が配置されているかも確認してください。  
+
 ### サーバに接続できない
 
 ```sh
@@ -601,7 +648,7 @@ pgrep -af hazkey-server                              # 起動確認
 ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
 ```
 
-サーバプロセスが終わっている場合は Fcitx 5を再起動すると再度起動します。  
+サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBus デーモン) を再起動すると再度起動します。  
 手動起動での切り分けは、インストール先の `hazkey-server` (ラッパースクリプト) を実行して確認できます。  
 
 ### ユーザ辞書が反映されない
@@ -612,7 +659,7 @@ ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
 ### ZenzaiのGPUデバイスが選択肢に出ない
 
 - `vulkaninfo --summary` で GPUが列挙されるか確認してください。  
-- Vulkan ドライバ導入後は Fcitx 5 (およびサーバ) の再起動が必要です。  
+- Vulkan ドライバ導入後は、使用中のフレームワーク (およびサーバ) の再起動が必要です。  
 - CPUでもZenzaiは使用可能です。  
   バックエンドデバイスに「CPU」を選択してください。  
 
