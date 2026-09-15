@@ -279,8 +279,16 @@ void HazkeyState::preeditKeyEvent(
                         std::dynamic_pointer_cast<HazkeyCandidateList>(
                             ic_->inputPanel().candidateList());
                     if (freshList != nullptr) {
-                        auto localIndex = keysym - FcitxKey_1;
-                        if (localIndex < freshList->pageSize()) {
+                        const int localIndex =
+                            static_cast<int>(keysym - FcitxKey_1);
+                        // Bound by the candidates that exist on the current
+                        // page, not by pageSize(): on the final partial page
+                        // the trailing slots are empty. Without this the
+                        // selection silently fails but candidateCompleteHandler
+                        // would still run against the stale cursor.
+                        if (HazkeyCandidateList::pageLocalIndexInRange(
+                                freshList->pageSize(), freshList->totalSize(),
+                                freshList->currentPage(), localIndex)) {
                             freshList->setCursorIndex(localIndex);
                             candidateCompleteHandler(freshList);
                         }
@@ -399,10 +407,18 @@ void HazkeyState::candidateKeyEvent(
                 }
             } else if (isAltDigitKeyEvent(event) ||
                        key.checkKeyList(defaultSelectionKeys)) {
-                auto localIndex = isAltDigitKeyEvent(event)
-                                      ? keysym - FcitxKey_1
-                                      : key.keyListIndex(defaultSelectionKeys);
-                if (localIndex < candidateList->size()) {
+                const int localIndex =
+                    isAltDigitKeyEvent(event)
+                        ? static_cast<int>(keysym - FcitxKey_1)
+                        : key.keyListIndex(defaultSelectionKeys);
+                // Bound by the candidates that exist on the current page
+                // (covering both the Alt+digit and number-key paths) so the
+                // final partial page never completes an empty slot. size() is
+                // page-local on current Fcitx, but this states the rule
+                // explicitly and stays correct across Fcitx versions.
+                if (HazkeyCandidateList::pageLocalIndexInRange(
+                        candidateList->pageSize(), candidateList->totalSize(),
+                        candidateList->currentPage(), localIndex)) {
                     candidateList->setCursorIndex(localIndex);
                     candidateCompleteHandler(candidateList);
                 }
@@ -719,6 +735,12 @@ bool HazkeyState::showCandidateList(
         auto newFcitxCandidateList =
             std::dynamic_pointer_cast<HazkeyCandidateList>(
                 ic_->inputPanel().candidateList());
+        // No lower clamp is needed: hasCandidates above already guarantees
+        // page_size() > 0, so this only caps the upper bound at the 10
+        // selection keys. (The server also normalizes numCandidatesPerPage to
+        // 1..10 via HazkeyServerConfig.normalizeProfile(_:), but the > 0 gate
+        // is what makes the clamp safe. The IBus frontend's
+        // std::clamp(rawPageSize, 1, 16) has the same redundant lower bound.)
         int pageSize = std::min(static_cast<size_t>(response.page_size()),
                                 defaultSelectionKeys.size());
         newFcitxCandidateList->setPageSize(pageSize);

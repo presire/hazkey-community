@@ -72,6 +72,17 @@ class HazkeyCandidateList : public CommonCandidateList {
     // recent versions of fcitx provide this function as a default
     void setCursorIndex(int localIndex);
 
+    // Bounds a page-local selection index against the candidates that actually
+    // exist on the current page. The last page of a list whose total is not a
+    // multiple of pageSize is partially filled (e.g. 13 candidates at 10 per
+    // page leaves 3 slots on page 1); the trailing slots are empty and must
+    // never be selectable. This is the single source of truth shared by the
+    // Alt+digit / number-key paths in HazkeyState and the list's own
+    // setCursorIndex(). It is the Fcitx analogue of the IBus frontend's
+    // hazkey::ibus::HazkeyState::pageLocalToGlobalIndex() validity rule.
+    static bool pageLocalIndexInRange(int pageSize, int totalSize,
+                                      int currentPage, int localIndex);
+
     // Select a displayed candidate by its global index.
     bool selectCandidate(int globalIndex);
     void setSelectionHandler(SelectionHandler selectionHandler);
