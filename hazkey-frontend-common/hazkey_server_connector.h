@@ -18,7 +18,13 @@
 
 class HazkeyServerConnector {
    public:
-    HazkeyServerConnector();
+    // `autoConnect=false` skips the eager connectServer() the constructor
+    // would otherwise run. The IBus frontend uses this so engine construction
+    // (which happens on the GLib main loop) cannot block on the connect
+    // retry/spawn loop; transact() already connects lazily when sock_ == -1,
+    // so the first RPC on the worker establishes the connection. fcitx5 and
+    // the tests keep the default eager connect.
+    explicit HazkeyServerConnector(bool autoConnect = true);
     ~HazkeyServerConnector();
 
     // Owns a socket fd: a shallow copy would double-close it. The connector is

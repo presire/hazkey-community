@@ -98,8 +98,10 @@ class ClientPerfMeasurement {
 
 }  // namespace
 
-HazkeyServerConnector::HazkeyServerConnector() {
-    connectServer();
+HazkeyServerConnector::HazkeyServerConnector(bool autoConnect) {
+    if (autoConnect) {
+        connectServer();
+    }
     HAZKEY_LOG_DEBUG() << "Connector initialized";
 }
 

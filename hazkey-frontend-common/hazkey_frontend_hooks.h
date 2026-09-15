@@ -77,6 +77,33 @@ void setServerSpawner(ServerSpawner spawner);
 // hazkey-server through the installed spawner. No-op when none is installed.
 void spawnServer(bool forceRestart);
 
+// ---- Main-loop delivery (asynchronous transport support) ----------------
+//
+// Posts `task` to the frontend's UI thread / event loop. A frontend whose
+// transport runs off the UI thread (the IBus engine routes all RPCs through
+// one worker so a slow hazkey-server never blocks process_key_event) installs
+// a poster so the worker can hand UI updates back to the thread that owns the
+// engine and its GObjects.
+//
+// Contract: the installed poster must be safe to call from ANY thread (so a
+// worker can post) and must run `task` on the frontend's UI thread, in call
+// order. It must NOT run `task` inline on the calling thread. Default (none
+// installed): run inline, which keeps a frontend that has no worker (fcitx5)
+// byte-for-byte single-threaded.
+//
+// Install-once: `setMainLoopPoster` is expected to be called before any task
+// is posted (i.e. before the first connector/state is constructed). It is not
+// synchronized against concurrent postToMainLoop() calls.
+// `setMainLoopPoster` is expected to be called before any task is posted (i.e.
+// before the first connector/state is constructed). It is not synchronized
+// against concurrent postToMainLoop() calls.
+using MainLoopPoster = std::function<void(std::function<void()>)>;
+
+void setMainLoopPoster(MainLoopPoster poster);
+
+void postToMainLoop(std::function<void()> task);
+// -------------------------------------------------------------------------
+
 // Neutral result of the getHiraganaWithCursor RPC: the composing text split
 // around the server-reported cursor. Frontends build their own presentation
 // (fcitx::Text with an underline on onCursor; IBus preedit + attribute).

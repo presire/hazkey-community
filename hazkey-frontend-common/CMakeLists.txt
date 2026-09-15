@@ -16,6 +16,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Protobuf REQUIRED)
 
+# std::thread-based async transport foundation (serial_task_executor.cpp).
+find_package(Threads REQUIRED)
+
 # protobuf-lite's real link closure (abseil, utf8_range, ...) comes from
 # pkg-config; the bare Protobuf_LITE_LIBRARIES variable is not enough for
 # executables that instantiate protobuf inline code.
@@ -35,6 +38,7 @@ set(PROTO_FILES
 add_library(hazkey-frontend-common STATIC
     hazkey_server_connector.cpp
     hazkey_frontend_hooks.cpp
+    serial_task_executor.cpp
 )
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
@@ -100,6 +104,9 @@ target_include_directories(hazkey-frontend-common PUBLIC
     ${Protobuf_INCLUDE_DIRS}
 )
 target_link_libraries(hazkey-frontend-common PUBLIC PkgConfig::ProtobufLite)
+# PUBLIC: the static library uses std::thread, so every consumer must link
+# pthread too.
+target_link_libraries(hazkey-frontend-common PUBLIC Threads::Threads)
 
 # Shared-transport tests. These exercise only hazkey-frontend-common (UNIX
 # socket framing, timeouts/reconnect, read-through cache, RPC round trips), so
@@ -141,4 +148,17 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_client_transact_safety_test hazkey-proto-headers)
     add_test(NAME hazkey_client_transact_safety_test
         COMMAND hazkey_client_transact_safety_test)
+
+    # Async transport foundation: SerialTaskExecutor + the main-loop post hook
+    # that the IBus frontend uses to keep process_key_event non-blocking.
+    add_executable(hazkey_frontend_async_test
+        hazkey_frontend_async_test.cpp)
+    target_link_libraries(hazkey_frontend_async_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_frontend_async_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_frontend_async_test hazkey-proto-headers)
+    add_test(NAME hazkey_frontend_async_test
+        COMMAND hazkey_frontend_async_test)
 endif()

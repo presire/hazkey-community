@@ -16,6 +16,11 @@ ServerSpawner& serverSpawnerStorage() {
     return spawner;
 }
 
+MainLoopPoster& mainLoopPosterStorage() {
+    static MainLoopPoster poster;
+    return poster;
+}
+
 LogLevelPredicate& logLevelPredicateStorage() {
     static LogLevelPredicate predicate;
     return predicate;
@@ -50,6 +55,21 @@ void spawnServer(bool forceRestart) {
     if (spawner) {
         spawner(forceRestart);
     }
+}
+
+void setMainLoopPoster(MainLoopPoster poster) {
+    mainLoopPosterStorage() = std::move(poster);
+}
+
+void postToMainLoop(std::function<void()> task) {
+    const MainLoopPoster& poster = mainLoopPosterStorage();
+    if (poster) {
+        poster(std::move(task));
+        return;
+    }
+    // No worker-based frontend installed a poster (fcitx5, tests): keep the
+    // historical single-threaded behavior by running inline.
+    task();
 }
 
 }  // namespace hazkey::frontend
