@@ -75,36 +75,32 @@ struct LearningSurfaceKey: Hashable {
     }
 }
 
-class HazkeyServerState {
+/// Server-wide resources shared by every client connection.
+///
+/// The `KanaKanjiConverter` instance (dictionaries, Zenzai model, learning
+/// memory, memoization caches) is heavy and process-global; only
+/// per-composition state (lattice, completed data, Zenzai/prediction caches)
+/// is keyed by `ConversionSessionID` inside the converter. Each socket client
+/// gets its own `HazkeyServerState` holding one converter session plus its
+/// own composing text and candidate list.
+class HazkeySharedResources {
     let serverConfig: HazkeyServerConfig
     let converter: KanaKanjiConverter
     let userDictionary: UserDictionary = UserDictionary()
-    var currentCandidateList: [DisplayedCandidate]?
-    /// [community] Mode (suggest vs conversion) of `currentCandidateList`.
-    /// Deleting a candidate's learning data must rebuild the list in the same
-    /// mode — rebuilding a suggest-mode list as a non-predict list would break
-    /// live-conversion state. Remembered on every `makeCandidatesResult` call,
-    /// i.e. kept in sync with every non-nil `currentCandidateList`.
-    var currentCandidateListIsSuggest = false
-    var composingText: ComposingTextBox = ComposingTextBox()
-
-    var isShiftPressedAlone = false
-    var shiftPressedAt: ContinuousClock.Instant?
-    var isSubInputMode = false
-    /// Maximum hold duration for a Shift press-release to count as a tap.
-    /// A longer hold is treated as a long press and must not toggle sub-input mode.
-    private static let shiftTapMaxDuration: Duration = .milliseconds(500)
-    var learningDataNeedsCommit = false
-    var zenzaiLeftContext = ""
-    private var userDictInjected = false
+    /// [community] Cached immutable emoji provider. Built once per process;
+    /// never refreshed thereafter.
+    let emojiProvider: EmojiCandidateProvider?
 
     var keymap: Keymap
     var currentTableName: String
     var baseConvertRequestOptions: ConvertRequestOptions
-    /// [community] Cached immutable emoji provider. Built once per state;
-    /// never refreshed thereafter (asset refresh happens only when the
-    /// server state itself is recreated).
-    let emojiProvider: EmojiCandidateProvider?
+    var learningDataNeedsCommit = false
+    var userDictInjected = false
+
+    /// Session IDs of all live connections. Learning deletions invalidate
+    /// every session's cached conversion state, not just the requester's, so
+    /// a deleted entry cannot resurface in another client's list.
+    private var liveConversionSessionIDs: Set<KanaKanjiConverter.ConversionSessionID> = []
 
     convenience init() {
         self.init(emojiDictionaryURL: nil)
@@ -169,12 +165,383 @@ class HazkeyServerState {
         )
     }
 
+    /// Registers a live connection session for server-wide cache invalidation.
+    func registerConversionSession(_ id: KanaKanjiConverter.ConversionSessionID) {
+        liveConversionSessionIDs.insert(id)
+    }
+
+    /// Unregisters a closed connection session.
+    func unregisterConversionSession(_ id: KanaKanjiConverter.ConversionSessionID) {
+        liveConversionSessionIDs.remove(id)
+    }
+
+}
+
+// MARK: - Shared configuration and learning
+
+extension HazkeySharedResources {
+    /// Reloads keymap, input table, base options, and memory directory.
+    /// Composition state is per-connection and untouched here; each
+    /// `HazkeyServerState` resets its own composition after calling this.
+    func reinitializeConfiguration() {
+        // Only the requesting connection resets its own composition after this
+        // call; other live connections keep their in-flight composition. This
+        // is safe because `InputStyleManager.registerInputStyle(table:for:)`
+        // (fork `KanaKanjiConverterModule`) only ADDS an entry keyed by the
+        // new `.tableName(UUID)` and never removes previously registered
+        // names, so `ComposingText` elements already tagged with the old
+        // `.tableName(...)` still resolve. Residual (acceptable): within one
+        // in-flight composition, keys inserted before the config change keep
+        // the old mapping while later keys use the new keymap/table.
+        self.keymap = serverConfig.loadKeymap()
+
+        let newTableName = UUID().uuidString
+        serverConfig.loadInputTable(tableName: newTableName)
+        self.currentTableName = newTableName
+
+        self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
+        do {
+            try serverConfig.createMemoryDirectoryIfNeeded()
+        } catch {
+            NSLog("Failed to create user memory directory: \(error.localizedDescription)")
+        }
+    }
+
+    func saveLearningData() -> Hazkey_ResponseEnvelope {
+        if learningDataNeedsCommit {
+            converter.commitUpdateLearningData()
+            learningDataNeedsCommit = false
+        }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+        }
+    }
+
+    func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
+        if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
+            let memoryDirectory = serverConfig.memoryDirectory()
+            do {
+                if FileManager.default.fileExists(atPath: memoryDirectory.path) {
+                    try FileManager.default.removeItem(at: memoryDirectory)
+                }
+                try serverConfig.createMemoryDirectoryIfNeeded()
+            } catch {
+                NSLog("Failed to clear isolated history: \(error.localizedDescription)")
+                return Hazkey_ResponseEnvelope.with {
+                    $0.status = .failed
+                    $0.errorMessage = "Failed to clear profile history."
+                }
+            }
+        } else {
+            converter.resetMemory()
+        }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+        }
+    }
+
+    /// Learning history merged to one row per (reading, word) surface key.
+    /// The learning memory stores one row per (ruby, word, lcid, rcid), so the
+    /// same surface can surface as several CID-variant rows (e.g. the
+    /// clause-bigram entry and the whole-string entry of one commit). The
+    /// dialog displays one merged row per surface and deletion removes every
+    /// variant — the same semantics as the candidate delete hotkey — so
+    /// lcid/rcid are not exposed to clients.
+    func listLearningEntries(
+        query: String,
+        offset: UInt32,
+        limit: UInt32
+    ) throws -> (entries: [Hazkey_Config_LearningHistoryEntry], totalCount: Int) {
+        guard offset <= 65_536 else {
+            throw LearningHistoryError.invalidOffset
+        }
+        let pageLimit = min(max(Int(limit), 1), 200)
+        var surfaceOrder: [LearningSurfaceKey] = []
+        var mergedSurfaces: [LearningSurfaceKey: (reading: String, word: String, count: Int, lastUsed: Date)] = [:]
+        for entry in try allLearningMemoryEntries()
+        where learningHistoryMatches(query: query, reading: entry.data.ruby, word: entry.data.word) {
+            let key = LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
+            if mergedSurfaces[key] == nil {
+                surfaceOrder.append(key)
+                mergedSurfaces[key] = (entry.data.ruby, entry.data.word, Int(entry.count), entry.lastUsed)
+            } else {
+                mergedSurfaces[key]!.count += Int(entry.count)
+                if mergedSurfaces[key]!.lastUsed < entry.lastUsed {
+                    mergedSurfaces[key]!.lastUsed = entry.lastUsed
+                }
+            }
+        }
+        let pageStart = min(Int(offset), surfaceOrder.count)
+        let pageEnd = min(pageStart + pageLimit, surfaceOrder.count)
+        let entries = surfaceOrder[pageStart..<pageEnd].map { key in
+            Hazkey_Config_LearningHistoryEntry.with {
+                let surface = mergedSurfaces[key]!
+                $0.reading = surface.reading
+                $0.word = surface.word
+                $0.count = UInt32(clamping: surface.count)
+                $0.lastUsedUnixDay = UInt32(clamping: max(0, Int(surface.lastUsed.timeIntervalSince1970 / 86_400)))
+            }
+        }
+        return (entries, surfaceOrder.count)
+    }
+
+    func forgetLearningEntries(
+        _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
+    ) throws -> UInt32 {
+        var uniqueKeys: [LearningHistoryKey] = []
+        var seenKeys: Set<LearningHistoryKey> = []
+        for key in keys {
+            let historyKey = LearningHistoryKey(
+                reading: key.reading, word: key.word, lcid: key.lcid, rcid: key.rcid)
+            if seenKeys.insert(historyKey).inserted {
+                uniqueKeys.append(historyKey)
+            }
+        }
+
+        let existingKeys = Set(try allLearningMemoryEntries().map {
+            LearningHistoryKey(
+                reading: $0.data.ruby,
+                word: $0.data.word,
+                lcid: UInt32(clamping: $0.data.lcid),
+                rcid: UInt32(clamping: $0.data.rcid))
+        })
+        guard uniqueKeys.allSatisfy(existingKeys.contains) else {
+            throw LearningHistoryError.unknownEntry
+        }
+
+        for key in uniqueKeys {
+            guard let lcid = Int(exactly: key.lcid), let rcid = Int(exactly: key.rcid) else {
+                throw LearningHistoryError.unsupportedCID
+            }
+            try converter.forgetLearningMemory(
+                reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
+        }
+        // Deleted entries must not surface in subsequent conversions. The
+        // converter reuses each session's lattice (and the Zenzai
+        // draft/memoized constraint) when the composing text is unchanged, so
+        // a rebuilt candidate list would otherwise resurrect the deleted
+        // entries from the stale caches. Resetting every live session drops
+        // only cached conversion state — composing texts live in each
+        // per-connection HazkeyServerState and the learning memory on disk,
+        // both unaffected.
+        for id in liveConversionSessionIDs {
+            do { try converter.withSession(id) { converter.stopComposition() } }
+            catch { NSLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
+        }
+        converter.purgeZenzaiMemoizationCache()
+        return UInt32(uniqueKeys.count)
+    }
+
+    /// [community] Delete every learning entry matching each (reading, word)
+    /// surface key, regardless of CID — the same semantics as the candidate
+    /// delete hotkey (`deleteCandidateLearningData`). Used by the settings
+    /// dialog, whose rows are merged across CID variants by
+    /// `listLearningEntries`. Surfaces with no stored entry are skipped so a
+    /// row deleted in the meantime cannot fail the whole batch; the returned
+    /// count is the number of exact entries actually removed.
+    func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
+        var requestedSurfaces: Set<LearningSurfaceKey> = []
+        var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
+        for surface in surfaces {
+            let key = LearningSurfaceKey(reading: surface.reading, word: surface.word)
+            guard requestedSurfaces.insert(key).inserted else { continue }
+            resolvedKeys.append(contentsOf: try matchingLearningEntryKeys(reading: surface.reading, word: surface.word))
+        }
+        guard !resolvedKeys.isEmpty else { return 0 }
+        return try forgetLearningEntries(resolvedKeys)
+    }
+
+    // Internal (not private): per-connection `HazkeyServerState` calls these
+    // for candidate annotation and deletion matching.
+    func allLearningMemoryEntries() throws -> [LearningMemoryEntry] {
+        var entries: [LearningMemoryEntry] = []
+        var offset = 0
+        repeat {
+            let page = try converter.learningMemoryEntries(offset: offset, limit: 65_536)
+            entries.append(contentsOf: page.entries)
+            guard let nextOffset = page.nextOffset else {
+                return entries
+            }
+            offset = nextOffset
+        } while offset < 65_536
+        return entries
+    }
+
+    /// [community] Surface keys of every stored learning-memory entry, used to
+    /// annotate converter candidates as "deletable".
+    func learningSurfaceKeys() throws -> Set<LearningSurfaceKey> {
+        Set(
+            try allLearningMemoryEntries().map { entry in
+                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
+            })
+    }
+
+    /// [community] Every stored learning entry matching a candidate's
+    /// (reading, word) pair regardless of CID, as keys for
+    /// `forgetLearningEntries`. Same surface normalization as
+    /// `learningSurfaceKeys`, so annotation and deletion agree.
+    func matchingLearningEntryKeys(
+        reading: String,
+        word: String
+    ) throws -> [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] {
+        let target = LearningSurfaceKey(reading: reading, word: word)
+        return try allLearningMemoryEntries().compactMap { entry in
+            guard
+                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word) == target
+            else { return nil }
+            return (
+                reading: entry.data.ruby, word: entry.data.word,
+                lcid: UInt32(clamping: entry.data.lcid),
+                rcid: UInt32(clamping: entry.data.rcid)
+            )
+        }
+    }
+}
+
+// MARK: - Per-connection composition session
+
+/// One IME composition session bound to a single socket client.
+///
+/// `HazkeyServer` creates one `HazkeyServerState` per accepted connection and
+/// destroys it on disconnect. The heavy converter, configuration, user
+/// dictionary, and emoji provider live in the server-wide `shared` object;
+/// this object owns only per-composition state (composing text, candidate
+/// list, shift/sub-mode flags, Zenzai left context) plus one
+/// `KanaKanjiConverter.ConversionSessionID` selecting its slice of the shared
+/// converter's session-keyed state (lattice, completed data, Zenzai and
+/// prediction caches). Every converter call touching composition state runs
+/// inside `withConversionSession`, so simultaneous clients never observe each
+/// other's uncommitted input. Learning memory is shared server-wide.
+class HazkeyServerState {
+    let shared: HazkeySharedResources
+    let conversionSessionID: KanaKanjiConverter.ConversionSessionID
+
+    var composingText: ComposingTextBox = ComposingTextBox()
+    var currentCandidateList: [DisplayedCandidate]?
+    /// [community] Mode (suggest vs conversion) of `currentCandidateList`.
+    /// Deleting a candidate's learning data must rebuild the list in the same
+    /// mode — rebuilding a suggest-mode list as a non-predict list would break
+    /// live-conversion state. Remembered on every `makeCandidatesResult` call,
+    /// i.e. kept in sync with every non-nil `currentCandidateList`.
+    var currentCandidateListIsSuggest = false
+
+    var isShiftPressedAlone = false
+    var shiftPressedAt: ContinuousClock.Instant?
+    var isSubInputMode = false
+    /// Maximum hold duration for a Shift press-release to count as a tap.
+    /// A longer hold is treated as a long press and must not toggle sub-input mode.
+    private static let shiftTapMaxDuration: Duration = .milliseconds(500)
+    var zenzaiLeftContext = ""
+
+    private var isClosed = false
+
+    // MARK: - Forwarding accessors (shared resources)
+
+    // These keep every existing `state.xxx` call site (ProtocolHandler,
+    // tests) compiling unchanged while the storage lives in `shared`.
+    var serverConfig: HazkeyServerConfig { shared.serverConfig }
+    var converter: KanaKanjiConverter { shared.converter }
+    var userDictionary: UserDictionary { shared.userDictionary }
+    var emojiProvider: EmojiCandidateProvider? { shared.emojiProvider }
+    var baseConvertRequestOptions: ConvertRequestOptions {
+        get { shared.baseConvertRequestOptions }
+        set { shared.baseConvertRequestOptions = newValue }
+    }
+    var keymap: Keymap {
+        get { shared.keymap }
+        set { shared.keymap = newValue }
+    }
+    var currentTableName: String {
+        get { shared.currentTableName }
+        set { shared.currentTableName = newValue }
+    }
+    var learningDataNeedsCommit: Bool {
+        get { shared.learningDataNeedsCommit }
+        set { shared.learningDataNeedsCommit = newValue }
+    }
+
+    convenience init() {
+        self.init(emojiDictionaryURL: nil)
+    }
+
+    /// - Parameter emojiDictionaryURL: Injected dictionary URL for tests.
+    ///   `nil` uses the production E17 asset.
+    convenience init(emojiDictionaryURL: URL?) {
+        self.init(shared: HazkeySharedResources(emojiDictionaryURL: emojiDictionaryURL))
+    }
+
+    init(shared: HazkeySharedResources) {
+        self.shared = shared
+        self.conversionSessionID = shared.converter.createSession()
+        shared.registerConversionSession(conversionSessionID)
+    }
+
+    /// Releases this connection's converter session. Idempotent: safe to call
+    /// twice (the disconnect path and a later fd-reuse close may overlap).
+    func close() {
+        guard !isClosed else { return }
+        isClosed = true
+        shared.unregisterConversionSession(conversionSessionID)
+        converter.removeSession(conversionSessionID)
+    }
+
+    /// Runs `body` with this connection's conversion session active. The converter
+    /// is shared server-wide; per-composition state (lattice, completed data,
+    /// Zenzai cache, lastData) is keyed by session, so composition calls must
+    /// select this connection's session first.
+    private func withConversionSession<T>(_ body: () throws -> T) -> T? {
+        do { return try converter.withSession(conversionSessionID, operation: body) }
+        catch { NSLog("[hazkey] Conversion session unavailable: \(error)"); return nil }
+    }
+
+    /// Resets shared configuration, then this connection's composition state.
+    func reinitializeConfiguration() {
+        NSLog("Reinitializing state configuration...")
+        shared.reinitializeConfiguration()
+
+        self.composingText = ComposingTextBox()
+        self.currentCandidateList = nil
+        self.isSubInputMode = false
+        self.isShiftPressedAlone = false
+        self.shiftPressedAt = nil
+        self.zenzaiLeftContext = ""
+
+        NSLog("State configuration reinitialized successfully")
+    }
+
+    // MARK: - Shared learning forwarders
+
+    // Thin forwarders so `ProtocolHandler` and tests keep calling `state.*`.
+    func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
+        shared.clearProfileLearningData()
+    }
+
+    func listLearningEntries(
+        query: String,
+        offset: UInt32,
+        limit: UInt32
+    ) throws -> (entries: [Hazkey_Config_LearningHistoryEntry], totalCount: Int) {
+        try shared.listLearningEntries(query: query, offset: offset, limit: limit)
+    }
+
+    func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
+        try shared.forgetLearningSurfaces(surfaces)
+    }
+
+    func forgetLearningEntries(
+        _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
+    ) throws -> UInt32 {
+        try shared.forgetLearningEntries(keys)
+    }
+
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
         let clamped = max(0, min(anchorIndex, surroundingText.count))
         if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(surroundingText.count)") }
         zenzaiLeftContext = String(surroundingText.prefix(clamped))
-        baseConvertRequestOptions.zenzaiMode = serverConfig.genZenzaiMode(
-            leftContext: zenzaiLeftContext)
+        // The Zenzai mode is computed per request in `makeCandidatesResult`
+        // from this connection's `zenzaiLeftContext`; nothing reads
+        // `baseConvertRequestOptions.zenzaiMode` in between, so storing it
+        // here would be dead.
 
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -190,11 +557,11 @@ class HazkeyServerState {
         isSubInputMode = false
         isShiftPressedAlone = false
         shiftPressedAt = nil
-        // New-composition boundary: drop the converter session so an identical
-        // input does not reuse the prior composition's lattice and hide newly
-        // learned candidates. Incremental conversion within a composition keeps
-        // reusing the session.
-        converter.stopComposition()
+        // New-composition boundary: drop this connection's converter session
+        // so an identical input does not reuse the prior composition's
+        // lattice and hide newly learned candidates. Incremental conversion
+        // within a composition keeps reusing the session.
+        _ = withConversionSession { converter.stopComposition() }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -287,13 +654,7 @@ class HazkeyServerState {
     }
 
     func saveLearningData() -> Hazkey_ResponseEnvelope {
-        if learningDataNeedsCommit {
-            converter.commitUpdateLearningData()
-            learningDataNeedsCommit = false
-        }
-        return Hazkey_ResponseEnvelope.with {
-            $0.status = .success
-        }
+        shared.saveLearningData()
     }
 
     func deleteLeft() -> Hazkey_ResponseEnvelope {
@@ -323,13 +684,17 @@ class HazkeyServerState {
         switch entry {
         case .fromConverter(let completedCandidate):
             composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
-            converter.setCompletedData(completedCandidate)
-            if !completedCandidate.data.contains(where: { $0.metadata.contains(.isFromUserDictionary) }) {
-                converter.updateLearningData(completedCandidate)
-                learningDataNeedsCommit = true
-            } else {
-                learningDataNeedsCommit = false
+            let learnsFromCandidate = !completedCandidate.data.contains {
+                $0.metadata.contains(.isFromUserDictionary)
             }
+            _ = withConversionSession {
+                converter.setCompletedData(completedCandidate)
+                if learnsFromCandidate { converter.updateLearningData(completedCandidate) }
+            }
+            // Learning memory is shared server-wide, so a commit that produced no
+            // learning update must NOT clear the dirty flag: doing so would drop
+            // another connection's pending persistence.
+            if learnsFromCandidate { learningDataNeedsCommit = true }
         case .fromUserDict:
             // User-dictionary entries always match the full reading, so we
             // simply clear the composing text. They do not feed the
@@ -349,9 +714,10 @@ class HazkeyServerState {
         case .fromEmoji(_, let composingCount):
             // [community] Emoji direct-conversion candidates consume only the
             // matched normalized-query prefix, retaining any trailing suffix.
-            // Never touches the converter's completion/learning APIs.
+            // Never touches the converter's completion/learning APIs, so the
+            // shared dirty flag is left alone (another connection may have
+            // pending learning to persist).
             composingText.value.prefixComplete(composingCount: composingCount)
-            learningDataNeedsCommit = false
         }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -381,7 +747,10 @@ class HazkeyServerState {
             }
         }
         var composing = composingText.value
-        guard converter.acceptPredictionCandidate(candidate, composingText: &composing) else {
+        let accepted = withConversionSession {
+            converter.acceptPredictionCandidate(candidate, composingText: &composing)
+        } ?? false
+        guard accepted else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Candidate \(candidate.text) is not an applicable prediction."
@@ -550,7 +919,7 @@ class HazkeyServerState {
         // leaves candidates unannotated (conservative, no functional harm).
         let learningEntryKeys: Set<LearningSurfaceKey>
         do {
-            learningEntryKeys = try learningSurfaceKeys()
+            learningEntryKeys = try shared.learningSurfaceKeys()
         } catch {
             NSLog("Failed to enumerate learning memory for annotations: \(error)")
             learningEntryKeys = []
@@ -635,16 +1004,18 @@ class HazkeyServerState {
 
         // Inject user dictionary into the engine so entries participate in
         // connection-cost ranking with their assigned part-of-speech (CID).
+        // The injection itself is instance-level (shared by all connections),
+        // so it runs outside any conversion session.
         if serverConfig.currentProfile.useUserDictionaryEffective {
             let reloaded = userDictionary.reloadIfNeeded()
-            if reloaded || !userDictInjected {
+            if reloaded || !shared.userDictInjected {
                 converter.importDynamicUserDictionary(userDictionary.toDicdataElements())
-                userDictInjected = true
+                shared.userDictInjected = true
                 NSLog("[hazkey] Injected \(userDictionary.count) user dictionary entries into engine")
             }
-        } else if userDictInjected {
+        } else if shared.userDictInjected {
             converter.importDynamicUserDictionary([])  // clear when toggled off
-            userDictInjected = false
+            shared.userDictInjected = false
         }
         userDictionaryFinishedAt = perfProbe?.now()
 
@@ -652,7 +1023,18 @@ class HazkeyServerState {
         if zenzai == "on" {
             _ = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
         }
-        let converted = converter.requestCandidates(copiedComposingText, options: options)
+        guard
+            let converted = withConversionSession({
+                converter.requestCandidates(copiedComposingText, options: options)
+            })
+        else {
+            // Defensive: sessions are removed only on connection close, and
+            // the single-threaded server loop never converts for a closed
+            // session. Return an empty list rather than trapping.
+            var emptyResult = Hazkey_Commands_CandidatesResult()
+            emptyResult.liveTextIndex = -1
+            return (emptyResult, [])
+        }
         if zenzai == "on" {
             zenzaiInferenceNanoseconds = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
         }
@@ -983,7 +1365,7 @@ class HazkeyServerState {
         // error.
         let matchingKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
         do {
-            matchingKeys = try matchingLearningEntryKeys(reading: reading, word: candidate.text)
+            matchingKeys = try shared.matchingLearningEntryKeys(reading: reading, word: candidate.text)
         } catch {
             NSLog("Failed to enumerate learning memory for deletion: \(error)")
             return Hazkey_ResponseEnvelope.with {
@@ -1024,206 +1406,6 @@ class HazkeyServerState {
                 $0.hiragana = composingText.value.toHiragana()
             }
         }
-    }
-
-    func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
-        if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
-            let memoryDirectory = serverConfig.memoryDirectory()
-            do {
-                if FileManager.default.fileExists(atPath: memoryDirectory.path) {
-                    try FileManager.default.removeItem(at: memoryDirectory)
-                }
-                try serverConfig.createMemoryDirectoryIfNeeded()
-            } catch {
-                NSLog("Failed to clear isolated history: \(error.localizedDescription)")
-                return Hazkey_ResponseEnvelope.with {
-                    $0.status = .failed
-                    $0.errorMessage = "Failed to clear profile history."
-                }
-            }
-        } else {
-            converter.resetMemory()
-        }
-        return Hazkey_ResponseEnvelope.with {
-            $0.status = .success
-        }
-    }
-
-    /// Learning history merged to one row per (reading, word) surface key.
-    /// The learning memory stores one row per (ruby, word, lcid, rcid), so the
-    /// same surface can surface as several CID-variant rows (e.g. the
-    /// clause-bigram entry and the whole-string entry of one commit). The
-    /// dialog displays one merged row per surface and deletion removes every
-    /// variant — the same semantics as the candidate delete hotkey — so
-    /// lcid/rcid are not exposed to clients.
-    func listLearningEntries(
-        query: String,
-        offset: UInt32,
-        limit: UInt32
-    ) throws -> (entries: [Hazkey_Config_LearningHistoryEntry], totalCount: Int) {
-        guard offset <= 65_536 else {
-            throw LearningHistoryError.invalidOffset
-        }
-        let pageLimit = min(max(Int(limit), 1), 200)
-        var surfaceOrder: [LearningSurfaceKey] = []
-        var mergedSurfaces: [LearningSurfaceKey: (reading: String, word: String, count: Int, lastUsed: Date)] = [:]
-        for entry in try allLearningMemoryEntries()
-        where learningHistoryMatches(query: query, reading: entry.data.ruby, word: entry.data.word) {
-            let key = LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
-            if mergedSurfaces[key] == nil {
-                surfaceOrder.append(key)
-                mergedSurfaces[key] = (entry.data.ruby, entry.data.word, Int(entry.count), entry.lastUsed)
-            } else {
-                mergedSurfaces[key]!.count += Int(entry.count)
-                if mergedSurfaces[key]!.lastUsed < entry.lastUsed {
-                    mergedSurfaces[key]!.lastUsed = entry.lastUsed
-                }
-            }
-        }
-        let pageStart = min(Int(offset), surfaceOrder.count)
-        let pageEnd = min(pageStart + pageLimit, surfaceOrder.count)
-        let entries = surfaceOrder[pageStart..<pageEnd].map { key in
-            Hazkey_Config_LearningHistoryEntry.with {
-                let surface = mergedSurfaces[key]!
-                $0.reading = surface.reading
-                $0.word = surface.word
-                $0.count = UInt32(clamping: surface.count)
-                $0.lastUsedUnixDay = UInt32(clamping: max(0, Int(surface.lastUsed.timeIntervalSince1970 / 86_400)))
-            }
-        }
-        return (entries, surfaceOrder.count)
-    }
-
-    func forgetLearningEntries(
-        _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
-    ) throws -> UInt32 {
-        var uniqueKeys: [LearningHistoryKey] = []
-        var seenKeys: Set<LearningHistoryKey> = []
-        for key in keys {
-            let historyKey = LearningHistoryKey(
-                reading: key.reading, word: key.word, lcid: key.lcid, rcid: key.rcid)
-            if seenKeys.insert(historyKey).inserted {
-                uniqueKeys.append(historyKey)
-            }
-        }
-
-        let existingKeys = Set(try allLearningMemoryEntries().map {
-            LearningHistoryKey(
-                reading: $0.data.ruby,
-                word: $0.data.word,
-                lcid: UInt32(clamping: $0.data.lcid),
-                rcid: UInt32(clamping: $0.data.rcid))
-        })
-        guard uniqueKeys.allSatisfy(existingKeys.contains) else {
-            throw LearningHistoryError.unknownEntry
-        }
-
-        for key in uniqueKeys {
-            guard let lcid = Int(exactly: key.lcid), let rcid = Int(exactly: key.rcid) else {
-                throw LearningHistoryError.unsupportedCID
-            }
-            try converter.forgetLearningMemory(
-                reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
-        }
-        // Deleted entries must not surface in subsequent conversions. The
-        // converter reuses its session lattice (and the Zenzai draft/memoized
-        // constraint) when the composing text is unchanged, so a rebuilt
-        // candidate list would otherwise resurrect the deleted entries from
-        // the stale caches. Resetting the active session drops only cached
-        // conversion state — the composing text lives in HazkeyServerState
-        // and the learning memory on disk, both unaffected.
-        converter.stopComposition()
-        converter.purgeZenzaiMemoizationCache()
-        return UInt32(uniqueKeys.count)
-    }
-
-    /// [community] Delete every learning entry matching each (reading, word)
-    /// surface key, regardless of CID — the same semantics as the candidate
-    /// delete hotkey (`deleteCandidateLearningData`). Used by the settings
-    /// dialog, whose rows are merged across CID variants by
-    /// `listLearningEntries`. Surfaces with no stored entry are skipped so a
-    /// row deleted in the meantime cannot fail the whole batch; the returned
-    /// count is the number of exact entries actually removed.
-    func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
-        var requestedSurfaces: Set<LearningSurfaceKey> = []
-        var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
-        for surface in surfaces {
-            let key = LearningSurfaceKey(reading: surface.reading, word: surface.word)
-            guard requestedSurfaces.insert(key).inserted else { continue }
-            resolvedKeys.append(contentsOf: try matchingLearningEntryKeys(reading: surface.reading, word: surface.word))
-        }
-        guard !resolvedKeys.isEmpty else { return 0 }
-        return try forgetLearningEntries(resolvedKeys)
-    }
-
-    private func allLearningMemoryEntries() throws -> [LearningMemoryEntry] {
-        var entries: [LearningMemoryEntry] = []
-        var offset = 0
-        repeat {
-            let page = try converter.learningMemoryEntries(offset: offset, limit: 65_536)
-            entries.append(contentsOf: page.entries)
-            guard let nextOffset = page.nextOffset else {
-                return entries
-            }
-            offset = nextOffset
-        } while offset < 65_536
-        return entries
-    }
-
-    /// [community] Surface keys of every stored learning-memory entry, used to
-    /// annotate converter candidates as "deletable".
-    private func learningSurfaceKeys() throws -> Set<LearningSurfaceKey> {
-        Set(
-            try allLearningMemoryEntries().map { entry in
-                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word)
-            })
-    }
-
-    /// [community] Every stored learning entry matching a candidate's
-    /// (reading, word) pair regardless of CID, as keys for
-    /// `forgetLearningEntries`. Same surface normalization as
-    /// `learningSurfaceKeys`, so annotation and deletion agree.
-    private func matchingLearningEntryKeys(
-        reading: String,
-        word: String
-    ) throws -> [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] {
-        let target = LearningSurfaceKey(reading: reading, word: word)
-        return try allLearningMemoryEntries().compactMap { entry in
-            guard
-                LearningSurfaceKey(reading: entry.data.ruby, word: entry.data.word) == target
-            else { return nil }
-            return (
-                reading: entry.data.ruby, word: entry.data.word,
-                lcid: UInt32(clamping: entry.data.lcid),
-                rcid: UInt32(clamping: entry.data.rcid)
-            )
-        }
-    }
-
-    func reinitializeConfiguration() {
-        NSLog("Reinitializing state configuration...")
-
-        self.keymap = serverConfig.loadKeymap()
-
-        let newTableName = UUID().uuidString
-        serverConfig.loadInputTable(tableName: newTableName)
-        self.currentTableName = newTableName
-
-        self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
-        do {
-            try serverConfig.createMemoryDirectoryIfNeeded()
-        } catch {
-            NSLog("Failed to create user memory directory: \(error.localizedDescription)")
-        }
-
-        self.composingText = ComposingTextBox()
-        self.currentCandidateList = nil
-        self.isSubInputMode = false
-        self.isShiftPressedAlone = false
-        self.shiftPressedAt = nil
-        self.zenzaiLeftContext = ""
-
-        NSLog("State configuration reinitialized successfully")
     }
 
 }

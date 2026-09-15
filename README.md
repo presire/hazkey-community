@@ -62,7 +62,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
    フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey: Fcitx 5用、ibus-hazkey: IBus用)  
    
    使用するフレームワークのパッケージを選んでください。  
-   両方入れておくこともできます (同時使用は非サポート。下記の「IBus フロントエンドの既知の制約」参照)。  
+   両方入れておくこともできます (Fcitx 5 と IBus を同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)。  
    
    - Debian / Ubuntu (`.deb`): 両パッケージは共有ファイル (`hazkey-server` / `hazkey-settings` / 辞書など) を相互に上書きできるよう `Replaces` を宣言しており、どちらの順に入れても共存できます。  
    - RPM (`.rpm`): 追加の宣言なしに共存できます。  
@@ -202,11 +202,20 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 ### IBusフロントエンドの既知の制約
 
-- **Fcitx 5 と IBusの同時有効化による入力は非サポートです。**  
-  hazkey-serverは、単一クライアント前提 (`hazkey-server/Sources/hazkey-server/socketManager.swift - SocketManager.handleNewConnection()` が新規接続時に既存クライアントをクローズする) のため、  
-  両フロントエンドを同時に有効化すると接続を奪い合います。  
-  
-  同居インストールは可能ですが、入力に使うのはどちらか一方にしてください。  
+- **Fcitx 5 と IBus の同時有効化による入力に対応しています。**  
+  hazkey-server は接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift — HazkeyServerState`) を持ち、  
+  変換エンジン・ユーザ辞書・学習メモリ・Zenzai モデルは全接続で共有します (`hazkey-server/Sources/hazkey-server/state.swift — HazkeySharedResources`)。  
+  接続を奪い合いません。  
+- **`hazkey-settings` を起動しても IME 側の入力接続は切断されません。**  
+- **同時接続の上限は 8 です** (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)。  
+  超過した新規接続は accept 直後にサーバが閉じ、既存セッションは保護されます。  
+- **停滞したクライアントが他方を巻き込みません。**  
+  ソケット I/O は期限付き poll で待つため (`hazkey-server/Sources/hazkey-server/socketUtils.swift — readData(from:count:timeoutMs:)` / `writeData(to:data:timeoutMs:)`、既定10秒)、応答を返さない/読み取らないクライアントは `hazkey-server/Sources/hazkey-server/socketUtils.swift — SocketError.ioTimeout` で切断され、他のクライアントの処理が再開します。  
+- **`hazkey-settings` で設定を変更しても、他方の入力中テキストは失われません。**  
+  設定変更時の再初期化は要求元の接続だけが自分の組成をリセットし、他の接続は組成を保持します。入力テーブルは名前ごとにレジストリへ追加登録されるため (`InputStyleManager.registerInputStyle`)、変更前に挿入済みの要素は旧テーブル名のまま解決できます。  
+  残差: 組成の途中で設定を変更した場合、変更前に入力したキーは旧マッピング、変更後のキーは新マッピングになります (同一組成内での混在)。  
+- **残差リスク**: サーバは単一スレッドでリクエストを直列処理するため、片方の Zenzai 推論中はもう片方の同期RPC応答が遅延し得ます  
+  (クライアント read timeout 最大10秒以内、機能的な破綻はありません)。  
 - **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
   ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
   `F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、  

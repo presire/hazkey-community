@@ -3,8 +3,12 @@ import Foundation
 class HazkeyServer: SocketManagerDelegate {
     private let processManager: ProcessManager
     private var socketManager: SocketManager
-    private var protocolHandler: ProtocolHandler?
-    private var state: HazkeyServerState?
+    /// Server-wide converter, config, and learning state shared by every
+    /// connection. Created once after the lock is acquired.
+    private var shared: HazkeySharedResources?
+    /// Per-connection composition sessions, keyed by client fd. The server
+    /// loop is single-threaded, so plain-dictionary access is sufficient.
+    private var sessions: [Int32: HazkeyServerState] = [:]
 
     private let runtimeDir: URL
     private let socketPath: String
@@ -52,27 +56,40 @@ class HazkeyServer: SocketManagerDelegate {
             NSLog("Failed to start hazkey-server: \(error)")
             exit(1)
         }
-        self.state = HazkeyServerState()
-        self.protocolHandler = ProtocolHandler(state: self.state!)
+        self.shared = HazkeySharedResources(emojiDictionaryURL: nil)
         try socketManager.setupSocket()
         // start main loop
         NSLog("start listening...")
         socketManager.startListening()
         // finish process
-        let _ = state?.saveLearningData()
+        let _ = shared?.saveLearningData()
     }
 
     func socketManager(_ manager: SocketManager, didReceiveData data: Data, from clientFd: Int32)
         -> Data
     {
-        guard let handler = protocolHandler else {
-            NSLog("protocolHandler is nil! exiting...")
-            exit(1)
+        guard let session = sessions[clientFd] else {
+            NSLog("No session for client fd \(clientFd); dropping request.")
+            return Data()
         }
-        return handler.processProto(data: data)
+        // ProtocolHandler is thin and per-request; no shared state of its own.
+        return ProtocolHandler(state: session).processProto(data: data)
     }
 
-    func socketManager(_ manager: SocketManager, clientDidConnect clientFd: Int32) {}
+    func socketManager(_ manager: SocketManager, clientDidConnect clientFd: Int32) {
+        guard let shared else { return }
+        // fd-reuse safety: the OS may hand a fresh connection the same fd
+        // number a just-closed connection used. Drop any stale session for
+        // this fd before creating the new one.
+        sessions.removeValue(forKey: clientFd)?.close()
+        sessions[clientFd] = HazkeyServerState(shared: shared)
+        NSLog("Session created for client fd \(clientFd) (\(sessions.count) active)")
+    }
 
-    func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32) {}
+    func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32) {
+        guard let session = sessions.removeValue(forKey: clientFd) else { return }
+        session.close()
+        let _ = shared?.saveLearningData()
+        NSLog("Session closed for client fd \(clientFd) (\(sessions.count) active)")
+    }
 }

@@ -7,14 +7,34 @@ protocol SocketManagerDelegate: AnyObject {
     func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32)
 }
 
+/// Admission policy for simultaneous socket clients.
+///
+/// Each accepted connection owns an isolated composition session, but every
+/// connection still costs a polled fd and per-request work on the single
+/// server thread, so the count is capped.
+enum ClientSessionLimit {
+    static func accepts(currentCount: Int) -> Bool {
+        currentCount < SocketManager.maxClientCount
+    }
+}
+
 class SocketManager {
     weak var delegate: SocketManagerDelegate?
+
+    /// Maximum simultaneous client connections. fcitx5 + IBus +
+    /// hazkey-settings = 3 in the full setup; the headroom covers transient
+    /// reconnects (a client reconnecting before its stale fd is reaped).
+    /// Internal so tests can drive the cap exactly.
+    static let maxClientCount = 8
+
+    /// Number of currently connected clients.
+    var connectedClientCount: Int { clientFds.count }
 
     private var signalSources: [DispatchSourceSignal] = []
     private var continueServing = true
 
     private var serverFd: Int32 = -1
-    private var currentClientFd: Int32?
+    private var clientFds: [Int32] = []
     private let socketPath: String
     private var pipeFds: [Int32] = [-1, -1]
 
@@ -104,10 +124,12 @@ class SocketManager {
             // poll stopper
             pollFds.append(pollfd(fd: pipeFds[0], events: Int16(POLLIN), revents: 0))
 
-            // If we have a current client, also poll it
-            if let clientFd = currentClientFd {
+            // Poll every connected client. `polledClientFds` snapshots the
+            // fd set so index 2+i maps to a concrete fd for this iteration.
+            for clientFd in clientFds {
                 pollFds.append(pollfd(fd: clientFd, events: Int16(POLLIN), revents: 0))
             }
+            let polledClientFds = clientFds
 
             let pollRes = poll(&pollFds, nfds_t(pollFds.count), 1000)
 
@@ -130,53 +152,52 @@ class SocketManager {
                 break
             }
 
-            // Snapshot the polled client before accepting a new connection.
-            // handleNewConnection() may evict and replace the current client,
-            // but pollFds[2] still describes the fd that was current when
-            // poll() was called. Without this guard, stale events from an
-            // evicted client (e.g. POLLHUP) would be applied to the freshly
-            // accepted connection and close it before it receives a response.
-            let polledClientFd = pollFds.count > 2 ? currentClientFd : nil
+            // Serve existing clients BEFORE accepting new connections.
+            // Accepting last means accept() cannot reuse an fd number that
+            // closeClient() just released earlier in this iteration before
+            // its revents were processed — the multi-fd equivalent of the old
+            // `polledClientFd == currentClientFd` stale-event guard. The
+            // `clientFds.contains` check below additionally skips fds that
+            // were closed earlier in this same iteration.
+            for (index, polledFd) in polledClientFds.enumerated() {
+                guard clientFds.contains(polledFd) else { continue }
+                let clientEvents = Int32(pollFds[2 + index].revents)
+
+                if clientEvents & POLLHUP != 0 || clientEvents & POLLERR != 0 {
+                    NSLog("Client disconnected or error: \(polledFd)")
+                    closeClient(polledFd)
+                    continue
+                }
+
+                if clientEvents & POLLIN != 0 {
+                    handleClientData(polledFd)
+                }
+            }
 
             // Check if server socket has a new connection
             if pollFds[0].revents & Int16(POLLIN) != 0 {
                 handleNewConnection()
             }
-
-            // Check if current client has data
-            if let polledClientFd, polledClientFd == currentClientFd {
-                let clientEvents = Int32(pollFds[2].revents)
-
-                if clientEvents & POLLHUP != 0 || clientEvents & POLLERR != 0 {
-                    NSLog("Client disconnected or error: \(polledClientFd)")
-                    closeClient(polledClientFd)
-                    continue
-                }
-
-                if clientEvents & POLLIN != 0 {
-                    handleClientData(polledClientFd)
-                }
-            }
         }
     }
 
-    private func handleNewConnection() {
+    /// Accepts one pending connection. Internal (not private) so tests can
+    /// drive the real accept path directly without the poll loop.
+    func handleNewConnection() {
         var clientAddr = sockaddr()
         var clientLen: socklen_t = socklen_t(MemoryLayout<sockaddr>.size)
         let newClientFd = accept(serverFd, &clientAddr, &clientLen)
 
         if newClientFd != -1 {
-            // If we already have a client, close it
-            // Note (hazkey-ime-cpu-latency plan todo 2): this unconditional
-            // eviction is also what happens when hazkey-settings opens a
-            // connection while fcitx5 is already connected -- fcitx5's
-            // client gets closed here and reconnects through
-            // HazkeyServerConnector's normal invalidate-and-reconnect path.
-            // This is a known, accepted interaction, not a blocking bug;
-            // server eviction behavior is intentionally left unchanged.
-            if let existingClientFd = currentClientFd {
-                NSLog("New client connecting, closing existing client: \(existingClientFd)")
-                closeClient(existingClientFd)
+            // Multi-client contract: every connection keeps its own session;
+            // new connections never evict existing clients. Over the cap the
+            // newcomer is rejected (closed immediately) instead.
+            if !ClientSessionLimit.accepts(currentCount: clientFds.count) {
+                NSLog(
+                    "Client limit reached (\(Self.maxClientCount)); rejecting connection \(newClientFd)"
+                )
+                close(newClientFd)
+                return
             }
 
             // Set up the new client
@@ -188,9 +209,8 @@ class SocketManager {
             if fcntlRes != 0 {
                 NSLog("fcntl() failed for client")
                 close(newClientFd)
-                currentClientFd = nil
             } else {
-                currentClientFd = newClientFd
+                clientFds.append(newClientFd)
                 delegate?.socketManager(self, clientDidConnect: newClientFd)
             }
         }
@@ -254,6 +274,8 @@ class SocketManager {
             NSLog("Message too large: \(len)")
         case .writeFailed(let msg, let err):
             NSLog("Write failed: \(msg), errno: \(err)")
+        case .ioTimeout(let msg):
+            NSLog("Socket I/O timeout: \(msg)")
         default:
             NSLog("Socket error: \(error)")
         }
@@ -261,19 +283,20 @@ class SocketManager {
     }
 
     private func closeClient(_ clientFd: Int32) {
+        // No-op if already removed (e.g. a stale poll event for an fd closed
+        // earlier in the same iteration, or a duplicate HUP/ERR).
+        guard clientFds.contains(clientFd) else { return }
         NSLog("Closing client connection: \(clientFd)")
         close(clientFd)
-        if currentClientFd == clientFd {
-            currentClientFd = nil
-        }
+        clientFds.removeAll { $0 == clientFd }
         delegate?.socketManager(self, clientDidDisconnect: clientFd)
     }
 
     func closeSocket() {
-        if let clientFd = currentClientFd {
+        for clientFd in clientFds {
             close(clientFd)
-            currentClientFd = nil
         }
+        clientFds.removeAll()
 
         if serverFd != -1 {
             close(serverFd)
