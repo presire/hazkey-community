@@ -38,6 +38,10 @@ class HazkeyState {
     void reset();
     void enable();
     void disable();
+    // IBusEngine::set_capabilities is a real vfunc in IBus 1.5.33
+    // (ibusengine.h); IBusEngineSimple does not override it.
+    void setCapabilities(guint caps);
+    bool activateProperty(const gchar* propName, guint propState);
     void setCursorLocation(gint x, gint y, gint w, gint h);
     void setSurroundingText(IBusText* text, guint cursorIndex, guint anchorPos);
     void pageUp();
@@ -85,6 +89,20 @@ class HazkeyState {
     // fcitx requires KeyState::Ctrl exactly, so Ctrl+Shift+X and Ctrl+Alt+X
     // are not shortcuts and stay with the application.
     static bool isDirectConversionShortcut(guint keyval, guint state);
+
+    // Exposed for tests: the Fcitx candidate-mode Alt+Shift Space/Tab no-op.
+    // Shift+Tab (IBUS_KEY_ISO_Left_Tab) is included because IBus clients may
+    // report it instead of IBUS_KEY_Tab.
+    static bool isAltShiftSpaceOrTab(guint keyval, guint state);
+
+    // Exposed for tests: Fcitx defaultSelectionKeys (1..9, 0) for IBus lookup
+    // table slots; other slots deliberately have no label.
+    static std::string selectionLabelForIndex(int localIndex);
+
+    // Exposed for tests: before IBus reports capabilities, preserve historical
+    // behavior by treating every capability as available.
+    static bool capabilityIsAvailable(guint caps, bool capsKnown,
+                                      guint capability);
 
     // Exposed for tests: joins the fcitx AuxUp/AuxDown pair into IBus's single
     // auxiliary-text slot. A single space separates them only when BOTH are
@@ -151,7 +169,10 @@ class HazkeyState {
     // TextFormatFlag) joined with an AuxDown suffix, then pushes it.
     void setAuxiliaryTextWithCursor(const std::string& auxUp,
                                     glong underlineStart, glong underlineEnd,
-                                    const std::string& auxDown);
+                                     const std::string& auxDown);
+    void registerProperties();
+    void updateInputModeProperty();
+    void updateZenzaiProperty(bool enabled);
 
     bool showCandidateList(bool isSuggest);
     bool applyCandidateResponse(
@@ -222,6 +243,9 @@ class HazkeyState {
     IBusEngine* engine_;
     HazkeyServerConnector& server_;
     IBusLookupTable* lookupTable_ = nullptr;
+    IBusPropList* propertyList_ = nullptr;
+    IBusProperty* inputModeProperty_ = nullptr;
+    IBusProperty* zenzaiProperty_ = nullptr;
     std::vector<HazkeyCandidate> candidates_;
     int pageSize_ = 0;
     int cursorIndex_ = -1;
@@ -249,6 +273,8 @@ class HazkeyState {
     std::string surroundingText_;
     guint surroundingAnchor_ = 0;
     bool hasSurroundingText_ = false;
+    guint caps_ = 0;
+    bool capsKnown_ = false;
     gint cursorX_ = 0;
     gint cursorY_ = 0;
     gint cursorW_ = 0;
@@ -263,6 +289,9 @@ class HazkeyState {
     HotkeySpec acceptPredictionHotkey_{};
     HotkeySpec deleteLearningHotkey_{};
     bool serverProfileLoaded_ = false;
+    // Last Zenzai enabled state learned from the server profile / toggle RPC,
+    // re-applied to the Zenzai property whenever properties are registered.
+    bool cachedZenzaiEnabled_ = false;
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
 };

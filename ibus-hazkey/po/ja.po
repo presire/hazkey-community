@@ -26,8 +26,20 @@ msgstr "[直接入力]"
 msgid "Deletable"
 msgstr "削除可"
 
+msgid "あ"
+msgstr "あ"
+
+msgid "A"
+msgstr "A"
+
+msgid "Hiragana input"
+msgstr "ひらがな入力"
+
+msgid "Zenzai"
+msgstr "Zenzai"
+
 msgid "Zenzai enabled"
-msgstr "Zenzaiを有効化しました"
+msgstr "Zenzai 有効"
 
 msgid "Zenzai disabled"
-msgstr "Zenzaiを無効化しました"
+msgstr "Zenzai 無効"

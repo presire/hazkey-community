@@ -129,6 +129,9 @@ HazkeyState::~HazkeyState() {
     // A pending coalesced refresh must never fire after the state is gone.
     cancelPendingRefresh();
     g_clear_object(&lookupTable_);
+    g_clear_object(&inputModeProperty_);
+    g_clear_object(&zenzaiProperty_);
+    g_clear_object(&propertyList_);
 }
 
 HazkeyState::HotkeySpec HazkeyState::parseHotkey(
@@ -228,6 +231,34 @@ bool HazkeyState::isDirectConversionShortcut(guint keyval, guint state) {
     }
 }
 
+bool HazkeyState::isAltShiftSpaceOrTab(guint keyval, guint state) {
+    // IBus clients report Shift+Tab as IBUS_KEY_ISO_Left_Tab; treat it as Tab
+    // so the candidate-mode Alt+Shift no-op also covers that encoding (without
+    // Alt, ISO_Left_Tab keeps its own back-navigation branch).
+    if (keyval != IBUS_KEY_space && keyval != IBUS_KEY_Tab &&
+        keyval != IBUS_KEY_ISO_Left_Tab) {
+        return false;
+    }
+    return !hasAltGrLikeModifier(state) &&
+           normalizeHotkeyModifiers(state) ==
+               (IBUS_MOD1_MASK | IBUS_SHIFT_MASK);
+}
+
+std::string HazkeyState::selectionLabelForIndex(int localIndex) {
+    if (localIndex >= 0 && localIndex <= 8) {
+        return std::to_string(localIndex + 1);
+    }
+    if (localIndex == 9) {
+        return "0";
+    }
+    return "";
+}
+
+bool HazkeyState::capabilityIsAvailable(guint caps, bool capsKnown,
+                                        guint capability) {
+    return !capsKnown || (caps & capability) != 0;
+}
+
 std::string HazkeyState::joinAuxiliaryText(const std::string& auxUp,
                                            const std::string& auxDown) {
     // IBus exposes a single auxiliary-text slot where fcitx has separate AuxUp
@@ -260,6 +291,11 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
             // cache so currentInputModeIsDirect() below reads the new mode.
             server_.shiftKeyEvent(true, shiftPressedAlone_);
             shiftPressedAlone_ = false;
+            updateInputModeProperty();
+            updateAuxiliaryText();
+        } else {
+            // Fcitx refreshes AuxDown on releases too; keep IBus's collapsed
+            // auxiliary text current even when the application receives this key.
             updateAuxiliaryText();
         }
         return FALSE;
@@ -381,6 +417,10 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         case IBUS_KEY_F8:
         case IBUS_KEY_F9:
         case IBUS_KEY_F10:
+        case IBUS_KEY_Muhenkan:
+            // Fcitx routes FcitxKey_Muhenkan to functionKeyHandler() from
+            // preeditKeyEvent(); functionKeyHandler() has no Muhenkan branch,
+            // so it is a consumed no-op. Keep the same shape here.
             functionKeyHandler(keyval);
             return TRUE;
         case IBUS_KEY_Escape:
@@ -477,6 +517,13 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
     // Alt/Super passthrough guard below, which would otherwise forward it.
     if (isAltDigitKey(keyval, state)) {
         selectPageLocalAltDigit(keyval, /*flushFirst=*/false);
+        return TRUE;
+    }
+
+    // Fcitx consumes exactly Alt+Shift Space/Tab as a no-op in candidate mode.
+    // Keep it before the generic Alt/Super passthrough so it cannot reach the
+    // application or navigate the lookup table.
+    if (isAltShiftSpaceOrTab(keyval, state)) {
         return TRUE;
     }
 
@@ -595,6 +642,7 @@ void HazkeyState::loadServerProfile() {
     deleteLearningHotkey_ =
         parseHotkey(profile.delete_learning_hotkey(), "Control+D");
     cachedAutoConvertMode_ = profile.auto_convert_mode();
+    updateZenzaiProperty(profile.zenzai_enable());
     using M = hazkey::config::Profile_AutoConvertMode;
     // Only update the remembered "ON" mode when the server's mode is not
     // DISABLED. When DISABLED (e.g. after a previous hotkey toggle-off), keep
@@ -644,10 +692,9 @@ void HazkeyState::handleZenzaiToggle() {
     if (!enabled.has_value()) {
         return;
     }
-    // IBus has no transient input-method popup; the auxiliary text is the
-    // closest equivalent and lasts until the next key event overwrites it.
-    setAuxiliaryText(tr(enabled.value() ? "Zenzai enabled"
-                                        : "Zenzai disabled"));
+    // IBus has no Fcitx showCustomInputMethodInformation() transient popup, so
+    // the persistent Zenzai property communicates the current setting instead.
+    updateZenzaiProperty(enabled.value());
 }
 
 void HazkeyState::handleDeleteCandidateLearningData(int globalIndex) {
@@ -1238,9 +1285,17 @@ void HazkeyState::rebuildLookupTable() {
     }
     IBusLookupTable* table =
         ibus_lookup_table_new(static_cast<guint>(pageSize_), 0, FALSE, FALSE);
+    ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
     for (const auto& c : candidates_) {
         ibus_lookup_table_append_candidate(
             table, ibus_text_new_from_string(c.text.c_str()));
+    }
+    const int labelCount = std::min(static_cast<int>(candidates_.size()), 10);
+    for (int index = 0; index < labelCount; ++index) {
+        const std::string label = selectionLabelForIndex(index);
+        ibus_lookup_table_set_label(
+            table, static_cast<guint>(index),
+            ibus_text_new_from_string(label.c_str()));
     }
     g_object_ref_sink(table);
     lookupTable_ = table;
@@ -1407,8 +1462,68 @@ void HazkeyState::updateAuxiliaryText() {
     setAuxiliaryText(joinAuxiliaryText("", auxDown));
 }
 
+void HazkeyState::registerProperties() {
+    if (propertyList_ == nullptr) {
+        propertyList_ = ibus_prop_list_new();
+        g_object_ref_sink(propertyList_);
+        inputModeProperty_ = ibus_property_new(
+            "InputMode", PROP_TYPE_NORMAL, ibus_text_new_from_string(tr("あ")),
+            nullptr, ibus_text_new_from_string(tr("Hiragana input")), TRUE,
+            TRUE, PROP_STATE_UNCHECKED, nullptr);
+        // Zenzai is a toggle property: its CHECKED state mirrors the server's
+        // Zenzai setting, so the panel shows ON/OFF without a hover tooltip.
+        zenzaiProperty_ = ibus_property_new(
+            "Zenzai", PROP_TYPE_TOGGLE,
+            ibus_text_new_from_string(tr("Zenzai")), nullptr,
+            ibus_text_new_from_string(tr("Zenzai disabled")), TRUE, TRUE,
+            PROP_STATE_UNCHECKED, nullptr);
+        g_object_ref_sink(inputModeProperty_);
+        g_object_ref_sink(zenzaiProperty_);
+        ibus_prop_list_append(propertyList_, inputModeProperty_);
+        ibus_prop_list_append(propertyList_, zenzaiProperty_);
+    }
+    ibus_engine_register_properties(engine_, propertyList_);
+    // Load the server profile on registration so the Zenzai property reflects
+    // the persisted setting immediately; the lazy load otherwise only runs on
+    // the first non-release key event (leaving the property stale until then).
+    if (!serverProfileLoaded_) {
+        loadServerProfile();
+    }
+    updateInputModeProperty();
+    // Re-apply the cached Zenzai state so a freshly focused/registered property
+    // reflects the setting loaded by loadServerProfile().
+    updateZenzaiProperty(cachedZenzaiEnabled_);
+}
+
+void HazkeyState::updateInputModeProperty() {
+    if (inputModeProperty_ == nullptr) {
+        return;
+    }
+    const bool direct = server_.currentInputModeIsDirect();
+    ibus_property_set_label(inputModeProperty_, ibus_text_new_from_string(
+                                                   tr(direct ? "A" : "あ")));
+    ibus_property_set_tooltip(
+        inputModeProperty_,
+        ibus_text_new_from_string(tr(direct ? "[Direct Input]" : "Hiragana input")));
+    ibus_engine_update_property(engine_, inputModeProperty_);
+}
+
+void HazkeyState::updateZenzaiProperty(bool enabled) {
+    cachedZenzaiEnabled_ = enabled;
+    if (zenzaiProperty_ == nullptr) {
+        return;
+    }
+    ibus_property_set_state(zenzaiProperty_,
+                            enabled ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+    ibus_property_set_tooltip(
+        zenzaiProperty_,
+        ibus_text_new_from_string(tr(enabled ? "Zenzai enabled" : "Zenzai disabled")));
+    ibus_engine_update_property(engine_, zenzaiProperty_);
+}
+
 void HazkeyState::updateSurroundingText(const std::string& append) {
-    if (hasSurroundingText_) {
+    if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
+        hasSurroundingText_) {
         const glong n = g_utf8_strlen(append.c_str(), -1);
         server_.setContext(surroundingText_ + append,
                            static_cast<int>(surroundingAnchor_ + n));
@@ -1423,7 +1538,10 @@ void HazkeyState::clearSurroundingText() {
     hasSurroundingText_ = false;
 }
 
-void HazkeyState::focusIn() { resetState(); }
+void HazkeyState::focusIn() {
+    resetState();
+    registerProperties();
+}
 
 void HazkeyState::focusOut() {
     flushPendingRefresh();
@@ -1441,7 +1559,10 @@ void HazkeyState::reset() {
 
 void HazkeyState::enable() {
     resetState();
-    ibus_engine_get_surrounding_text(engine_, nullptr, nullptr, nullptr);
+    registerProperties();
+    if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
+        ibus_engine_get_surrounding_text(engine_, nullptr, nullptr, nullptr);
+    }
 }
 
 void HazkeyState::disable() {
@@ -1453,6 +1574,36 @@ void HazkeyState::disable() {
     resetState();
 }
 
+void HazkeyState::setCapabilities(guint caps) {
+    caps_ = caps;
+    capsKnown_ = true;
+    if (!capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
+        clearSurroundingText();
+    }
+}
+
+bool HazkeyState::activateProperty(const gchar* propName,
+                                   [[maybe_unused]] guint propState) {
+    if (g_strcmp0(propName, "InputMode") == 0) {
+        // Reuse the server's lone-Shift tap RPC path; it owns direct-input mode
+        // transitions and cache invalidation, avoiding a frontend-only state.
+        // Clear shiftPressedAlone_ first: if a physical Shift is held, its
+        // later release must send CANCEL (not a second lone RELEASE), or the
+        // synthetic tap and the physical release would toggle twice.
+        shiftPressedAlone_ = false;
+        server_.shiftKeyEvent(false);
+        server_.shiftKeyEvent(true, true);
+        updateInputModeProperty();
+        updateAuxiliaryText();
+        return true;
+    }
+    if (g_strcmp0(propName, "Zenzai") == 0) {
+        handleZenzaiToggle();
+        return true;
+    }
+    return false;
+}
+
 void HazkeyState::setCursorLocation(gint x, gint y, gint w, gint h) {
     cursorX_ = x;
     cursorY_ = y;
@@ -1461,11 +1612,17 @@ void HazkeyState::setCursorLocation(gint x, gint y, gint w, gint h) {
 }
 
 void HazkeyState::setSurroundingText(IBusText* text, guint cursorIndex,
-                                     guint anchorPos) {
+                                      guint anchorPos) {
     (void)cursorIndex;
-    surroundingText_ =
-        (text != nullptr) ? ibus_text_get_text(text) : "";
-    surroundingAnchor_ = anchorPos;
+    if (!capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
+        clearSurroundingText();
+        return;
+    }
+    surroundingText_ = (text != nullptr && ibus_text_get_text(text) != nullptr)
+                           ? ibus_text_get_text(text)
+                           : "";
+    const glong textLength = g_utf8_strlen(surroundingText_.c_str(), -1);
+    surroundingAnchor_ = std::min(anchorPos, static_cast<guint>(textLength));
     hasSurroundingText_ = true;
 }
 

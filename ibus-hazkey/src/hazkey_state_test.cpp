@@ -288,6 +288,57 @@ void testLoneShiftModifierState() {
     std::cout << "[PASS] lone-Shift modifier state predicate\n";
 }
 
+void testAltShiftSpaceOrTabPredicate() {
+    // Given: Fcitx's exact Alt+Shift candidate-mode no-op combination.
+    // When/Then: only Space and Tab with exactly Alt+Shift are consumed.
+    const guint altShift = IBUS_MOD1_MASK | IBUS_SHIFT_MASK;
+    assert(HazkeyState::isAltShiftSpaceOrTab(IBUS_KEY_space, altShift));
+    assert(HazkeyState::isAltShiftSpaceOrTab(IBUS_KEY_Tab, altShift));
+    // Shift+Tab is often reported as ISO_Left_Tab by IBus clients.
+    assert(HazkeyState::isAltShiftSpaceOrTab(IBUS_KEY_ISO_Left_Tab, altShift));
+    assert(!HazkeyState::isAltShiftSpaceOrTab(IBUS_KEY_ISO_Left_Tab,
+                                              IBUS_SHIFT_MASK));
+    assert(!HazkeyState::isAltShiftSpaceOrTab(
+        IBUS_KEY_space, altShift | IBUS_CONTROL_MASK));
+    assert(!HazkeyState::isAltShiftSpaceOrTab(
+        IBUS_KEY_Tab, altShift | IBUS_SUPER_MASK));
+    assert(!HazkeyState::isAltShiftSpaceOrTab(
+        IBUS_KEY_space, altShift | IBUS_MOD5_MASK));
+    assert(!HazkeyState::isAltShiftSpaceOrTab(IBUS_KEY_Return, altShift));
+
+    std::cout << "[PASS] Alt+Shift Space/Tab no-op predicate\n";
+}
+
+void testSelectionLabels() {
+    // Given: IBus page-local slots matching fcitx defaultSelectionKeys.
+    // When/Then: slots 0..9 receive 1..9,0 and all other indices are blank.
+    for (int index = 0; index < 9; ++index) {
+        assert(HazkeyState::selectionLabelForIndex(index) ==
+               std::to_string(index + 1));
+    }
+    assert(HazkeyState::selectionLabelForIndex(9) == "0");
+    assert(HazkeyState::selectionLabelForIndex(-1).empty());
+    assert(HazkeyState::selectionLabelForIndex(10).empty());
+
+    std::cout << "[PASS] Fcitx-compatible candidate selection labels\n";
+}
+
+void testCapabilityAvailability() {
+    // Given: legacy clients that never call set_capabilities.
+    // When/Then: retain the pre-existing all-capabilities behavior.
+    assert(HazkeyState::capabilityIsAvailable(
+        0, false, IBUS_CAP_SURROUNDING_TEXT));
+
+    // Given: an explicit capability set.
+    // When/Then: only advertised features are available.
+    assert(HazkeyState::capabilityIsAvailable(
+        IBUS_CAP_SURROUNDING_TEXT, true, IBUS_CAP_SURROUNDING_TEXT));
+    assert(!HazkeyState::capabilityIsAvailable(
+        IBUS_CAP_PREEDIT_TEXT, true, IBUS_CAP_SURROUNDING_TEXT));
+
+    std::cout << "[PASS] capability availability gate\n";
+}
+
 }  // namespace
 
 int main() {
@@ -300,6 +351,9 @@ int main() {
     testDirectConversionShortcut();
     testAuxiliaryTextJoin();
     testLoneShiftModifierState();
+    testAltShiftSpaceOrTabPredicate();
+    testSelectionLabels();
+    testCapabilityAvailability();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

@@ -202,6 +202,18 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
   `F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、  
   `Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp/AuxDown) を含みます。  
+  無変換キーは Fcitx と同じく組成中に消費される no-op です (直接変換は行いません)。  
+- **パネルの入力モード表示 (IBusProperty) に対応しています。**  
+  パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
+  language bar の「あ / A」をクリックすると直接入力をトグルできます (サーバの「Shift 単体タップ」と同じ RPC 経路を利用)。  
+- **候補リストに数字ラベル (1〜9, 0) と縦向き表示を設定しています。**  
+- **クライアントの capability (`set_capabilities`) を反映します。**  
+  surrounding text 非対応のクライアントでは surrounding text の取得・送信を行いません。  
+  capability を申告しないクライアントでは従来どおり動作します。  
+- **IBus に固有の未対応項目 (見送り)**:  
+  - surrounding text の書き込み経路 (`delete_surrounding_text` / `forward_key_event`) は、サーバ側の新規 RPC が必要なため未対応です。  
+  - Fcitx の `[Tabキーで選択]` 表示可否設定 (`showTabToSelect`) に相当する IBus 側の設定経路はありません。  
+    Fcitx の既定値は「表示」であり、IBus は組成中に常時表示するため実質同挙動です。  
 - 同期RPCが、process_key_eventをブロックします。(read timeout 最大10秒)  
   現状は許容しています。  
 

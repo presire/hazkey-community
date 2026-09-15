@@ -71,6 +71,32 @@ static void ibusHazkeyEngineEnable(IBusEngine* engine) {
     }
 }
 
+static void ibusHazkeyEngineSetCapabilities(IBusEngine* engine, guint caps) {
+    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
+    if (hazkeyEngine->state != nullptr) {
+        hazkeyEngine->state->setCapabilities(caps);
+    }
+    IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
+    if (parent->set_capabilities != nullptr) {
+        parent->set_capabilities(engine, caps);
+    }
+}
+
+static void ibusHazkeyEnginePropertyActivate(IBusEngine* engine,
+                                             const gchar* propName,
+                                             guint propState) {
+    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
+    const bool handled = hazkeyEngine->state != nullptr &&
+                         hazkeyEngine->state->activateProperty(propName, propState);
+    if (!handled) {
+        IBusEngineClass* parent =
+            IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
+        if (parent->property_activate != nullptr) {
+            parent->property_activate(engine, propName, propState);
+        }
+    }
+}
+
 static void ibusHazkeyEngineDisable(IBusEngine* engine) {
     auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
     if (hazkeyEngine->state != nullptr) {
@@ -159,6 +185,8 @@ static void ibus_hazkey_engine_class_init(IBusHazkeyEngineClass* engineClass) {
     engine->reset = ibusHazkeyEngineReset;
     engine->enable = ibusHazkeyEngineEnable;
     engine->disable = ibusHazkeyEngineDisable;
+    engine->set_capabilities = ibusHazkeyEngineSetCapabilities;
+    engine->property_activate = ibusHazkeyEnginePropertyActivate;
     engine->set_cursor_location = ibusHazkeyEngineSetCursorLocation;
     engine->set_surrounding_text = ibusHazkeyEngineSetSurroundingText;
     engine->page_up = ibusHazkeyEnginePageUp;

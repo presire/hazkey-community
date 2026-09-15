@@ -37,7 +37,19 @@ msgstr ""
 msgid "Deletable"
 msgstr ""
 
-# Transient auxiliary text after the Zenzai toggle hotkey.
+msgid "あ"
+msgstr ""
+
+msgid "A"
+msgstr ""
+
+msgid "Hiragana input"
+msgstr ""
+
+msgid "Zenzai"
+msgstr ""
+
+# Persistent Zenzai property tooltip.
 msgid "Zenzai enabled"
 msgstr ""
 
