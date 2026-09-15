@@ -11,6 +11,7 @@
 #include <cassert>
 #include <iostream>
 
+#include "hazkey_frontend.h"
 #include "hazkey_state.h"
 #include "live_convert_mode.h"
 
@@ -339,6 +340,102 @@ void testCapabilityAvailability() {
     std::cout << "[PASS] capability availability gate\n";
 }
 
+// The lookup table is now built on the main loop, so its round=FALSE
+// page/cursor movement is re-implemented as pure arithmetic. These assertions
+// pin the behavior to IBus's ibus_lookup_table_{page,cursor}_{up,down}().
+void testLookupPageArithmetic() {
+    // Cursor wrap (round=FALSE -> the caller wraps to first/last).
+    assert(HazkeyState::advanceCursorIndex(0, 3) == 1);
+    assert(HazkeyState::advanceCursorIndex(2, 3) == 0);
+    assert(HazkeyState::advanceCursorIndex(-1, 3) == 0);
+    assert(HazkeyState::advanceCursorIndex(0, 0) == 0);
+    assert(HazkeyState::backCursorIndex(0, 3) == 2);
+    assert(HazkeyState::backCursorIndex(2, 3) == 1);
+    assert(HazkeyState::backCursorIndex(-1, 3) == 0);
+
+    // 13 candidates, 5 per page -> pages [0..4][5..9][10..12].
+    assert(HazkeyState::nextPageStart(0, 5, 13) == 5);
+    assert(HazkeyState::nextPageStart(4, 5, 13) == 5);
+    assert(HazkeyState::nextPageStart(7, 5, 13) == 10);
+    // Already on the last page: stay on this page's start.
+    assert(HazkeyState::nextPageStart(12, 5, 13) == 10);
+
+    // On the last page, prevPage subtracts one page size from the cursor and
+    // then normalizes to that page's start (IBus page_up semantics).
+    assert(HazkeyState::prevPageStart(12, 5) == 5);
+    assert(HazkeyState::prevPageStart(7, 5) == 0);
+    assert(HazkeyState::prevPageStart(3, 5) == 0);
+
+    std::cout << "[PASS] lookup page/cursor arithmetic\n";
+}
+
+// The synchronous consume decision must be conservative but precise for the
+// common cases: it may return TRUE for a key the worker later forwards, but it
+// must never return FALSE for a key an active composition/candidate list owns.
+void testConsumeDecision() {
+    using hazkey::ibus::HazkeyFrontend;
+    using hazkey::ibus::HazkeyState;
+
+    HazkeyFrontend::DecisionInput idle;
+    idle.profileLoaded = true;
+    idle.liveConvert = HazkeyState::parseHotkey("", "Control+Shift+L");
+    idle.zenzaiToggle = HazkeyState::parseHotkey("", "Control+Alt+Z");
+    idle.acceptPrediction = HazkeyState::parseHotkey("", "F5");
+    idle.deleteLearning = HazkeyState::parseHotkey("", "Control+D");
+
+    // Printable keys are always IME-owned.
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_a, 0, idle));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_space, 0, idle));
+    // Idle Return/Escape/arrows belong to the application.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Return, 0, idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Escape, 0, idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Left, 0, idle));
+    // Release and Shift are never consumed.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_a, IBUS_RELEASE_MASK,
+                                             idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Shift_L, 0, idle));
+    // A non-shortcut control combo stays with the application.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_c, IBUS_CONTROL_MASK,
+                                             idle));
+
+    auto composing = idle;
+    composing.composing = true;
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Return, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Escape, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_u, IBUS_CONTROL_MASK,
+                                            composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_1, IBUS_MOD1_MASK,
+                                            composing));
+    // Alt+digit is not a selection without a composition.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_1, IBUS_MOD1_MASK, idle));
+
+    auto candidate = idle;
+    candidate.listFocused = true;
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_d, IBUS_CONTROL_MASK,
+                                            candidate));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_3, 0, candidate));
+    // Candidate mode handles its navigation/commit keys BEFORE the Control
+    // branch (mirrors HazkeyState::candidateKeyEvent), so Ctrl+Return and
+    // Ctrl+F6 are IME keys...
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Return, IBUS_CONTROL_MASK,
+                                            candidate));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_F6, IBUS_CONTROL_MASK,
+                                            candidate));
+    // ...while Ctrl+<letter> is not a shortcut and belongs to the application.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_x, IBUS_CONTROL_MASK,
+                                             candidate));
+    // Alt+letter is forwarded to the application in candidate mode.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_x, IBUS_MOD1_MASK,
+                                             candidate));
+
+    // Before the profile loads, any modifier combo is provisionally consumed.
+    HazkeyFrontend::DecisionInput unloaded;
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_c, IBUS_CONTROL_MASK,
+                                            unloaded));
+
+    std::cout << "[PASS] synchronous consume decision\n";
+}
+
 }  // namespace
 
 int main() {
@@ -354,6 +451,8 @@ int main() {
     testAltShiftSpaceOrTabPredicate();
     testSelectionLabels();
     testCapabilityAvailability();
+    testLookupPageArithmetic();
+    testConsumeDecision();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

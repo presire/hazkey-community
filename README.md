@@ -223,8 +223,15 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   - surrounding text の書き込み経路 (`delete_surrounding_text` / `forward_key_event`) は、サーバ側の新規 RPC が必要なため未対応です。  
   - Fcitx の `[Tabキーで選択]` 表示可否設定 (`showTabToSelect`) に相当する IBus 側の設定経路はありません。  
     Fcitx の既定値は「表示」であり、IBus は組成中に常時表示するため実質同挙動です。  
-- 同期RPCが、process_key_eventをブロックします。(read timeout 最大10秒)  
-  現状は許容しています。  
+- **RPCは非同期化されており、`process_key_event` はサーバ応答でブロックしません。**  
+  IBus 側の入力状態機械 (`hazkey::ibus::HazkeyState`) は専用ワーカースレッドで逐次実行され、  
+  preedit・候補リスト・IBusProperty・補助テキストの更新は GLib メインループへ配送されて適用されます。  
+  サーバが遅い間もキー入力処理は即座に戻り、応答到着後に表示へ反映されます。  
+  既存の read timeout (最大10秒)・response 上限 2MB・再接続・read-through キャッシュ無効化・RPC 順序は維持しています。  
+  応答到着前に次のキーが入力された場合、consume / forward の判定は直前の確定済み状態に基づくため、  
+  まれにサーバレイテンシ分だけ順序がずれることがあります (未処理と判明したキーは  
+  `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)。  
+  なお fcitx5 フロントエンドは従来どおり同期のままです。  
 
 <br>
 

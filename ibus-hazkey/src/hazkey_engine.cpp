@@ -1,14 +1,20 @@
 #include "hazkey_engine.h"
 
+#include <memory>
+
+#include "hazkey_frontend.h"
 #include "hazkey_frontend_glib.h"
-#include "hazkey_state.h"
 
 typedef struct _IBusHazkeyEngine IBusHazkeyEngine;
 typedef struct _IBusHazkeyEngineClass IBusHazkeyEngineClass;
 
 struct _IBusHazkeyEngine {
     IBusEngineSimple parent;
-    hazkey::ibus::HazkeyState* state;
+    // Pointer to shared_ptr: GObject instances are allocated without running
+    // C++ constructors, so a non-trivial member cannot live directly in this
+    // struct. The facade is shared so worker tasks can keep it alive until
+    // they finish (see HazkeyFrontend).
+    std::shared_ptr<hazkey::ibus::HazkeyFrontend>* frontend;
 };
 
 struct _IBusHazkeyEngineClass {
@@ -17,20 +23,29 @@ struct _IBusHazkeyEngineClass {
 
 G_DEFINE_TYPE(IBusHazkeyEngine, ibus_hazkey_engine, IBUS_TYPE_ENGINE_SIMPLE)
 
+namespace {
+hazkey::ibus::HazkeyFrontend* frontendOf(IBusEngine* engine) {
+    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
+    if (hazkeyEngine->frontend == nullptr) {
+        return nullptr;
+    }
+    return hazkeyEngine->frontend->get();
+}
+}  // namespace
+
 static gboolean ibusHazkeyEngineProcessKeyEvent(IBusEngine* engine,
                                                 guint keyval, guint keycode,
                                                 guint state) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state == nullptr) {
+    auto* frontend = frontendOf(engine);
+    if (frontend == nullptr) {
         return FALSE;
     }
-    return hazkeyEngine->state->processKeyEvent(keyval, keycode, state);
+    return frontend->processKeyEvent(keyval, keycode, state);
 }
 
 static void ibusHazkeyEngineFocusIn(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->focusIn();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->focusIn();
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->focus_in != nullptr) {
@@ -39,9 +54,8 @@ static void ibusHazkeyEngineFocusIn(IBusEngine* engine) {
 }
 
 static void ibusHazkeyEngineFocusOut(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->focusOut();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->focusOut();
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->focus_out != nullptr) {
@@ -50,9 +64,8 @@ static void ibusHazkeyEngineFocusOut(IBusEngine* engine) {
 }
 
 static void ibusHazkeyEngineReset(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->reset();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->reset();
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->reset != nullptr) {
@@ -61,9 +74,8 @@ static void ibusHazkeyEngineReset(IBusEngine* engine) {
 }
 
 static void ibusHazkeyEngineEnable(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->enable();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->enable();
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->enable != nullptr) {
@@ -72,9 +84,8 @@ static void ibusHazkeyEngineEnable(IBusEngine* engine) {
 }
 
 static void ibusHazkeyEngineSetCapabilities(IBusEngine* engine, guint caps) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->setCapabilities(caps);
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->setCapabilities(caps);
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->set_capabilities != nullptr) {
@@ -85,9 +96,9 @@ static void ibusHazkeyEngineSetCapabilities(IBusEngine* engine, guint caps) {
 static void ibusHazkeyEnginePropertyActivate(IBusEngine* engine,
                                              const gchar* propName,
                                              guint propState) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    const bool handled = hazkeyEngine->state != nullptr &&
-                         hazkeyEngine->state->activateProperty(propName, propState);
+    auto* frontend = frontendOf(engine);
+    const bool handled =
+        frontend != nullptr && frontend->activateProperty(propName, propState);
     if (!handled) {
         IBusEngineClass* parent =
             IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
@@ -98,9 +109,8 @@ static void ibusHazkeyEnginePropertyActivate(IBusEngine* engine,
 }
 
 static void ibusHazkeyEngineDisable(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->disable();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->disable();
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->disable != nullptr) {
@@ -110,9 +120,8 @@ static void ibusHazkeyEngineDisable(IBusEngine* engine) {
 
 static void ibusHazkeyEngineSetCursorLocation(IBusEngine* engine, gint x,
                                               gint y, gint width, gint height) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->setCursorLocation(x, y, width, height);
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->setCursorLocation(x, y, width, height);
     }
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->set_cursor_location != nullptr) {
@@ -124,10 +133,12 @@ static void ibusHazkeyEngineSetSurroundingText(IBusEngine* engine,
                                                IBusText* text,
                                                guint cursorIndex,
                                                guint anchorPos) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->setSurroundingText(text, cursorIndex, anchorPos);
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->setSurroundingText(text, cursorIndex, anchorPos);
     }
+    // Keep IBus's own surrounding-text cache in sync (it owns the text via
+    // g_object_ref_sink). Our frontend copies the text to a plain string, so
+    // this only affects IBus_engine_get_surrounding_text()/delete_surrounding_text().
     IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
     if (parent->set_surrounding_text != nullptr) {
         parent->set_surrounding_text(engine, text, cursorIndex, anchorPos);
@@ -135,45 +146,46 @@ static void ibusHazkeyEngineSetSurroundingText(IBusEngine* engine,
 }
 
 static void ibusHazkeyEnginePageUp(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->pageUp();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->pageUp();
     }
 }
 
 static void ibusHazkeyEnginePageDown(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->pageDown();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->pageDown();
     }
 }
 
 static void ibusHazkeyEngineCursorUp(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->cursorUp();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->cursorUp();
     }
 }
 
 static void ibusHazkeyEngineCursorDown(IBusEngine* engine) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->cursorDown();
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->cursorDown();
     }
 }
 
 static void ibusHazkeyEngineCandidateClicked(IBusEngine* engine, guint index,
                                              guint button, guint state) {
-    auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(engine);
-    if (hazkeyEngine->state != nullptr) {
-        hazkeyEngine->state->candidateClicked(index, button, state);
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->candidateClicked(index, button, state);
     }
 }
 
 static void ibusHazkeyEngineDestroy(IBusObject* object) {
     auto* hazkeyEngine = reinterpret_cast<IBusHazkeyEngine*>(object);
-    delete hazkeyEngine->state;
-    hazkeyEngine->state = nullptr;
+    if (hazkeyEngine->frontend != nullptr) {
+        // Release every IBus/GObject owned by the renderer on this (main)
+        // thread before the engine is finalized; worker tasks that still hold
+        // the facade/state finish harmlessly because the UI is retired.
+        hazkeyEngine->frontend->get()->retire();
+        delete hazkeyEngine->frontend;
+        hazkeyEngine->frontend = nullptr;
+    }
     IBUS_OBJECT_CLASS(ibus_hazkey_engine_parent_class)->destroy(object);
 }
 
@@ -200,6 +212,7 @@ static void ibus_hazkey_engine_class_init(IBusHazkeyEngineClass* engineClass) {
 
 static void ibus_hazkey_engine_init(IBusHazkeyEngine* engine) {
     hazkey::ibus::installGlibFrontendHooks();
-    engine->state = new hazkey::ibus::HazkeyState(IBUS_ENGINE(engine));
+    engine->frontend = new std::shared_ptr<hazkey::ibus::HazkeyFrontend>(
+        std::make_shared<hazkey::ibus::HazkeyFrontend>(IBUS_ENGINE(engine)));
     g_debug("hazkey: IBus engine initialized");
 }

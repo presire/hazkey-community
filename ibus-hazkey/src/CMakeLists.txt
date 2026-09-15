@@ -17,6 +17,8 @@ add_executable(ibus-engine-hazkey
     main.cpp
     hazkey_engine.cpp
     hazkey_state.cpp
+    hazkey_ui.cpp
+    hazkey_frontend.cpp
     live_convert_mode.cpp
     hazkey_frontend_glib.cpp
 )
@@ -44,6 +46,8 @@ if(BUILD_TESTING)
     add_executable(ibus_hazkey_state_test
         hazkey_state_test.cpp
         hazkey_state.cpp
+        hazkey_ui.cpp
+        hazkey_frontend.cpp
         live_convert_mode.cpp
     )
     target_include_directories(ibus_hazkey_state_test PRIVATE

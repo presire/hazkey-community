@@ -3,6 +3,7 @@
 
 #include "engine_description.h"
 #include "hazkey_engine.h"
+#include "hazkey_frontend.h"
 #include "hazkey_frontend_glib.h"
 
 #include <cstring>
@@ -96,6 +97,10 @@ int main(int argc, char* argv[]) {
     }
 
     ibus_main();
+
+    // Join the async worker before the process tears down the function-static
+    // hooks/connector it uses (see shutdownSharedExecutor()).
+    hazkey::ibus::shutdownSharedExecutor();
 
     g_object_unref(factory);
     g_object_unref(bus);

@@ -2,6 +2,8 @@
 #define IBUS_HAZKEY_HAZKEY_STATE_H
 #include <ibus.h>
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,6 +12,8 @@
 #include "commands.pb.h"
 #include "config.pb.h"
 #include "hazkey_server_connector.h"
+#include "hazkey_ui.h"
+#include "serial_task_executor.h"
 
 namespace hazkey::ibus {
 
@@ -25,9 +29,24 @@ struct HazkeyCandidate {
     bool hasLearningEntry = false;
 };
 
-class HazkeyState {
+// Worker-thread IME logic for one IBus input context.
+//
+// Ownership / threading: an object of this class is created on the GLib main
+// loop but, after construction, every method runs ONLY on the serial worker
+// supplied to the constructor (see hazkey-frontend-common/serial_task_executor.h).
+// That single thread owns the shared HazkeyServerConnector and every field
+// below, so transact()'s ordering/timeout/reconnect/cache semantics are
+// unchanged (it is still called from one thread, synchronously).
+//
+// UI: this class never touches IBusEngine or any IBus object. It computes
+// values and pushes them to the shared_ptr<HazkeyUi> endpoint, which is a
+// main-loop-only renderer. Lifetime is refcounted: the worker tasks that run
+// these methods capture a shared_ptr to this object, so teardown never needs
+// to drain the executor and no task can outlive this object.
+class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
  public:
-    explicit HazkeyState(IBusEngine* engine);
+    HazkeyState(std::shared_ptr<HazkeyUi> ui,
+                hazkey::frontend::SerialTaskExecutor* executor);
     ~HazkeyState();
     HazkeyState(const HazkeyState&) = delete;
     HazkeyState& operator=(const HazkeyState&) = delete;
@@ -43,12 +62,18 @@ class HazkeyState {
     void setCapabilities(guint caps);
     bool activateProperty(const gchar* propName, guint propState);
     void setCursorLocation(gint x, gint y, gint w, gint h);
-    void setSurroundingText(IBusText* text, guint cursorIndex, guint anchorPos);
+    // Main-loop-side callers copy the IBusText to a std::string before
+    // enqueueing; this method therefore never receives an IBus object.
+    void setSurroundingText(const std::string& text, guint cursorIndex,
+                            guint anchorPos);
     void pageUp();
     void pageDown();
     void cursorUp();
     void cursorDown();
-    void candidateClicked(guint index, guint button, guint state);
+    // Resolves a click the main loop already mapped to a global candidate
+    // index against the render generation the user clicked; a mismatch means
+    // the list changed underneath the click and the click is dropped.
+    void candidateClickedGlobal(int globalIndex, int generation);
 
     // Maps a page-local candidate index (0-based, as produced by a number key
     // or a lookup-table click) to the global candidate index, resolving the
@@ -110,6 +135,34 @@ class HazkeyState {
     // at the end) never leaves a leading space before AuxDown.
     static std::string joinAuxiliaryText(const std::string& auxUp,
                                          const std::string& auxDown);
+
+    // Exposed for the facade's synchronous consume decision and for tests:
+    // the same "is this key a printable input key" predicate the state
+    // machine uses.
+    static bool isInputableKey(guint keyval);
+
+    // Exposed for tests: pure re-implementations of IBusLookupTable's
+    // round=FALSE page/cursor movement, used by nextPage/prevPage/
+    // advanceCandidateCursor/backCandidateCursor now that the lookup table is
+    // built on the main loop rather than mutated by the worker.
+    static int advanceCursorIndex(int cursorIndex, int total);
+    static int backCursorIndex(int cursorIndex, int total);
+    static int nextPageStart(int cursorIndex, int pageSize, int total);
+    static int prevPageStart(int cursorIndex, int pageSize);
+
+    // Plain, main-loop-consumable summary of the worker's composition state.
+    // Posted after every processed operation so the facade can decide whether
+    // process_key_event consumes a key without performing an RPC.
+    struct IngressSnapshot {
+        bool composing = false;
+        bool listFocused = false;
+        bool profileLoaded = false;
+        HotkeySpec liveConvert{};
+        HotkeySpec zenzaiToggle{};
+        HotkeySpec acceptPrediction{};
+        HotkeySpec deleteLearning{};
+    };
+    IngressSnapshot ingressSnapshot() const;
 
  private:
     // Direct character conversion targets (F6-F10), mirroring fcitx's
@@ -190,17 +243,14 @@ class HazkeyState {
     // precedes each call stays synchronous and ordered -- only the candidate
     // LIST/predit display push is deferred.
     void scheduleCandidateRefresh(bool isSuggest);
-    // GLib timeout callback target (g_timeout_add): consults
-    // refreshCoalescer_.shouldFire() and runs the latest pending refresh.
-    static gboolean onCandidateRefreshTimeout(gpointer data);
     void firePendingCandidateRefresh();
     // Executes the latest requested refresh kind (suggest vs non-suggest),
-    // shared by the leading-edge and trailing-timer paths.
+    // shared by the leading-edge and trailing-delay paths.
     void runPendingCandidateRefresh();
-    // Drops any armed GLib timeout and clears the coalescer policy. Called
-    // from resetState() (focus-out/disable/enable/reset) and the destructor so
-    // no stale callback can mutate the UI after teardown or across a new
-    // composition epoch.
+    // Drops any pending delayed refresh and clears the coalescer policy.
+    // Called from resetState() (focus-out/disable/enable/reset) and the
+    // destructor so no stale refresh can mutate the UI after teardown or
+    // across a new composition epoch.
     void cancelPendingRefresh();
     // Runs a pending coalesced refresh immediately (if any) instead of
     // cancelling it, so a caller about to CONSUME preeditText_ (commit /
@@ -220,7 +270,6 @@ class HazkeyState {
     void nextPage();
     void prevPage();
     bool selectDigit(guint keyval);
-    void rebuildLookupTable();
     void pushLookupTable();
     void clearLookupTable();
     void resetState();
@@ -235,29 +284,37 @@ class HazkeyState {
     void setPreeditHighlighted(const std::string& text);
     void updateSurroundingText(const std::string& append = "");
     void clearSurroundingText();
-    bool isInputableKey(guint keyval) const;
+    // Posts a UI mutation to the main-loop renderer. The closure captures the
+    // shared endpoint by value, never `this`, so a still-queued closure cannot
+    // touch a destroyed HazkeyState.
+    void postUi(std::function<void(HazkeyUi&)> fn);
     static std::string utf8FromKeyval(guint keyval);
     static hazkey::commands::GetComposingString::CharType charTypeFor(
         ConversionMode mode);
 
-    IBusEngine* engine_;
+    // Main-loop renderer. Only postUi() reads this on the worker; the
+    // pointed-to object owns every IBus/GObject.
+    std::shared_ptr<HazkeyUi> ui_;
+    // Shared, process-wide serial worker this logic runs on; not owned.
+    hazkey::frontend::SerialTaskExecutor* executor_ = nullptr;
     HazkeyServerConnector& server_;
-    IBusLookupTable* lookupTable_ = nullptr;
-    IBusPropList* propertyList_ = nullptr;
-    IBusProperty* inputModeProperty_ = nullptr;
-    IBusProperty* zenzaiProperty_ = nullptr;
     std::vector<HazkeyCandidate> candidates_;
     int pageSize_ = 0;
     int cursorIndex_ = -1;
     bool listVisible_ = false;
     bool currentListIsSuggest_ = false;
 
-    // Coalescing state for scheduleCandidateRefresh(). processKeyEvent() and
-    // the GLib timeout callback both run on the single main-loop thread, so no
-    // locking is needed.
+    // Coalescing state for scheduleCandidateRefresh(). Every method here runs
+    // on the single serial worker thread, so no locking is needed.
     hazkey::frontend::CandidateRefreshCoalescer refreshCoalescer_;
-    guint refreshTimerId_ = 0;
+    // Token of the delayed trailing refresh scheduled on `executor_`.
+    hazkey::frontend::SerialTaskExecutor::Token refreshToken_ =
+        hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     bool pendingRefreshIsSuggest_ = true;
+    // Bumped whenever a lookup render/hide is posted. A click is accepted only
+    // when its generation matches the latest one, so a click against a list
+    // that changed underneath it is dropped.
+    uint64_t lookupGeneration_ = 0;
     // True while runPendingCandidateRefresh() executes, so showNonPredict* can
     // tell a coalescer-driven execution from a synchronous caller.
     bool executingPendingRefresh_ = false;

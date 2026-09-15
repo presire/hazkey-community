@@ -1,7 +1,10 @@
 #include "hazkey_state.h"
 
 #include <algorithm>
+#include <functional>
+#include <utility>
 
+#include "hazkey_frontend_hooks.h"
 #include "live_convert_mode.h"
 
 // Supported ibus floor is 1.5.32 (Debian 13 Trixie; Fedora 44 and openSUSE
@@ -21,7 +24,10 @@ namespace hazkey::ibus {
 namespace {
 
 HazkeyServerConnector& sharedServerConnector() {
-    static HazkeyServerConnector connector;
+    // autoConnect=false: the connector is first touched on the worker thread,
+    // so constructing it must not run the blocking connect loop on the GLib
+    // main loop (engine construction calls this via HazkeyState).
+    static HazkeyServerConnector connector(/*autoConnect=*/false);
     return connector;
 }
 
@@ -110,8 +116,9 @@ bool isLoneShiftModifierState(guint state) {
            !hasAltGrLikeModifier(state);
 }
 
-HazkeyState::HazkeyState(IBusEngine* engine)
-    : engine_(engine), server_(sharedServerConnector()) {
+HazkeyState::HazkeyState(std::shared_ptr<HazkeyUi> ui,
+                         hazkey::frontend::SerialTaskExecutor* executor)
+    : ui_(std::move(ui)), executor_(executor), server_(sharedServerConnector()) {
     // Seed the built-in defaults so the hotkeys still work if the first
     // getServerConfig() is slow or fails; loadServerProfile() overwrites them
     // once the server profile is available.
@@ -126,12 +133,34 @@ HazkeyState::HazkeyState(IBusEngine* engine)
 }
 
 HazkeyState::~HazkeyState() {
-    // A pending coalesced refresh must never fire after the state is gone.
+    // A pending delayed refresh must never run after the state is gone. The
+    // destructor runs only once no worker task still references this object
+    // (tasks hold a shared_ptr), so cancelling the token here is sufficient.
     cancelPendingRefresh();
-    g_clear_object(&lookupTable_);
-    g_clear_object(&inputModeProperty_);
-    g_clear_object(&zenzaiProperty_);
-    g_clear_object(&propertyList_);
+    // No IBus/GObject is owned here: the shared HazkeyUi owns (and retires)
+    // them on the main loop.
+}
+
+void HazkeyState::postUi(std::function<void(HazkeyUi&)> fn) {
+    auto ui = ui_;
+    hazkey::frontend::postToMainLoop(
+        [ui, fn = std::move(fn)]() mutable {
+            if (ui) {
+                fn(*ui);
+            }
+        });
+}
+
+HazkeyState::IngressSnapshot HazkeyState::ingressSnapshot() const {
+    IngressSnapshot snapshot;
+    snapshot.composing = !preeditText_.empty() || listVisible_;
+    snapshot.listFocused = listVisible_ && cursorIndex_ >= 0;
+    snapshot.profileLoaded = serverProfileLoaded_;
+    snapshot.liveConvert = liveConvertHotkey_;
+    snapshot.zenzaiToggle = zenzaiToggleHotkey_;
+    snapshot.acceptPrediction = acceptPredictionHotkey_;
+    snapshot.deleteLearning = deleteLearningHotkey_;
+    return snapshot;
 }
 
 HazkeyState::HotkeySpec HazkeyState::parseHotkey(
@@ -754,7 +783,7 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
         // the normal (unhighlighted) preedit whose cursor is at the end.
         setPreeditHighlighted(converted);
     }
-    if (listVisible_ || lookupTable_ != nullptr) {
+    if (listVisible_ || !candidates_.empty()) {
         candidates_.clear();
         pageSize_ = 0;
         cursorIndex_ = -1;
@@ -864,7 +893,6 @@ bool HazkeyState::applyCandidateResponse(
     const bool hasCandidates = rawPageSize > 0 && !candidates_.empty();
     if (hasCandidates) {
         pageSize_ = std::clamp(rawPageSize, 1, 16);
-        rebuildLookupTable();
         cursorIndex_ = -1;
         listVisible_ = true;
         pushLookupTable();
@@ -896,14 +924,16 @@ void HazkeyState::showPreeditCandidateList() {
 // hazkey-frontend-common/candidate_refresh_coalescer.h for the pure
 // leading-edge + latest-wins trailing debounce policy). Only the timer adapter
 // is frontend-specific: fcitx5 owns an EventSourceTime on its event loop, IBus
-// owns a GLib timeout here.
+// schedules a delayed task on the shared SerialTaskExecutor. Using the
+// executor instead of a GLib timer keeps ALL coalescer state on the one
+// worker thread and removes the cross-thread timer lifetime hazard (a GLib
+// timeout source holding a raw `this`).
 //
 // Coalescing applies ONLY to the display-only refresh that follows a
 // state-mutating inputChar (the three inputable-key sites), exactly like
 // fcitx5. Candidate navigation, paging, clause-boundary adjustment, commit,
-// backspace/delete and reset stay synchronous. Because processKeyEvent() and
-// the timeout callback both run on the single GLib main-loop thread, no
-// locking is needed.
+// backspace/delete and reset stay synchronous. Every method below runs on the
+// single worker thread, so no locking is needed.
 
 void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     pendingRefreshIsSuggest_ = isSuggest;
@@ -913,11 +943,12 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     // quiet period, so execute now with zero added latency.
     if (refreshCoalescer_.shouldRunImmediately(
             nowUsec, hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
-        // An armed timeout must not survive an immediate run: onRun() consumes
-        // the pending slot, so the old callback would be a stale duplicate.
-        if (refreshTimerId_ != 0) {
-            g_source_remove(refreshTimerId_);
-            refreshTimerId_ = 0;
+        // A scheduled delayed task must not survive an immediate run: onRun()
+        // consumes the pending slot, so the old task would be a stale
+        // duplicate. cancel() is safe even if it already ran.
+        if (refreshToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+            executor_->cancel(refreshToken_);
+            refreshToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
         }
         refreshCoalescer_.onRun(nowUsec);
         runPendingCandidateRefresh();
@@ -926,43 +957,44 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
 
     if (refreshCoalescer_.shouldSchedule(
             nowUsec, hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
-        // Latest-wins: removing the previous source before arming the new one
-        // makes the newest request own the deadline, so a burst collapses into
-        // one trailing execution instead of firing once per keystroke.
-        if (refreshTimerId_ != 0) {
-            g_source_remove(refreshTimerId_);
-            refreshTimerId_ = 0;
+        // Latest-wins: cancelling the previous delayed task before scheduling
+        // the new one makes the newest request own the deadline, so a burst
+        // collapses into one trailing execution instead of firing once per
+        // keystroke. The delay is derived from the coalescer's own deadline so
+        // posting latency cannot shorten the quiet period.
+        if (refreshToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+            executor_->cancel(refreshToken_);
+            refreshToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
         }
-        refreshTimerId_ = g_timeout_add(
-            static_cast<guint>(
-                hazkey::frontend::kCandidateRefreshCoalesceUsec / 1000),
-            &HazkeyState::onCandidateRefreshTimeout, this);
+        const uint64_t deadline = refreshCoalescer_.pendingDeadlineUsec();
+        const uint64_t delayUsec = deadline > nowUsec ? deadline - nowUsec : 0;
+        auto self = shared_from_this();
+        refreshToken_ = executor_->submitDelayed(
+            [self] {
+                self->refreshToken_ =
+                    hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+                self->firePendingCandidateRefresh();
+            },
+            delayUsec);
     }
-}
-
-gboolean HazkeyState::onCandidateRefreshTimeout(gpointer data) {
-    auto* self = static_cast<HazkeyState*>(data);
-    // This source is firing and is about to be removed (G_SOURCE_REMOVE), so
-    // clear the id before doing work that could re-arm a timer.
-    self->refreshTimerId_ = 0;
-    self->firePendingCandidateRefresh();
-    return G_SOURCE_REMOVE;
 }
 
 void HazkeyState::firePendingCandidateRefresh() {
     const uint64_t nowUsec = static_cast<uint64_t>(g_get_monotonic_time());
     if (!refreshCoalescer_.shouldFire(nowUsec)) {
-        // Defensive: GLib timers are not expected to fire early, but if one
-        // did, keep the pending refresh alive rather than dropping it.
+        // Defensive: the delayed task should not run early, but if it did,
+        // re-arm for the remaining time rather than dropping the refresh.
         if (refreshCoalescer_.hasPending()) {
-            const uint64_t remaining =
-                refreshCoalescer_.pendingDeadlineUsec() - nowUsec;
-            guint ms = static_cast<guint>((remaining + 999) / 1000);
-            if (ms == 0) {
-                ms = 1;
-            }
-            refreshTimerId_ = g_timeout_add(
-                ms, &HazkeyState::onCandidateRefreshTimeout, this);
+            const uint64_t deadline = refreshCoalescer_.pendingDeadlineUsec();
+            const uint64_t remaining = deadline > nowUsec ? deadline - nowUsec : 0;
+            auto self = shared_from_this();
+            refreshToken_ = executor_->submitDelayed(
+                [self] {
+                    self->refreshToken_ =
+                        hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+                    self->firePendingCandidateRefresh();
+                },
+                remaining == 0 ? 1 : remaining);
         }
         return;
     }
@@ -981,9 +1013,9 @@ void HazkeyState::runPendingCandidateRefresh() {
 }
 
 void HazkeyState::cancelPendingRefresh() {
-    if (refreshTimerId_ != 0) {
-        g_source_remove(refreshTimerId_);
-        refreshTimerId_ = 0;
+    if (refreshToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+        executor_->cancel(refreshToken_);
+        refreshToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     }
     // resetPolicy() (not onCancel()): a new composition epoch must not inherit
     // the previous epoch's run timestamp, or its first refresh would be
@@ -1002,11 +1034,11 @@ void HazkeyState::flushPendingRefresh() {
     if (!refreshCoalescer_.hasPending()) {
         return;
     }
-    // Drop the armed timeout first so onRun() below owns the slot and no stale
-    // callback can fire afterwards.
-    if (refreshTimerId_ != 0) {
-        g_source_remove(refreshTimerId_);
-        refreshTimerId_ = 0;
+    // Drop the scheduled task first so onRun() below owns the slot and no stale
+    // task can run afterwards.
+    if (refreshToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+        executor_->cancel(refreshToken_);
+        refreshToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     }
     const uint64_t nowUsec = static_cast<uint64_t>(g_get_monotonic_time());
     refreshCoalescer_.onRun(nowUsec);
@@ -1067,43 +1099,20 @@ void HazkeyState::updateCandidateCursor() {
     }
     const HazkeyCandidate& c = candidates_[static_cast<size_t>(cursorIndex_)];
     preeditText_ = c.text + c.subHiragana;
-    const glong totalChars = g_utf8_strlen(preeditText_.c_str(), -1);
-    IBusText* t = ibus_text_new_from_string(preeditText_.c_str());
-    if (c.subHiragana.empty()) {
-        // fcitx renders this single segment highlighted (cursorSegment=0), so
-        // mark it as the preedit selection rather than only underlining it.
-        if (totalChars > 0) {
-#if HAZKEY_IBUS_HAS_ATTR_TYPE_HINT
-            ibus_text_append_attribute(t, IBUS_ATTR_TYPE_HINT,
-                                       IBUS_ATTR_PREEDIT_SELECTION, 0,
-                                       static_cast<guint>(totalChars));
-#endif
-            ibus_text_append_attribute(t, IBUS_ATTR_TYPE_UNDERLINE,
-                                       IBUS_ATTR_UNDERLINE_SINGLE, 0,
-                                       static_cast<guint>(totalChars));
-        }
-    } else {
-        // The underline marks the conversion TARGET segment (c.text); the
-        // trailing reading (c.subHiragana) is intentionally left plain. The
-        // IBUS_ATTR_TYPE_HINT selection below is a panel-only hint that
-        // client-side-preedit apps (GTK/Qt) ignore, so the explicit underline
-        // is what actually shows the target there.
-        const glong candChars = g_utf8_strlen(c.text.c_str(), -1);
-#if HAZKEY_IBUS_HAS_ATTR_TYPE_HINT
-        ibus_text_append_attribute(t, IBUS_ATTR_TYPE_HINT,
-                                   IBUS_ATTR_PREEDIT_SELECTION, 0,
-                                   static_cast<guint>(candChars));
-#endif
-        ibus_text_append_attribute(t, IBUS_ATTR_TYPE_UNDERLINE,
-                                   IBUS_ATTR_UNDERLINE_SINGLE, 0,
-                                   static_cast<guint>(candChars));
-    }
-    ibus_engine_update_preedit_text(engine_, t, 0, TRUE);
+    // fcitx renders the conversion TARGET highlighted: the whole string when
+    // the candidate has no trailing reading, otherwise just c.text (the
+    // trailing subHiragana is intentionally left plain).
+    const std::string selection =
+        c.subHiragana.empty() ? preeditText_ : c.text;
+    const glong selectionLen = g_utf8_strlen(selection.c_str(), -1);
+    postUi([text = preeditText_, selectionLen](HazkeyUi& ui) {
+        ui.updatePreeditSelection(text, selectionLen);
+    });
     pushLookupTable();
 }
 
 void HazkeyState::advanceCandidateCursor() {
-    if (lookupTable_ == nullptr) {
+    if (candidates_.empty()) {
         return;
     }
     if (cursorIndex_ < 0) {
@@ -1113,18 +1122,16 @@ void HazkeyState::advanceCandidateCursor() {
         updateCandidateCursor();
         return;
     }
-    if (!ibus_lookup_table_cursor_down(lookupTable_)) {
-        // round=FALSE stops at the last candidate; fcitx's nextCandidate()
-        // wraps around to the first.
-        ibus_lookup_table_set_cursor_pos(lookupTable_, 0);
-    }
-    cursorIndex_ =
-        static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
+    // Mirrors ibus_lookup_table_cursor_down() with round=FALSE: increment up
+    // to the last candidate, then wrap to the first (the previous code called
+    // set_cursor_pos(0) when cursor_down returned FALSE).
+    cursorIndex_ = advanceCursorIndex(cursorIndex_,
+                                      static_cast<int>(candidates_.size()));
     updateCandidateCursor();
 }
 
 void HazkeyState::backCandidateCursor() {
-    if (lookupTable_ == nullptr) {
+    if (candidates_.empty()) {
         return;
     }
     if (cursorIndex_ < 0) {
@@ -1132,66 +1139,80 @@ void HazkeyState::backCandidateCursor() {
         updateCandidateCursor();
         return;
     }
-    if (!ibus_lookup_table_cursor_up(lookupTable_)) {
-        // round=FALSE stops at the first candidate; fcitx's prevCandidate()
-        // wraps around to the last.
-        ibus_lookup_table_set_cursor_pos(
-            lookupTable_, static_cast<guint>(candidates_.size() - 1));
-    }
-    cursorIndex_ =
-        static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
+    // Mirrors ibus_lookup_table_cursor_up() with round=FALSE: decrement to the
+    // first candidate, then wrap to the last.
+    cursorIndex_ = backCursorIndex(cursorIndex_,
+                                   static_cast<int>(candidates_.size()));
     updateCandidateCursor();
 }
 
 void HazkeyState::nextPage() {
-    if (lookupTable_ == nullptr || pageSize_ <= 0) {
+    if (pageSize_ <= 0 || candidates_.empty()) {
         return;
     }
-    if (!ibus_lookup_table_page_down(lookupTable_)) {
-        // round=FALSE: already on the last page. fcitx's next() is a no-op
-        // there and nextPage() then resets the cursor to this page's first
-        // candidate.
-        const int cursorPos =
-            static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
-        const int pageStart = (cursorPos / pageSize_) * pageSize_;
-        ibus_lookup_table_set_cursor_pos(lookupTable_,
-                                         static_cast<guint>(pageStart));
-        cursorIndex_ = pageStart;
-        updateCandidateCursor();
-        return;
-    }
-    const int cursorPos =
-        static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
-    const int pageStart = (cursorPos / pageSize_) * pageSize_;
-    ibus_lookup_table_set_cursor_pos(lookupTable_,
-                                     static_cast<guint>(pageStart));
-    cursorIndex_ = pageStart;
+    cursorIndex_ = nextPageStart(cursorIndex_, pageSize_,
+                                 static_cast<int>(candidates_.size()));
     updateCandidateCursor();
 }
 
 void HazkeyState::prevPage() {
-    if (lookupTable_ == nullptr || pageSize_ <= 0) {
+    if (pageSize_ <= 0 || candidates_.empty()) {
         return;
     }
-    if (!ibus_lookup_table_page_up(lookupTable_)) {
-        // round=FALSE: already on the first page; fcitx resets the cursor to
-        // this page's first candidate.
-        const int cursorPos =
-            static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
-        const int pageStart = (cursorPos / pageSize_) * pageSize_;
-        ibus_lookup_table_set_cursor_pos(lookupTable_,
-                                         static_cast<guint>(pageStart));
-        cursorIndex_ = pageStart;
-        updateCandidateCursor();
-        return;
-    }
-    const int cursorPos =
-        static_cast<int>(ibus_lookup_table_get_cursor_pos(lookupTable_));
-    const int pageStart = (cursorPos / pageSize_) * pageSize_;
-    ibus_lookup_table_set_cursor_pos(lookupTable_,
-                                     static_cast<guint>(pageStart));
-    cursorIndex_ = pageStart;
+    cursorIndex_ = prevPageStart(cursorIndex_, pageSize_);
     updateCandidateCursor();
+}
+
+// Pure mirrors of ibus_lookup_table_page_down()/page_up() with round=FALSE,
+// followed by the caller's pageStart normalization (see the original code:
+// page_down false -> stay on the current page start; otherwise -> the new
+// cursor's page start).
+int HazkeyState::nextPageStart(int cursorIndex, int pageSize, int total) {
+    if (pageSize <= 0 || total <= 0) {
+        return cursorIndex;
+    }
+    const int cur = cursorIndex >= 0 ? cursorIndex : 0;
+    const int page = cur / pageSize;
+    const int pageCount = (total + pageSize - 1) / pageSize;
+    if (page >= pageCount - 1) {
+        return page * pageSize;
+    }
+    int next = cur + pageSize;
+    if (next > total - 1) {
+        next = total - 1;
+    }
+    return (next / pageSize) * pageSize;
+}
+
+int HazkeyState::prevPageStart(int cursorIndex, int pageSize) {
+    if (pageSize <= 0) {
+        return cursorIndex;
+    }
+    const int cur = cursorIndex >= 0 ? cursorIndex : 0;
+    if (cur < pageSize) {
+        return 0;
+    }
+    return ((cur - pageSize) / pageSize) * pageSize;
+}
+
+int HazkeyState::advanceCursorIndex(int cursorIndex, int total) {
+    if (total <= 0) {
+        return cursorIndex;
+    }
+    if (cursorIndex < 0) {
+        return 0;
+    }
+    return (cursorIndex + 1) % total;
+}
+
+int HazkeyState::backCursorIndex(int cursorIndex, int total) {
+    if (total <= 0) {
+        return cursorIndex;
+    }
+    if (cursorIndex < 0) {
+        return 0;
+    }
+    return (cursorIndex + total - 1) % total;
 }
 
 int HazkeyState::pageLocalToGlobalIndex(int pageSize, int totalSize,
@@ -1278,47 +1299,36 @@ void HazkeyState::completeCandidate(int globalIndex) {
     }
 }
 
-void HazkeyState::rebuildLookupTable() {
-    g_clear_object(&lookupTable_);
-    if (candidates_.empty() || pageSize_ <= 0) {
-        return;
-    }
-    IBusLookupTable* table =
-        ibus_lookup_table_new(static_cast<guint>(pageSize_), 0, FALSE, FALSE);
-    ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
-    for (const auto& c : candidates_) {
-        ibus_lookup_table_append_candidate(
-            table, ibus_text_new_from_string(c.text.c_str()));
-    }
-    const int labelCount = std::min(static_cast<int>(candidates_.size()), 10);
-    for (int index = 0; index < labelCount; ++index) {
-        const std::string label = selectionLabelForIndex(index);
-        ibus_lookup_table_set_label(
-            table, static_cast<guint>(index),
-            ibus_text_new_from_string(label.c_str()));
-    }
-    g_object_ref_sink(table);
-    lookupTable_ = table;
-}
-
 void HazkeyState::pushLookupTable() {
-    if (lookupTable_ == nullptr || candidates_.empty()) {
-        ibus_engine_hide_lookup_table(engine_);
+    // The lookup table is built and pushed entirely on the main loop from a
+    // plain snapshot, so the worker never owns an IBusLookupTable. The
+    // generation lets a later click be resolved against exactly this render.
+    const uint64_t generation = ++lookupGeneration_;
+    if (pageSize_ <= 0 || candidates_.empty()) {
+        postUi([generation](HazkeyUi& ui) {
+            ui.hideLookupTable(static_cast<int>(generation));
+        });
         return;
     }
-    const guint n = static_cast<guint>(candidates_.size());
-    guint pos = 0;
-    if (cursorIndex_ >= 0 && static_cast<guint>(cursorIndex_) < n) {
-        pos = static_cast<guint>(cursorIndex_);
+    std::vector<std::string> texts;
+    texts.reserve(candidates_.size());
+    for (const auto& c : candidates_) {
+        texts.push_back(c.text);
     }
-    ibus_lookup_table_set_cursor_pos(lookupTable_, pos);
-    ibus_lookup_table_set_cursor_visible(lookupTable_, cursorIndex_ >= 0);
-    ibus_engine_update_lookup_table(engine_, lookupTable_, TRUE);
+    const int pageSize = pageSize_;
+    const int cursorIndex = cursorIndex_;
+    postUi([texts = std::move(texts), pageSize, cursorIndex,
+            generation](HazkeyUi& ui) {
+        ui.updateLookupTable(texts, pageSize, cursorIndex,
+                             static_cast<int>(generation));
+    });
 }
 
 void HazkeyState::clearLookupTable() {
-    g_clear_object(&lookupTable_);
-    ibus_engine_hide_lookup_table(engine_);
+    const uint64_t generation = ++lookupGeneration_;
+    postUi([generation](HazkeyUi& ui) {
+        ui.hideLookupTable(static_cast<int>(generation));
+    });
 }
 
 void HazkeyState::resetState() {
@@ -1343,11 +1353,12 @@ void HazkeyState::resetState() {
 }
 
 void HazkeyState::commitText(const std::string& text) {
-    IBusText* t = ibus_text_new_from_string(text.c_str());
-    ibus_engine_commit_text(engine_, t);
+    postUi([text](HazkeyUi& ui) { ui.commitText(text); });
 }
 
-void HazkeyState::hidePreedit() { ibus_engine_hide_preedit_text(engine_); }
+void HazkeyState::hidePreedit() {
+    postUi([](HazkeyUi& ui) { ui.hidePreedit(); });
+}
 
 void HazkeyState::commitPreedit() {
     // Resolve a deferred display refresh first: focus-out/disable/commit would
@@ -1361,59 +1372,35 @@ void HazkeyState::commitPreedit() {
 
 void HazkeyState::setPreeditUnderline(const std::string& text, glong startChar,
                                       glong endChar, guint cursorChar) {
-    IBusText* t = ibus_text_new_from_string(text.c_str());
-    if (endChar > startChar) {
-        ibus_text_append_attribute(t, IBUS_ATTR_TYPE_UNDERLINE,
-                                   IBUS_ATTR_UNDERLINE_SINGLE,
-                                   static_cast<guint>(startChar),
-                                   static_cast<guint>(endChar));
-    }
-    ibus_engine_update_preedit_text(engine_, t, cursorChar, TRUE);
+    postUi([text, startChar, endChar, cursorChar](HazkeyUi& ui) {
+        ui.updatePreeditRange(text, startChar, endChar, cursorChar);
+    });
 }
 
 void HazkeyState::setPreeditHighlighted(const std::string& text) {
     // Mirrors fcitx HazkeyPreedit::setSimplePreeditHighlighted(): the whole
     // string is highlighted (selection) and the preedit cursor sits at its
     // start.
-    IBusText* t = ibus_text_new_from_string(text.c_str());
-    const glong charLen = g_utf8_strlen(text.c_str(), -1);
-    if (charLen > 0) {
-#if HAZKEY_IBUS_HAS_ATTR_TYPE_HINT
-        ibus_text_append_attribute(t, IBUS_ATTR_TYPE_HINT,
-                                   IBUS_ATTR_PREEDIT_SELECTION, 0,
-                                   static_cast<guint>(charLen));
-#endif
-        ibus_text_append_attribute(t, IBUS_ATTR_TYPE_UNDERLINE,
-                                   IBUS_ATTR_UNDERLINE_SINGLE, 0,
-                                   static_cast<guint>(charLen));
-    }
-    ibus_engine_update_preedit_text(engine_, t, 0, TRUE);
+    postUi([text](HazkeyUi& ui) { ui.updatePreeditHighlighted(text); });
 }
 
 void HazkeyState::setAuxiliaryText(const std::string& text) {
-    IBusText* aux = ibus_text_new_from_string(text.c_str());
-    ibus_engine_update_auxiliary_text(engine_, aux, !text.empty());
+    postUi([text](HazkeyUi& ui) { ui.updateAuxiliaryTextPlain(text); });
 }
 
 void HazkeyState::setAuxiliaryTextWithCursor(const std::string& auxUp,
                                              glong underlineStart,
                                              glong underlineEnd,
                                              const std::string& auxDown) {
-    const std::string text = joinAuxiliaryText(auxUp, auxDown);
-    IBusText* aux = ibus_text_new_from_string(text.c_str());
     // The raw-hiragana AuxUp underlines the character under the server cursor,
     // the IBus counterpart of fcitx's Underline TextFormatFlag on onCursor (see
     // composingTextWithCursorToFcitxText() in the fcitx adapter). The offsets
     // are UTF-8 character offsets and AuxUp is a prefix of the joined text, so
-    // they need no shift. Panels that ignore aux attributes simply render the
-    // plain bytes, which are always the full before+onCursor+after string.
-    if (underlineStart >= 0 && underlineEnd > underlineStart) {
-        ibus_text_append_attribute(aux, IBUS_ATTR_TYPE_UNDERLINE,
-                                   IBUS_ATTR_UNDERLINE_SINGLE,
-                                   static_cast<guint>(underlineStart),
-                                   static_cast<guint>(underlineEnd));
-    }
-    ibus_engine_update_auxiliary_text(engine_, aux, !text.empty());
+    // they need no shift.
+    postUi([auxUp, underlineStart, underlineEnd, auxDown](HazkeyUi& ui) {
+        ui.updateAuxiliaryTextWithCursor(auxUp, underlineStart, underlineEnd,
+                                         auxDown);
+    });
 }
 
 void HazkeyState::updateAuxiliaryText() {
@@ -1463,62 +1450,28 @@ void HazkeyState::updateAuxiliaryText() {
 }
 
 void HazkeyState::registerProperties() {
-    if (propertyList_ == nullptr) {
-        propertyList_ = ibus_prop_list_new();
-        g_object_ref_sink(propertyList_);
-        inputModeProperty_ = ibus_property_new(
-            "InputMode", PROP_TYPE_NORMAL, ibus_text_new_from_string(tr("あ")),
-            nullptr, ibus_text_new_from_string(tr("Hiragana input")), TRUE,
-            TRUE, PROP_STATE_UNCHECKED, nullptr);
-        // Zenzai is a toggle property: its CHECKED state mirrors the server's
-        // Zenzai setting, so the panel shows ON/OFF without a hover tooltip.
-        zenzaiProperty_ = ibus_property_new(
-            "Zenzai", PROP_TYPE_TOGGLE,
-            ibus_text_new_from_string(tr("Zenzai")), nullptr,
-            ibus_text_new_from_string(tr("Zenzai disabled")), TRUE, TRUE,
-            PROP_STATE_UNCHECKED, nullptr);
-        g_object_ref_sink(inputModeProperty_);
-        g_object_ref_sink(zenzaiProperty_);
-        ibus_prop_list_append(propertyList_, inputModeProperty_);
-        ibus_prop_list_append(propertyList_, zenzaiProperty_);
-    }
-    ibus_engine_register_properties(engine_, propertyList_);
-    // Load the server profile on registration so the Zenzai property reflects
-    // the persisted setting immediately; the lazy load otherwise only runs on
-    // the first non-release key event (leaving the property stale until then).
+    // Load the server profile before the property is (re)registered so the
+    // Zenzai property reflects the persisted setting immediately; the lazy
+    // load otherwise only runs on the first non-release key event (leaving the
+    // property stale until then).
     if (!serverProfileLoaded_) {
         loadServerProfile();
     }
-    updateInputModeProperty();
-    // Re-apply the cached Zenzai state so a freshly focused/registered property
-    // reflects the setting loaded by loadServerProfile().
-    updateZenzaiProperty(cachedZenzaiEnabled_);
+    const bool direct = server_.currentInputModeIsDirect();
+    const bool zenzai = cachedZenzaiEnabled_;
+    postUi([direct, zenzai](HazkeyUi& ui) {
+        ui.registerProperties(direct, zenzai);
+    });
 }
 
 void HazkeyState::updateInputModeProperty() {
-    if (inputModeProperty_ == nullptr) {
-        return;
-    }
     const bool direct = server_.currentInputModeIsDirect();
-    ibus_property_set_label(inputModeProperty_, ibus_text_new_from_string(
-                                                   tr(direct ? "A" : "あ")));
-    ibus_property_set_tooltip(
-        inputModeProperty_,
-        ibus_text_new_from_string(tr(direct ? "[Direct Input]" : "Hiragana input")));
-    ibus_engine_update_property(engine_, inputModeProperty_);
+    postUi([direct](HazkeyUi& ui) { ui.updateInputModeProperty(direct); });
 }
 
 void HazkeyState::updateZenzaiProperty(bool enabled) {
     cachedZenzaiEnabled_ = enabled;
-    if (zenzaiProperty_ == nullptr) {
-        return;
-    }
-    ibus_property_set_state(zenzaiProperty_,
-                            enabled ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
-    ibus_property_set_tooltip(
-        zenzaiProperty_,
-        ibus_text_new_from_string(tr(enabled ? "Zenzai enabled" : "Zenzai disabled")));
-    ibus_engine_update_property(engine_, zenzaiProperty_);
+    postUi([enabled](HazkeyUi& ui) { ui.updateZenzaiProperty(enabled); });
 }
 
 void HazkeyState::updateSurroundingText(const std::string& append) {
@@ -1561,7 +1514,7 @@ void HazkeyState::enable() {
     resetState();
     registerProperties();
     if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
-        ibus_engine_get_surrounding_text(engine_, nullptr, nullptr, nullptr);
+        postUi([](HazkeyUi& ui) { ui.requestSurroundingText(); });
     }
 }
 
@@ -1611,16 +1564,14 @@ void HazkeyState::setCursorLocation(gint x, gint y, gint w, gint h) {
     cursorH_ = h;
 }
 
-void HazkeyState::setSurroundingText(IBusText* text, guint cursorIndex,
-                                      guint anchorPos) {
+void HazkeyState::setSurroundingText(const std::string& text, guint cursorIndex,
+                                     guint anchorPos) {
     (void)cursorIndex;
     if (!capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
         clearSurroundingText();
         return;
     }
-    surroundingText_ = (text != nullptr && ibus_text_get_text(text) != nullptr)
-                           ? ibus_text_get_text(text)
-                           : "";
+    surroundingText_ = text;
     const glong textLength = g_utf8_strlen(surroundingText_.c_str(), -1);
     surroundingAnchor_ = std::min(anchorPos, static_cast<guint>(textLength));
     hasSurroundingText_ = true;
@@ -1650,9 +1601,13 @@ void HazkeyState::cursorDown() {
     updateAuxiliaryText();
 }
 
-void HazkeyState::candidateClicked(guint index, guint button, guint state) {
-    (void)button;
-    (void)state;
+void HazkeyState::candidateClickedGlobal(int globalIndex, int generation) {
+    // The click was resolved on the main loop against the render the user
+    // actually saw; a generation mismatch means the list changed underneath
+    // the click, so it is dropped rather than applied to stale candidates.
+    if (static_cast<uint64_t>(generation) != lookupGeneration_) {
+        return;
+    }
     // A click on a list rendered before a still-pending display refresh would
     // commit a stale candidate and drop the trailing input. Resolve the
     // pending refresh and drop this stale click; the refreshed list is then
@@ -1664,23 +1619,15 @@ void HazkeyState::candidateClicked(guint index, guint button, guint state) {
     if (pageSize_ <= 0 || candidates_.empty()) {
         return;
     }
-    const guint tablePos =
-        lookupTable_ != nullptr
-            ? ibus_lookup_table_get_cursor_pos(lookupTable_)
-            : 0;
-    const int global =
-        pageLocalToGlobalIndex(pageSize_,
-                               static_cast<int>(candidates_.size()),
-                               static_cast<int>(tablePos),
-                               static_cast<int>(index));
-    if (global < 0) {
+    if (globalIndex < 0 ||
+        globalIndex >= static_cast<int>(candidates_.size())) {
         return;
     }
-    cursorIndex_ = global;
-    completeCandidate(global);
+    cursorIndex_ = globalIndex;
+    completeCandidate(globalIndex);
 }
 
-bool HazkeyState::isInputableKey(guint keyval) const {
+bool HazkeyState::isInputableKey(guint keyval) {
     if (keyval == IBUS_KEY_space) {
         return true;
     }

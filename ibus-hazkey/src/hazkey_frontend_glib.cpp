@@ -4,12 +4,46 @@
 
 #include <glib.h>
 
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hazkey::ibus {
 
 void installGlibFrontendHooks() {
+    // Install once, before any worker task can read these hooks (the engine
+    // constructs its frontend right after this call). Re-installing from a
+    // second engine instance would race with a running worker.
+    static bool installed = false;
+    if (installed) {
+        return;
+    }
+    installed = true;
+
+    // Main-loop delivery for the worker-thread IME logic.
+    //
+    // g_idle_add_full() attaches an idle source to the global default main
+    // context, which is the context ibus_main() runs. Unlike
+    // g_main_context_invoke(), it NEVER runs the callback inline on the
+    // calling (worker) thread, and G_PRIORITY_DEFAULT keeps it from being
+    // starved by lower-priority idle work. Sources at equal priority are
+    // dispatched in attach order, so UI updates keep FIFO order.
+    hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
+        auto* heapTask = new std::function<void()>(std::move(task));
+        g_idle_add_full(
+            G_PRIORITY_DEFAULT,
+            [](gpointer data) -> gboolean {
+                auto* fn = static_cast<std::function<void()>*>(data);
+                (*fn)();
+                return G_SOURCE_REMOVE;
+            },
+            heapTask,
+            [](gpointer data) {
+                delete static_cast<std::function<void()>*>(data);
+            });
+    });
+
     hazkey::frontend::setLogLevelEnabled([](hazkey::frontend::LogLevel level) {
         switch (level) {
             case hazkey::frontend::LogLevel::Debug:
