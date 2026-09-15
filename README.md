@@ -9,7 +9,7 @@ Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフ
 Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフロントエンド (ibus-hazkey) を同梱します。  
 (IBus版のソースビルドにはビルドオプション `ENABLE_IBUS` オプションが必要。既定はOFF。バイナリパッケージは両フロントエンド分を頒布します)  
 
-本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.25** です。  
+本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.26** です。  
 
 > **上流版 (hazkey公式) の情報**  
 > - ホームページ: [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
@@ -30,7 +30,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
 
 <br>
 
-## コミュニティ版の主な機能 (v0.2.2-community 以降)
+## コミュニティ版の主な機能 (v0.2.2-community以降)
 
 上流に対するコミュニティ版独自の追加機能・改善の概要です。  
 
@@ -184,7 +184,7 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後はibus-daemonを再起動し、ibus list-engineに**hazkey**が表示されることを確認してください。  
+インストール後はibus-daemonを再起動し、ibus list-engineに **hazkey** が表示されることを確認してください。  
 エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey/ibus-engine-hazkey`、  
 component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml` に配置されます。  
 
@@ -202,45 +202,55 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 ### IBusフロントエンドの既知の制約
 
-- **Fcitx 5 と IBus の同時有効化による入力に対応しています。**  
-  hazkey-server は接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift — HazkeyServerState`) を持ち、  
-  変換エンジン・ユーザ辞書・学習メモリ・Zenzai モデルは全接続で共有します (`hazkey-server/Sources/hazkey-server/state.swift — HazkeySharedResources`)。  
+- **Fcitx 5とIBusの同時有効化による入力に対応しています。**  
+  hazkey-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
+  変換エンジン・ユーザ辞書・学習メモリ・Zenzai モデルは全接続で共有します。(`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
   接続を奪い合いません。  
-- **`hazkey-settings` を起動しても IME 側の入力接続は切断されません。**  
-- **同時接続の上限は 8 です** (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)。  
-  超過した新規接続は accept 直後にサーバが閉じ、既存セッションは保護されます。  
+- **hazkey-settingsを起動しても、IME側の入力接続は切断されません。**  
+- **同時接続の上限は8です**  
+  (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)  
+  超過した新規接続は、accept直後にサーバが閉じ、既存セッションは保護されます。  
 - **停滞したクライアントが他方を巻き込みません。**  
-  ソケット I/O は期限付き poll で待つため (`hazkey-server/Sources/hazkey-server/socketUtils.swift — readData(from:count:timeoutMs:)` / `writeData(to:data:timeoutMs:)`、既定10秒)、応答を返さない/読み取らないクライアントは `hazkey-server/Sources/hazkey-server/socketUtils.swift — SocketError.ioTimeout` で切断され、他のクライアントの処理が再開します。  
-- **`hazkey-settings` で設定を変更しても、他方の入力中テキストは失われません。**  
-  設定変更時の再初期化は要求元の接続だけが自分の組成をリセットし、他の接続は組成を保持します。入力テーブルは名前ごとにレジストリへ追加登録されるため (`InputStyleManager.registerInputStyle`)、変更前に挿入済みの要素は旧テーブル名のまま解決できます。  
-  残差: 組成の途中で設定を変更した場合、変更前に入力したキーは旧マッピング、変更後のキーは新マッピングになります (同一組成内での混在)。  
-- **残差リスク**: サーバは単一スレッドでリクエストを直列処理するため、片方の Zenzai 推論中はもう片方の同期RPC応答が遅延し得ます  
-  (クライアント read timeout 最大10秒以内、機能的な破綻はありません)。  
+  ソケットI/Oは期限付きpollで待機 (デフォルトは10秒) するため、  
+  (`hazkey-server/Sources/hazkey-server/socketUtils.swift - readData(from:count:timeoutMs:)` / `writeData(to:data:timeoutMs:)`)、  
+  応答を返さない/読み取らないクライアントは `hazkey-server/Sources/hazkey-server/socketUtils.swift - SocketError.ioTimeout` で切断され、  
+  他のクライアントの処理が再開します。  
+- **hazkey-settingsで設定を変更しても、他方の入力中テキストは失われません。**  
+  設定変更時の再初期化は要求元の接続だけが自分の組成をリセットし、他の接続は組成を保持します。  
+  入力テーブルは名前ごとにレジストリへ追加登録されるため (`InputStyleManager.registerInputStyle`)、  
+  変更前に挿入済みの要素は旧テーブル名のまま解決できます。  
+  
+  残差:  
+  組成の途中で設定を変更した場合、変更前に入力したキーは旧マッピング、変更後のキーは新マッピングになります。(同一組成内での混在)  
+- **残差リスク**:  
+  サーバは単一スレッドでリクエストを直列処理するため、片方のZenzai推論中はもう片方の同期RPC応答が遅延し得ます。  
+  (クライアントのread timeoutは最大10秒以内、機能的な破綻はありません)  
 - **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
   ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
   `F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、  
   `Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp/AuxDown) を含みます。  
-  無変換キーは Fcitx と同じく組成中に消費される no-op です (直接変換は行いません)。  
+  無変換キーはFcitx 5版と同様に、組成中に消費されるNOPです。(直接変換は行いません)  
 - **パネルの入力モード表示 (IBusProperty) に対応しています。**  
   パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
-  language bar の「あ / A」をクリックすると直接入力をトグルできます (サーバの「Shift 単体タップ」と同じ RPC 経路を利用)。  
+  言語バーの「あ / A」をクリックすると、直接入力をトグルできます。([Shift]キー単体押下と同じRPC経路を利用)  
 - **候補リストに数字ラベル (1〜9, 0) と縦向き表示を設定しています。**  
-- **クライアントの capability (`set_capabilities`) を反映します。**  
-  surrounding text 非対応のクライアントでは surrounding text の取得・送信を行いません。  
-  capability を申告しないクライアントでは従来どおり動作します。  
-- **IBus に固有の未対応項目 (見送り)**:  
-  - surrounding text の書き込み経路 (`delete_surrounding_text` / `forward_key_event`) は、サーバ側の新規 RPC が必要なため未対応です。  
-  - Fcitx の `[Tabキーで選択]` 表示可否設定 (`showTabToSelect`) に相当する IBus 側の設定経路はありません。  
-    Fcitx の既定値は「表示」であり、IBus は組成中に常時表示するため実質同挙動です。  
+- **クライアントのcapability (`set_capabilities`) を反映します。**  
+  surrounding text非対応のクライアントでは、surrounding textの取得・送信を行いません。  
+  capabilityを申告しないクライアントでは従来どおり動作します。  
+- **IBusに固有の未対応項目 (見送り)**:  
+  - surrounding textの書き込み経路 (`delete_surrounding_text` / `forward_key_event`) は、サーバ側の新規RPCが必要なため未対応です。  
+  - Fcitx 5版の[Tabキーで選択]表示可否設定 (`showTabToSelect`) に相当するIBus側の設定経路はありません。  
+    Fcitx 5版の既定値は[表示]であり、IBusは組成中に常時表示するため実質同挙動です。  
 - **RPCは非同期化されており、`process_key_event` はサーバ応答でブロックしません。**  
-  IBus 側の入力状態機械 (`hazkey::ibus::HazkeyState`) は専用ワーカースレッドで逐次実行され、  
-  preedit・候補リスト・IBusProperty・補助テキストの更新は GLib メインループへ配送されて適用されます。  
+  IBus側の入力状態機械 (`hazkey::ibus::HazkeyState`) は専用ワーカースレッドで逐次実行され、  
+  preedit・候補リスト・IBusProperty・補助テキストの更新はGLibメインループへ配送されて適用されます。  
+  
   サーバが遅い間もキー入力処理は即座に戻り、応答到着後に表示へ反映されます。  
-  既存の read timeout (最大10秒)・response 上限 2MB・再接続・read-through キャッシュ無効化・RPC 順序は維持しています。  
-  応答到着前に次のキーが入力された場合、consume / forward の判定は直前の確定済み状態に基づくため、  
-  まれにサーバレイテンシ分だけ順序がずれることがあります (未処理と判明したキーは  
-  `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)。  
-  なお fcitx5 フロントエンドは従来どおり同期のままです。  
+  既存のread timeout (最大10秒)・response 上限 2[MB]・再接続・read-throughキャッシュ無効化・RPC 順序は維持しています。  
+  
+  応答到着前に次のキーが入力された場合、consume / forwardの判定は直前の確定済み状態に基づくため、稀にサーバレイテンシ分だけ順序がずれることがあります。  
+  (未処理と判明したキーは `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)  
+  なお、Fcitx 5フロントエンドは従来どおり同期のままです。  
 
 <br>
 
