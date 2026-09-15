@@ -4,6 +4,7 @@
 
 #include <glib.h>
 
+#include <atomic>
 #include <functional>
 #include <string>
 #include <utility>
@@ -15,11 +16,11 @@ void installGlibFrontendHooks() {
     // Install once, before any worker task can read these hooks (the engine
     // constructs its frontend right after this call). Re-installing from a
     // second engine instance would race with a running worker.
-    static bool installed = false;
-    if (installed) {
+    static std::atomic<bool> installed{false};
+    bool expected = false;
+    if (!installed.compare_exchange_strong(expected, true)) {
         return;
     }
-    installed = true;
 
     // Main-loop delivery for the worker-thread IME logic.
     //

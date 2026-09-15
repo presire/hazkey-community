@@ -56,6 +56,9 @@ HazkeyUi::~HazkeyUi() {
     // Deliberately does NOT unref the IBus/GObject members: this object may be
     // destroyed on the worker thread when the last shared_ptr is dropped.
     // retire() (main loop) is responsible for releasing them.
+    if (!retired_) {
+        g_warning("hazkey: HazkeyUi destroyed without retire(); IBus objects leaked");
+    }
 }
 
 void HazkeyUi::retire() {
@@ -154,13 +157,15 @@ void HazkeyUi::updateLookupTable(const std::vector<std::string>& candidates,
         ibus_lookup_table_append_candidate(
             table, ibus_text_new_from_string(c.c_str()));
     }
-    const int labelCount =
-        std::min(static_cast<int>(candidates.size()), 10);
-    for (int index = 0; index < labelCount; ++index) {
-        const std::string label = selectionLabelForIndex(index);
+    const int effectiveCursor = cursorIndex >= 0 ? cursorIndex : 0;
+    const int pageStart = (effectiveCursor / pageSize) * pageSize;
+    for (int i = pageStart;
+         i < std::min(static_cast<int>(candidates.size()), pageStart + 10);
+         ++i) {
         ibus_lookup_table_set_label(
-            table, static_cast<guint>(index),
-            ibus_text_new_from_string(label.c_str()));
+            table, i,
+            ibus_text_new_from_string(
+                selectionLabelForIndex(i - pageStart).c_str()));
     }
     g_object_ref_sink(table);
     lookupTable_ = table;
@@ -174,14 +179,13 @@ void HazkeyUi::updateLookupTable(const std::vector<std::string>& candidates,
     ibus_lookup_table_set_cursor_visible(table, cursorIndex >= 0);
     ibus_engine_update_lookup_table(engine_, table, TRUE);
 
-    const int effectiveCursor = cursorIndex >= 0 ? cursorIndex : 0;
     snapshot_ = LookupSnapshot{};
     snapshot_.generation = generation;
     snapshot_.pageSize = pageSize;
     snapshot_.total = static_cast<int>(n);
     snapshot_.cursorPos = cursorIndex;
     snapshot_.visible = true;
-    snapshot_.pageStart = (effectiveCursor / pageSize) * pageSize;
+    snapshot_.pageStart = pageStart;
 }
 
 void HazkeyUi::hideLookupTable(int generation) {

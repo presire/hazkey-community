@@ -91,9 +91,9 @@ void spawnServer(bool forceRestart);
 // installed): run inline, which keeps a frontend that has no worker (fcitx5)
 // byte-for-byte single-threaded.
 //
-// Install-once: `setMainLoopPoster` is expected to be called before any task
-// is posted (i.e. before the first connector/state is constructed). It is not
-// synchronized against concurrent postToMainLoop() calls.
+// Install-once: the first real (non-empty) install wins and repeat/concurrent
+// installs are ignored. Passing an empty function clears the hook (restores the
+// inline default; used by tests).
 // `setMainLoopPoster` is expected to be called before any task is posted (i.e.
 // before the first connector/state is constructed). It is not synchronized
 // against concurrent postToMainLoop() calls.

@@ -1,5 +1,6 @@
 #include "hazkey_frontend_hooks.h"
 
+#include <atomic>
 #include <utility>
 
 namespace hazkey::frontend {
@@ -58,6 +59,18 @@ void spawnServer(bool forceRestart) {
 }
 
 void setMainLoopPoster(MainLoopPoster poster) {
+    static std::atomic<bool> installed{false};
+    if (!poster) {
+        // Passing an empty function clears the hook (tests restore the inline
+        // default) and releases the install slot for a later install.
+        mainLoopPosterStorage() = nullptr;
+        installed.store(false);
+        return;
+    }
+    bool expected = false;
+    if (!installed.compare_exchange_strong(expected, true)) {
+        return;  // first real install wins; concurrent/repeat installs ignored
+    }
     mainLoopPosterStorage() = std::move(poster);
 }
 

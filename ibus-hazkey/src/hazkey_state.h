@@ -75,6 +75,12 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     // the list changed underneath the click and the click is dropped.
     void candidateClickedGlobal(int globalIndex, int generation);
 
+    // Drops any pending delayed refresh and clears the coalescer policy.
+    // Called from resetState() (focus-out/disable/enable/reset) and the
+    // destructor so no stale refresh can mutate the UI after teardown or
+    // across a new composition epoch.
+    void cancelPendingRefresh();
+
     // Maps a page-local candidate index (0-based, as produced by a number key
     // or a lookup-table click) to the global candidate index, resolving the
     // page from the current global cursor position. The local index is bounded
@@ -247,11 +253,6 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     // Executes the latest requested refresh kind (suggest vs non-suggest),
     // shared by the leading-edge and trailing-delay paths.
     void runPendingCandidateRefresh();
-    // Drops any pending delayed refresh and clears the coalescer policy.
-    // Called from resetState() (focus-out/disable/enable/reset) and the
-    // destructor so no stale refresh can mutate the UI after teardown or
-    // across a new composition epoch.
-    void cancelPendingRefresh();
     // Runs a pending coalesced refresh immediately (if any) instead of
     // cancelling it, so a caller about to CONSUME preeditText_ (commit /
     // focus-out / direct conversion) acts on the latest server state rather

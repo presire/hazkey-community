@@ -16,12 +16,13 @@ namespace hazkey::ibus {
 // IBus/GObject state lives here instead, and every method MUST be called on
 // the GLib main loop (the thread that owns the engine), via
 // hazkey::frontend::postToMainLoop().
+// Lookup-table number labels are page-local to the visible IBus page.
 //
 // Lifetime: HazkeyState and the frontend ladder hold shared_ptr<HazkeyUi>, so
 // the object itself cannot be freed while a posted closure still references
 // it. The raw IBus/GObject pointers it owns must be released on the main loop
-// by retire(); ~HazkeyUi must never unref them (it may run on the worker when
-// the last shared_ptr is dropped after teardown).
+// by retire(); if it is missed, ~HazkeyUi warns but must never unref them (it
+// may run on the worker when the last shared_ptr is dropped after teardown).
 class HazkeyUi {
    public:
     explicit HazkeyUi(IBusEngine* engine);

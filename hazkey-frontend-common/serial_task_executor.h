@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <thread>
 
@@ -74,6 +75,11 @@ class SerialTaskExecutor {
     // production lifetime is handled by the tasks' shared_ptr captures.
     void drainAndWait();
 
+    // Like drainAndWait(), but waits at most `timeout` for the ready-task
+    // sentinel. Returns false on timeout. A delayed task that is not yet due
+    // does not block this.
+    bool drainAndWaitFor(std::chrono::microseconds timeout);
+
     // Drains and stops the worker, then joins it. Idempotent. After this,
     // submit() returns kInvalidToken.
     void shutdown();
@@ -91,6 +97,8 @@ class SerialTaskExecutor {
     // ready task remains. Must be called with `mutex_` held.
     bool takeNextReadyLocked(Entry* out);
     static void eraseTokenLocked(std::deque<Entry>* queue, Token token);
+    // Returns an already-ready future when the executor is stopping.
+    std::future<void> submitDrainSentinel();
 
     mutable std::mutex mutex_;
     std::condition_variable cv_;

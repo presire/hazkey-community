@@ -106,14 +106,31 @@ void SerialTaskExecutor::workerLoop() {
     }
 }
 
-void SerialTaskExecutor::drainAndWait() {
-    std::promise<void> done;
-    std::future<void> finished = done.get_future();
-    const Token token = submit([&done] { done.set_value(); });
+std::future<void> SerialTaskExecutor::submitDrainSentinel() {
+    auto done = std::make_shared<std::promise<void>>();
+    std::future<void> finished = done->get_future();
+    const Token token = submit([done] { done->set_value(); });
     if (token == kInvalidToken) {
-        return;  // already stopping: nothing left to drain
+        done->set_value();  // already stopping: nothing left to drain
     }
-    finished.wait();
+    return finished;
+}
+
+void SerialTaskExecutor::drainAndWait() {
+    // A worker cannot wait for its own sentinel without deadlocking.
+    if (onWorkerThread()) {
+        return;
+    }
+    submitDrainSentinel().wait();
+}
+
+bool SerialTaskExecutor::drainAndWaitFor(std::chrono::microseconds timeout) {
+    // A worker cannot wait for its own sentinel without deadlocking.
+    if (onWorkerThread()) {
+        return true;
+    }
+    return submitDrainSentinel().wait_for(timeout) ==
+           std::future_status::ready;
 }
 
 void SerialTaskExecutor::shutdown() {

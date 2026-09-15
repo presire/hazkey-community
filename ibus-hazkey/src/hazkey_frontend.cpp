@@ -101,13 +101,17 @@ void HazkeyFrontend::retire() {
     if (retired_) {
         return;
     }
-    // Stop accepting new work first (every vfunc checks retired_), then let
-    // the already-submitted worker tasks finish and run the UI commands they
-    // posted (notably a focus-out commit) while the engine and renderer are
-    // still valid. drainAndWait() waits only for tasks already submitted; the
-    // bounded iteration below dispatches only sources that are already ready.
+    // Stop accepting new work first (every vfunc checks retired_), then give
+    // already-submitted worker tasks a bounded chance to finish and run the UI
+    // commands they posted (notably a focus-out commit) while the engine and
+    // renderer are still valid. The drain waits only for tasks already
+    // submitted; the bounded iteration below dispatches only sources that are
+    // already ready.
     retired_ = true;
-    sharedExecutor().drainAndWait();
+    constexpr auto kRetireDrainTimeout = std::chrono::milliseconds(200);
+    sharedExecutor().submit(
+        [state = state_] { state->cancelPendingRefresh(); });
+    sharedExecutor().drainAndWaitFor(kRetireDrainTimeout);
     for (int i = 0; i < 1000 && g_main_context_pending(nullptr); ++i) {
         g_main_context_iteration(nullptr, FALSE);
     }

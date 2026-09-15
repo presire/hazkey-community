@@ -9,7 +9,6 @@
 // framework-independent.
 #include <atomic>
 #include <chrono>
-#include <cstdint>
 #include <iostream>
 #include <mutex>
 #include <thread>
@@ -123,6 +122,69 @@ void testCancelPreventsRun() {
     std::cout << "[PASS] cancelled delayed task never runs\n";
 }
 
+void testBoundedDrainTimesOutAndSucceedsWhenIdle() {
+    SerialTaskExecutor executor;
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    executor.submit([&] {
+        started = true;
+        while (!release.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    while (!started.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    constexpr auto kTimeout = std::chrono::milliseconds(10);
+    CHECK(!executor.drainAndWaitFor(kTimeout));
+    release = true;
+    executor.drainAndWait();
+    CHECK(executor.drainAndWaitFor(kTimeout));
+    std::cout << "[PASS] bounded drain times out and succeeds when idle\n";
+}
+
+void testTimedOutDrainCanFinishLater() {
+    SerialTaskExecutor executor;
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    std::atomic<bool> finished{false};
+    executor.submit([&] {
+        started = true;
+        while (!release.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        finished = true;
+    });
+    while (!started.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    CHECK(!executor.drainAndWaitFor(std::chrono::milliseconds(10)));
+    release = true;
+    executor.drainAndWait();
+    CHECK(finished);
+    std::cout << "[PASS] timed-out drain sentinel can finish later\n";
+}
+
+void testWorkerDrainReturnsPromptly() {
+    SerialTaskExecutor executor;
+    std::atomic<bool> returned{false};
+    executor.submit([&] {
+        executor.drainAndWait();
+        returned = true;
+    });
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    while (!returned.load() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(returned);
+    executor.drainAndWait();
+    std::cout << "[PASS] worker drain returns without self-deadlock\n";
+}
+
 void testShutdownDropsPending() {
     SerialTaskExecutor executor;
     std::atomic<bool> ran{false};
@@ -202,6 +264,9 @@ int main() {
     testFifoOnSingleThread();
     testDelayedTasksDoNotBlockReadyOnes();
     testCancelPreventsRun();
+    testBoundedDrainTimesOutAndSucceedsWhenIdle();
+    testTimedOutDrainCanFinishLater();
+    testWorkerDrainReturnsPromptly();
     testShutdownDropsPending();
     testDefaultPosterRunsInline();
     testInstalledPosterDefersToMainThread();
