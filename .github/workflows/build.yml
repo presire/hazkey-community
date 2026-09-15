@@ -352,6 +352,14 @@ jobs:
               printf 'Architecture: %s\n' "$PACKAGE_ARCH"
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
               printf '%s\n' 'Depends: fcitx5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
+              # Both packages ship the same shared server/settings payload
+              # (usr/bin, usr/share/hazkey, libllama). A bidirectional
+              # UNVERSIONED Replaces lets either install order overwrite the
+              # sibling's copy; a versioned `Replaces: ibus-hazkey (<< X)` does
+              # NOT authorise overwriting a same-version sibling (measured with
+              # dpkg, see the co-install assertions below). Do NOT add
+              # Conflicts: coexistence is supported (simultaneous *use* is not).
+              printf '%s\n' 'Replaces: ibus-hazkey'
               printf '%s\n' 'Description: Hazkey Japanese input method for Fcitx5'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
@@ -393,6 +401,10 @@ jobs:
               # package, so its Qt/Vulkan/protobuf/ncurses runtime
               # dependencies mirror fcitx5-hazkey (minus fcitx5, plus ibus).
               printf '%s\n' 'Depends: ibus, libibus-1.0-5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
+              # Reverse half of the bidirectional, unversioned Replaces (see the
+              # fcitx5-hazkey control above): lets either install order claim
+              # the shared payload. No Conflicts: coexistence is supported.
+              printf '%s\n' 'Replaces: fcitx5-hazkey'
               printf '%s\n' 'Description: Hazkey Japanese input method for IBus'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
@@ -569,6 +581,157 @@ jobs:
               rpm -qp --provides "$rpm_target" | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
               rpm -qp --provides "$ibus_rpm_target" | grep -Fq "$_soname" || { echo "ibus RPM missing self-provide: $_soname" >&2; exit 1; }
             done
+          fi
+
+          # -----------------------------------------------------------------
+          # P2: co-install / remove assertions for the duplicated shared
+          # server/settings payload (hazkey-server, hazkey-settings, libllama,
+          # the Emoji 17 dictionary, icons and the applications entries).
+          #
+          # Measured dpkg semantics (Debian 13 / Ubuntu 26.04):
+          #   * Without Replaces the second install fails with
+          #     "trying to overwrite '...', which is also in package ...".
+          #   * A bidirectional UNVERSIONED Replaces makes both install orders
+          #     succeed.
+          #   * dpkg records the shared paths as owned by the package that
+          #     installed LAST, so `dpkg -r` of that package REMOVES the shared
+          #     files while the sibling stays installed (and therefore broken);
+          #     removing the other package keeps them. This is an inherent
+          #     limitation of the shared-payload layout and is asserted here so
+          #     a future behaviour change is caught. README documents it.
+          #
+          # RPM has no `Replaces` equivalent and none is needed: rpm/dnf/zypper
+          # co-install two packages that ship the same path and keep the shared
+          # files on erase while the sibling stays installed (measured on rpm
+          # 4.20 Leap/Tumbleweed and rpm 6.0 Fedora 44). Do NOT add Obsoletes
+          # (breaks `rpm -i`) or Conflicts (forbids coexistence).
+          # -----------------------------------------------------------------
+          if [ "$PACKAGE_TYPE" = "deb" ]; then
+            # The generated controls must carry a bidirectional, unversioned
+            # Replaces and must not carry a Conflicts.
+            # Exact match: the field must stay the bare, unversioned sibling
+            # name. A versioned `Replaces: sibling (<< X)` does not permit a
+            # same-version overwrite (measured), so a regression to a versioned
+            # form must fail this assertion. An unversioned Replaces means
+            # mixing different package versions of the two frontends is not a
+            # supported configuration (README documents the same-version use).
+            test "$(dpkg-deb --field "$fcitx_deb" Replaces)" = "ibus-hazkey" \
+              || { echo "fcitx5-hazkey DEB Replaces must be exactly 'ibus-hazkey'" >&2; exit 1; }
+            test "$(dpkg-deb --field "$ibus_deb" Replaces)" = "fcitx5-hazkey" \
+              || { echo "ibus-hazkey DEB Replaces must be exactly 'fcitx5-hazkey'" >&2; exit 1; }
+            if [ -n "$(dpkg-deb --field "$fcitx_deb" Conflicts 2>/dev/null)" ] ||
+               [ -n "$(dpkg-deb --field "$ibus_deb" Conflicts 2>/dev/null)" ]; then
+              echo "unexpected Conflicts field in a hazkey DEB" >&2
+              exit 1
+            fi
+
+            dpkg_probe_root() {
+              rm -rf "$1"
+              mkdir -p "$1/var/lib/dpkg/info" "$1/var/lib/dpkg/updates"
+              : > "$1/var/lib/dpkg/status"
+              : > "$1/var/lib/dpkg/available"
+            }
+            # Isolated root; --force-depends because this assertion tests file
+            # coexistence, not dependency resolution (the sibling's Depends are
+            # absent from the throwaway root).
+            dpkg_probe() {
+              _p2_root="$1"
+              shift
+              dpkg --root="$_p2_root" --force-not-root --force-bad-path \
+                --force-depends "$@"
+            }
+
+            echo "### P2 DEB: install fcitx5-hazkey then ibus-hazkey"
+            dpkg_probe_root /tmp/p2root-ab
+            dpkg_probe /tmp/p2root-ab -i "$fcitx_deb"
+            dpkg_probe /tmp/p2root-ab -i "$ibus_deb"
+            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey ibus-hazkey \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
+              || { echo "fcitx5-hazkey not installed after A->B" >&2; exit 1; }
+            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey ibus-hazkey \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
+              || { echo "ibus-hazkey not installed after A->B" >&2; exit 1; }
+            test -e /tmp/p2root-ab/usr/bin/hazkey-server \
+              || { echo "shared payload missing after A->B" >&2; exit 1; }
+
+            echo "### P2 DEB: install ibus-hazkey then fcitx5-hazkey (reverse)"
+            dpkg_probe_root /tmp/p2root-ba
+            dpkg_probe /tmp/p2root-ba -i "$ibus_deb"
+            dpkg_probe /tmp/p2root-ba -i "$fcitx_deb"
+            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey ibus-hazkey \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
+              || { echo "fcitx5-hazkey not installed after B->A" >&2; exit 1; }
+            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey ibus-hazkey \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
+              || { echo "ibus-hazkey not installed after B->A" >&2; exit 1; }
+
+            echo "### P2 DEB: removing the last installer drops the shared payload"
+            dpkg_probe_root /tmp/p2root-rmb
+            dpkg_probe /tmp/p2root-rmb -i "$fcitx_deb"
+            dpkg_probe /tmp/p2root-rmb -i "$ibus_deb"
+            dpkg --root=/tmp/p2root-rmb -r ibus-hazkey
+            dpkg --root=/tmp/p2root-rmb -l fcitx5-hazkey \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
+              || { echo "fcitx5-hazkey lost after removing ibus-hazkey" >&2; exit 1; }
+            test ! -e /tmp/p2root-rmb/usr/bin/hazkey-server \
+              || { echo "shared payload unexpectedly kept after removing last installer" >&2; exit 1; }
+
+            echo "### P2 DEB: removing the replaced package keeps the shared payload"
+            dpkg_probe_root /tmp/p2root-rma
+            dpkg_probe /tmp/p2root-rma -i "$fcitx_deb"
+            dpkg_probe /tmp/p2root-rma -i "$ibus_deb"
+            dpkg --root=/tmp/p2root-rma -r fcitx5-hazkey
+            dpkg --root=/tmp/p2root-rma -l ibus-hazkey \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
+              || { echo "ibus-hazkey lost after removing the replaced sibling" >&2; exit 1; }
+            test -e /tmp/p2root-rma/usr/bin/hazkey-server \
+              || { echo "shared payload lost after removing the replaced sibling" >&2; exit 1; }
+          else
+            # The RPMs must not declare Conflicts/Obsoletes (see the header
+            # comment above).
+            for _p2_rpm in "$rpm_target" "$ibus_rpm_target"; do
+              test -z "$(rpm -qp --conflicts "$_p2_rpm" 2>/dev/null)" \
+                || { echo "unexpected Conflicts in $_p2_rpm" >&2; exit 1; }
+              test -z "$(rpm -qp --obsoletes "$_p2_rpm" 2>/dev/null)" \
+                || { echo "unexpected Obsoletes in $_p2_rpm" >&2; exit 1; }
+            done
+
+            rpm_probe_cleanup() {
+              # `rpm -e A B` aborts when either is absent, so remove each
+              # independently.
+              rpm -e --nodeps --noscripts ibus-hazkey 2>/dev/null || true
+              rpm -e --nodeps --noscripts fcitx5-hazkey 2>/dev/null || true
+            }
+
+            echo "### P2 RPM: install fcitx5-hazkey then ibus-hazkey"
+            rpm_probe_cleanup
+            rpm -i --nodeps --noscripts "$rpm_target"
+            rpm -i --nodeps --noscripts "$ibus_rpm_target"
+            rpm -q fcitx5-hazkey ibus-hazkey >/dev/null \
+              || { echo "RPM co-install failed" >&2; exit 1; }
+            test -e /usr/bin/hazkey-server \
+              || { echo "RPM shared payload missing after co-install" >&2; exit 1; }
+
+            echo "### P2 RPM: removing one keeps the shared payload"
+            rpm -e --nodeps --noscripts ibus-hazkey
+            if rpm -q ibus-hazkey >/dev/null 2>&1; then
+              echo "ibus-hazkey RPM not removed" >&2
+              exit 1
+            fi
+            rpm -q fcitx5-hazkey >/dev/null \
+              || { echo "fcitx5-hazkey RPM lost" >&2; exit 1; }
+            test -e /usr/bin/hazkey-server \
+              || { echo "RPM shared payload dropped when the sibling was removed" >&2; exit 1; }
+
+            echo "### P2 RPM: reverse install order"
+            rpm_probe_cleanup
+            rpm -i --nodeps --noscripts "$ibus_rpm_target"
+            rpm -i --nodeps --noscripts "$rpm_target"
+            rpm -q fcitx5-hazkey ibus-hazkey >/dev/null \
+              || { echo "RPM reverse co-install failed" >&2; exit 1; }
+            rpm_probe_cleanup
+            test ! -e /usr/bin/hazkey-server \
+              || { echo "RPM shared payload kept after removing both packages" >&2; exit 1; }
           fi
 
           chmod -R a+rX packages
