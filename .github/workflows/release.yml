@@ -63,9 +63,8 @@ jobs:
           rpmsign --addsign packages/*.rpm 3<<< "${RPM_GPG_PASSPHRASE:-}"
           gpg --armor --export "$KEYID" > packages/RPM-GPG-KEY-hazkey
 
-          # rpm -K verifies against the rpmdb keyring, not GnuPG's keyring,
-          # so import the exported public key into a throwaway rpmdb before
-          # checking the freshly added signatures.
+          # "rpm -K"コマンドは、GnuPGのキーリングではなく、rpmdbのキーリングに対して検証するため、
+          # エクスポートした公開鍵を使い捨てのrpmdbに取り込んでから新たに追加した署名を検証する
           rpm --dbpath "$RPMVERIFYDB" --initdb
           rpm --dbpath "$RPMVERIFYDB" --import packages/RPM-GPG-KEY-hazkey
           rpm --dbpath "$RPMVERIFYDB" -Kv packages/*.rpm

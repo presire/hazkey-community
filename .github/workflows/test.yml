@@ -1,9 +1,8 @@
 name: Test
 
-# Regression-test workflow: builds the project and runs CTest + Swift
-# XCTest on every pull request and on every push to main.  It does NOT
-# produce, install, or publish any packages — that is the job of
-# build.yml / release.yml.
+# 回帰テスト用ワークフロー:
+# プロジェクトをビルドし、すべてのプルリクエストとmainブランチへのプッシュで、CTest + Swift XCTestを実行する
+# パッケージの生成、インストール、公開は行わない (これらは、build.yml / release.ymlの役割である)
 
 on:
   push:
@@ -16,8 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  # Cancel superseded runs on the same ref so only the latest commit
-  # is tested — saves runner minutes on rapid pushes.
+  # 同じrefで古い実行をキャンセルし、最新コミットだけをテストする
+  # 高速なプッシュ時のランナー時間を節約する
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
@@ -27,13 +26,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
-      # Native (non-emulated) runners: x86_64 on ubuntu-24.04 and native
-      # AArch64 on ubuntu-24.04-arm.  fail-fast is disabled so a regression
-      # on one architecture still reports the other architecture's result.
+      # ネイティブ (非エミュレート) ランナー:
+      # ubuntu-24.04上のx86_64とubuntu-24.04-arm上のネイティブAArch64を使う
+      # 一方のアーキテクチャでの回帰時にも他方の結果を報告できるよう、fail-fastは無効にする
       fail-fast: false
       matrix:
         include:
-          # x86_64 / amd64: existing coverage, unchanged behaviour.
+          # x86_64 / amd64: 既存のカバレッジであり、挙動は不変である
           - runner: ubuntu-24.04
             dpkg_arch: amd64
             expected_machine: x86_64
@@ -41,8 +40,8 @@ jobs:
             cxx: c++
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
-          # AArch64 / arm64: native ARM64 runner using the official
-          # AArch64 Swift 6.3.3 archive for Ubuntu 24.04.
+          # AArch64 / arm64: Ubuntu 24.04向けの公式AArch64 Swift 6.3.3アーカイブを使う
+          # ネイティブ ARM64 ランナーである
           - runner: ubuntu-24.04-arm
             dpkg_arch: arm64
             expected_machine: aarch64
@@ -66,9 +65,8 @@ jobs:
           DPKG_ARCH: ${{ matrix.dpkg_arch }}
         run: |
           set -eux
-          # Early guard against a misconfigured matrix/runner pairing,
-          # e.g. an emulated runner or a matrix row accidentally landing
-          # on the wrong architecture.
+          # 設定誤りのマトリクス/ランナー組み合わせを早期に検出する
+          # 例: エミュレートされたランナー、または誤ったアーキテクチャに配置されたマトリクス行
           test "$(uname -m)" = "${EXPECTED_MACHINE}"
           test "$(dpkg --print-architecture)" = "${DPKG_ARCH}"
 
@@ -92,13 +90,11 @@ jobs:
           SWIFT_URL: ${{ matrix.swift_url }}
         run: |
           set -eux
-          # Download the official Swift 6.3.3 release for Ubuntu 24.04.
-          # The project requires Swift >= 6.1 (swift-tools-version: 6.1
-          # in hazkey-server/Package.swift).  build.yml uses the same
-          # 6.3.3-RELEASE toolchain.  Both the URL and the temporary
-          # filename are architecture-aware via the matrix (the official
-          # per-architecture archive basename embeds the target, e.g.
-          # ...-ubuntu24.04-aarch64.tar.gz for the ARM64 runner).
+          # Ubuntu 24.04向け公式Swift 6.3.3リリースをダウンロードする
+          # プロジェクトは、Swift >= 6.1を必要とする (hazkey-server/Package.swiftのswift-tools-version: 6.1)
+          # build.ymlは、同じ6.3.3-RELEASEツールチェーンを使用する
+          # URLと一時ファイル名は、マトリクスによりアーキテクチャ対応である
+          # (公式のアーキテクチャ別アーカイブのbasenameにはtargetが含まれる。例: ARM64ランナーでは...-ubuntu24.04-aarch64.tar.gz)
           SWIFT_TARBALL="/tmp/$(basename "${SWIFT_URL}")"
           curl -fL --retry 5 --retry-all-errors \
             -o "${SWIFT_TARBALL}" \
@@ -113,24 +109,21 @@ jobs:
         run: |
           set -eux
           swift --version
-          # The official Swift archive is architecture-specific, so assert
-          # that the downloaded toolchain exactly targets the triple this
-          # matrix row requested.  swiftc -print-target-info emits the
-          # resolved target triple (e.g. aarch64-unknown-linux-gnu or
-          # x86_64-unknown-linux-gnu).
+          # 公式Swiftアーカイブはアーキテクチャ固有のため、
+          # ダウンロードしたツールチェーンがこのマトリクス行で指定した triple を正確に対象とすることをアサートする
+          # "swiftc -print-target-info"コマンドは、解決済みのtarget tripleを出力する
+          # (例: aarch64-unknown-linux-gnu または x86_64-unknown-linux-gnu)
           swiftc -print-target-info 2>/dev/null | grep -qF -- "${SWIFT_TARGET}"
 
       - name: Fix llama.cpp safe.directory
-        # git submodule operations inside nested repos trigger
-        # "dubious ownership" errors without this.
+        # ネストしたリポジトリ内のgit submodule操作では、これがないと"dubious ownership" エラーが発生する
         run: |
           git config --global --add safe.directory \
             "$(pwd)/hazkey-server/llama.cpp"
 
       - name: Workaround Qt::Orientation namespace
-        # Some Qt6 versions in CI containers reject the
-        # Qt::Orientation::Horizontal fully-qualified enum syntax in
-        # mainwindow.ui.  build.yml applies the same sed.
+        # CIコンテナ内の一部のQt6 バージョンは、mainwindow.ui内の完全修飾enum構文"Qt::Orientation::Horizontal"を受け付けない
+        # build.ymlでも同じsedを適用する
         run: |
           sed -i 's/Qt::Orientation::/Qt::/g' \
             hazkey-settings/mainwindow.ui
@@ -158,9 +151,9 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           set -eux
-          # The experimental IBus frontend is OFF by default; enable it here
-          # so CI builds ibus-engine-hazkey and runs ibus_hazkey_state_test
-          # via CTest below (no packaging impact: test.yml never packages).
+          # 実験的なIBusフロントエンドは既定でOFFである
+          # CIがibus-engine-hazkeyをビルドし、以下でCTestにより、ibus_hazkey_state_testを実行するため、ここで有効化する
+          # (パッケージングへの影響はない: test.ymlはパッケージを生成しない)
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -171,20 +164,16 @@ jobs:
       - name: Build C++ targets and tests
         run: |
           set -eux
-          # vulkan-shaders-gen forks up to 16 glslc subprocesses in
-          # parallel, which can exceed the process-table limit in
-          # constrained CI containers and silently drop shader symbols.
+          # vulkan-shaders-genは、最大16個のglslcサブプロセスを並列にフォークする
+          # 制約のあるCIコンテナでは、プロセステーブル上限を超え、シェーダーシンボルが暗黙に欠落する可能性がある
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
-          # Build C++ libraries, executables, and CTest-registered test
-          # binaries (zenzai_model_management_test, keysequence_util_test,
-          # userdict_model_test, live_convert_mode_test,
-          # hazkey_candidate_selection_test, hazkey_client_rpc_probe_test,
-          # hazkey_client_cache_test, candidate_refresh_coalescer_test,
-          # hazkey_client_transact_safety_test, ibus_hazkey_state_test,
-          # learninghistorydialog_test)
-          # in parallel for speed.  learninghistorydialog_test additionally
-          # depends on the Swift server build (build_hazkey_server), so it is
-          # built serially in the step below.
+          # C++ライブラリ、実行ファイル、CTest登録済みテストバイナリ
+          # (zenzai_model_management_test、keysequence_util_test、userdict_model_test、live_convert_mode_test、
+          #  hazkey_candidate_selection_test、hazkey_client_rpc_probe_test、hazkey_client_cache_test、
+          #  candidate_refresh_coalescer_test、hazkey_client_transact_safety_test、hazkey_frontend_async_test、
+          #  ibus_hazkey_state_test、learninghistorydialog_test)
+          # を速度のため並列ビルドする
+          # learninghistorydialog_testは、Swiftサーバビルド (build_hazkey_server) にも依存するため、以下のステップで単一スレッドによりビルドする
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
           cmake --build build --target ibus-engine-hazkey --parallel
@@ -197,36 +186,32 @@ jobs:
           cmake --build build --target hazkey_client_cache_test --parallel
           cmake --build build --target candidate_refresh_coalescer_test --parallel
           cmake --build build --target hazkey_client_transact_safety_test --parallel
+          cmake --build build --target hazkey_frontend_async_test --parallel
           cmake --build build --target ibus_hazkey_state_test --parallel
 
       - name: Build Swift server & learninghistorydialog_test (single-threaded)
         run: |
           set -eux
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
-          # Swift server and its dependent CTest target: single-threaded
-          # build to avoid OOM on the runner.  build_swift.cmake retries
-          # once on first failure.  learninghistorydialog_test carries
-          # add_dependencies(learninghistorydialog_test build_hazkey_server),
-          # so both targets are built together in this one serial pass.
+          # Swiftサーバと依存するCTestターゲットは、ランナー上のOOMを避けるため単一スレッドでビルドする
+          # build_swift.cmakeは、初回失敗時に1回リトライする
+          # learninghistorydialog_testは、add_dependencies(learninghistorydialog_test build_hazkey_server) を持つため、
+          # この1回の直列処理で両ターゲットをともにビルドする
           cmake --build build --target build_hazkey_server learninghistorydialog_test --parallel 1
 
       - name: Run CTest (C++ tests)
         run: |
           set -eux
-          # keysequence_util_test links Qt6::Gui and needs a platform
-          # plugin; there is no display on the headless CI runner, so
-          # force the software "offscreen" platform instead of the
-          # default "xcb".
+          # keysequence_util_testは、Qt6::Guiをリンクして、プラットフォームプラグインを必要とする
+          # ヘッドレスCIランナーにはディスプレイがないため、既定の"xcb"ではなくソフトウェアの"offscreen"プラットフォームを強制する
           export QT_QPA_PLATFORM=offscreen
           cd build
           ctest --output-on-failure --schedule-random \
             --parallel "$(nproc)"
 
       - name: Install system dictionary
-        # The learning-memory and history XCTest suites read the real
-        # dictionary from the system location /usr/share/hazkey/Dictionary;
-        # without it they fail their assertions, so stage the repository
-        # dictionary right before running the Swift tests.
+        # learning-memoryとhistoryのXCTest スイートは、システム上の/usr/share/hazkey/Dictionaryから実際の辞書を読み取る
+        # これがないとアサーションに失敗するため、Swiftテスト実行直前にリポジトリの辞書を配置する
         run: |
           set -eux
           sudo mkdir -p /usr/share/hazkey
@@ -245,8 +230,6 @@ jobs:
            if ! grep -q "hazkey-community patch" "${number_source}"; then
              git -C "${number_checkout}" apply "${number_patch}"
            fi
-           # The user-dictionary retry preservation fix (formerly
-           # patches/0006-zenzai-preserve-user-dictionary.patch) is baked into
-           # the converter fork's hazkey branch (commit 2cef753), so there is
-           # nothing left to apply at build time.
+           # user-dictionaryのリトライ保持修正 (旧patches/0006-zenzai-preserve-user-dictionary.patch) は、
+           # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない
            swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"

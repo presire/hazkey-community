@@ -150,8 +150,8 @@ jobs:
                 qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
                 shaderc glslang-devel spirv-headers
 
-              # Swift (Ubuntu 24.04 build) needs libxml2.so.2; Tumbleweed only ships
-              # libxml2-16 (libxml2.so.16) after the 2.14 soname bump, so symlink it.
+              # Swift（Ubuntu 24.04 build）は libxml2.so.2 を必要とする。Tumbleweed は 2.14 の SONAME 更新後、
+              # libxml2-16（libxml2.so.16）のみを提供するため、シンボリックリンクを作成する。
               if ! zypper --non-interactive install --no-recommends libxml2-2; then
                 zypper --non-interactive install --no-recommends libxml2-16
                 ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
@@ -165,8 +165,7 @@ jobs:
               /usr/lib/x86_64-linux-gnu/libxml2.so.2
           fi
 
-          # Assert that the container architecture matches the runner
-          # selected for this matrix row.
+           # コンテナーのアーキテクチャが、このマトリクス行で選択されたランナーと一致することをアサートする
           test "$(uname -m)" = "$EXPECTED_MACHINE"
           if [ "$PACKAGE_TYPE" = "deb" ]; then
             test "$(dpkg-architecture -qDEB_HOST_ARCH)" = "$PACKAGE_ARCH"
@@ -182,7 +181,7 @@ jobs:
           export PATH="/work/swift/usr/bin:$PATH"
           swift --version
 
-          # Assert that the Swift toolchain target matches this matrix row.
+          # Swiftツールチェーンのターゲットがこのマトリクス行と一致することをアサートする
           swiftc -print-target-info | grep -Fq "$SWIFT_TARGET"
 
           rm -rf build workdir packages
@@ -190,13 +189,10 @@ jobs:
 
           sed -i "s/Qt::Orientation::/Qt::/g" hazkey-settings/mainwindow.ui
 
-          # Configure once from the repository root so that targets which
-          # depend on the root-only server build (learninghistorydialog_test
-          # -> build_hazkey_server) resolve correctly.
-          # The experimental IBus frontend is enabled so that these package
-          # jobs also produce the separate ibus-hazkey .deb/.rpm below.
-          # IBus files are NEVER bundled into fcitx5-hazkey (see the split
-          # step after the staged-install assertions).
+          # ルート専用のサーバビルド (learninghistorydialog_test -> build_hazkey_server) に依存するターゲットを正しく解決するため、
+          # リポジトリルートから1度だけ設定する
+          # 実験的なIBusフロントエンドを有効にし、これらのpackageジョブで下記の個別のibus-hazkey .deb/.rpmも生成する
+          # IBusファイルは、fcitx5-hazkeyに決して同梱しない (ステージングツリーのinstallアサーション後の分割手順を参照)
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -204,29 +200,24 @@ jobs:
             -DProtobuf_USE_STATIC_LIBS=OFF \
             -DENABLE_IBUS=ON
 
-          # vulkan-shaders-gen forks up to 16 glslc subprocesses in parallel,
-          # which can exceed the process-table limit in constrained CI
-          # containers and silently drop shader symbols. Force serial shader
-          # compilation everywhere to keep the fork load predictable.
+          # vulkan-shaders-genは、最大16個のglslcサブプロセスを並列にフォークするため、
+          # 制約のあるCIコンテナではプロセステーブル上限を超え、shader symbolを暗黙に欠落させることがある
+          # フォーク負荷を予測可能にするため、すべてで単一スレッドのshaderコンパイルを強制する
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
 
-          # Build the installed artifacts and generated metadata serially
-          # from the root build tree, then install them once into the staging
-          # directory.  These generated files are ALL targets, so they must
-          # be listed explicitly when using a targeted build.
+          # ルートのビルドツリーからinstallするアーティファクトと生成メタデータを単一スレッドでビルドし、
+          # ステージングディレクトリへ1度だけinstallする
+          # これらの生成ファイルはいずれもターゲットのため、ターゲット指定ビルドでは明示的に列挙する必要がある
           cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in-fmt ibus-engine-hazkey ibus-hazkey-translations build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
-          # Emoji 17 staged-install assertion: the E17 asset must be present
-          # in the staged tree and the E16 asset must be absent.
+          # Emoji 17.0ステージングinstallアサーション: E17アセットがステージングツリーに存在し、E16アセットが存在しないこと
           test -f /work/workdir/usr/share/hazkey/emoji_all_E17.0.txt
           test ! -e /work/workdir/usr/share/hazkey/emoji_all_E16.0.txt
 
-          # libllama staged-install assertion: the three main libraries must
-          # be present in the staging tree (regression guard for the leap16
-          # RPM self-dependency failure where install(CODE) ignored DESTDIR
-          # and only backends/ landed in the package). GNUInstallDirs puts
-          # them under lib, lib64, or lib/<triplet> depending on distro.
+          # libllamaステージングinstallアサーション: 主要な3ライブラリがステージングツリーに存在すること
+          # (install (CODE) がDESTDIRを無視し、backends/だけがpackageに入ったLeap 16のRPM自己依存失敗に対する回帰ガード)
+          # GNUInstallDirsはLinuxディストリビューションに応じて lib、lib64、lib/<triplet>配下に配置する
           for _lib in libggml-base.so libggml.so libllama.so; do
             _found="$(find /work/workdir/usr -path "*/hazkey/libllama/${_lib}*" -print -quit)"
             test -n "$_found" || { echo "missing staged lib: $_lib" >&2; exit 1; }
@@ -234,30 +225,27 @@ jobs:
           done
           test -n "$(find /work/workdir/usr -path '*/hazkey/libllama/backends/*.so' -print -quit)"
 
-          # IBus staged-install assertion: the component XML, the engine
-          # binary, and the gettext catalogs must be present in the staged
-          # tree. GNUInstallDirs puts the engine under libexec on every
-          # distro here, so locate it with find instead of a hard-coded path.
+          # IBusステージングinstallアサーション: component XML、engine binary、gettext catalogがステージングツリーに存在すること
+          # ここでは、GNUInstallDirsがすべてのLinuxディストリビューションでengineをlibexec配下に配置するため、
+          # ハードコードしたパスではなく、findコマンドで見つける
           test -f /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
           _ibus_engine="$(find /work/workdir/usr -path '*libexec/ibus-hazkey/ibus-engine-hazkey' -print -quit)"
           test -n "$_ibus_engine" || { echo "missing staged IBus engine" >&2; exit 1; }
           test -x "$_ibus_engine" || { echo "staged IBus engine not executable" >&2; exit 1; }
           test -n "$(find /work/workdir/usr/share/locale -name 'ibus-hazkey.mo' -print -quit)" \
             || { echo "missing staged ibus-hazkey.mo" >&2; exit 1; }
-          # The component file must declare this component's well-known bus
-          # name, and the installed engine must report its engine description
-          # without contacting hazkey-server (--xml prints the embedded
-          # engine description and exits before ibus_init(), see src/main.cpp;
-          # note it emits an <engines> snippet, not the component bus name).
+          # component fileは、このcomponentのwell-known bus nameを宣言し、
+          # install済みのengineはhazkey-serverに接続せず、engine descriptionを報告しなければならない
+          # ("--xml"は、埋め込み済みのengine descriptionを出力し、ibus_init()前に終了する。src/main.cppを参照。
+          #  component bus nameではなく、<engines> snippet を出力することに注意)
           grep -Fq 'org.freedesktop.IBus.Hazkey' /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
           "$_ibus_engine" --xml | grep -Fq '<name>hazkey</name>'
 
-          # Split the IBus payload out of the shared staging tree. IBus ships
-          # as a separate ibus-hazkey package and must not be bundled into
-          # the fcitx5-hazkey package.
-          # NOTE: this heredoc runs under `sh`, which is dash on
-          # Debian/Ubuntu, so keep the loop POSIX-sh compatible (no `read -d`;
-          # moved paths contain no newlines, so newline-delimited -print is safe).
+          # IBusペイロードを共有ステージングツリーから分離する
+          # IBusは個別のibus-hazkey packageとして提供し、fcitx5-hazkey packageに同梱してはならない
+          # 注: このheredocは、Debian/Ubuntuではdashである
+          #     sh上で実行するため、ループはPOSIX-sh互換に保つ
+          # ("read -d"コマンドは使わない。移動対象のパスには改行がないため、改行区切りの"-print"は安全である)
           mkdir -p workdir-ibus
           (
             cd workdir
@@ -269,19 +257,17 @@ jobs:
               mv "$_f" "../workdir-ibus/$_f"
             done
           )
-          # Drop the now-empty IBus directories from the fcitx tree.
+          # 空になったIBusディレクトリをfcitxツリーから削除する
           rmdir workdir/usr/libexec/ibus-hazkey workdir/usr/share/ibus/component 2>/dev/null || true
           test -z "$(cd workdir && find usr \( -path 'usr/share/ibus/*' -o -path 'usr/libexec/ibus-hazkey/*' -o -name 'ibus-hazkey*' \) -print -quit)" \
             || { echo "IBus payload remains in fcitx staging tree" >&2; exit 1; }
 
-          # Duplicate the shared server/settings payload into the ibus tree so
-          # that ibus-hazkey is installable standalone, like fcitx5-hazkey:
-          #   usr/bin/ (hazkey-server wrapper, hazkey-settings symlink)
-          #   usr/lib*/hazkey/ (server/settings binaries, libllama runtime)
-          #   usr/share/applications/, usr/share/hazkey/, usr/share/icons/
-          # Fcitx-specific payload (fcitx5 addon, metainfo, fcitx5 .mo) stays
-          # only in the fcitx tree. Duplication (cp, not mv) is intentional:
-          # both packages carry the same shared files.
+          # ibus-hazkeyをfcitx5-hazkeyと同様に単独install可能にするため、共有server/settingsペイロードをibusツリーへ複製する:
+          # - usr/bin/ (hazkey-server wrapper、hazkey-settings symlink)
+          # - usr/lib*/hazkey/ (server/settings binary、libllama runtime)
+          # - usr/share/applications/、usr/share/hazkey/、usr/share/icons/
+          # Fcitx固有のペイロード (fcitx5 addon、metainfo、fcitx5 .mo) は、fcitxツリーのみに残す
+          # 複製 (mvではなくcp) は意図的であり、両packageが同じ共有ファイルを保持する
           mkdir -p workdir-ibus/usr
           if [ -d workdir/usr/bin ]; then
             cp -a workdir/usr/bin workdir-ibus/usr/
@@ -293,10 +279,9 @@ jobs:
               cp -a "workdir/$_shared" "workdir-ibus/$_shared"
             fi
           done
-          # The library dir varies by distro (/usr/lib64 on RPM,
-          # /usr/lib/<triplet> on DEB). Copy only the hazkey subdir, never
-          # the fcitx5 subdir. A non-matching glob stays literal under dash,
-          # so skip it explicitly.
+          # ライブラリディレクトリは、Linuxディストリビューションにより異なる (RPMでは/usr/lib64、DEBでは/usr/lib/<triplet>)
+          # fcitx5サブディレクトリは決してコピーせず、hazkeyサブディレクトリだけをコピーする
+          # dashでは不一致のglobがリテラルのまま残るため、明示的にスキップする
           for _libhazkey in workdir/usr/lib64/hazkey workdir/usr/lib/hazkey workdir/usr/lib/*/hazkey; do
             case "$_libhazkey" in '*'*) continue;; esac
             [ -d "$_libhazkey" ] || continue
@@ -306,15 +291,13 @@ jobs:
             cp -a "$_libhazkey" "$_dest"
           done
           unset _shared _libhazkey _dest
-          # Staged-install assertions for the duplicated shared payload: the
-          # ibus tree must now carry the same directory groups as the fcitx
-          # tree, and the fcitx tree must still carry them (copied, not moved).
+          # 複製した共有ペイロードのステージングインストールアサーション:
+          # ibusツリーは、fcitxツリーと同じディレクトリ群を保持し、fcitxツリーも引き続きそれらを保持すること (移動ではなくコピー)
           test -f workdir/usr/bin/hazkey-server
           test -f workdir-ibus/usr/bin/hazkey-server
-          # hazkey-settings in usr/bin is a symlink to the libdir payload, so
-          # it dangles inside the staging tree (its target only exists after
-          # installation). test -e follows symlinks and would fail on the
-          # dangling link, so accept the symlink itself via test -L.
+          # usr/binのhazkey-settingsは、libdirペイロードへのsymlinkのため、
+          # ステージングツリー内ではdanglingである (targetは、install後にのみ存在する)
+          # "test -e"コマンドは、symlinkをたどりdangling linkで失敗するため、"test -L"コマンドでsymlink自体を受け入れる
           test -L workdir-ibus/usr/bin/hazkey-settings || test -e workdir-ibus/usr/bin/hazkey-settings \
             || { echo "missing staged ibus usr/bin/hazkey-settings" >&2; exit 1; }
           test -f workdir-ibus/usr/share/applications/hazkey-settings.desktop \
@@ -329,7 +312,7 @@ jobs:
             || { echo "missing staged ibus hazkey-server binary" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr -path '*hazkey/hazkey-settings' -print -quit)" \
             || { echo "missing staged ibus hazkey-settings binary" >&2; exit 1; }
-          # The fcitx5 addon payload must not leak into the ibus tree.
+           # fcitx5 addon ペイロードが ibus ツリーに混入してはならない。
           test -z "$(cd workdir-ibus && find usr \( -path 'usr/share/fcitx5/*' -o -path 'usr/lib*/fcitx5/*' -o -path 'usr/share/metainfo/*Fcitx5*' -o -name 'fcitx5-hazkey*' \) -print -quit)" \
             || { echo "fcitx payload leaked into ibus staging tree" >&2; exit 1; }
 
@@ -352,35 +335,31 @@ jobs:
               printf 'Architecture: %s\n' "$PACKAGE_ARCH"
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
               printf '%s\n' 'Depends: fcitx5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
-              # Both packages ship the same shared server/settings payload
-              # (usr/bin, usr/share/hazkey, libllama). A bidirectional
-              # UNVERSIONED Replaces lets either install order overwrite the
-              # sibling's copy; a versioned `Replaces: ibus-hazkey (<< X)` does
-              # NOT authorise overwriting a same-version sibling (measured with
-              # dpkg, see the co-install assertions below). Do NOT add
-              # Conflicts: coexistence is supported (simultaneous *use* is not).
+              # 両パッケージは、同じ共有server/settingsペイロード (usr/bin、usr/share/hazkey、libllama) を提供する
+              # 双方向のUNVERSIONED Replacesにより、どちらのインストール順序でもsiblingのコピーを上書きできる
+              # versioned "Replaces: ibus-hazkey (<< X)"は、同一バージョンのsiblingの上書きを許可しない (dpkgで計測。下記の共存インストールアサーションを参照)
+              # Conflictsを追加してはならない:
+              # 共存はサポートする (ただし、同時利用はサポートしない)
               printf '%s\n' 'Replaces: ibus-hazkey'
               printf '%s\n' 'Description: Hazkey Japanese input method for Fcitx5'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
             } > workdir/DEBIAN/control
             dpkg-deb --build --root-owner-group workdir "$fcitx_deb"
-            # Assert that the built package metadata reports the expected
-            # architecture for this matrix row.
+            # ビルド済みパッケージのメタデータが、このマトリクス行の想定アーキテクチャを報告することをアサートする
             test "$(dpkg-deb --field "$fcitx_deb" Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info "$fcitx_deb"
             dpkg-deb --contents "$fcitx_deb"
-            # The IBus payload must not leak into the fcitx5-hazkey package.
+            # IBusペイロードがfcitx5-hazkeyパッケージに混入してはならない
             if dpkg-deb --contents "$fcitx_deb" | grep -Eq 'ibus-hazkey|share/ibus/component'; then
               echo "fcitx5-hazkey DEB bundles IBus payload" >&2
               exit 1
             fi
-            # The bundled libllama runtime must be inside the deb; otherwise
-            # hazkey-server fails at startup with missing libllama.so.0.
+            # 同梱するlibllamaランタイムは、deb内に存在しなければならない
+            # そうでなければ、hazkey-serverは起動時にlibllama.so.0の欠落で失敗する
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey/libllama/libllama.so'
-            # Debian 13 and Ubuntu 26.04 provide the protobuf lite runtime
-            # under this package name. The compiler and headers are build
-            # dependencies only and must not be runtime dependencies.
+            # Debian 13 / Ubuntu 26.04は、protobuf liteランタイムをこのパッケージ名で提供する
+            # コンパイラとヘッダはビルド依存関係のみであり、ランタイム依存関係にしてはならない
             dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
             if dpkg-deb --field "$fcitx_deb" Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev)(,|$)'; then
               echo "DEB contains a protobuf compiler/development dependency" >&2
@@ -394,16 +373,14 @@ jobs:
               printf '%s\n' 'Priority: optional'
               printf 'Architecture: %s\n' "$PACKAGE_ARCH"
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
-              # libibus-1.0-5 is the libibus-1.0.so.5 runtime on both Debian 13
-              # and Ubuntu 26.04 (SONAME-stable across the 1.5.x series).
-              # The shared server/settings payload (hazkey-settings Qt app,
-              # hazkey-server vulkan/protobuf runtime) is duplicated into this
-              # package, so its Qt/Vulkan/protobuf/ncurses runtime
-              # dependencies mirror fcitx5-hazkey (minus fcitx5, plus ibus).
+              # "libibus-1.0-5"は、Debian 13 / Ubuntu 26.04の両方で"libibus-1.0.so.5"ランタイムである
+              # (1.5.xでSONAMEは安定している)
+              # 共有server/settingsペイロード (hazkey-settings、hazkey-server vulkan/protobufランタイム) はこのパッケージに複製するため、
+              # Qt/Vulkan/protobuf/ncursesのランタイム依存関係は、fcitx5-hazkeyと同じ (fcitx5を除き、ibusを追加)
               printf '%s\n' 'Depends: ibus, libibus-1.0-5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
-              # Reverse half of the bidirectional, unversioned Replaces (see the
-              # fcitx5-hazkey control above): lets either install order claim
-              # the shared payload. No Conflicts: coexistence is supported.
+              # 双方向・unversioned Replacesの逆側 (上記のfcitx5-hazkey controlを参照) :
+              # どちらのインストール順序でも共有ペイロードを所有できる
+              # Conflictsは不要: 共存をサポートする
               printf '%s\n' 'Replaces: fcitx5-hazkey'
               printf '%s\n' 'Description: Hazkey Japanese input method for IBus'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
@@ -413,13 +390,12 @@ jobs:
             test "$(dpkg-deb --field "$ibus_deb" Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info "$ibus_deb"
             dpkg-deb --contents "$ibus_deb"
-            # The IBus component XML and engine binary must be inside the
-            # ibus-hazkey package; otherwise IBus cannot register the engine.
+            # IBus component XMLとエンジンバイナリは、ibus-hazkeyパッケージ内に存在しなければならない
+            # そうでなければ、IBusはエンジンを登録できない
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/ibus/component/ibus-hazkey.xml'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'ibus-engine-hazkey'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libibus-1.0-5'
-            # The shared server/settings directory groups must be inside the
-            # ibus-hazkey package as well, like fcitx5-hazkey.
+            #共有server/settingsディレクトリ群は、fcitx5-hazkeyと同様にibus-hazkeyパッケージ内にも存在しなければならない
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-server'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-settings'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/hazkey-server'
@@ -429,8 +405,7 @@ jobs:
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/emoji_all_E17.0.txt'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
-            # The fcitx5 addon payload must not leak into the ibus-hazkey
-            # package.
+            # fcitx5アドオンペイロードがibus-hazkeyパッケージに混入してはならない
             if dpkg-deb --contents "$ibus_deb" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
               echo "ibus-hazkey DEB bundles fcitx payload" >&2
               exit 1
@@ -450,12 +425,9 @@ jobs:
               printf '%s\n' 'License: MIT'
               printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
               printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
-              # Keep only the non-ELF integration dependency explicit.
-              # rpmbuild derives Qt, Vulkan, protobuf-lite, and other runtime
-              # requirements from the ELF SONAMEs in %files. Package names
-              # differ between Fedora and openSUSE, so do not hard-code the
-              # build-time `protobuf` package or a distro-specific runtime
-              # package name here.
+              # 非ELF統合の依存関係だけを明示する
+              # rpmbuildは、Qt、Vulkan、protobuf-lite、その他のランタイムの依存関係を"%files"内のELF SONAMEから導出する
+              # パッケージ名は、FedoraとSUSEで異なるため、ビルド時のprotobufパッケージやLinuxディストリビューション固有のランタイムパッケージ名をここにハードコードしない
               printf '%s\n' 'Requires: fcitx5'
               printf '\n'
               printf '%s\n' '%description'
@@ -493,9 +465,7 @@ jobs:
               printf '%s\n' 'License: MIT'
               printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
               printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
-              # Same policy as above: only the IBus integration dependency
-              # is explicit; libibus-1.0.so.5 and friends are auto-derived
-              # from the engine ELF SONAMEs.
+              # 上記と同じ方針: IBus統合の依存関係だけを明示して、"libibus-1.0.so.5"などはエンジンのELF SONAMEから自動導出する
               printf '%s\n' 'Requires: ibus'
               printf '\n'
               printf '%s\n' '%description'
@@ -529,13 +499,13 @@ jobs:
             rpm -qp --filesbypkg "$rpm_target"
             rpm -qp --requires "$ibus_rpm_target"
             rpm -qp --filesbypkg "$ibus_rpm_target"
-            # The IBus payload must not leak into the fcitx5-hazkey package.
+            # IBusペイロードが、fcitx5-hazkeyパッケージに混入してはならない
             if rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'ibus-hazkey'; then
               echo "fcitx5-hazkey RPM bundles IBus payload" >&2
               exit 1
             fi
-            # The IBus component XML and engine binary must be inside the
-            # ibus-hazkey package; otherwise IBus cannot register the engine.
+            # IBus component XMLとengineバイナリは、ibus-hazkeyパッケージ内に存在しなければならない
+            # そうでなければ、IBusはengineを登録できない
             rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey.xml' \
               || { echo "ibus-hazkey RPM misses component XML" >&2; exit 1; }
             rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus-engine-hazkey' \
@@ -544,8 +514,7 @@ jobs:
               || { echo "ibus-hazkey RPM misses Requires: ibus" >&2; exit 1; }
             rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libibus-1\.0\.so\.5\(\)\(64bit\)$' \
               || { echo "ibus-hazkey RPM misses auto libibus SONAME require" >&2; exit 1; }
-            # The shared server/settings directory groups must be inside the
-            # ibus-hazkey package as well, like fcitx5-hazkey.
+            # 共有server/settingsディレクトリ群は、fcitx5-hazkeyと同様にibus-hazkeyパッケージ内にも存在しなければならない
             for _ibus_shared in /usr/bin/hazkey-server /usr/bin/hazkey-settings \
                 share/applications/hazkey-settings.desktop \
                 share/hazkey/emoji_all_E17.0.txt share/icons \
@@ -554,15 +523,12 @@ jobs:
               rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \
                 || { echo "ibus-hazkey RPM misses shared payload: $_ibus_shared" >&2; exit 1; }
             done
-            # The fcitx5 addon payload must not leak into the ibus-hazkey
-            # package.
+            # fcitx5アドオンペイロードがibus-hazkeyパッケージに混入してはならない
             if rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
               echo "ibus-hazkey RPM bundles fcitx payload" >&2
               exit 1
             fi
-            # The bundled libllama runtime must satisfy its own SONAME
-            # requires inside the ibus package too (same self-dependency
-            # guard as fcitx5-hazkey above).
+            # 同梱するlibllamaランタイムは、ibusパッケージ内でも自身のSONAME requiresを満たさなければならない (上記のfcitx5-hazkeyと同じ自己依存回帰ガード)
             rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$' \
               || { echo "ibus-hazkey RPM misses auto libprotobuf-lite SONAME require" >&2; exit 1; }
             for _bad_dep in protobuf protobuf-devel protobuf-compiler protobuf-lite-devel; do
@@ -572,11 +538,10 @@ jobs:
               fi
             done
             rpm -qp --requires "$rpm_target" | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$'
-            # Self-dependency guard: the package bundles libllama privately,
-            # so the auto-generated Requires on its SONAMEs must be satisfied
-            # by its own Provides. If the staged tree missed the three main
-            # libraries, Provides lacks them and zypper reports e.g.
-            # "'libggml-base.so.0()(64bit)' not found" (leap16 0.2.21).
+            # 自己依存回帰ガード:
+            # パッケージはlibllamaをprivateに同梱するため、そのSONAMEに対する自動生成されたRequiresは、自身のProvidesで満たされなければならない
+            # ステージングツリーに主要な3ライブラリが欠けると、Providesにも含まれず、
+            # 例えば、zypperでは"'libggml-base.so.0()(64bit)' not found" を報告する
             for _soname in 'libggml-base.so.0()(64bit)' 'libggml.so.0()(64bit)' 'libllama.so.0()(64bit)'; do
               rpm -qp --provides "$rpm_target" | grep -Fq "$_soname" || { echo "RPM missing self-provide: $_soname" >&2; exit 1; }
               rpm -qp --provides "$ibus_rpm_target" | grep -Fq "$_soname" || { echo "ibus RPM missing self-provide: $_soname" >&2; exit 1; }
@@ -584,37 +549,29 @@ jobs:
           fi
 
           # -----------------------------------------------------------------
-          # P2: co-install / remove assertions for the duplicated shared
-          # server/settings payload (hazkey-server, hazkey-settings, libllama,
-          # the Emoji 17 dictionary, icons and the applications entries).
+          # P2: 複製した共有server/settingsペイロード (hazkey-server、hazkey-settings、libllama、Emoji 17辞書、icon、applications entry) の
+          #     共存インストール / 削除アサーション
           #
-          # Measured dpkg semantics (Debian 13 / Ubuntu 26.04):
-          #   * Without Replaces the second install fails with
-          #     "trying to overwrite '...', which is also in package ...".
-          #   * A bidirectional UNVERSIONED Replaces makes both install orders
-          #     succeed.
-          #   * dpkg records the shared paths as owned by the package that
-          #     installed LAST, so `dpkg -r` of that package REMOVES the shared
-          #     files while the sibling stays installed (and therefore broken);
-          #     removing the other package keeps them. This is an inherent
-          #     limitation of the shared-payload layout and is asserted here so
-          #     a future behaviour change is caught. README documents it.
+          # 計測済みのdpkgの意味論 (Debian 13 / Ubuntu 26.04) :
+          #   * Replacesがなければ、2番目のインストールは、"trying to overwrite '...', which is also in package ..." で失敗する
+          #   * 双方向のUNVERSIONED Replacesにより、どちらのインストール順序でも成功する
+          #   * dpkgは共有パスを最後にインストールしたパッケージの所有物として記録するため、
+          #     そのパッケージの"dpkg -r"コマンドは、siblingがインストール済みのまま共有ファイルを削除する (したがって、siblingは壊れる)
+          #     他方のパッケージを削除すると共有ファイルは残る
+          #     これは共有ペイロードレイアウトに固有の制約であり、将来の挙動変更を検出するためここでアサートする (READMEに記載する)
           #
-          # RPM has no `Replaces` equivalent and none is needed: rpm/dnf/zypper
-          # co-install two packages that ship the same path and keep the shared
-          # files on erase while the sibling stays installed (measured on rpm
-          # 4.20 Leap/Tumbleweed and rpm 6.0 Fedora 44). Do NOT add Obsoletes
-          # (breaks `rpm -i`) or Conflicts (forbids coexistence).
+          # RPMに"Replaces"相当はなく不要である:
+          # rpm/dnf/zypperコマンドは同じパスを提供する2パッケージを共存インストールし、
+          # siblingがインストール済みの間は、削除時に共有ファイルを保持する
+          # Obsoletes ("rpm -i"を壊す) や Conflicts (共存を禁止する) を追加してはならない
           # -----------------------------------------------------------------
           if [ "$PACKAGE_TYPE" = "deb" ]; then
-            # The generated controls must carry a bidirectional, unversioned
-            # Replaces and must not carry a Conflicts.
-            # Exact match: the field must stay the bare, unversioned sibling
-            # name. A versioned `Replaces: sibling (<< X)` does not permit a
-            # same-version overwrite (measured), so a regression to a versioned
-            # form must fail this assertion. An unversioned Replaces means
-            # mixing different package versions of the two frontends is not a
-            # supported configuration (README documents the same-version use).
+            # 生成するcontrolには双方向・unversioned Replacesが必要であり、Conflictsを含めてはならない
+            # 完全一致: fieldは、bareなunversioned sibling名でなければならない
+            # versioned "Replaces: sibling (<< X)"は、同一バージョンの上書きを許可しない (計測済み) ため、
+            # versioned形式への回帰はこのアサーションで失敗させる
+            # unversioned Replacesは、2フロントエンドで異なるpackage versionを混在させる構成をサポートしないことを意味する
+            # (READMEは、同一バージョンの利用を記載する)
             test "$(dpkg-deb --field "$fcitx_deb" Replaces)" = "ibus-hazkey" \
               || { echo "fcitx5-hazkey DEB Replaces must be exactly 'ibus-hazkey'" >&2; exit 1; }
             test "$(dpkg-deb --field "$ibus_deb" Replaces)" = "fcitx5-hazkey" \
@@ -631,9 +588,9 @@ jobs:
               : > "$1/var/lib/dpkg/status"
               : > "$1/var/lib/dpkg/available"
             }
-            # Isolated root; --force-depends because this assertion tests file
-            # coexistence, not dependency resolution (the sibling's Depends are
-            # absent from the throwaway root).
+            # 隔離ルート
+            # これは、依存関係の解決ではなくファイル共存をテストするアサーションであり、
+            # 使い捨てルートにはsiblingのDependsがないため、"--force-depends"オプションを用いる
             dpkg_probe() {
               _p2_root="$1"
               shift
@@ -687,8 +644,7 @@ jobs:
             test -e /tmp/p2root-rma/usr/bin/hazkey-server \
               || { echo "shared payload lost after removing the replaced sibling" >&2; exit 1; }
           else
-            # The RPMs must not declare Conflicts/Obsoletes (see the header
-            # comment above).
+            # RPMは、Conflicts/Obsoletesを宣言してはならない (上記のヘッダコメントを参照)
             for _p2_rpm in "$rpm_target" "$ibus_rpm_target"; do
               test -z "$(rpm -qp --conflicts "$_p2_rpm" 2>/dev/null)" \
                 || { echo "unexpected Conflicts in $_p2_rpm" >&2; exit 1; }
@@ -697,8 +653,7 @@ jobs:
             done
 
             rpm_probe_cleanup() {
-              # `rpm -e A B` aborts when either is absent, so remove each
-              # independently.
+              # "rpm -e A B"はいずれかが存在しないと中断するため、それぞれを個別に削除する
               rpm -e --nodeps --noscripts ibus-hazkey 2>/dev/null || true
               rpm -e --nodeps --noscripts fcitx5-hazkey 2>/dev/null || true
             }
