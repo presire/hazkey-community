@@ -55,3 +55,11 @@ msgstr ""
 
 msgid "Zenzai disabled"
 msgstr ""
+
+# Transient hint shown in the auxiliary text when the live-conversion toggle
+# hotkey is pressed (the same channel as the Zenzai toggle hint).
+msgid "Live conversion enabled"
+msgstr ""
+
+msgid "Live conversion disabled"
+msgstr ""

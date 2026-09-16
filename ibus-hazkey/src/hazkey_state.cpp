@@ -74,11 +74,12 @@ bool hasAltGrLikeModifier(guint state) {
     return (state & (IBUS_MOD3_MASK | IBUS_MOD5_MASK)) != 0;
 }
 
-// How long the transient Zenzai toggle hint stays in the auxiliary-text slot.
+// How long the transient toggle hint stays in the auxiliary-text slot.
 // Matches fcitx5's showInputMethodInformation() overlay (instance.cpp:
 // now(CLOCK_MONOTONIC) + 1000000, i.e. 1 second) and ibus-rime's
-// RIME_STATUS_HINT_TIMEOUT_MS.
-constexpr uint64_t kZenzaiHintTimeoutUsec = 1'000'000;
+// RIME_STATUS_HINT_TIMEOUT_MS. Used by both the Zenzai toggle and the
+// live-conversion toggle.
+constexpr uint64_t kTransientHintTimeoutUsec = 1'000'000;
 
 std::string asciiLower(const std::string& value) {
     std::string lowered = value;
@@ -715,6 +716,17 @@ void HazkeyState::handleLiveConvertToggle() {
         return;
     }
 
+    // Feedback for the toggle, mirroring the Zenzai hint. The new mode is
+    // DISABLED on toggle-off, or the restored ON mode on toggle-on. Shown
+    // before the empty-composing early return below so a plain hotkey press
+    // still reports the change.
+    using M = hazkey::config::Profile_AutoConvertMode;
+    showTransientHint(
+        cachedAutoConvertMode_ ==
+                M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED
+            ? tr("Live conversion disabled")
+            : tr("Live conversion enabled"));
+
     const std::string composingText = server_.getComposingText(
         hazkey::commands::GetComposingString_CharType_HIRAGANA, preeditText_);
     if (composingText.empty()) {
@@ -732,11 +744,11 @@ void HazkeyState::handleZenzaiToggle() {
     // panel renders, so surface the new state as a transient aux hint
     // (ibus-rime status_hint approach) in addition to the persistent property.
     updateZenzaiProperty(enabled.value());
-    showZenzaiHint(tr(enabled.value() ? "Zenzai enabled" : "Zenzai disabled"));
+    showTransientHint(tr(enabled.value() ? "Zenzai enabled" : "Zenzai disabled"));
 }
 
-void HazkeyState::showZenzaiHint(const std::string& text) {
-    zenzaiHintText_ = text;
+void HazkeyState::showTransientHint(const std::string& text) {
+    transientHintText_ = text;
     if (hintToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
         executor_->cancel(hintToken_);
     }
@@ -748,14 +760,14 @@ void HazkeyState::showZenzaiHint(const std::string& text) {
         [self] {
             self->hintToken_ =
                 hazkey::frontend::SerialTaskExecutor::kInvalidToken;
-            self->clearZenzaiHint();
+            self->clearTransientHint();
         },
-        kZenzaiHintTimeoutUsec);
+        kTransientHintTimeoutUsec);
     updateAuxiliaryText();
 }
 
-void HazkeyState::clearZenzaiHint() {
-    zenzaiHintText_.clear();
+void HazkeyState::clearTransientHint() {
+    transientHintText_.clear();
     updateAuxiliaryText();
 }
 
@@ -764,7 +776,7 @@ void HazkeyState::cancelPendingHint() {
         executor_->cancel(hintToken_);
         hintToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     }
-    zenzaiHintText_.clear();
+    transientHintText_.clear();
 }
 
 void HazkeyState::handleDeleteCandidateLearningData(int globalIndex) {
@@ -1468,13 +1480,14 @@ void HazkeyState::updateAuxiliaryText() {
         auxDown = tr("[Press Tab to Select]");
     }
 
-    // A Zenzai toggle hint is transient feedback with no other IBus channel
-    // (see showZenzaiHint()). Overlaying it on AuxDown reuses the existing aux
+    // A transient toggle hint (from the Zenzai toggle or the live-conversion
+    // toggle) is transient feedback with no other IBus channel (see
+    // showTransientHint()). Overlaying it on AuxDown reuses the existing aux
     // rendering path, and it must still make the aux slot VISIBLE when nothing
     // else would (idle toggle: no preedit, not direct). It is placed first
     // because it is the most recent event.
-    if (!zenzaiHintText_.empty()) {
-        auxDown = joinAuxiliaryText(zenzaiHintText_, auxDown);
+    if (!transientHintText_.empty()) {
+        auxDown = joinAuxiliaryText(transientHintText_, auxDown);
     }
 
     if (focused) {

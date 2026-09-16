@@ -46,17 +46,15 @@ message PrefixComplete {
     int32 index = 1;
 }
 
-// [community] Accept a prediction candidate as a fixed leading notation.
-// Unlike PrefixComplete this does not commit: the candidate's remaining
-// ruby is appended to the composing text and the accepted notation becomes
-// the leading constraint of subsequent Zenzai conversions.
+// 予測候補を先頭表記として確定する
+// PrefixCompleteとは異なり、コミットは行わない
+// 候補の残り読みを変換中テキストに追記し、確定した表記を後続のZenzai変換の先頭制約とする
 message AcceptPrediction {
     int32 index = 1;
 }
 
-// [community] Delete the AzooKey learning-memory entries backing the focused
-// candidate, then rebuild the candidate list. Matching covers every stored
-// CID variant of the same (reading, surface) pair.
+// フォーカス中の候補を支えるAzooKey学習メモリのエントリを削除し、候補リストを再構築する
+// 同一 (読み、表記) ペアの格納済み全CID変種を照合対象とする
 message DeleteCandidateLearningData {
     int32 index = 1;
 }
@@ -94,8 +92,7 @@ message GetCurrentInputModeInfo {}
 
 message SaveLearningData {}
 
-// [community] Toggle only the active profile's Zenzai enablement without
-// resetting the current composition or candidate list.
+// 現在の変換内容や候補リストをリセットせず、アクティブなプロファイルのZenzai有効化のみを切り替える
 message ToggleZenzai {}
 
 message ToggleZenzaiResult {
@@ -118,8 +115,7 @@ message CandidatesResult {
     message Candidate {
         string text = 1;
         string sub_hiragana = 2;
-        // [community] True when the AzooKey learning memory holds an entry
-        // matching this candidate (shown as a "deletable" annotation).
+        // AzooKey学習メモリがこの候補に一致するエントリを保持している場合にtrue ([削除可]注釈として表示される)
         optional bool has_learning_entry = 3;
     }
 

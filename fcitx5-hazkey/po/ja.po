@@ -29,5 +29,11 @@ msgstr "Zenzaiを有効化しました"
 msgid "Zenzai disabled"
 msgstr "Zenzaiを無効化しました"
 
+msgid "Live conversion enabled"
+msgstr "ライブ変換を有効化しました"
+
+msgid "Live conversion disabled"
+msgstr "ライブ変換を無効化しました"
+
 msgid "Show [Press Tab to Select] indicator"
 msgstr "[Tabキーで選択] インジケーターを表示する"

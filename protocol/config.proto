@@ -62,9 +62,8 @@ message Profile {
         optional bool roman_typography = 5;
         optional bool unicode_codepoint = 6;
         optional bool hazkey_version = 7;
-        // [community] Relative-date candidates (きょう → 今日 + 2026年8月11日 + ...).
-        // When enabled, formatted date strings are appended after the kanji
-        // representation of recognized trigger words.
+        // 相対日付候補 (きょう -> 今日 + 2026年8月11日 + ...)
+        // 有効時は、認識したトリガー語の漢字表記の後に整形した日付文字列を付加する
         optional bool relative_date = 8;
         optional bool halfwidth_katakana = 50;
         optional bool extended_emoji = 51;
@@ -129,7 +128,7 @@ message Profile {
     optional string zenzai_topic = 121;
     optional string zenzai_style = 122;
     optional string zenzai_preference = 123;
-    // [community] Hotkey for deleting the focused candidate's learning data.
+    // フォーカス中の候補の学習データを削除するホットキー
     optional string delete_learning_hotkey = 124;
     optional string accept_prediction_hotkey = 125;
     optional string zenzai_toggle_hotkey = 126;
@@ -167,10 +166,10 @@ message CurrentConfig {
 
 message GetLearningHistory {
     string profile_id = 1;
-    // Partial match on reading or word is applied before pagination.
+    // ページング前に読み・単語への部分一致を適用する
     string query = 2;
     uint32 offset = 3;
-    // The server clamps this value to at most 200.
+    // サーバ側で上限200にクランプされる
     uint32 limit = 4;
 }
 
@@ -192,7 +191,7 @@ message LearningHistoryEntry {
     uint32 lcid = 3;
     uint32 rcid = 4;
     uint32 count = 5;
-    // Days since the Unix epoch.
+    // Unixエポックタイムからの経過日数
     uint32 last_used_unix_day = 6;
 }
 

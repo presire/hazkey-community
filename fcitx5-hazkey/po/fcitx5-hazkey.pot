@@ -25,3 +25,9 @@ msgstr ""
 
 msgid "Show [Press Tab to Select] indicator"
 msgstr ""
+
+msgid "Live conversion enabled"
+msgstr ""
+
+msgid "Live conversion disabled"
+msgstr ""

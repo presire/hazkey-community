@@ -280,6 +280,24 @@ void testZenzaiHintOverlay() {
     std::cout << "[PASS] zenzai hint overlays AuxDown\n";
 }
 
+void testLiveConvertHintOverlay() {
+    // The live-conversion toggle reuses the shared transient hint, so it is
+    // overlaid on AuxDown through the same join: visible on its own when idle,
+    // and preceding an existing AuxDown without eating it.
+    assert(HazkeyState::joinAuxiliaryText("Live conversion enabled", "") ==
+           "Live conversion enabled");
+    assert(HazkeyState::joinAuxiliaryText("Live conversion disabled", "") ==
+           "Live conversion disabled");
+    assert(HazkeyState::joinAuxiliaryText("Live conversion enabled",
+                                          "[Direct Input]") ==
+           "Live conversion enabled [Direct Input]");
+    assert(HazkeyState::joinAuxiliaryText("Live conversion disabled",
+                                          "[Press Tab to Select]") ==
+           "Live conversion disabled [Press Tab to Select]");
+
+    std::cout << "[PASS] live conversion hint overlays AuxDown\n";
+}
+
 void testLoneShiftModifierState() {
     // Drives whether a Shift release sends RELEASE (toggles Direct Input) or
     // CANCEL. A lone Shift must be detected even when the toolkit reports the
@@ -512,6 +530,7 @@ int main() {
     testDirectConversionShortcut();
     testAuxiliaryTextJoin();
     testZenzaiHintOverlay();
+    testLiveConvertHintOverlay();
     testLoneShiftModifierState();
     testAltShiftSpaceOrTabPredicate();
     testSelectionLabels();

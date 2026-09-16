@@ -534,6 +534,21 @@ void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
         return;
     }
 
+#if defined(HAZKEY_HAS_SHOW_CUSTOM_IM_INFO)
+    // Mirror handleZenzaiToggle(): the transient information popup needs
+    // fcitx5 >= 5.1.11; older releases only get the toggle itself.
+    engine_->instance()->showCustomInputMethodInformation(
+        ic_,
+        cachedAutoConvertMode_ ==
+                hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED
+            ? _("Live conversion disabled")
+            : _("Live conversion enabled"));
+#else
+    // fcitx5 < 5.1.11 has no showCustomInputMethodInformation() (e.g. Ubuntu
+    // 24.04 ships 5.1.7). The toggle itself works; only the transient status
+    // notification is unavailable on those releases.
+#endif
+
     auto composingText = engine_->server().getComposingText(
         hazkey::commands::GetComposingString_CharType_HIRAGANA,
         preedit_.text());
