@@ -31,7 +31,8 @@ namespace {
  * @class ProtocolClient
  * @brief テスト用の長さプレフィックス付きprotobuf RPCクライアント
  *
- * 指定されたUNIXソケットへリクエストを接続ごとに送信し、応答を受信してResponseEnvelopeへ解析する
+ * 指定されたUNIXソケットへの単一接続を維持し、その上で複数RPCのシードシーケンスを送受信してResponseEnvelopeへ解析する
+ * サーバは接続ごとにセッションを生成・破棄するため、シード中のcomposing状態を保つには接続の再利用が必須である
  * テスト対象のServerConnectorとは独立したシード処理用の最小クライアントであり、失敗はstd::nulloptで返す
  */
 class ProtocolClient {
@@ -42,39 +43,55 @@ class ProtocolClient {
      */
     explicit ProtocolClient(QString socketPath) : socketPath_(std::move(socketPath)) {}
 
+    ProtocolClient(const ProtocolClient&) = delete;
+    ProtocolClient& operator=(const ProtocolClient&) = delete;
+
     /**
-     * @brief 1件のprotobufリクエストを送受信する
+     * @brief 維持していた接続を切断して終了する
+     *
+     * 接続済みであればサーバへ切断を通知し、セッション破棄を確定させてから破棄する
+     */
+    ~ProtocolClient() {
+        if (socket_.state() != QLocalSocket::UnconnectedState) {
+            socket_.disconnectFromServer();
+            if (socket_.state() != QLocalSocket::UnconnectedState) {
+                socket_.waitForDisconnected(1000);
+            }
+        }
+    }
+
+    /**
+     * @brief 1件のprotobufリクエストを維持中の接続上で送受信する
      *
      * リクエストをシリアライズし、4バイトのビッグエンディアン長と本文を送り、同じ形式の応答を受信する
+     * 初回呼び出し時に接続し、以降は同一接続を再利用してサーバ側セッションを維持する
      * 接続、書込、読込、解析のいずれかが失敗した場合は、std::nulloptを返す
      *
      * @param request 送信するリクエスト
      * @return 解析済み応答、または通信処理の失敗を表すstd::nullopt
      */
     std::optional<hazkey::ResponseEnvelope> transact(
-        const hazkey::RequestEnvelope& request) const {
+        const hazkey::RequestEnvelope& request) {
         std::string serialized;
         if (!request.SerializeToString(&serialized)) return std::nullopt;
 
-        QLocalSocket socket;
-        socket.connectToServer(socketPath_);
-        if (!socket.waitForConnected(5000)) return std::nullopt;
+        if (!ensureConnected()) return std::nullopt;
 
         const quint32 size = qToBigEndian<quint32>(serialized.size());
-        if (socket.write(reinterpret_cast<const char*>(&size), sizeof(size)) !=
+        if (socket_.write(reinterpret_cast<const char*>(&size), sizeof(size)) !=
                 sizeof(size) ||
-            socket.write(serialized.data(), serialized.size()) !=
+            socket_.write(serialized.data(), serialized.size()) !=
                 static_cast<qint64>(serialized.size()) ||
-            !socket.waitForBytesWritten(5000)) {
+            !socket_.waitForBytesWritten(5000)) {
             return std::nullopt;
         }
 
-        if (!waitForBytes(socket, sizeof(quint32))) return std::nullopt;
-        const QByteArray prefix = socket.read(sizeof(quint32));
+        if (!waitForBytes(socket_, sizeof(quint32))) return std::nullopt;
+        const QByteArray prefix = socket_.read(sizeof(quint32));
         const quint32 responseSize = qFromBigEndian<quint32>(
             reinterpret_cast<const uchar*>(prefix.constData()));
-        if (!waitForBytes(socket, responseSize)) return std::nullopt;
-        const QByteArray response = socket.read(responseSize);
+        if (!waitForBytes(socket_, responseSize)) return std::nullopt;
+        const QByteArray response = socket_.read(responseSize);
         hazkey::ResponseEnvelope envelope;
         if (!envelope.ParseFromArray(response.constData(), response.size())) {
             return std::nullopt;
@@ -83,6 +100,23 @@ class ProtocolClient {
     }
 
    private:
+    /**
+     * @brief 未接続なら接続し、既存接続を再利用可能か確認する
+     *
+     * 接続済みで通信可能な状態ならそのままtrueを返し、未接続なら接続を試みる
+     * 接続、または待機中に切断された場合はfalseを返す
+     *
+     * @return 送受信に使える接続が確保できた場合はtrue
+     */
+    bool ensureConnected() {
+        if (socket_.state() == QLocalSocket::ConnectedState) return true;
+        if (socket_.state() != QLocalSocket::UnconnectedState) {
+            socket_.abort();
+        }
+        socket_.connectToServer(socketPath_);
+        return socket_.waitForConnected(5000);
+    }
+
     /**
      * @brief 指定バイト数が到着するまで最大5秒待つ
      *
@@ -104,6 +138,8 @@ class ProtocolClient {
 
     /** @brief 接続先UNIXソケットパスProtocolClientが値として保持 */
     QString socketPath_;
+    /** @brief シードRPC列で再利用する単一接続 (Qtの親子関係なしで値として所有) */
+    QLocalSocket socket_;
 };
 
 }  // namespace
@@ -331,11 +367,12 @@ void LearningHistoryDialogTest::initTestCase() {
     profile->set_use_profile_independent_history(true);
     connector_.setCurrentConfig(*config);
 
-    QVERIFY2(seedEntry(QStringLiteral("ai")), "first learning entry must seed");
-    QVERIFY2(seedEntry(QStringLiteral("ue")), "second learning entry must seed");
+    QVERIFY2(seedEntry(QStringLiteral("ai")), "first learning entry must seed on a single reused connection");
+    QVERIFY2(seedEntry(QStringLiteral("ue")), "second learning entry must seed on a single reused connection");
     const auto history = connector_.getLearningHistory("isolated-profile", "", 0, 200);
     QVERIFY(history.has_value());
-    QVERIFY(history->entries_size() >= 2);
+    QVERIFY2(history->entries_size() >= 2,
+             "seeded entries must persist after single-connection seeding");
 }
 
 void LearningHistoryDialogTest::cleanupTestCase() {
