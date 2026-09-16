@@ -108,6 +108,7 @@ void HazkeyFrontend::retire() {
     // submitted; the bounded iteration below dispatches only sources that are
     // already ready.
     retired_ = true;
+    forwardedPressKeyvals_.clear();
     constexpr auto kRetireDrainTimeout = std::chrono::milliseconds(200);
     sharedExecutor().submit(
         [state = state_] { state->cancelPendingRefresh(); });
@@ -166,8 +167,14 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
                         }
                         // A provisional consume the worker did not handle is
                         // forwarded, in FIFO order, so no key is lost and the
-                        // release cannot overtake its press.
-                        if (consume && !handled && !self->retired_) {
+                        // release cannot overtake its press. A release is only
+                        // forwarded when its own press was forwarded: the worker
+                        // never handles releases, and clients that cannot see
+                        // the release flag would receive a phantom key press.
+                        if (consume && !handled && !self->retired_ &&
+                            shouldForwardUnhandledKey(
+                                (state & IBUS_RELEASE_MASK) != 0, keyval,
+                                self->forwardedPressKeyvals_)) {
                             ui->forwardKeyEvent(keyval, keycode, state);
                         }
                     });
@@ -278,6 +285,21 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
     return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;
 }
 
+bool HazkeyFrontend::shouldForwardUnhandledKey(
+    bool isRelease, guint keyval,
+    std::unordered_set<guint>& pendingPressKeyvals) {
+    if (!isRelease) {
+        // Remember the press so its own release can be paired with it.
+        pendingPressKeyvals.insert(keyval);
+        return true;
+    }
+    // A release only means something to the application when the press it
+    // belongs to was forwarded too. Every other release is dropped: the worker
+    // never handles releases, so forwarding them blindly would deliver a
+    // phantom key press for a key the IME already consumed.
+    return pendingPressKeyvals.erase(keyval) > 0;
+}
+
 gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
                                          guint state) {
     if (retired_) {
@@ -337,6 +359,7 @@ void HazkeyFrontend::focusOut() {
     if (retired_) return;
     specComposing_ = false;
     specListFocused_ = false;
+    forwardedPressKeyvals_.clear();
     enqueue([](const std::shared_ptr<HazkeyState>& s) { s->focusOut(); });
 }
 
@@ -344,6 +367,7 @@ void HazkeyFrontend::reset() {
     if (retired_) return;
     specComposing_ = false;
     specListFocused_ = false;
+    forwardedPressKeyvals_.clear();
     enqueue([](const std::shared_ptr<HazkeyState>& s) { s->reset(); });
 }
 
@@ -356,6 +380,7 @@ void HazkeyFrontend::disable() {
     if (retired_) return;
     specComposing_ = false;
     specListFocused_ = false;
+    forwardedPressKeyvals_.clear();
     enqueue([](const std::shared_ptr<HazkeyState>& s) { s->disable(); });
 }
 

@@ -10,6 +10,7 @@
 // static mapper is exercised, so this test cannot disturb a live session.
 #include <cassert>
 #include <iostream>
+#include <unordered_set>
 
 #include "hazkey_frontend.h"
 #include "hazkey_state.h"
@@ -436,6 +437,51 @@ void testConsumeDecision() {
     std::cout << "[PASS] synchronous consume decision\n";
 }
 
+void testForwardedKeyPairing() {
+    using hazkey::ibus::HazkeyFrontend;
+
+    std::unordered_set<guint> pending;
+
+    // A press the worker did not handle is forwarded and remembered, so its own
+    // release can be paired with it.
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(false, IBUS_KEY_a, pending));
+    assert(pending.count(IBUS_KEY_a) == 1);
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_a, pending));
+    assert(pending.empty());
+
+    // A press the IME consumed is never forwarded, so its release must be
+    // dropped instead of reaching the application as a phantom key press (this
+    // is the stray-ASCII-in-a-terminal regression).
+    assert(
+        !HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_b, pending));
+    assert(pending.empty());
+
+    // Only the first release of a forwarded press is forwarded.
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(false, IBUS_KEY_c, pending));
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_c, pending));
+    assert(
+        !HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_c, pending));
+
+    // Presses and releases of different keys are paired independently, and a
+    // pending press survives an unrelated release.
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(false, IBUS_KEY_d, pending));
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(false, IBUS_KEY_e, pending));
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_e, pending));
+    assert(pending.count(IBUS_KEY_d) == 1);
+    assert(
+        HazkeyFrontend::shouldForwardUnhandledKey(true, IBUS_KEY_d, pending));
+    assert(pending.empty());
+
+    std::cout << "[PASS] forwarded key press/release pairing\n";
+}
+
 }  // namespace
 
 int main() {
@@ -453,6 +499,7 @@ int main() {
     testCapabilityAvailability();
     testLookupPageArithmetic();
     testConsumeDecision();
+    testForwardedKeyPairing();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

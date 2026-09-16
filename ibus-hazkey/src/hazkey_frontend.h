@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <unordered_set>
 
 #include "hazkey_state.h"
 #include "hazkey_ui.h"
@@ -70,6 +71,18 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     static gboolean decideConsumeKey(guint keyval, guint state,
                                      const DecisionInput& in);
 
+    // Decides whether a key the worker did not handle must be forwarded to the
+    // application, keeping the press/release bookkeeping in
+    // `pendingPressKeyvals`. IBus's forward_key_event() carries no press/release
+    // distinction on the client side (kitty turns every forwarded event into a
+    // fresh key press), so a release may only be forwarded when the press it
+    // belongs to was forwarded as well. Forwarding the release of a key the IME
+    // consumed would show up in the application as a phantom key press (a stray
+    // ASCII character in a terminal). Exposed for tests.
+    static bool shouldForwardUnhandledKey(
+        bool isRelease, guint keyval,
+        std::unordered_set<guint>& pendingPressKeyvals);
+
    private:
     void enqueue(std::function<void(const std::shared_ptr<HazkeyState>&)> task);
     void enqueueKeyOp(guint keyval, guint keycode, guint state, gboolean consume);
@@ -89,6 +102,10 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     HazkeyState::HotkeySpec zenzaiToggle_{};
     HazkeyState::HotkeySpec acceptPrediction_{};
     HazkeyState::HotkeySpec deleteLearning_{};
+
+    // keyvals whose key press was forwarded to the application and whose release
+    // has not been forwarded yet (see shouldForwardUnhandledKey).
+    std::unordered_set<guint> forwardedPressKeyvals_;
 };
 
 // Stops accepting new work on the process-wide executor and joins its worker.
