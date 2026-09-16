@@ -74,6 +74,12 @@ bool hasAltGrLikeModifier(guint state) {
     return (state & (IBUS_MOD3_MASK | IBUS_MOD5_MASK)) != 0;
 }
 
+// How long the transient Zenzai toggle hint stays in the auxiliary-text slot.
+// Matches fcitx5's showInputMethodInformation() overlay (instance.cpp:
+// now(CLOCK_MONOTONIC) + 1000000, i.e. 1 second) and ibus-rime's
+// RIME_STATUS_HINT_TIMEOUT_MS.
+constexpr uint64_t kZenzaiHintTimeoutUsec = 1'000'000;
+
 std::string asciiLower(const std::string& value) {
     std::string lowered = value;
     for (char& c : lowered) {
@@ -137,6 +143,7 @@ HazkeyState::~HazkeyState() {
     // destructor runs only once no worker task still references this object
     // (tasks hold a shared_ptr), so cancelling the token here is sufficient.
     cancelPendingRefresh();
+    cancelPendingHint();
     // No IBus/GObject is owned here: the shared HazkeyUi owns (and retires)
     // them on the main loop.
 }
@@ -721,9 +728,43 @@ void HazkeyState::handleZenzaiToggle() {
     if (!enabled.has_value()) {
         return;
     }
-    // IBus has no Fcitx showCustomInputMethodInformation() transient popup, so
-    // the persistent Zenzai property communicates the current setting instead.
+    // IBus has no fcitx5 showCustomInputMethodInformation() popup that every
+    // panel renders, so surface the new state as a transient aux hint
+    // (ibus-rime status_hint approach) in addition to the persistent property.
     updateZenzaiProperty(enabled.value());
+    showZenzaiHint(tr(enabled.value() ? "Zenzai enabled" : "Zenzai disabled"));
+}
+
+void HazkeyState::showZenzaiHint(const std::string& text) {
+    zenzaiHintText_ = text;
+    if (hintToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+        executor_->cancel(hintToken_);
+    }
+    // Delayed on the serial worker (never a GLib timer): HazkeyState is
+    // worker-owned, so the auto-hide must run on the same thread. The lambda
+    // captures shared_from_this() so the state cannot die under the task.
+    auto self = shared_from_this();
+    hintToken_ = executor_->submitDelayed(
+        [self] {
+            self->hintToken_ =
+                hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+            self->clearZenzaiHint();
+        },
+        kZenzaiHintTimeoutUsec);
+    updateAuxiliaryText();
+}
+
+void HazkeyState::clearZenzaiHint() {
+    zenzaiHintText_.clear();
+    updateAuxiliaryText();
+}
+
+void HazkeyState::cancelPendingHint() {
+    if (hintToken_ != hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
+        executor_->cancel(hintToken_);
+        hintToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+    }
+    zenzaiHintText_.clear();
 }
 
 void HazkeyState::handleDeleteCandidateLearningData(int globalIndex) {
@@ -1336,6 +1377,7 @@ void HazkeyState::resetState() {
     // also the focus-out/disable/enable path); cancel it explicitly, matching
     // fcitx5's HazkeyState::reset().
     cancelPendingRefresh();
+    cancelPendingHint();
     isCursorMoving_ = false;
     isDirectConversionMode_ = false;
     isClauseBoundaryAdjusting_ = false;
@@ -1424,6 +1466,15 @@ void HazkeyState::updateAuxiliaryText() {
         }
     } else if (!preeditText_.empty()) {
         auxDown = tr("[Press Tab to Select]");
+    }
+
+    // A Zenzai toggle hint is transient feedback with no other IBus channel
+    // (see showZenzaiHint()). Overlaying it on AuxDown reuses the existing aux
+    // rendering path, and it must still make the aux slot VISIBLE when nothing
+    // else would (idle toggle: no preedit, not direct). It is placed first
+    // because it is the most recent event.
+    if (!zenzaiHintText_.empty()) {
+        auxDown = joinAuxiliaryText(zenzaiHintText_, auxDown);
     }
 
     if (focused) {

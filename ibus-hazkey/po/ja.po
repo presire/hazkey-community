@@ -39,7 +39,7 @@ msgid "Zenzai"
 msgstr "Zenzai"
 
 msgid "Zenzai enabled"
-msgstr "Zenzai 有効"
+msgstr "Zenzaiを有効化しました"
 
 msgid "Zenzai disabled"
-msgstr "Zenzai 無効"
+msgstr "Zenzaiを無効化しました"

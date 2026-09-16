@@ -262,6 +262,24 @@ void testAuxiliaryTextJoin() {
     std::cout << "[PASS] auxiliary text join (no leading space when empty)\n";
 }
 
+void testZenzaiHintOverlay() {
+    // The Zenzai toggle hint (ibus-rime status_hint approach) is overlaid on
+    // AuxDown via the same join. An idle toggle has an empty AuxDown, so the
+    // hint alone must be visible (not an empty/leading-space string); when an
+    // AuxDown exists the hint must precede it without eating it.
+    assert(HazkeyState::joinAuxiliaryText("Zenzai enabled", "") ==
+           "Zenzai enabled");
+    assert(HazkeyState::joinAuxiliaryText("Zenzai disabled", "") ==
+           "Zenzai disabled");
+    assert(HazkeyState::joinAuxiliaryText("Zenzai enabled", "[Direct Input]") ==
+           "Zenzai enabled [Direct Input]");
+    assert(HazkeyState::joinAuxiliaryText("Zenzai enabled",
+                                          "[Press Tab to Select]") ==
+           "Zenzai enabled [Press Tab to Select]");
+
+    std::cout << "[PASS] zenzai hint overlays AuxDown\n";
+}
+
 void testLoneShiftModifierState() {
     // Drives whether a Shift release sends RELEASE (toggles Direct Input) or
     // CANCEL. A lone Shift must be detected even when the toolkit reports the
@@ -493,6 +511,7 @@ int main() {
     testAltDigitKeyPredicate();
     testDirectConversionShortcut();
     testAuxiliaryTextJoin();
+    testZenzaiHintOverlay();
     testLoneShiftModifierState();
     testAltShiftSpaceOrTabPredicate();
     testSelectionLabels();

@@ -233,6 +233,10 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 - **パネルの入力モード表示 (IBusProperty) に対応しています。**  
   パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
   言語バーの「あ / A」をクリックすると、直接入力をトグルできます。([Shift]キー単体押下と同じRPC経路を利用)  
+- **Zenzaiのトグル (ホットキー / パネルのプロパティ) は、補助テキストに一時的なヒントを約1秒表示します。**  
+  IBusにはGNOME Shellを含む全パネルが描画する一時ポップアップAPIが無い ([ibus-rime](https://github.com/rime/ibus-rime) の `status_hint.c` と同じく  
+  補助テキストの一時表示で代替。  
+  IBus 1.5.33以降の `ibus_engine_send_message()` は、UnstableでGNOME Shell非対応のため採用していません)  
 - **候補リストに数字ラベル (1〜9, 0) と縦向き表示を設定しています。**  
 - **クライアントのcapability (`set_capabilities`) を反映します。**  
   surrounding text非対応のクライアントでは、surrounding textの取得・送信を行いません。  

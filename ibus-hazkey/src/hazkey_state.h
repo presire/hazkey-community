@@ -193,6 +193,14 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     void handleLiveConvertToggle();
     // Toggle Zenzai via hotkey; the server persists the new state.
     void handleZenzaiToggle();
+    // Transient Zenzai toggle feedback. IBus has no fcitx5-style popup that
+    // every panel renders, so the new state is shown in the auxiliary-text slot
+    // for a short time (mirrors ibus-rime's status_hint.c). Worker-thread only.
+    void showZenzaiHint(const std::string& text);
+    void clearZenzaiHint();
+    // Cancels a pending hint task AND drops the hint text, so a reset/focus
+    // change cannot resurrect a stale hint on the next aux refresh.
+    void cancelPendingHint();
     // [community] Delete the focused candidate's learning memory entries via
     // hotkey, then rebuild the candidate list in the same display mode.
     void handleDeleteCandidateLearningData(int globalIndex);
@@ -310,6 +318,11 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     hazkey::frontend::CandidateRefreshCoalescer refreshCoalescer_;
     // Token of the delayed trailing refresh scheduled on `executor_`.
     hazkey::frontend::SerialTaskExecutor::Token refreshToken_ =
+        hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+    // Transient Zenzai hint text (empty = none) and the token of its delayed
+    // auto-hide task on `executor_`.
+    std::string zenzaiHintText_;
+    hazkey::frontend::SerialTaskExecutor::Token hintToken_ =
         hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     bool pendingRefreshIsSuggest_ = true;
     // Bumped whenever a lookup render/hide is posted. A click is accepted only
