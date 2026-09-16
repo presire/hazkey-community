@@ -270,6 +270,13 @@ class MainWindow : public QWidget {
     bool editUserDictEntryDialog(UserDictEntry& entry, const QString& title);
     /** @brief ユーザ辞書タブの表とファイル由来の初期状態を準備する */
     void setupUserDict();
+    /**
+     * @brief currentConfig_のZenzai稼働情報に合わせてAIタブの警告とZenzai操作の有効状態を更新する
+     *
+     * プロファイル由来のウィジェット値やdirty基準には触れないため、モデル管理ダイアログの
+     * 確定後にZenzai実行時情報だけを更新する用途にも呼び出せる
+     */
+    void updateZenzaiAvailabilityUi();
     /** @brief ディスク状態とダウンロード状態からモデル管理ダイアログのボタンを復元する */
     void refreshZenzaiDialogButtonStates();
     /**

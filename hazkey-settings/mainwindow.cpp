@@ -529,29 +529,7 @@ void MainWindow::onUseUserDictToggled(bool enabled) {
     recomputeDirtyState();
 }
 
-bool MainWindow::loadCurrentConfig(bool fetchConfig) {
-    if (fetchConfig) {
-        auto configOpt = server_.getConfig();
-
-        if (!configOpt.has_value()) {
-            return false;
-        }
-
-        currentConfig_ = configOpt.value();
-        if (currentConfig_.profiles_size() == 0) {
-            return false;
-        }
-
-        currentProfile_ = currentConfig_.mutable_profiles(0);
-        if (!currentProfile_) {
-            return false;
-        }
-    }
-
-    // Populating the UI from a configuration is a programmatic action; it
-    // must not be reported as a pending user edit by any signal handler.
-    setConfigLoading(true);
-
+void MainWindow::updateZenzaiAvailabilityUi() {
     // Remove any existing warning widgets on AI tab
     if (ui_->aiTabScrollContentsLayout->count() > 1) {
         QLayoutItem* item = ui_->aiTabScrollContentsLayout->itemAt(1);
@@ -650,6 +628,32 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
             }
         }
     }
+}
+
+bool MainWindow::loadCurrentConfig(bool fetchConfig) {
+    if (fetchConfig) {
+        auto configOpt = server_.getConfig();
+
+        if (!configOpt.has_value()) {
+            return false;
+        }
+
+        currentConfig_ = configOpt.value();
+        if (currentConfig_.profiles_size() == 0) {
+            return false;
+        }
+
+        currentProfile_ = currentConfig_.mutable_profiles(0);
+        if (!currentProfile_) {
+            return false;
+        }
+    }
+
+    // Populating the UI from a configuration is a programmatic action; it
+    // must not be reported as a pending user edit by any signal handler.
+    setConfigLoading(true);
+
+    updateZenzaiAvailabilityUi();
 
     // Load zenzai backend devices
     ui_->zenzaiBackendDevice->clear();
@@ -2396,7 +2400,20 @@ void MainWindow::onDownloadZenzaiModel() {
         if (result == QDialog::Accepted + 1) {
             continue;  // Refresh dialog (after delete)
         }
-        // Accepted or Rejected — both exit the loop
+        // Accepted or Rejected — both exit the loop. The dialog may have
+        // activated or deleted a model, so refresh only the Zenzai runtime
+        // metadata: profile-backed widgets and their unsaved edits stay
+        // untouched, and the warning remains as-is if the refresh fails.
+        auto runtimeConfig = server_.getConfig();
+        if (runtimeConfig.has_value()) {
+            currentConfig_.set_zenzai_model_available(
+                runtimeConfig->zenzai_model_available());
+            currentConfig_.set_zenzai_model_path(
+                runtimeConfig->zenzai_model_path());
+            currentConfig_.mutable_available_zenzai_backend_devices()->CopyFrom(
+                runtimeConfig->available_zenzai_backend_devices());
+            updateZenzaiAvailabilityUi();
+        }
         return;
     }
 }
