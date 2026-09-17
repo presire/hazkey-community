@@ -6,6 +6,7 @@
  */
 
 #include "mainwindow.h"
+#include "zenzai_family_row.h"
 #include <qlabel.h>
 #include <qnamespace.h>
 #include <QAbstractButton>
@@ -35,7 +36,6 @@
 #include <QNetworkRequest>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -53,6 +53,7 @@
 #include "keysequence_util.h"
 #include "serverconnector.h"
 #include "userdict_model.h"
+#include "zenzai_download_validation.h"
 #include "zenzai_models.h"
 
 namespace {
@@ -2070,61 +2071,33 @@ QWidget* MainWindow::zenzaiDialogParent() const {
 void MainWindow::refreshZenzaiDialogButtonStates() {
     if (!zenzaiModelDialog_) return;
 
-    const QVector<ZenzaiModelOption>& ms = availableZenzaiModels();
+    // During a download -- or the short window while its reply is being set up --
+    // every control in the dialog is locked.
+    const bool locked = currentDownload_ != nullptr || zenzaiDownloadPending_;
+    const QString activeKey = ZenzaiModelManager::getActiveModelKey();
 
-    // Recompute which Download buttons should be enabled.
-    // During a download (currentDownload_ != nullptr) all are disabled.
-    const auto dlBtns = zenzaiModelDialog_->findChildren<QPushButton*>(
-        QRegularExpression("^dlBtn_"));
-    for (QPushButton* btn : dlBtns) {
-        if (currentDownload_) {
-            btn->setEnabled(false);
-        } else {
-            const QString btnKey = btn->objectName().mid(6);
-            for (const ZenzaiModelOption& mo : ms) {
-                if (mo.key == btnKey) {
-                    btn->setEnabled(!ZenzaiModelManager::isModelDownloaded(mo));
-                    break;
-                }
+    // Recompute each family row from the current on-disk state.
+    bool anyDownloaded = false;
+    const auto rows = zenzaiModelDialog_->findChildren<ZenzaiFamilyRow*>();
+    for (ZenzaiFamilyRow* row : rows) {
+        row->refreshState(locked, activeKey);
+        for (const ZenzaiModelOption& variant : row->family().variants) {
+            if (ZenzaiModelManager::isModelDownloaded(variant)) {
+                anyDownloaded = true;
             }
-        }
-    }
-
-    // Delete buttons: visible only for downloaded models, disabled during download.
-    const auto delBtns = zenzaiModelDialog_->findChildren<QPushButton*>(
-        QRegularExpression("^delBtn_"));
-    for (QPushButton* btn : delBtns) {
-        const QString btnKey = btn->objectName().mid(7);
-        bool downloaded = false;
-        for (const ZenzaiModelOption& mo : ms) {
-            if (mo.key == btnKey) {
-                downloaded = ZenzaiModelManager::isModelDownloaded(mo);
-                break;
-            }
-        }
-        btn->setVisible(downloaded);
-        if (downloaded) {
-            btn->setEnabled(!currentDownload_);
         }
     }
 
     // OK and Cancel buttons.
     QDialogButtonBox* bb = zenzaiModelDialog_->findChild<QDialogButtonBox*>();
     if (bb) {
-        bool anyDownloaded = false;
-        for (const ZenzaiModelOption& mo : ms) {
-            if (ZenzaiModelManager::isModelDownloaded(mo)) {
-                anyDownloaded = true;
-                break;
-            }
-        }
         if (bb->button(QDialogButtonBox::Ok)) {
             // OK: enabled when at least one model is downloaded AND no active download.
-            bb->button(QDialogButtonBox::Ok)->setEnabled(anyDownloaded && !currentDownload_);
+            bb->button(QDialogButtonBox::Ok)->setEnabled(anyDownloaded && !locked);
         }
         if (bb->button(QDialogButtonBox::Cancel)) {
             // Cancel: disabled while a download is in progress.
-            bb->button(QDialogButtonBox::Cancel)->setEnabled(!currentDownload_);
+            bb->button(QDialogButtonBox::Cancel)->setEnabled(!locked);
         }
     }
 }
@@ -2163,191 +2136,66 @@ void MainWindow::onDownloadZenzaiModel() {
         QButtonGroup* group = new QButtonGroup(&dialog);
         group->setExclusive(true);
 
+        const QVector<ZenzaiModelFamily>& families = availableZenzaiModelFamilies();
+        QVector<ZenzaiFamilyRow*> rows;
         QString activeKey = ZenzaiModelManager::getActiveModelKey();
-        int defaultIndex = -1;
+        int defaultFamilyIndex = -1;
         bool anyDownloaded = false;
 
-        for (int i = 0; i < models.size(); ++i) {
-            const ZenzaiModelOption& m = models[i];
-            bool downloaded = ZenzaiModelManager::isModelDownloaded(m);
-            if (downloaded) {
-                anyDownloaded = true;
+        for (const ZenzaiModelFamily& family : families) {
+            for (const ZenzaiModelOption& variant : family.variants) {
+                if (ZenzaiModelManager::isModelDownloaded(variant)) {
+                    anyDownloaded = true;
+                }
+            }
+        }
+
+        // One row per family. Multi-variant families (jinen-v2) let the user pick
+        // a quantization; single-variant families (zenz) look exactly as before.
+        for (int i = 0; i < families.size(); ++i) {
+            const ZenzaiModelFamily& family = families[i];
+            if (family.variants.isEmpty()) {
+                continue;
             }
 
-            QString radioText = ZenzaiModelManager::formatModelLabel(m, downloaded);
+            ZenzaiFamilyRow* row = new ZenzaiFamilyRow(family, &dialog);
+            row->setObjectName("row_" + family.familyKey);
+            rows.append(row);
+            group->addButton(row->radioButton(), i);
 
-            QHBoxLayout* rowLayout = new QHBoxLayout();
-            QRadioButton* rb = new QRadioButton(radioText, &dialog);
-            rb->setObjectName("rb_" + m.key);
-            // Only downloaded models can be selected via radio button
-            rb->setEnabled(downloaded);
-            group->addButton(rb, i);
-            rowLayout->addWidget(rb);
-
-            // Set default radio selection: active model first, then first downloaded
-            if (downloaded) {
-                if (defaultIndex == -1 || activeKey == m.key) {
-                    defaultIndex = i;
+            // Preselect the active downloaded variant when it belongs to this
+            // family, otherwise the first downloaded variant of the family.
+            int preselect = -1;
+            for (int v = 0; v < family.variants.size(); ++v) {
+                if (!ZenzaiModelManager::isModelDownloaded(family.variants[v])) {
+                    continue;
+                }
+                if (preselect == -1 || family.variants[v].key == activeKey) {
+                    preselect = v;
+                }
+            }
+            if (preselect >= 0) {
+                row->setVariantIndex(preselect);
+                if (defaultFamilyIndex == -1 || row->artifact().key == activeKey) {
+                    defaultFamilyIndex = i;
                 }
             }
 
-            // Download button: active for undownloaded models, disabled for downloaded
-            QPushButton* dlBtn = new QPushButton(tr("Download"), &dialog);
-            dlBtn->setObjectName("dlBtn_" + m.key);
-            dlBtn->setEnabled(!downloaded);
-
-            // Capture values (not references) to avoid dangling references
-            connect(dlBtn, &QPushButton::clicked, this,
-                    [this, key = m.key, url = m.url, sha256 = m.sha256]() {
-                        // Disable all Download/Delete/Cancel/OK buttons during download
-                        // (currentDownload_ is not set yet, so temporarily set a sentinel
-                        //  by calling refresh after setting the URL state below)
-                        // -- initial lockout via inline disable first --
-                        if (zenzaiModelDialog_) {
-                            const auto dlBtns =
-                                zenzaiModelDialog_->findChildren<QPushButton*>(
-                                    QRegularExpression("^dlBtn_"));
-                            for (QPushButton* btn : dlBtns) {
-                                btn->setEnabled(false);
-                            }
-                            const auto delBtns =
-                                zenzaiModelDialog_->findChildren<QPushButton*>(
-                                    QRegularExpression("^delBtn_"));
-                            for (QPushButton* btn : delBtns) {
-                                btn->setEnabled(false);
-                            }
-                            QDialogButtonBox* bb =
-                                zenzaiModelDialog_->findChild<QDialogButtonBox*>();
-                            if (bb) {
-                                if (bb->button(QDialogButtonBox::Ok))
-                                    bb->button(QDialogButtonBox::Ok)->setEnabled(false);
-                                if (bb->button(QDialogButtonBox::Cancel))
-                                    bb->button(QDialogButtonBox::Cancel)->setEnabled(false);
-                            }
-                        }
-
-                        // Check for legacy custom model before downloading
-                        QString legacyPath = ZenzaiModelManager::getSymlinkPath();
-                        QFileInfo legacyInfo(legacyPath);
-                        if (legacyInfo.exists() && !legacyInfo.isSymLink()) {
-                            QMessageBox::StandardButton reply = QMessageBox::question(
-                                zenzaiDialogParent(), tr("Preserve Custom Model"),
-                                tr("A custom Zenzai model \"zenzai.gguf\" already exists.\n"
-                                   "Do you want to preserve it before downloading a new one?"),
-                                QMessageBox::Yes | QMessageBox::No |
-                                    QMessageBox::Cancel);
-
-                            if (reply == QMessageBox::Cancel ||
-                                reply == QMessageBox::No) {
-                                // Restore button states — no download started
-                                refreshZenzaiDialogButtonStates();
-                                return;
-                            }
-                            if (reply == QMessageBox::Yes) {
-                                QString sha =
-                                    ZenzaiModelManager::calculateSHA256(legacyPath);
-                                QString shaPrefix = sha.left(8);
-                                QString newName =
-                                    QString("legacy-custom-%1.gguf").arg(shaPrefix);
-                                QString newPath =
-                                    ZenzaiModelManager::getModelsDir() + "/" + newName;
-                                QDir().mkpath(ZenzaiModelManager::getModelsDir());
-                                if (!QFile::rename(legacyPath, newPath)) {
-                                    QMessageBox::critical(
-                                        zenzaiDialogParent(), tr("Error"),
-                                        tr("Failed to preserve custom model."));
-                                    // Restore button states — no download started
-                                    refreshZenzaiDialogButtonStates();
-                                    return;
-                                }
-                            }
-                        }
-
-                        // Persist the selection
-                        currentDownloadUrl_ = url;
-                        currentDownloadExpectedSha256_ = sha256;
-                        currentDownloadKey_ = key;
-
-                        // --- Major 3: correct initialisation order ---
-                        // 1. Create reply first so currentDownload_ is set before any
-                        //    event-processing calls (e.g. setValue) can re-enter.
-                        QUrl dlUrl(currentDownloadUrl_);
-                        QNetworkRequest request(dlUrl);
-                        currentDownload_ = networkManager_->get(request);
-
-                        connect(currentDownload_, &QNetworkReply::downloadProgress,
-                                this, &MainWindow::onDownloadProgress);
-                        connect(currentDownload_, &QNetworkReply::finished, this,
-                                &MainWindow::onDownloadFinished);
-                        connect(currentDownload_,
-                                QOverload<QNetworkReply::NetworkError>::of(
-                                    &QNetworkReply::errorOccurred),
-                                this, &MainWindow::onDownloadError);
-
-                        // 2. Now build the progress dialog (parent = MainWindow).
-                        downloadProgressDialog_ = new QProgressDialog(
-                            tr("Downloading Zenzai model..."), tr("Cancel"),
-                            0, 100, this);
-                        downloadProgressDialog_->setWindowModality(Qt::WindowModal);
-                        downloadProgressDialog_->setMinimumDuration(0);
-                        // Prevent auto-close/reset when progress hits 100 before verification is done.
-                        downloadProgressDialog_->setAutoClose(false);
-                        downloadProgressDialog_->setAutoReset(false);
-                        downloadProgressDialog_->resize(450, 200);
-
-                        connect(downloadProgressDialog_,
-                                &QProgressDialog::canceled, this, [this]() {
-                                    if (currentDownload_) {
-                                        currentDownload_->abort();
-                                    }
-                                });
-
-                        // 3. Show/setValue last (may pump events).
-                        downloadProgressDialog_->show();
-                        downloadProgressDialog_->setValue(0);
+            connect(row, &ZenzaiFamilyRow::downloadRequested, this,
+                    [this](const QString& key) { beginZenzaiModelDownload(key); });
+            connect(row, &ZenzaiFamilyRow::deleteRequested, this,
+                    [this, &dialog](const QString& key) {
+                        requestZenzaiModelDeletion(key, &dialog);
                     });
-            rowLayout->addWidget(dlBtn);
 
-            // Delete button: only visible for downloaded models
-            QPushButton* deleteBtn = new QPushButton(tr("Delete"), &dialog);
-            deleteBtn->setObjectName("delBtn_" + m.key);
-            deleteBtn->setVisible(downloaded);
-
-            connect(deleteBtn, &QPushButton::clicked, this,
-                    [this, key = m.key, displayName = m.displayName, &dialog]() {
-                        QMessageBox::StandardButton reply = QMessageBox::question(
-                            &dialog, tr("Delete Model"),
-                            tr("Are you sure you want to delete the model \"%1\"?")
-                                .arg(displayName),
-                            QMessageBox::Yes | QMessageBox::No);
-                        if (reply == QMessageBox::Yes) {
-                            bool wasActive =
-                                (ZenzaiModelManager::getActiveModelKey() == key);
-                            if (ZenzaiModelManager::deleteModel(key)) {
-                                if (wasActive) {
-                                    server_.reloadZenzaiModel();
-                                }
-                                dialog.done(QDialog::Accepted + 1);
-                            } else {
-                                QMessageBox::critical(&dialog, tr("Error"),
-                                                      tr("Failed to delete model."));
-                            }
-                        }
-                    });
-            rowLayout->addWidget(deleteBtn);
-
-            dialogLayout->addLayout(rowLayout);
-
-            QLabel* descLabel = new QLabel(m.description, &dialog);
-            descLabel->setIndent(20);
-            descLabel->setWordWrap(true);
-            descLabel->setStyleSheet(QStringLiteral("color: gray;"));
-            dialogLayout->addWidget(descLabel);
+            row->refreshState(currentDownload_ != nullptr || zenzaiDownloadPending_,
+                              activeKey);
+            dialogLayout->addWidget(row);
         }
 
-        // Apply default radio selection after all buttons are added
-        if (defaultIndex >= 0) {
-            QAbstractButton* defaultRb = group->button(defaultIndex);
+        // Apply default radio selection after all rows are added
+        if (defaultFamilyIndex >= 0) {
+            QAbstractButton* defaultRb = group->button(defaultFamilyIndex);
             if (defaultRb) {
                 defaultRb->setChecked(true);
             }
@@ -2359,20 +2207,15 @@ void MainWindow::onDownloadZenzaiModel() {
         buttons->button(QDialogButtonBox::Ok)->setEnabled(anyDownloaded);
         buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
 
-        // OK button: activate selected model and reload
+        // OK button: activate the artifact currently bound to the selected row
         connect(buttons->button(QDialogButtonBox::Ok), &QPushButton::clicked,
-                this, [this, group, &dialog]() {
+                this, [this, group, rows, &dialog]() {
                     int selectedIdx = group->checkedId();
-                    if (selectedIdx < 0) {
+                    if (selectedIdx < 0 || selectedIdx >= rows.size()) {
                         dialog.reject();
                         return;
                     }
-                    const QVector<ZenzaiModelOption>& ms = availableZenzaiModels();
-                    if (selectedIdx >= ms.size()) {
-                        dialog.reject();
-                        return;
-                    }
-                    const ZenzaiModelOption& chosen = ms[selectedIdx];
+                    const ZenzaiModelOption& chosen = rows[selectedIdx]->artifact();
                     if (ZenzaiModelManager::activateModel(chosen.key)) {
                         server_.reloadZenzaiModel();
                         dialog.accept();
@@ -2396,6 +2239,7 @@ void MainWindow::onDownloadZenzaiModel() {
 
         int result = dialog.exec();
         zenzaiModelDialog_ = nullptr;
+        rows.clear();
 
         if (result == QDialog::Accepted + 1) {
             continue;  // Refresh dialog (after delete)
@@ -2415,6 +2259,129 @@ void MainWindow::onDownloadZenzaiModel() {
             updateZenzaiAvailabilityUi();
         }
         return;
+    }
+}
+
+void MainWindow::beginZenzaiModelDownload(const QString& key) {
+    const ZenzaiModelOption* selectedModel = findZenzaiModelByKey(key);
+    if (!selectedModel) {
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
+                              tr("Selected Zenzai model is no longer available."));
+        refreshZenzaiDialogButtonStates();
+        return;
+    }
+
+    // Lock every control while the legacy-model prompt and the reply setup run.
+    // currentDownload_ is not set yet, so zenzaiDownloadPending_ carries the lock.
+    zenzaiDownloadPending_ = true;
+    refreshZenzaiDialogButtonStates();
+
+    // Check for legacy custom model before downloading
+    QString legacyPath = ZenzaiModelManager::getSymlinkPath();
+    QFileInfo legacyInfo(legacyPath);
+    if (legacyInfo.exists() && !legacyInfo.isSymLink()) {
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            zenzaiDialogParent(), tr("Preserve Custom Model"),
+            tr("A custom Zenzai model \"zenzai.gguf\" already exists.\n"
+               "Do you want to preserve it before downloading a new one?"),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+        if (reply == QMessageBox::Cancel || reply == QMessageBox::No) {
+            // Restore button states \u2014 no download started
+            zenzaiDownloadPending_ = false;
+            refreshZenzaiDialogButtonStates();
+            return;
+        }
+        if (reply == QMessageBox::Yes) {
+            QString sha = ZenzaiModelManager::calculateSHA256(legacyPath);
+            QString shaPrefix = sha.left(8);
+            QString newName = QString("legacy-custom-%1.gguf").arg(shaPrefix);
+            QString newPath = ZenzaiModelManager::getModelsDir() + "/" + newName;
+            QDir().mkpath(ZenzaiModelManager::getModelsDir());
+            if (!QFile::rename(legacyPath, newPath)) {
+                QMessageBox::critical(zenzaiDialogParent(), tr("Error"),
+                                      tr("Failed to preserve custom model."));
+                // Restore button states \u2014 no download started
+                zenzaiDownloadPending_ = false;
+                refreshZenzaiDialogButtonStates();
+                return;
+            }
+        }
+    }
+
+    // Persist the selection
+    currentDownloadUrl_ = selectedModel->url;
+    currentDownloadExpectedSha256_ = selectedModel->sha256;
+    currentDownloadExpectedBytes_ = selectedModel->expectedBytes;
+    currentDownloadKey_ = selectedModel->key;
+
+    // --- Major 3: correct initialisation order ---
+    // 1. Create reply first so currentDownload_ is set before any
+    //    event-processing calls (e.g. setValue) can re-enter.
+    QUrl dlUrl(currentDownloadUrl_);
+    QNetworkRequest request(dlUrl);
+    currentDownload_ = networkManager_->get(request);
+
+    connect(currentDownload_, &QNetworkReply::downloadProgress, this,
+            &MainWindow::onDownloadProgress);
+    connect(currentDownload_, &QNetworkReply::finished, this,
+            &MainWindow::onDownloadFinished);
+    connect(currentDownload_,
+            QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::errorOccurred),
+            this, &MainWindow::onDownloadError);
+
+    // The reply now holds the dialog lock; release the pending sentinel.
+    zenzaiDownloadPending_ = false;
+
+    // 2. Now build the progress dialog (parent = MainWindow).
+    downloadProgressDialog_ =
+        new QProgressDialog(tr("Downloading Zenzai model..."), tr("Cancel"), 0, 100, this);
+    downloadProgressDialog_->setWindowModality(Qt::WindowModal);
+    downloadProgressDialog_->setMinimumDuration(0);
+    // Prevent auto-close/reset when progress hits 100 before verification is done.
+    downloadProgressDialog_->setAutoClose(false);
+    downloadProgressDialog_->setAutoReset(false);
+    downloadProgressDialog_->resize(450, 200);
+
+    connect(downloadProgressDialog_, &QProgressDialog::canceled, this, [this]() {
+        if (currentDownload_) {
+            currentDownload_->abort();
+        }
+    });
+
+    // 3. Show/setValue last (may pump events).
+    downloadProgressDialog_->show();
+    downloadProgressDialog_->setValue(0);
+}
+
+void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog) {
+    const ZenzaiModelOption* model = findZenzaiModelByKey(key);
+    if (!model) {
+        QMessageBox::critical(zenzaiDialogParent(), tr("Error"),
+                              tr("Selected Zenzai model is no longer available."));
+        return;
+    }
+
+    const QString displayName = model->displayName;
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        dialog ? static_cast<QWidget*>(dialog) : zenzaiDialogParent(), tr("Delete Model"),
+        tr("Are you sure you want to delete the model \"%1\"?").arg(displayName),
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    bool wasActive = (ZenzaiModelManager::getActiveModelKey() == key);
+    if (ZenzaiModelManager::deleteModel(key)) {
+        if (wasActive) {
+            server_.reloadZenzaiModel();
+        }
+        if (dialog) {
+            dialog->done(QDialog::Accepted + 1);
+        }
+    } else {
+        QMessageBox::critical(dialog ? static_cast<QWidget*>(dialog) : zenzaiDialogParent(),
+                              tr("Error"), tr("Failed to delete model."));
     }
 }
 
@@ -2438,14 +2405,19 @@ void MainWindow::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal) {
 
 void MainWindow::onDownloadFinished() {
     // Guard: ignore signals from stale replies.
-    if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) return;
+    if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) {
+        currentDownloadExpectedBytes_ = 0;
+        return;
+    }
     if (!currentDownload_) return;
 
     // Helper: clear per-download state and restore dialog button states.
     auto clearAndRefresh = [this]() {
         currentDownloadUrl_.clear();
         currentDownloadExpectedSha256_.clear();
+        currentDownloadExpectedBytes_ = 0;
         currentDownloadKey_.clear();
+        zenzaiDownloadPending_ = false;
         refreshZenzaiDialogButtonStates();
     };
 
@@ -2468,97 +2440,86 @@ void MainWindow::onDownloadFinished() {
     currentDownload_->deleteLater();
     currentDownload_ = nullptr;
 
-    // Verify SHA256
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    hash.addData(downloadedData);
-    QString calculatedHashHex = hash.result().toHex();
-    QString expectedHash = currentDownloadExpectedSha256_;
+    const ZenzaiModelOption* downloadedModel =
+        findZenzaiModelByKey(currentDownloadKey_);
+    if (!downloadedModel) {
+        QFile::remove(ZenzaiModelManager::getModelPath(currentDownloadKey_) + ".tmp");
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
+                              tr("Selected Zenzai model is no longer available."));
+        clearAndRefresh();
+        return;
+    }
 
-    if (calculatedHashHex != expectedHash) {
+    const QString modelPath = ZenzaiModelManager::getModelPath(downloadedModel->key);
+    const ModelDownloadValidation validation = validateModelDownload(
+        downloadedData, currentDownloadExpectedBytes_,
+        currentDownloadExpectedSha256_);
+    if (validation == ModelDownloadValidation::SizeMismatch) {
+        finalizeModelDownload(modelPath, downloadedData, validation);
+        QMessageBox::critical(
+            zenzaiDialogParent(), tr("Download Error"),
+            tr("Downloaded file verification failed. Size mismatch.\n"
+               "Expected: %1 bytes\n"
+               "Got: %2 bytes")
+                .arg(currentDownloadExpectedBytes_)
+                .arg(downloadedData.size()));
+        clearAndRefresh();
+        return;
+    }
+
+    if (validation == ModelDownloadValidation::ChecksumMismatch) {
+        const QString calculatedHashHex = QString::fromLatin1(
+            QCryptographicHash::hash(downloadedData, QCryptographicHash::Sha256)
+                .toHex());
         QMessageBox::critical(
             zenzaiDialogParent(), tr("Download Error"),
             tr("Downloaded file verification failed. Checksum mismatch.\n"
                "Expected: %1\n"
                "Got: %2")
-                .arg(expectedHash)
+                .arg(currentDownloadExpectedSha256_)
                 .arg(calculatedHashHex));
+        finalizeModelDownload(modelPath, downloadedData, validation);
         clearAndRefresh();
         return;
     }
 
-    // Save to temporary file first
-    QString modelPath = ZenzaiModelManager::getModelPath(currentDownloadKey_);
-    QString tempPath = modelPath + ".tmp";
-    QDir().mkpath(ZenzaiModelManager::getModelsDir());
-    QFile tempFile(tempPath);
-    if (!tempFile.open(QIODevice::WriteOnly)) {
+    QString saveError;
+    if (!finalizeModelDownload(modelPath, downloadedData, validation, &saveError)) {
         QMessageBox::critical(
             zenzaiDialogParent(), tr("Download Error"),
-            tr("Failed to save model file: %1").arg(tempFile.errorString()));
-        clearAndRefresh();
-        return;
-    }
-
-    if (tempFile.write(downloadedData) == -1) {
-        QMessageBox::critical(
-            zenzaiDialogParent(), tr("Download Error"),
-            tr("Failed to write model file: %1").arg(tempFile.errorString()));
-        tempFile.close();
-        QFile::remove(tempPath);
-        clearAndRefresh();
-        return;
-    }
-
-    tempFile.close();
-
-    // Remove old file if it exists and rename temp file
-    if (QFile::exists(modelPath)) {
-        if (!QFile::remove(modelPath)) {
-            QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
-                                  tr("Failed to remove old model file."));
-            QFile::remove(tempPath);
-            clearAndRefresh();
-            return;
-        }
-    }
-
-    if (!QFile::rename(tempPath, modelPath)) {
-        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
-                              tr("Failed to rename model file."));
-        QFile::remove(tempPath);
+            tr("Failed to save model file: %1").arg(saveError));
         clearAndRefresh();
         return;
     }
 
     // --- Success path ---
     // Save the downloaded key before clearing state.
-    QString downloadedKey = currentDownloadKey_;
-
-    currentDownloadUrl_.clear();
-    currentDownloadExpectedSha256_.clear();
-    currentDownloadKey_.clear();
+    const QString downloadedKey = downloadedModel->key;
+    clearAndRefresh();
     // currentDownload_ is already null (set above after readAll).
 
     // Update the open dialog in-place if it is still open.
     if (zenzaiModelDialog_) {
-        const QVector<ZenzaiModelOption>& ms = availableZenzaiModels();
-
-        // Update radio label, enable radio, select it for the newly downloaded model.
-        const ZenzaiModelOption* downloadedModel = nullptr;
-        for (const ZenzaiModelOption& mo : ms) {
-            if (mo.key == downloadedKey) {
-                downloadedModel = &mo;
+        // Bind each row to the newly downloaded quantization, then select it so
+        // that clicking OK activates exactly what was just downloaded.
+        const auto rows = zenzaiModelDialog_->findChildren<ZenzaiFamilyRow*>();
+        for (ZenzaiFamilyRow* row : rows) {
+            bool rebound = false;
+            for (int v = 0; v < row->family().variants.size(); ++v) {
+                if (row->family().variants[v].key != downloadedKey) {
+                    continue;
+                }
+                row->setVariantIndex(v);
+                rebound = true;
                 break;
             }
-        }
-        if (downloadedModel) {
-            QRadioButton* rb = zenzaiModelDialog_->findChild<QRadioButton*>(
-                "rb_" + downloadedKey);
-            if (rb) {
-                rb->setEnabled(true);
-                rb->setChecked(true);
-                rb->setText(ZenzaiModelManager::formatModelLabel(*downloadedModel, true));
+            if (!rebound) {
+                continue;
             }
+            // Refresh first so the radio is enabled and relabelled before it is
+            // checked; refreshState never changes the checked state itself.
+            refreshZenzaiDialogButtonStates();
+            row->radioButton()->setChecked(true);
         }
 
         // Refresh all button states (Download/Delete/OK/Cancel) from disk state.
@@ -2597,7 +2558,9 @@ void MainWindow::onDownloadError(QNetworkReply::NetworkError error) {
     // Clear per-download selection state.
     currentDownloadUrl_.clear();
     currentDownloadExpectedSha256_.clear();
+    currentDownloadExpectedBytes_ = 0;
     currentDownloadKey_.clear();
+    zenzaiDownloadPending_ = false;
 
     // Restore dialog button states (currentDownload_ is now nullptr).
     refreshZenzaiDialogButtonStates();

@@ -285,6 +285,26 @@ class MainWindow : public QWidget {
      */
     QWidget* zenzaiDialogParent() const;
     /**
+     * @brief 選択されたモデルのダウンロードを開始する
+     *
+     * @details 旧形式カスタムモデルの退避確認を行い、検証に使うURL・SHA256・期待バイト数・キーを
+     *          記録してからネットワーク要求を作成する 要求の応答が確立するまでの間は
+     *          zenzaiDownloadPending_でモデル管理ダイアログの各操作をロックする
+     *
+     * @param key ダウンロードするアーティファクトのモデルキー
+     */
+    void beginZenzaiModelDownload(const QString& key);
+    /**
+     * @brief 選択されたモデルの削除を確認して実行する
+     *
+     * @details アクティブなモデルを削除した場合はサーバへモデル再読込を要求し、
+     *          削除に成功した場合はダイアログを再構築させるためAccepted + 1で閉じる
+     *
+     * @param key 削除するアーティファクトのモデルキー
+     * @param dialog 再構築対象のモデル管理ダイアログ、なければnullptr
+     */
+    void requestZenzaiModelDeletion(const QString& key, QDialog* dialog);
+    /**
      * @brief UI読込中のdirty判定を抑止するガードを設定する
      * @param loading 設定読込または内部同期中ならtrue
      */
@@ -333,8 +353,12 @@ class MainWindow : public QWidget {
     QString currentDownloadUrl_;
     /** @brief 取得完了後に検証する期待SHA256値 */
     QString currentDownloadExpectedSha256_;
+    /** @brief 取得完了後に検証する期待バイト数、0以下はサイズ検証を省略する */
+    qint64 currentDownloadExpectedBytes_ = 0;
     /** @brief 取得完了後の保存先と選択状態に使うモデルキー */
     QString currentDownloadKey_;
+    /** @brief ダウンロード要求の応答確立前にモデル管理ダイアログを操作不能にするための印 */
+    bool zenzaiDownloadPending_ = false;
     /** @brief ユーザ辞書TSVと表ウィジェット間で共有する編集用エントリ一覧 */
     QVector<UserDictEntry> userDictEntries_;
 };

@@ -37,7 +37,63 @@ struct ZenzaiModelOption {
     bool recommended;
     /** @brief 旧世代モデルとして扱うかどうか */
     bool isLegacyGen;
+    /** @brief ダウンロード検証に使う期待バイト数 0は未知を表す */
+    qint64 expectedBytes = 0;
+    /** @brief 量子化バリアントの表示ラベル (例: "Q5_K_M") 該当なしは空 */
+    QString quantLabel;
 };
+
+/**
+ * @brief 同一モデル系列に属するアーティファクト群
+ *
+ * @details 単一バリアント系列 (zenz) と複数量子化バリアント系列 (jinen-v2) を
+ *          同一の型で表す variantsは表示・選択順序を保った順序付きリストである
+ */
+struct ZenzaiModelFamily {
+    /** @brief 系列を識別するキー */
+    QString familyKey;
+    /** @brief UIに表示する系列名 */
+    QString displayName;
+    /** @brief UIに表示する系列の説明文 */
+    QString description;
+    /** @brief 系列に属するアーティファクトの順序付きリスト */
+    QVector<ZenzaiModelOption> variants;
+    /**
+     * @brief 帰属表示に使う著作者名 空の場合は帰属表示を行わない
+     *
+     * @details 全て空の系列はUIに行を追加せず、従来どおりの外観を保つ
+     */
+    QString author;
+    /** @brief 配布元リポジトリの絶対URL 空の場合は帰属表示を行わない */
+    QString sourceUrl;
+    /** @brief 帰属表示に使うライセンス名 (例: "CC-BY-SA-4.0") */
+    QString licenseName;
+    /** @brief ライセンス全文への絶対URL */
+    QString licenseUrl;
+};
+
+/**
+ * @brief アプリケーションが提供する固定Zenzaiモデル系列カタログを返す
+ *
+ * @details 先頭3件は単一バリアントのzenz系列で従来の順序と値を保ち、
+ *          末尾2件はjinen-v2 small/xsmall系列である
+ *          返される参照はプロセス内で保持される固定値で、モデルのダウンロード状態を反映して変更されない
+ *
+ * @return 固定系列カタログへの読み取り専用参照
+ */
+const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies();
+
+/**
+ * @brief モデルキーからアーティファクトを検索する
+ *
+ * @details availableZenzaiModels()の平坦化カタログを線形探索し、
+ *          一致した要素へのポインタを返す 見つからない場合はnullptrを返す
+ *          返されるポインタはプロセス内で保持される固定値を指す
+ *
+ * @param key 検索するモデルキー
+ * @return 一致したアーティファクトへのポインタ、またはnullptr
+ */
+const ZenzaiModelOption* findZenzaiModelByKey(const QString& key);
 
 /**
  * @brief アプリケーションが提供する固定Zenzaiモデルカタログを返す

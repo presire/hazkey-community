@@ -277,11 +277,32 @@ Zenzaiモデルは、設定UIの[AI]タブにある[Zenzaiモデルの管理]か
 | **zenz-v3.2-small** | 約 74 [MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
 | **zenz-v3.2-xsmall** | 約 21 [MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
 | zenz-v3.1-small | 約 74 [MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
+| jinen-v2-small | 約 69〜210 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
+| jinen-v2-xsmall | 約 25〜69 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
 
 新規利用は **zenz-v3.2-small** を推奨します。  
 CPU中心で使う・軽量重視の場合は **zenz-v3.2-xsmall** が適しています。  
 
 v3.1はv3.2の後継に置き換えられているため、既存環境の再現用途以外での新規利用は推奨しません。  
+
+#### karukan jinen-v2 (実験的、Qwen3ベース)
+
+jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する **Qwen3** ベースの日本語変換モデルで、[CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) のもとで配布されています。  
+[Zenzaiモデルの管理] では系列ごとに量子化 (`f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M`) を選択でき、選択したアーティファクトだけがダウンロードされます。  
+
+| 系列 | 配布リポジトリ | 量子化 | サイズ |
+|---|---|---|---|
+| jinen-v2-small | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M` | 約 69〜210 [MB] |
+| jinen-v2-xsmall | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M` | 約 25〜69 [MB] |
+
+- **帰属**: 本モデルは togatogah 氏の成果物です。ライセンスは CC-BY-SA-4.0 です。設定画面の[Zenzaiモデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
+- **重みは非同梱**: モデルの重みはHazkeyのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
+- **完全性検証**: ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
+- **Qwen3 前提**: jinen-v2はQwen3アーキテクチャのため、ビルド時に `hazkey-server/patches/0007-jinen-qwen3-support.patch` が適用されている必要があります (配布パッケージと `CMakeLists.txt` からのソースビルドでは自動適用)。このパッチはGGUFの `general.architecture == "qwen3"` を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
+- **トークナイザ**: 追加の `tokenizer.json` は不要です (llama.cpp内蔵トークナイザのみを使用します)。  
+- **zenzの既定は不変**: 推奨モデルは従来どおり **zenz-v3.2-small** で、zenz側のラベル・推奨表示・既定の有効化状態・旧世代警告 (`zenz-v3.1-small`) は変更ありません。jinen-v2は推奨にも既定にもせず、旧世代扱いもしません。  
+
+jinen-v2は実験的な位置づけであり、新規利用の第一候補は従来どおり **zenz-v3.2-small** です。  
 
 ### 有効化の手順
 

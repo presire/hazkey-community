@@ -45,6 +45,10 @@ set(PROJECT_SOURCES
     keysequence_util.h
     zenzai_models.cpp
     zenzai_models.h
+    zenzai_download_validation.cpp
+    zenzai_download_validation.h
+    zenzai_family_row.cpp
+    zenzai_family_row.h
     userdict_model.cpp
     userdict_model.h
 )
@@ -147,6 +151,24 @@ qt_add_executable(zenzai_model_management_test
 )
 target_link_libraries(zenzai_model_management_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME zenzai_model_management_test COMMAND zenzai_model_management_test)
+
+qt_add_executable(zenzai_download_validation_test
+    zenzai_download_validation_test.cpp
+    zenzai_download_validation.cpp
+)
+target_link_libraries(zenzai_download_validation_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME zenzai_download_validation_test COMMAND zenzai_download_validation_test)
+
+qt_add_executable(zenzai_family_row_test
+    zenzai_family_row_test.cpp
+    zenzai_family_row.cpp
+    zenzai_models.cpp
+)
+target_link_libraries(zenzai_family_row_test PRIVATE Qt6::Test Qt6::Widgets)
+add_test(NAME zenzai_family_row_test COMMAND zenzai_family_row_test)
+set_tests_properties(zenzai_family_row_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
 
 qt_add_executable(keysequence_util_test
     keysequence_util_test.cpp
