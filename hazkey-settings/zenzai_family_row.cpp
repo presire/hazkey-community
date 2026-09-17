@@ -29,9 +29,11 @@ QString anchorHtml(const QString& url, const QString& text) {
 
 }  // namespace
 
-ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family, QWidget* parent)
+ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
+                                 const QSet<QString>& downloadedKeys, QWidget* parent)
     : QWidget(parent),
       family_(family),
+      downloadedKeys_(downloadedKeys),
       variantIndex_(0),
       downloadInProgress_(false),
       updatingCombo_(false),
@@ -158,7 +160,7 @@ bool ZenzaiFamilyRow::artifactIsActive() const {
 
 bool ZenzaiFamilyRow::artifactIsDownloaded() const {
     if (family_.variants.isEmpty()) return false;
-    return ZenzaiModelManager::isModelDownloaded(artifact());
+    return downloadedKeys_.contains(artifact().key);
 }
 
 void ZenzaiFamilyRow::applyBoundVariant() {
@@ -211,7 +213,7 @@ void ZenzaiFamilyRow::refreshState(bool downloadInProgress, const QString& activ
     }
 
     const ZenzaiModelOption& option = artifact();
-    const bool downloaded = ZenzaiModelManager::isModelDownloaded(option);
+    const bool downloaded = downloadedKeys_.contains(option.key);
 
     radio_->setText(ZenzaiModelManager::formatModelLabel(option, downloaded));
     radio_->setEnabled(downloaded);

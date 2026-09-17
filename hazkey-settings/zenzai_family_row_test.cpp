@@ -100,6 +100,8 @@ class ZenzaiFamilyRowTest : public QObject {
     void testBoundVariantChangedSignalCarriesNewKey();
     /** @brief ダウンロード中に操作がロックされ、完了後に復旧することを検証する */
     void testRefreshStateDuringDownloadDisablesActions();
+    /** @brief 行が渡されたスナップショットだけを参照することを検証する */
+    void testRefreshStateUsesSnapshotWithoutDiskScan();
     /** @brief 実カタログから組んだダイアログが描画され、量子化切替で見た目が変わることを検証する */
     void testRealCatalogDialogRendersAndRebinds();
 
@@ -125,11 +127,13 @@ class ZenzaiFamilyRowTest : public QObject {
      * @param content 書き出す内容
      */
     void writeModel(const QString& key, const QByteArray& content) const;
+    const QSet<QString>& snapshotFor(const ZenzaiModelFamily& family);
 
     /** @brief 全テストでファイルを作成する一時ディレクトリ */
     QTemporaryDir tempDir;
     /** @brief initTestCase()前の環境変数XDG_DATA_HOME値 空の場合は未設定を表す */
     QString originalXdgDataHome;
+    QSet<QString> downloadedSnapshot;
 };
 
 void ZenzaiFamilyRowTest::initTestCase() {
@@ -158,6 +162,12 @@ void ZenzaiFamilyRowTest::writeModel(const QString& key, const QByteArray& conte
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
     file.write(content);
     file.close();
+}
+
+const QSet<QString>& ZenzaiFamilyRowTest::snapshotFor(
+    const ZenzaiModelFamily& family) {
+    downloadedSnapshot = ZenzaiModelManager::downloadedModelKeys(family.variants);
+    return downloadedSnapshot;
 }
 
 void ZenzaiFamilyRowTest::commitMultiVariant(int index) const {
@@ -220,7 +230,7 @@ ZenzaiModelFamily ZenzaiFamilyRowTest::makeSingleVariantFamily() const {
 
 void ZenzaiFamilyRowTest::testMultiVariantFamilyExposesQuantizationCombo() {
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     QVERIFY(row.multiVariant());
@@ -242,7 +252,7 @@ void ZenzaiFamilyRowTest::testMultiVariantFamilyExposesQuantizationCombo() {
 
 void ZenzaiFamilyRowTest::testSingleVariantFamilyHasNoCombo() {
     const ZenzaiModelFamily family = makeSingleVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     QVERIFY(!row.multiVariant());
@@ -268,7 +278,7 @@ void ZenzaiFamilyRowTest::testAttributionLabelRenderedForAttributedFamilyOnly() 
     attributed.licenseUrl =
         QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/");
 
-    ZenzaiFamilyRow attributedRow(attributed);
+    ZenzaiFamilyRow attributedRow(attributed, snapshotFor(attributed));
     attributedRow.show();
 
     QLabel* label = attributedRow.attributionLabel();
@@ -297,7 +307,7 @@ void ZenzaiFamilyRowTest::testAttributionLabelRenderedForAttributedFamilyOnly() 
 
     // A family without attribution metadata keeps the pre-existing appearance.
     const ZenzaiModelFamily plain = makeSingleVariantFamily();
-    ZenzaiFamilyRow plainRow(plain);
+    ZenzaiFamilyRow plainRow(plain, snapshotFor(plain));
     plainRow.show();
     QVERIFY2(plainRow.attributionLabel() == nullptr,
              "a family without attribution metadata must not add a disclosure row");
@@ -305,7 +315,7 @@ void ZenzaiFamilyRowTest::testAttributionLabelRenderedForAttributedFamilyOnly() 
 
 void ZenzaiFamilyRowTest::testVariantRebindingUpdatesArtifactAndObjectNames() {
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     row.setVariantIndex(2);  // Q5_K_M
@@ -336,7 +346,7 @@ void ZenzaiFamilyRowTest::testUndownloadedVariantIsNotSelectableOrErasable() {
     commitMultiVariant(2);
 
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     row.setVariantIndex(2);
@@ -377,7 +387,7 @@ void ZenzaiFamilyRowTest::testTwoDownloadedQuantsAreIndependentlySelectable() {
     QVERIFY(QFile::exists(ZenzaiModelManager::getModelPath(keyQ8)));
     QVERIFY(QFile::exists(ZenzaiModelManager::getModelPath(keyQ5)));
 
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     row.setVariantIndex(1);
@@ -407,7 +417,7 @@ void ZenzaiFamilyRowTest::testSignalsCarryBoundArtifactKey() {
     commitMultiVariant(3);
 
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     QSignalSpy downloadSpy(&row, &ZenzaiFamilyRow::downloadRequested);
@@ -435,7 +445,7 @@ void ZenzaiFamilyRowTest::testSignalsCarryBoundArtifactKey() {
 
 void ZenzaiFamilyRowTest::testBoundVariantChangedSignalCarriesNewKey() {
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     QSignalSpy spy(&row, &ZenzaiFamilyRow::boundVariantChanged);
@@ -454,7 +464,7 @@ void ZenzaiFamilyRowTest::testRefreshStateDuringDownloadDisablesActions() {
     commitMultiVariant(2);
 
     const ZenzaiModelFamily family = makeMultiVariantFamily();
-    ZenzaiFamilyRow row(family);
+    ZenzaiFamilyRow row(family, snapshotFor(family));
     row.show();
 
     // Downloaded variant: delete normally enabled, download normally disabled.
@@ -480,6 +490,23 @@ void ZenzaiFamilyRowTest::testRefreshStateDuringDownloadDisablesActions() {
     QVERIFY(row.quantizationCombo()->isEnabled());
 }
 
+void ZenzaiFamilyRowTest::testRefreshStateUsesSnapshotWithoutDiskScan() {
+    const ZenzaiModelFamily family = makeSingleVariantFamily();
+    QSet<QString> snapshot = {family.variants.first().key};
+    ZenzaiFamilyRow row(family, snapshot);
+
+    // No model file exists, but the row must honor the supplied dialog snapshot.
+    row.refreshState(false, QString());
+    QVERIFY(row.artifactIsDownloaded());
+    QVERIFY(row.radioButton()->isEnabled());
+
+    // Changing the snapshot changes the row state without any file I/O.
+    snapshot.clear();
+    row.refreshState(false, QString());
+    QVERIFY(!row.artifactIsDownloaded());
+    QVERIFY(!row.radioButton()->isEnabled());
+}
+
 void ZenzaiFamilyRowTest::testRealCatalogDialogRendersAndRebinds() {
     // Build a dialog out of the real application catalog, exactly like
     // MainWindow::onDownloadZenzaiModel() does, and render it offscreen.
@@ -491,7 +518,10 @@ void ZenzaiFamilyRowTest::testRealCatalogDialogRendersAndRebinds() {
     QVector<ZenzaiFamilyRow*> rows;
     for (const ZenzaiModelFamily& family : families) {
         QVERIFY(!family.variants.isEmpty());
-        ZenzaiFamilyRow* row = new ZenzaiFamilyRow(family, &dialog);
+        downloadedSnapshot =
+            ZenzaiModelManager::downloadedModelKeys(family.variants);
+        ZenzaiFamilyRow* row =
+            new ZenzaiFamilyRow(family, downloadedSnapshot, &dialog);
         row->setObjectName(QStringLiteral("row_") + family.familyKey);
         row->refreshState(false, QString());
         rows.append(row);

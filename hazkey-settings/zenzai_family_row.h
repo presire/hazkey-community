@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSet>
 #include <QString>
 #include <QWidget>
 
@@ -26,8 +27,8 @@
  *          複数バリアント系列では量子化を選ぶQComboBoxを追加する
  *          選択中のバリアントは常にartifact()が返し、ラジオボタン・ダウンロードボタン・削除ボタンの
  *          objectNameは選択中バリアントのキーに追従するため、キー起点の検索と互換である
- *          ダウンロード済みかどうかはZenzaiModelManager::isModelDownloadedに委譲し、
- *          ダイアログ表示中に変化したディスク状態はrefreshState()で再反映する
+ *          ダウンロード済みかどうかは構築時に渡された完全性スナップショットで判定し、
+ *          ダイアログ表示中の状態更新もrefreshState()で同じスナップショットを使う
  *
  *          帰属情報 (author/licenseName/sourceUrl) を持つ系列では、説明の下に
  *          著作者・ライセンス・配布元へのリンクと「重みは同梱せず遠隔ダウンロードである」旨の
@@ -45,7 +46,9 @@ class ZenzaiFamilyRow : public QWidget {
      * @param family 表示対象の系列 このウィジェットより長く生存すること
      * @param parent 親ウィジェット、なければnullptr
      */
-    explicit ZenzaiFamilyRow(const ZenzaiModelFamily& family, QWidget* parent = nullptr);
+    explicit ZenzaiFamilyRow(const ZenzaiModelFamily& family,
+                             const QSet<QString>& downloadedKeys,
+                             QWidget* parent = nullptr);
 
     /** @brief 表示対象の系列を返す */
     const ZenzaiModelFamily& family() const;
@@ -108,6 +111,8 @@ class ZenzaiFamilyRow : public QWidget {
 
     /** @brief 表示対象の系列への参照 呼び出し側が寿命を保証する */
     const ZenzaiModelFamily& family_;
+    /** @brief ダイアログ構築時またはディスク変更後に作成された検査結果スナップショット */
+    const QSet<QString>& downloadedKeys_;
     /** @brief 現在束縛中のバリアントインデックス */
     int variantIndex_;
     /** @brief 最後にrefreshState()へ渡されたアクティブモデルキー */

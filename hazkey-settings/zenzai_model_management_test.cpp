@@ -7,8 +7,10 @@
  */
 
 #include <QtTest/QtTest>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QSet>
 #include <QTemporaryDir>
 #include "zenzai_models.h"
 
@@ -65,6 +67,8 @@ private slots:
     void testLabelFormatting();
     /** @brief jinen-v2ファミリがカタログに存在することを検証する (failing-first用) */
     void testJinenCatalogPresence();
+    /** @brief カタログ検査結果がディスク変更まで不変であることを検証する */
+    void testDownloadedModelKeysSnapshot();
 
 private:
     /** @brief 全テストでファイルを作成する一時ディレクトリ */
@@ -340,6 +344,37 @@ void ZenzaiModelManagementTest::testLabelFormatting() {
     m.recommended = true;
     label = ZenzaiModelManager::formatModelLabel(m, false);
     QVERIFY(label.contains("Recommended:"));
+}
+
+void ZenzaiModelManagementTest::testDownloadedModelKeysSnapshot() {
+    const QByteArray validData("snapshot-valid");
+    const QByteArray invalidData("snapshot-invalid");
+    ZenzaiModelOption valid;
+    valid.key = QStringLiteral("snapshot-valid");
+    valid.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(validData, QCryptographicHash::Sha256).toHex());
+    ZenzaiModelOption invalid;
+    invalid.key = QStringLiteral("snapshot-invalid");
+    invalid.sha256 = QStringLiteral("not-a-matching-hash");
+
+    QDir().mkpath(ZenzaiModelManager::getModelsDir());
+    QFile validFile(ZenzaiModelManager::getModelPath(valid.key));
+    QVERIFY(validFile.open(QIODevice::WriteOnly));
+    validFile.write(validData);
+    validFile.close();
+    QFile invalidFile(ZenzaiModelManager::getModelPath(invalid.key));
+    QVERIFY(invalidFile.open(QIODevice::WriteOnly));
+    invalidFile.write(invalidData);
+    invalidFile.close();
+
+    const QVector<ZenzaiModelOption> catalog = {valid, invalid, valid};
+    const QSet<QString> snapshot = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QCOMPARE(snapshot, QSet<QString>({valid.key}));
+
+    QVERIFY(QFile::remove(ZenzaiModelManager::getModelPath(valid.key)));
+    QVERIFY(snapshot.contains(valid.key));
+    const QSet<QString> refreshed = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QVERIFY(!refreshed.contains(valid.key));
 }
 
 void ZenzaiModelManagementTest::testJinenCatalogPresence() {

@@ -98,7 +98,7 @@ bool writeAll(int fd, const void* data, size_t len) {
  * @return lenバイトを読み終えた場合はtrue、それ以外はfalse
  * @internal ServerConnectorのフレーム搬送専用
  */
-bool readAll(int fd, void* data, size_t len) {
+bool readAll(int fd, void* data, size_t len, int readTimeoutSeconds) {
     size_t recved = 0;
     while (recved < len) {
         ssize_t n = read(fd, (char*)data + recved, len - recved);
@@ -107,7 +107,7 @@ bool readAll(int fd, void* data, size_t len) {
                 fd_set rfds;
                 FD_ZERO(&rfds);
                 FD_SET(fd, &rfds);
-                timeval tv = {10, 0};  // 2sec timeout
+                timeval tv = {readTimeoutSeconds, 0};
                 int r = select(fd + 1, &rfds, NULL, NULL, &tv);
                 if (r <= 0) {
                     return false;
@@ -189,7 +189,7 @@ int ServerConnector::createConnection() {
 }
 
 std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
-    int sock, const hazkey::RequestEnvelope& send_data) {
+    int sock, const hazkey::RequestEnvelope& send_data, int readTimeoutSeconds) {
     std::string msg;
     if (!send_data.SerializeToString(&msg)) {
         return std::nullopt;
@@ -208,7 +208,7 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
 
     // read response length
     uint32_t readLenBuf;
-    if (!readAll(sock, &readLenBuf, 4)) {
+    if (!readAll(sock, &readLenBuf, 4, readTimeoutSeconds)) {
         return std::nullopt;
     }
 
@@ -220,7 +220,7 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
 
     // read response
     std::vector<char> buf(readLen);
-    if (!readAll(sock, buf.data(), readLen)) {
+    if (!readAll(sock, buf.data(), readLen, readTimeoutSeconds)) {
         return std::nullopt;
     }
 
@@ -233,7 +233,7 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
 }
 
 std::optional<hazkey::ResponseEnvelope> ServerConnector::transact(
-    const hazkey::RequestEnvelope& send_data) {
+    const hazkey::RequestEnvelope& send_data, int readTimeoutSeconds) {
     std::lock_guard<std::mutex> lock(transact_mutex);
 
     // Create new connection for each transaction
@@ -242,7 +242,7 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transact(
         return std::nullopt;
     }
 
-    auto resp = transactOnSocket(sock, send_data);
+    auto resp = transactOnSocket(sock, send_data, readTimeoutSeconds);
 
     // Close connection after transaction
     close(sock);
@@ -339,7 +339,7 @@ bool ServerConnector::reloadZenzaiModelInSession() {
 std::optional<hazkey::config::CurrentConfig> ServerConnector::getConfig() {
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_get_config();
-    auto response = transact(request);
+    auto response = transact(request, kZenzaiReloadReadTimeoutSeconds);
     if (response == std::nullopt) {
         return std::nullopt;
     }
@@ -448,7 +448,7 @@ std::optional<uint32_t> ServerConnector::deleteLearningEntries(
 bool ServerConnector::reloadZenzaiModel() {
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_reload_zenzai_model();
-    auto response = transact(request);
+    auto response = transact(request, kZenzaiReloadReadTimeoutSeconds);
     if (response == std::nullopt) {
         return false;
     }

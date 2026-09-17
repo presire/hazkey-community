@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QCryptographicHash>
+#include <QSet>
 
 /**
  * @brief Zenzaiモデル1件分のカタログ情報
@@ -170,6 +171,14 @@ public:
      * @return ファイルが存在し、SHA256が一致する場合はtrue
     */
     static bool isModelDownloaded(const ZenzaiModelOption& model);
+
+    /**
+     * @brief 指定カタログのダウンロード済みモデルキーを一度だけ走査して返す
+     *
+     * @details 同じキーは最初の検査結果を再利用する。呼び出し側はダイアログの
+     *          表示期間中このスナップショットだけを参照し、ディスクを再検査しない。
+     */
+    static QSet<QString> downloadedModelKeys(const QVector<ZenzaiModelOption>& catalog);
     
     /**
      * @brief 指定した管理対象モデルをアクティブにする

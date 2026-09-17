@@ -36,6 +36,7 @@
 #include <QNetworkRequest>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScopedValueRollback>
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -57,6 +58,12 @@
 #include "zenzai_models.h"
 
 namespace {
+
+class OverrideCursorGuard {
+   public:
+    OverrideCursorGuard() { QApplication::setOverrideCursor(Qt::WaitCursor); }
+    ~OverrideCursorGuard() { QApplication::restoreOverrideCursor(); }
+};
 
 /**
  * @brief ユーザ辞書TSVで許可する正規化済み品詞トークン
@@ -2076,13 +2083,14 @@ void MainWindow::refreshZenzaiDialogButtonStates() {
     const bool locked = currentDownload_ != nullptr || zenzaiDownloadPending_;
     const QString activeKey = ZenzaiModelManager::getActiveModelKey();
 
-    // Recompute each family row from the current on-disk state.
+    // The dialog owns a fixed integrity snapshot. Disk I/O is performed only
+    // when the dialog is built or after a confirmed disk change.
     bool anyDownloaded = false;
     const auto rows = zenzaiModelDialog_->findChildren<ZenzaiFamilyRow*>();
     for (ZenzaiFamilyRow* row : rows) {
         row->refreshState(locked, activeKey);
         for (const ZenzaiModelOption& variant : row->family().variants) {
-            if (ZenzaiModelManager::isModelDownloaded(variant)) {
+            if (zenzaiDownloadedSnapshot_.contains(variant.key)) {
                 anyDownloaded = true;
             }
         }
@@ -2102,6 +2110,11 @@ void MainWindow::refreshZenzaiDialogButtonStates() {
     }
 }
 
+void MainWindow::refreshZenzaiDownloadedSnapshot() {
+    zenzaiDownloadedSnapshot_ =
+        ZenzaiModelManager::downloadedModelKeys(availableZenzaiModels());
+}
+
 MainWindow::~MainWindow() {
     if (currentDownload_) {
         currentDownload_->abort();
@@ -2113,13 +2126,34 @@ MainWindow::~MainWindow() {
     delete ui_;
 }
 void MainWindow::onDownloadZenzaiModel() {
-    ZenzaiModelManager::migrateLegacyModel();
+    if (openingZenzaiModelDialog_) {
+        return;
+    }
+    QScopedValueRollback<bool> openingGuard(openingZenzaiModelDialog_, true);
 
     const QVector<ZenzaiModelOption>& models = availableZenzaiModels();
     if (models.isEmpty()) {
         QMessageBox::critical(this, tr("Download Error"),
                               tr("No Zenzai models are configured."));
         return;
+    }
+
+    {
+        QProgressDialog waitDialog(tr("Checking downloaded Zenzai models..."), QString(), 0,
+                                   0, this);
+        waitDialog.setWindowModality(Qt::WindowModal);
+        waitDialog.setMinimumDuration(0);
+        waitDialog.setCancelButton(nullptr);
+        waitDialog.setAutoReset(false);
+        waitDialog.setAutoClose(false);
+        OverrideCursorGuard cursorGuard;
+        waitDialog.show();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents |
+                                        QEventLoop::ExcludeSocketNotifiers);
+
+        ZenzaiModelManager::migrateLegacyModel();
+        refreshZenzaiDownloadedSnapshot();
+        waitDialog.close();
     }
 
     while (true) {
@@ -2144,7 +2178,7 @@ void MainWindow::onDownloadZenzaiModel() {
 
         for (const ZenzaiModelFamily& family : families) {
             for (const ZenzaiModelOption& variant : family.variants) {
-                if (ZenzaiModelManager::isModelDownloaded(variant)) {
+                if (zenzaiDownloadedSnapshot_.contains(variant.key)) {
                     anyDownloaded = true;
                 }
             }
@@ -2158,7 +2192,8 @@ void MainWindow::onDownloadZenzaiModel() {
                 continue;
             }
 
-            ZenzaiFamilyRow* row = new ZenzaiFamilyRow(family, &dialog);
+            ZenzaiFamilyRow* row =
+                new ZenzaiFamilyRow(family, zenzaiDownloadedSnapshot_, &dialog);
             row->setObjectName("row_" + family.familyKey);
             rows.append(row);
             group->addButton(row->radioButton(), i);
@@ -2167,7 +2202,7 @@ void MainWindow::onDownloadZenzaiModel() {
             // family, otherwise the first downloaded variant of the family.
             int preselect = -1;
             for (int v = 0; v < family.variants.size(); ++v) {
-                if (!ZenzaiModelManager::isModelDownloaded(family.variants[v])) {
+                if (!zenzaiDownloadedSnapshot_.contains(family.variants[v].key)) {
                     continue;
                 }
                 if (preselect == -1 || family.variants[v].key == activeKey) {
@@ -2217,7 +2252,28 @@ void MainWindow::onDownloadZenzaiModel() {
                     }
                     const ZenzaiModelOption& chosen = rows[selectedIdx]->artifact();
                     if (ZenzaiModelManager::activateModel(chosen.key)) {
-                        server_.reloadZenzaiModel();
+                        bool reloadSucceeded = false;
+                        {
+                            QProgressDialog waitDialog(tr("Loading Zenzai model..."),
+                                                       QString(), 0, 0, &dialog);
+                            waitDialog.setWindowModality(Qt::WindowModal);
+                            waitDialog.setMinimumDuration(0);
+                            waitDialog.setCancelButton(nullptr);
+                            waitDialog.setAutoReset(false);
+                            waitDialog.setAutoClose(false);
+                            OverrideCursorGuard cursorGuard;
+                            waitDialog.show();
+                            QCoreApplication::processEvents(
+                                QEventLoop::ExcludeUserInputEvents |
+                                QEventLoop::ExcludeSocketNotifiers);
+                            reloadSucceeded = server_.reloadZenzaiModel();
+                            waitDialog.close();
+                        }
+                        if (!reloadSucceeded) {
+                            QMessageBox::warning(
+                                &dialog, tr("Zenzai Model Warning"),
+                                tr("The selected model is active, but Zenzai could not finish loading it."));
+                        }
                         dialog.accept();
                     } else {
                         QMessageBox::critical(
@@ -2258,6 +2314,7 @@ void MainWindow::onDownloadZenzaiModel() {
                 runtimeConfig->available_zenzai_backend_devices());
             updateZenzaiAvailabilityUi();
         }
+        zenzaiDownloadedSnapshot_.clear();
         return;
     }
 }
@@ -2377,6 +2434,7 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
             server_.reloadZenzaiModel();
         }
         if (dialog) {
+            refreshZenzaiDownloadedSnapshot();
             dialog->done(QDialog::Accepted + 1);
         }
     } else {
@@ -2495,6 +2553,7 @@ void MainWindow::onDownloadFinished() {
     // --- Success path ---
     // Save the downloaded key before clearing state.
     const QString downloadedKey = downloadedModel->key;
+    refreshZenzaiDownloadedSnapshot();
     clearAndRefresh();
     // currentDownload_ is already null (set above after readAll).
 

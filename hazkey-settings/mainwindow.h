@@ -16,6 +16,7 @@
 #include <QPointer>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -279,6 +280,8 @@ class MainWindow : public QWidget {
     void updateZenzaiAvailabilityUi();
     /** @brief ディスク状態とダウンロード状態からモデル管理ダイアログのボタンを復元する */
     void refreshZenzaiDialogButtonStates();
+    /** @brief ダイアログ用のダウンロード済みモデル検査結果をディスクから再作成する */
+    void refreshZenzaiDownloadedSnapshot();
     /**
      * @brief 存在するモデル管理ダイアログを優先してメッセージボックスの親にする
      * @return 有効なモデル管理ダイアログ、なければこのMainWindow
@@ -347,6 +350,10 @@ class MainWindow : public QWidget {
     QString zenzaiModelPath_;
     /** @brief 開いているモデル管理ダイアログを非所有で追跡し、破棄時は自動でnullになる */
     QPointer<QDialog> zenzaiModelDialog_;
+    /** @brief 現在のモデル管理ダイアログだけで使う完全性検査結果 */
+    QSet<QString> zenzaiDownloadedSnapshot_;
+    /** @brief 初期ペイント中を含むモデル管理ダイアログの再入を防ぐ */
+    bool openingZenzaiModelDialog_ = false;
     /** @brief 開いている学習履歴ダイアログを非所有で追跡し、破棄時は自動でnullになる */
     QPointer<LearningHistoryDialog> learningHistoryDialog_;
     /** @brief モデル選択ダイアログで取得開始前に選ばれたダウンロードURL */

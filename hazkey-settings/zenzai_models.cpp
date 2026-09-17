@@ -324,6 +324,22 @@ bool ZenzaiModelManager::isModelDownloaded(const ZenzaiModelOption& model) {
     return calculateSHA256(path).compare(model.sha256, Qt::CaseInsensitive) == 0;
 }
 
+QSet<QString> ZenzaiModelManager::downloadedModelKeys(
+    const QVector<ZenzaiModelOption>& catalog) {
+    QSet<QString> downloadedKeys;
+    QSet<QString> scannedKeys;
+    for (const ZenzaiModelOption& model : catalog) {
+        if (scannedKeys.contains(model.key)) {
+            continue;
+        }
+        scannedKeys.insert(model.key);
+        if (isModelDownloaded(model)) {
+            downloadedKeys.insert(model.key);
+        }
+    }
+    return downloadedKeys;
+}
+
 bool ZenzaiModelManager::activateModel(const QString& key) {
     QString target = getModelPath(key);
     if (!QFile::exists(target)) {

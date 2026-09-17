@@ -201,8 +201,12 @@ class ServerConnector {
      *         ステータスは応答として返される
      * @internal 実装専用
      */
+    static constexpr int kDefaultReadTimeoutSeconds = 10;
+    static constexpr int kZenzaiReloadReadTimeoutSeconds = 120;
+
     std::optional<hazkey::ResponseEnvelope> transact(
-        const hazkey::RequestEnvelope& send_data);
+        const hazkey::RequestEnvelope& send_data,
+        int readTimeoutSeconds = kDefaultReadTimeoutSeconds);
 
     /**
      * @brief 指定済みソケットで1回のprotobuf RPCを送受信する
@@ -221,7 +225,8 @@ class ServerConnector {
      * @internal 実装専用 呼び出し元が必要なロックとcloseを管理する
      */
     std::optional<hazkey::ResponseEnvelope> transactOnSocket(
-        int sock, const hazkey::RequestEnvelope& send_data);
+        int sock, const hazkey::RequestEnvelope& send_data,
+        int readTimeoutSeconds = kDefaultReadTimeoutSeconds);
 
     /**
      * @brief 現在の永続セッションが所有するソケット
