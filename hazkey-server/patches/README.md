@@ -242,29 +242,16 @@ Zenzaiの経路は現在、以下のllama.cpp APIファミリに依存してい�
 この切り替えのレシート (receipts) は `../../../.omo/evidence/hazkey-converter-fork-update/` にあります。  
 (このREADMEのディレクトリからの相対パス。`.omo/` ディレクトリはこのリポジトリチェックアウトの隣にあり、バージョン管理外です)  
 
-## 0007 - jinen-v2 (Qwen3) サポートパッチ (実験的)
+## 0007 - 廃止 (retired)
 
-**0007 - `0007-jinen-qwen3-support.patch`** (ビルド時適用パッチ。0003 と同様の冪等ガード付き)  
+旧 `0007-jinen-qwen3-support.patch`
+(karukan の jinen-v2 GGUF (`togatogah/jinen-v2-small.gguf` / `jinen-v2-xsmall.gguf`、arch `qwen3`) を
+Zenzai 経路で動かすための最小修正。GGUF の `general.architecture` が `qwen3` のときだけ、
+NFKC 正規化・BOS 無効化・条件/右文脈/alignment フィールドの抑止・NFKC 空間での候補比較を有効化し、
+既存の zenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しない)
 
-karukan の jinen-v2 GGUF (`togatogah/jinen-v2-small.gguf` / `jinen-v2-xsmall.gguf`、arch `qwen3`) を  
-Zenzai 経路で動かすための最小修正。converter fork の `hazkey` ブランチには焼き込まず、  
-検証段階のパッチとしてここに置く (`hazkey-server/build_swift.cmake — ブロック: jinen-v2 (Qwen3) support`)。  
+修正は現在、コンバータフォーク上のコミットとして保持されています:
+`presire/AzooKeyKanaKanjiConverter` の `hazkey` ブランチ、
+コミット `2cb1bad hazkey: support Qwen3 (jinen-v2) models in the Zenz conversion path`
 
-変更対象と根拠:  
-
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift — SharedZenzModel.architecture` / `ZenzContext.isJinenModel`: GGUF の `general.architecture` が `qwen3` のときだけ jinen モードにする (ユーザが任意の qwen3 GGUF を custom weight で指定しても成立する)  
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift — ZenzContext.normalizeForModel(_:)`: jinen は `precomposedStringWithCompatibilityMapping` (NFKC) のみ。zenz の space→U+3000 / newline 削除ハックは適用しない  
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift — ZenzContext.encodeEvaluationPrompt(_:memoizationCache:)`: jinen は `addBOS: false` (HF の post_processor が `</s>` のみ付加するため)。`ZenzContext.encode(_:addBOS:addEOS:)` も `preprocessText` ではなく `normalizeForModel` を通す (zenz では両者は等価)  
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzCandidateEvaluator.swift — ZenzCandidateEvaluator.jinenAdjustedMode(_:)`: v3 条件 (profile/topic/style/preference)・右文脈・alignment separator を nil 化。`evaluateAsIs` はこのモードと空の `userDictionaryPrompt` を使う (jinen は U+EE03-EE06 条件トークンを学習していない)  
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzInputTextGenerator.swift — ZenzInputTextGenerator.generate(...)`: 予測入力でも同じモード調整 + `addBOS: false`  
-- `Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/zenzai.swift — Kana2Kanji.candidate(_:satisfies:isJinen:)`: jinen 時のみ制約バイトと候補表記を NFKC 正規化して比較 (`isJinen: false` では元の生バイト比較コードパスを完全維持)  
-
-前提事実 (実測):  
-
-- llama.cpp `1e148aff` の内蔵トークナイザは jinen の PUA 3トークン (U+EE00/EE01/EE02 = id 32000/32001/32002) を単一トークンとして扱い、`parse_special` の true/false で結果が変わらない (`ZenzContext.tokenize` の `parse_special=false` 固定のままでよい)  
-- 残余差異は NFKC 正規化されていない入力のみ (全角英数・半角カナ・合成濁点・U+3000 等)。`normalizeForModel` の NFKC で解消する  
-- `kana2lattice_all_with_prefix_constraint` 内の辞書照合は生バイト比較のまま (jinen で NFKC 差が残る場合は空制約で give-up し、無限ループにはならない)。この残存差異は未検証事項としてレポートに記載  
-
-冪等ガードは `ZenzContext.swift` 内の `isJinenModel` の有無で判定する。  
-`swift test` 経路 (`.github/workflows/test.yml` / `build.yml`) は 0007 を適用しないため、  
-jinen 実験時は `hazkey-server/build/swift-build` 経由のビルド (または手動 `git apply`) を使うこと。  
+不要になったパッチファイルとその適用ブロックは削除されました。

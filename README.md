@@ -298,7 +298,7 @@ jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する *
 - **帰属**: 本モデルは togatogah 氏の成果物です。ライセンスは CC-BY-SA-4.0 です。設定画面の[Zenzaiモデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
 - **重みは非同梱**: モデルの重みはHazkeyのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
 - **完全性検証**: ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
-- **Qwen3 前提**: jinen-v2はQwen3アーキテクチャのため、ビルド時に `hazkey-server/patches/0007-jinen-qwen3-support.patch` が適用されている必要があります (配布パッケージと `CMakeLists.txt` からのソースビルドでは自動適用)。このパッチはGGUFの `general.architecture == "qwen3"` を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
+- **Qwen3 前提**: jinen-v2はQwen3アーキテクチャのため、コンバータ依存 (`presire/AzooKeyKanaKanjiConverter` の `hazkey` ブランチ) に Qwen3 対応が焼き込み済みである必要があります (`Package.resolved` が指すリビジョン以降)。この対応はGGUFの `general.architecture == "qwen3"` を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
 - **トークナイザ**: 追加の `tokenizer.json` は不要です (llama.cpp内蔵トークナイザのみを使用します)。  
 - **zenzの既定は不変**: 推奨モデルは従来どおり **zenz-v3.2-small** で、zenz側のラベル・推奨表示・既定の有効化状態・旧世代警告 (`zenz-v3.1-small`) は変更ありません。jinen-v2は推奨にも既定にもせず、旧世代扱いもしません。  
 

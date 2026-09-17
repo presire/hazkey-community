@@ -89,46 +89,11 @@ endif()
 # into the converter fork's hazkey branch (presire/AzooKeyKanaKanjiConverter,
 # commit 2cef753), so no apply step is needed here anymore.
 
-# ----- jinen-v2 (Qwen3) support ----- #
-# jinen-v2 (togatogah/jinen-v2-*.gguf, karukan) uses the Qwen3 architecture.
-# The converter's Zenz path assumes zenz (v2/v3): GPT-2 style space/newline
-# preprocessing, a leading BOS token, and U+EE03-EE06 condition tokens. For a
-# qwen3 GGUF this patch switches to NFKC normalization, drops BOS, strips the
-# condition/right-context/alignment-separator fields, and compares candidates
-# in NFKC space. Detection is by GGUF `general.architecture` inside the
-# converter, so the existing zenz (v3.1/v3.2) code paths are untouched.
-# Idempotent: skips when the patch is already applied (marker: isJinenModel).
-# Non-fatal: warns and continues if git apply fails.
-set(JINEN_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0007-jinen-qwen3-support.patch")
-set(JINEN_CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
-set(JINEN_TARGET_FILE "${JINEN_CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift")
-
-if(EXISTS "${JINEN_PATCH_FILE}" AND EXISTS "${JINEN_TARGET_FILE}")
-    execute_process(
-        COMMAND grep -q "isJinenModel" "${JINEN_TARGET_FILE}"
-        RESULT_VARIABLE jinen_patch_check_result
-    )
-    if(NOT jinen_patch_check_result EQUAL 0)
-        message(STATUS "Applying jinen-v2 (Qwen3) support patch")
-        execute_process(
-            COMMAND git apply "${JINEN_PATCH_FILE}"
-            WORKING_DIRECTORY "${JINEN_CHECKOUT_DIR}"
-            RESULT_VARIABLE jinen_patch_result
-            OUTPUT_VARIABLE jinen_patch_output
-            ERROR_VARIABLE jinen_patch_error
-        )
-        if(NOT jinen_patch_result EQUAL 0)
-            message(WARNING
-                "Failed to apply jinen-v2 (Qwen3) support patch.\n"
-                "git apply output: ${jinen_patch_output}\n"
-                "git apply error:  ${jinen_patch_error}")
-        else()
-            message(STATUS "jinen-v2 (Qwen3) support patch applied successfully")
-        endif()
-    else()
-        message(STATUS "jinen-v2 (Qwen3) support patch already applied (skipping)")
-    endif()
-endif()
+# Note: the former 0007-jinen-qwen3-support.patch (jinen-v2 Qwen3 support:
+# NFKC normalization, no BOS, condition-field suppression, gated by GGUF
+# `general.architecture == "qwen3"`) is baked into the converter fork's
+# hazkey branch (presire/AzooKeyKanaKanjiConverter, commit 2cb1bad),
+# so no apply step is needed here anymore.
 
 execute_process(
     COMMAND ${SWIFT_COMMAND}
