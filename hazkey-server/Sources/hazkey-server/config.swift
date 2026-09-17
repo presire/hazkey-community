@@ -610,8 +610,16 @@ class HazkeyServerConfig {
             ? "CPU" : currentProfile.zenzaiBackendDeviceName
 
         if zenzaiAvailable, let zenzaiModelPath = zenzaiModelPath, currentProfile.zenzaiEnable {
+            // The converter keeps loaded models in a process-global registry keyed by
+            // the weight path string (`SharedZenzModelCache.cacheKey(path:deviceConfig:)`).
+            // Handing it the managed `zenzai.gguf` symlink unchanged would therefore keep
+            // serving the previously loaded model after the link is retargeted, so a model
+            // switch in Settings only took effect after a server restart. Resolving the
+            // link here makes the key track the real artifact. `zenzaiModelPath` itself
+            // intentionally stays the managed symlink path (CurrentConfig.zenzai_model_path
+            // and its tests depend on it).
             return ConvertRequestOptions.ZenzaiMode.on(
-                weight: zenzaiModelPath,
+                weight: zenzaiModelPath.resolvingSymlinksInPath(),
                 inferenceLimit: Int(currentProfile.zenzaiInferLimit),
                 requestRichCandidates: requestRichCandidates ?? currentProfile.useRichCandidates,
                 personalizationMode: nil,

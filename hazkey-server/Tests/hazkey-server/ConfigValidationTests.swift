@@ -1,4 +1,6 @@
 import Foundation
+import Glibc
+import KanaKanjiConverterModule
 import XCTest
 
 @testable import hazkey_server
@@ -180,6 +182,255 @@ final class ConfigValidationTests: XCTestCase {
         // Then: normal model discovery is retained in both cases.
         XCTAssertEqual(disabledResolution, discoveredModel)
         XCTAssertEqual(emptyResolution, discoveredModel)
+    }
+
+    func testManagedZenzaiSymlinkToJinenModelIsAcceptedByResolver() throws {
+        // Given: a managed <dataDir>/hazkey/zenzai/zenzai.gguf symlink pointing at a jinen-key GGUF.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let modelsDirectory = directory.appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: modelsDirectory, withIntermediateDirectories: true)
+        let jinenModel = modelsDirectory.appendingPathComponent("jinen-v2-small-Q5_K_M.gguf")
+        try Data("jinen-fixture".utf8).write(to: jinenModel)
+        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: managedDirectory, withIntermediateDirectories: true)
+        let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")
+        try FileManager.default.createSymbolicLink(at: managedSymlink, withDestinationURL: jinenModel)
+        let savedDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+        let savedModelOverride = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"]
+        guard setenv("XDG_DATA_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_DATA_HOME")
+            return
+        }
+        guard unsetenv("HAZKEY_ZENZAI_MODEL") == 0 else {
+            XCTFail("Failed to clear HAZKEY_ZENZAI_MODEL")
+            return
+        }
+        defer {
+            if let savedDataHome {
+                setenv("XDG_DATA_HOME", savedDataHome, 1)
+            } else {
+                unsetenv("XDG_DATA_HOME")
+            }
+            if let savedModelOverride {
+                setenv("HAZKEY_ZENZAI_MODEL", savedModelOverride, 1)
+            }
+        }
+
+        // When: discovery runs against the sandboxed data dir and the result feeds the resolver.
+        let discovered = getZenzaiModelPath()
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.useZenzaiCustomWeight = false
+        let resolved = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: discovered)
+
+        // Then: the managed symlink is discovered and accepted, pointing at the jinen target.
+        XCTAssertEqual(discovered, managedSymlink)
+        XCTAssertEqual(resolved, managedSymlink)
+        XCTAssertEqual(
+            try FileManager.default.destinationOfSymbolicLink(
+                atPath: try XCTUnwrap(resolved).path),
+            jinenModel.path)
+    }
+
+    func testReloadZenzaiModelReResolvesRetargetedManagedSymlink() throws {
+        // Given: a managed symlink initially targeting one jinen key, loaded by a live config.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let modelsDirectory = directory.appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: modelsDirectory, withIntermediateDirectories: true)
+        let firstJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-small-Q5_K_M.gguf")
+        try Data("jinen-fixture-a".utf8).write(to: firstJinenModel)
+        let secondJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-xsmall-Q4_K_M.gguf")
+        try Data("jinen-fixture-b".utf8).write(to: secondJinenModel)
+        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: managedDirectory, withIntermediateDirectories: true)
+        let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")
+        try FileManager.default.createSymbolicLink(
+            at: managedSymlink, withDestinationURL: firstJinenModel)
+        let savedDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let savedModelOverride = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"]
+        guard setenv("XDG_DATA_HOME", directory.path, 1) == 0,
+            setenv(
+                "XDG_CONFIG_HOME", directory.appendingPathComponent("config").path, 1) == 0,
+            unsetenv("HAZKEY_ZENZAI_MODEL") == 0
+        else {
+            XCTFail("Failed to sandbox XDG_DATA_HOME/XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedDataHome {
+                setenv("XDG_DATA_HOME", savedDataHome, 1)
+            } else {
+                unsetenv("XDG_DATA_HOME")
+            }
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+            if let savedModelOverride {
+                setenv("HAZKEY_ZENZAI_MODEL", savedModelOverride, 1)
+            }
+        }
+        let config = HazkeyServerConfig()
+        config.reloadZenzaiModel()
+        XCTAssertEqual(
+            config.zenzaiModelPath?.resolvingSymlinksInPath(),
+            firstJinenModel.resolvingSymlinksInPath())
+
+        // When: the symlink is retargeted to a different jinen key and the model is reloaded.
+        try FileManager.default.removeItem(at: managedSymlink)
+        try FileManager.default.createSymbolicLink(
+            at: managedSymlink, withDestinationURL: secondJinenModel)
+        config.reloadZenzaiModel()
+
+        // Then: the new target is returned, not the cached old one.
+        XCTAssertEqual(config.zenzaiModelPath, managedSymlink)
+        XCTAssertEqual(
+            config.zenzaiModelPath?.resolvingSymlinksInPath(),
+            secondJinenModel.resolvingSymlinksInPath())
+        XCTAssertNotEqual(
+            config.zenzaiModelPath?.resolvingSymlinksInPath(),
+            firstJinenModel.resolvingSymlinksInPath())
+    }
+
+    /// The converter caches loaded models in a process-global registry keyed by the
+    /// weight path string (`SharedZenzModelCache.cacheKey(path:deviceConfig:)`), so the
+    /// path handed to it must be the resolved artifact and not the stable managed
+    /// symlink. Before that resolution the Settings model switch kept serving the
+    /// previously loaded weights until the server restarted, even though
+    /// `reload_zenzai_model` ran.
+    func testGenZenzaiModeHandsOverResolvedModelPathSoModelSwitchTakesEffect() throws {
+        // Given: a managed symlink targeting one jinen artifact.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let modelsDirectory = directory.appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: modelsDirectory, withIntermediateDirectories: true)
+        let firstJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-small-Q5_K_M.gguf")
+        try Data("jinen-fixture-a".utf8).write(to: firstJinenModel)
+        let secondJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-xsmall-Q4_K_M.gguf")
+        try Data("jinen-fixture-b".utf8).write(to: secondJinenModel)
+        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: managedDirectory, withIntermediateDirectories: true)
+        let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")
+        try FileManager.default.createSymbolicLink(
+            at: managedSymlink, withDestinationURL: firstJinenModel)
+        let savedDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let savedModelOverride = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"]
+        guard setenv("XDG_DATA_HOME", directory.path, 1) == 0,
+            setenv(
+                "XDG_CONFIG_HOME", directory.appendingPathComponent("config").path, 1) == 0,
+            unsetenv("HAZKEY_ZENZAI_MODEL") == 0
+        else {
+            XCTFail("Failed to sandbox XDG_DATA_HOME/XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedDataHome {
+                setenv("XDG_DATA_HOME", savedDataHome, 1)
+            } else {
+                unsetenv("XDG_DATA_HOME")
+            }
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+            if let savedModelOverride {
+                setenv("HAZKEY_ZENZAI_MODEL", savedModelOverride, 1)
+            }
+        }
+        let config = HazkeyServerConfig()
+        config.reloadZenzaiModel()
+
+        // The config keeps reporting the managed symlink; only the converter input resolves.
+        XCTAssertEqual(config.zenzaiModelPath, managedSymlink)
+
+        let beforeSwitch = config.genZenzaiMode(leftContext: "")
+        XCTAssertNotEqual(beforeSwitch, .off, "Zenzai must be available for this check")
+        let beforeWeight = try XCTUnwrap(
+            Self.zenzaiWeightURL(of: beforeSwitch), "ZenzaiMode must carry a weight URL")
+        XCTAssertEqual(
+            beforeWeight.resolvingSymlinksInPath(), firstJinenModel.resolvingSymlinksInPath())
+        XCTAssertNotEqual(beforeWeight, managedSymlink)
+
+        // A reload without retargeting must not perturb the mode, so the difference
+        // asserted below can only come from the model path itself.
+        config.reloadZenzaiModel()
+        XCTAssertEqual(config.genZenzaiMode(leftContext: ""), beforeSwitch)
+
+        // When: the symlink is retargeted (a model switch) and reloaded.
+        try FileManager.default.removeItem(at: managedSymlink)
+        try FileManager.default.createSymbolicLink(
+            at: managedSymlink, withDestinationURL: secondJinenModel)
+        config.reloadZenzaiModel()
+        let afterSwitch = config.genZenzaiMode(leftContext: "")
+
+        // Then: the path handed to the converter changed, so its cache key changes and
+        // the newly selected artifact is loaded instead of the stale one.
+        let afterWeight = try XCTUnwrap(
+            Self.zenzaiWeightURL(of: afterSwitch), "ZenzaiMode must carry a weight URL")
+        XCTAssertEqual(
+            afterWeight.resolvingSymlinksInPath(), secondJinenModel.resolvingSymlinksInPath())
+        XCTAssertNotEqual(afterWeight, managedSymlink)
+        XCTAssertNotEqual(afterSwitch, beforeSwitch)
+    }
+
+    /// Reads `ConvertRequestOptions.ZenzaiMode.weightURL`, which the converter module
+    /// keeps internal; this suite only needs to observe the value it was given.
+    private static func zenzaiWeightURL<T>(of mode: T) -> URL? {
+        Mirror(reflecting: mode).children.first { $0.label == "weightURL" }?.value as? URL
+    }
+
+    func testZenzaiModelResolverRejectsDirectoryCustomWeight() throws {
+        // Given: custom weight enabled with a directory and a symlink to a directory.
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let weightDirectory = directory.appendingPathComponent("weights-dir", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: weightDirectory, withIntermediateDirectories: true)
+        let directorySymlink = directory.appendingPathComponent("dir-link")
+        try FileManager.default.createSymbolicLink(
+            at: directorySymlink, withDestinationURL: weightDirectory)
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.useZenzaiCustomWeight = true
+
+        // When: the explicit custom path is a non-regular file in either form.
+        profile.zenzaiWeightPath = weightDirectory.path
+        let resolvedDirectory = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: nil)
+        profile.zenzaiWeightPath = directorySymlink.path
+        let resolvedDirectorySymlink = HazkeyServerConfig.resolveZenzaiModelPath(
+            for: profile, discoveredModelPath: nil)
+
+        // Then: both are rejected exactly like a missing custom path (nil, Zenzai disabled).
+        XCTAssertNil(resolvedDirectory)
+        XCTAssertNil(resolvedDirectorySymlink)
     }
 
     func testProfileHistoryDirectoryIsSharedUnlessIsolationIsEnabled() {
