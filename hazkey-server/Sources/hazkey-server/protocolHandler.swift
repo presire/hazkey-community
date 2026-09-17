@@ -71,10 +71,7 @@ class ProtocolHandler {
         case .clearAllHistory_p:
             response = state.clearProfileLearningData()
         case .reloadZenzaiModel:
-            state.serverConfig.reloadZenzaiModel()
-            response = Hazkey_ResponseEnvelope.with {
-                $0.status = .success
-            }
+            response = state.reloadZenzaiModel()
         case .getDefaultProfile:
             response = HazkeyServerConfig.getDefaultProfile()
         case .getLearningHistory(let req):

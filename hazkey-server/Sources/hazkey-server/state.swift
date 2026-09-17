@@ -217,6 +217,60 @@ extension HazkeySharedResources {
         }
     }
 
+    func reloadZenzaiModel() -> Hazkey_ResponseEnvelope {
+        serverConfig.reloadZenzaiModel()
+
+        guard serverConfig.zenzaiModelPath != nil,
+            serverConfig.zenzaiAvailable,
+            serverConfig.currentProfile.zenzaiEnable
+        else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .success
+            }
+        }
+
+        var options = baseConvertRequestOptions
+        options.N_best = 1
+        options.zenzaiMode = serverConfig.genZenzaiMode(
+            leftContext: "",
+            requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
+                for: serverConfig.currentProfile, isSuggestion: false))
+        guard let modelPath = serverConfig.zenzaiModelPath else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .success
+            }
+        }
+
+        let warmupSessionID = converter.createSession()
+        defer {
+            converter.removeSession(warmupSessionID)
+        }
+        var warmupText = ComposingText()
+        warmupText.insertAtCursorPosition("あ", inputStyle: .direct)
+
+        do {
+            _ = try converter.withSession(warmupSessionID) {
+                converter.requestCandidates(warmupText, options: options)
+            }
+        } catch {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Zenzai model warmup failed: \(error)"
+            }
+        }
+
+        let expectedStatus = "load \(modelPath.resolvingSymlinksInPath().absoluteString)"
+        guard converter.zenzStatus == expectedStatus else {
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Zenzai model warmup failed: \(converter.zenzStatus)"
+            }
+        }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+        }
+    }
+
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
         if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
             let memoryDirectory = serverConfig.memoryDirectory()
@@ -655,6 +709,10 @@ class HazkeyServerState {
 
     func saveLearningData() -> Hazkey_ResponseEnvelope {
         shared.saveLearningData()
+    }
+
+    func reloadZenzaiModel() -> Hazkey_ResponseEnvelope {
+        shared.reloadZenzaiModel()
     }
 
     func deleteLeft() -> Hazkey_ResponseEnvelope {
