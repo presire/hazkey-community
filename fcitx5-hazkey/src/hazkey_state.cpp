@@ -570,7 +570,7 @@ void HazkeyState::handleZenzaiToggle() {
     }
 #if defined(HAZKEY_HAS_SHOW_CUSTOM_IM_INFO)
     engine_->instance()->showCustomInputMethodInformation(
-        ic_, enabled.value() ? _("Zenzai enabled") : _("Zenzai disabled"));
+        ic_, enabled.value() ? _("Neural conversion enabled") : _("Neural conversion disabled"));
 #else
     // fcitx5 < 5.1.11 has no showCustomInputMethodInformation() (e.g. Ubuntu
     // 24.04 ships 5.1.7). The toggle itself works; only the transient status

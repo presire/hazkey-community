@@ -49,15 +49,15 @@ msgstr ""
 msgid "Zenzai"
 msgstr ""
 
-# Persistent Zenzai property tooltip.
-msgid "Zenzai enabled"
+# Persistent Neural conversion property tooltip.
+msgid "Neural conversion enabled"
 msgstr ""
 
-msgid "Zenzai disabled"
+msgid "Neural conversion disabled"
 msgstr ""
 
 # Transient hint shown in the auxiliary text when the live-conversion toggle
-# hotkey is pressed (the same channel as the Zenzai toggle hint).
+# hotkey is pressed (the same channel as the Neural conversion toggle hint).
 msgid "Live conversion enabled"
 msgstr ""
 

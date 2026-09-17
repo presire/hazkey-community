@@ -744,7 +744,7 @@ void HazkeyState::handleZenzaiToggle() {
     // panel renders, so surface the new state as a transient aux hint
     // (ibus-rime status_hint approach) in addition to the persistent property.
     updateZenzaiProperty(enabled.value());
-    showTransientHint(tr(enabled.value() ? "Zenzai enabled" : "Zenzai disabled"));
+    showTransientHint(tr(enabled.value() ? "Neural conversion enabled" : "Neural conversion disabled"));
 }
 
 void HazkeyState::showTransientHint(const std::string& text) {

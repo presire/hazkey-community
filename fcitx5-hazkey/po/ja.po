@@ -23,11 +23,11 @@ msgstr "削除可"
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"
 
-msgid "Zenzai enabled"
-msgstr "Zenzaiを有効化しました"
+msgid "Neural conversion enabled"
+msgstr "ニューラル変換を有効化しました"
 
-msgid "Zenzai disabled"
-msgstr "Zenzaiを無効化しました"
+msgid "Neural conversion disabled"
+msgstr "ニューラル変換を無効化しました"
 
 msgid "Live conversion enabled"
 msgstr "ライブ変換を有効化しました"
