@@ -198,11 +198,31 @@ public:
      * @details ファイルを読み取り専用で開き、全内容をSHA256で計算する
      *          結果は16進文字列で、QByteArray::toHex()の表記をそのまま返す
      *          ファイルを開けない場合または読み取りに失敗した場合は空文字列を返す
+     *          同一プロセス内ではstat (サイズ+更新時刻) ベースのキャッシュを使い、
+     *          変更のないファイルの再ハッシュを避ける 読み取り失敗はキャッシュしない
      *
      * @param filePath ダイジェストを計算するファイルのパス
      * @return SHA256の16進文字列、または失敗時の空文字列
      */
     static QString calculateSHA256(const QString& filePath);
+
+    /**
+     * @brief SHA256の実ハッシュ回数を返す (テスト専用)
+     *
+     * @details calculateSHA256()のstatキャッシュをすり抜けて実際にファイルを
+     *          読み直した回数を数え、キャッシュヒット時は増えない
+     *          回帰テストの検証用であり、通常運用では使わない
+     *
+     * @return プロセス開始 (または最後のリセット) 以降の実ハッシュ回数
+     */
+    static int sha256ActualComputeCount();
+
+    /**
+     * @brief SHA256の実ハッシュ回数を0に戻す (テスト専用)
+     *
+     * @details 回帰テストの検証用であり、通常運用では使わない
+     */
+    static void resetSha256ActualComputeCount();
 
     /**
      * @brief 管理対象モデルが存在し、カタログのSHA256と一致するか調べる

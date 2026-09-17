@@ -8,6 +8,7 @@
 
 #include <QtTest/QtTest>
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QSet>
@@ -71,6 +72,10 @@ private slots:
     void testConditioningSupport();
     /** @brief カタログ検査結果がディスク変更まで不変であることを検証する */
     void testDownloadedModelKeysSnapshot();
+    /** @brief 変更のないスナップショット再取得が再ハッシュしないことを検証する */
+    void testSha256CacheAvoidsRehash();
+    /** @brief deleteModelがSHA256キャッシュを無効化することを検証する */
+    void testDeleteModelInvalidatesCache();
 
 private:
     /** @brief 全テストでファイルを作成する一時ディレクトリ */
@@ -377,6 +382,79 @@ void ZenzaiModelManagementTest::testDownloadedModelKeysSnapshot() {
     QVERIFY(snapshot.contains(valid.key));
     const QSet<QString> refreshed = ZenzaiModelManager::downloadedModelKeys(catalog);
     QVERIFY(!refreshed.contains(valid.key));
+}
+
+void ZenzaiModelManagementTest::testSha256CacheAvoidsRehash() {
+    const QByteArray data("cache-probe-model-payload");
+    ZenzaiModelOption model;
+    model.key = QStringLiteral("cache-probe-model");
+    model.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+
+    QDir().mkpath(ZenzaiModelManager::getModelsDir());
+    QFile file(ZenzaiModelManager::getModelPath(model.key));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(data);
+    file.close();
+
+    const QVector<ZenzaiModelOption> catalog = {model};
+    ZenzaiModelManager::resetSha256ActualComputeCount();
+    const QSet<QString> first = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QVERIFY(first.contains(model.key));
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 1);
+
+    // Unchanged file: the second snapshot must be served from the stat cache.
+    const QSet<QString> second = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QCOMPARE(second, first);
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 1);
+
+    // Rewritten content (different size) must be detected and re-hashed.
+    const QByteArray tampered = data + "x";
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(tampered);
+    file.close();
+    const QSet<QString> third = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QVERIFY(!third.contains(model.key));
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 2);
+}
+
+void ZenzaiModelManagementTest::testDeleteModelInvalidatesCache() {
+    const QByteArray good("cache-invalidate-good!");
+    const QByteArray bad("cache-invalidate-bad!_");
+    ZenzaiModelOption model;
+    model.key = QStringLiteral("cache-invalidate-model");
+    model.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(good, QCryptographicHash::Sha256).toHex());
+
+    QDir().mkpath(ZenzaiModelManager::getModelsDir());
+    const QString path = ZenzaiModelManager::getModelPath(model.key);
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(good);
+    file.close();
+    const QDateTime originalMtime = QFileInfo(path).lastModified();
+
+    const QVector<ZenzaiModelOption> catalog = {model};
+    QVERIFY(ZenzaiModelManager::downloadedModelKeys(catalog).contains(model.key));
+
+    QVERIFY(ZenzaiModelManager::deleteModel(model.key));
+    QVERIFY(!ZenzaiModelManager::downloadedModelKeys(catalog).contains(model.key));
+
+    // Redownload a same-size corrupt payload pinned to the original mtime:
+    // a stale cache entry would wrongly report "downloaded" here.
+    QVERIFY(bad.size() == good.size());
+    QVERIFY(bad != good);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(bad);
+    file.close();
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    QVERIFY(file.setFileTime(originalMtime, QFileDevice::FileModificationTime));
+    file.close();
+
+    ZenzaiModelManager::resetSha256ActualComputeCount();
+    const QSet<QString> afterRedownload = ZenzaiModelManager::downloadedModelKeys(catalog);
+    QVERIFY(!afterRedownload.contains(model.key));
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 1);
 }
 
 void ZenzaiModelManagementTest::testJinenCatalogPresence() {

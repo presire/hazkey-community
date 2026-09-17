@@ -8,7 +8,92 @@
 
 #include "zenzai_models.h"
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFileInfo>
+#include <QHash>
+
+namespace {
+// NOTE: 以下はGUIスレッド専用を前提とした単一スレッドキャッシュである
+// スナップショット取得 (downloadedModelKeys/isModelDownloaded/calculateSHA256) と
+// 管理対象ファイルへの書き込み (ダウンロード完了・移行・削除) は全てGUIスレッドで走るため、
+// ロックは不要 他スレッドから呼ぶ場合は別途同期を導入すること
+struct Sha256CacheEntry {
+    qint64 size = -1;
+    QDateTime lastModified;
+    QString sha256;
+};
+
+QHash<QString, Sha256CacheEntry>& sha256Cache() {
+    static QHash<QString, Sha256CacheEntry> cache;
+    return cache;
+}
+
+int& sha256ComputeCounter() {
+    static int count = 0;
+    return count;
+}
+
+QString sha256CacheKey(const QString& filePath) {
+    return QFileInfo(filePath).absoluteFilePath();
+}
+
+void invalidateCachedSHA256(const QString& filePath) {
+    sha256Cache().remove(sha256CacheKey(filePath));
+}
+
+QString computeSHA256Uncached(const QString& filePath) {
+    ++sha256ComputeCounter();
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QString();
+    }
+
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&file)) {
+        file.close();
+        return QString();
+    }
+
+    file.close();
+    return QString(hash.result().toHex());
+}
+
+// statで検証済みのSHA256を返す ヒット時はファイルを読み直さない
+QString cachedSHA256(const QString& filePath) {
+    const QFileInfo before(filePath);
+    const QString key = before.absoluteFilePath();
+    auto& cache = sha256Cache();
+    if (!before.exists() || !before.isFile()) {
+        cache.remove(key);
+        return QString();
+    }
+    const auto it = cache.constFind(key);
+    if (it != cache.constEnd() && !it->sha256.isEmpty()
+        && it->size == before.size()
+        && it->lastModified == before.lastModified()) {
+        return it->sha256;
+    }
+    const QString sha = computeSHA256Uncached(filePath);
+    if (sha.isEmpty()) {
+        // 読み取り失敗はキャッシュしない (後続リトライで再計算させる)
+        return sha;
+    }
+    // ハッシュ中に外部から書き換えられた場合はキャッシュしない
+    const QFileInfo after(filePath);
+    if (!after.exists() || !after.isFile()
+        || after.size() != before.size()
+        || after.lastModified() != before.lastModified()) {
+        cache.remove(key);
+        return sha;
+    }
+    Sha256CacheEntry entry;
+    entry.size = after.size();
+    entry.lastModified = after.lastModified();
+    entry.sha256 = sha;
+    cache.insert(key, entry);
+    return sha;
+}
+} // namespace
 
 const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
     /**
@@ -333,19 +418,15 @@ QString ZenzaiModelManager::getModelPath(const QString& key) {
 }
 
 QString ZenzaiModelManager::calculateSHA256(const QString& filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return QString();
-    }
+    return cachedSHA256(filePath);
+}
 
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&file)) {
-        file.close();
-        return QString();
-    }
+int ZenzaiModelManager::sha256ActualComputeCount() {
+    return sha256ComputeCounter();
+}
 
-    file.close();
-    return QString(hash.result().toHex());
+void ZenzaiModelManager::resetSha256ActualComputeCount() {
+    sha256ComputeCounter() = 0;
 }
 
 bool ZenzaiModelManager::isModelDownloaded(const ZenzaiModelOption& model) {
@@ -409,6 +490,7 @@ bool ZenzaiModelManager::deactivateModel() {
 bool ZenzaiModelManager::deleteModel(const QString& key) {
     QString path = getModelPath(key);
     if (!QFile::exists(path)) {
+        invalidateCachedSHA256(path);
         return false;
     }
 
@@ -417,7 +499,11 @@ bool ZenzaiModelManager::deleteModel(const QString& key) {
         deactivateModel();
     }
 
-    return QFile::remove(path);
+    const bool removed = QFile::remove(path);
+    if (removed) {
+        invalidateCachedSHA256(path);
+    }
+    return removed;
 }
 
 void ZenzaiModelManager::migrateLegacyModel() {
@@ -447,6 +533,7 @@ void ZenzaiModelManager::migrateLegacyModel(
                 QString existingSha = calculateSHA256(newPath);
                 if (existingSha.compare(m.sha256, Qt::CaseInsensitive) == 0) {
                     if (QFile::remove(legacyPath)) {
+                        invalidateCachedSHA256(legacyPath);
                         activateModel(m.key);
                     }
                 } else {
@@ -456,6 +543,16 @@ void ZenzaiModelManager::migrateLegacyModel(
                 }
             } else {
                 if (QFile::rename(legacyPath, newPath)) {
+                    invalidateCachedSHA256(legacyPath);
+                    // 移動後の実測statと既知のshaでキャッシュを更新し、直後の再ハッシュを避ける
+                    const QFileInfo movedInfo(newPath);
+                    if (movedInfo.exists() && movedInfo.isFile()) {
+                        Sha256CacheEntry entry;
+                        entry.size = movedInfo.size();
+                        entry.lastModified = movedInfo.lastModified();
+                        entry.sha256 = sha;
+                        sha256Cache().insert(sha256CacheKey(newPath), entry);
+                    }
                     activateModel(m.key);
                 }
             }
