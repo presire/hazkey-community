@@ -310,10 +310,10 @@ class MainWindow : public QWidget {
      * @brief 選択されたモデルの削除を確認して実行する
      *
      * @details アクティブなモデルを削除した場合はサーバへモデル再読込を要求し、
-     *          削除に成功した場合はダイアログを再構築させるためAccepted + 1で閉じる
+     *          削除に成功した場合はダイアログを閉じずにその場で表示を更新する
      *
      * @param key 削除するアーティファクトのモデルキー
-     * @param dialog 再構築対象のモデル管理ダイアログ、なければnullptr
+     * @param dialog 表示更新対象のモデル管理ダイアログ、なければnullptr
      */
     void requestZenzaiModelDeletion(const QString& key, QDialog* dialog);
     /**
