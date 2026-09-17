@@ -1,0 +1,283 @@
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzContext.swift
+@@ -614,6 +614,7 @@
+         }
+         self.model = model
+         self.vocab = vocab
++        self.architecture = Self.architecture(of: model)
+     }
+ 
+     deinit {
+@@ -622,6 +623,20 @@
+ 
+     let model: OpaquePointer
+     let vocab: OpaquePointer
++
++    // [hazkey-community patch] GGUF の `general.architecture`。
++    // jinen (Qwen3) 系は NFKC 正規化・BOS 無し・条件トークン無しで推論する必要があり、
++    // `ZenzContext` がこの値でモードを判定する。既存 zenz は "zenz" を返すため無変更。
++    let architecture: String
++
++    private static func architecture(of model: OpaquePointer) -> String {
++        var buffer = [CChar](repeating: 0, count: 64)
++        let length = llama_model_meta_val_str(model, "general.architecture", &buffer, buffer.count)
++        guard length > 0 else {
++            return ""
++        }
++        return String(cString: buffer)
++    }
+ }
+ 
+ /// 同時に強参照するモデルを1個に制限する、プロセス共通のモデルキャッシュ。
+@@ -1028,7 +1043,19 @@
+     }
+ 
+     func normalizeForModel(_ text: String) -> String {
+-        self.preprocessText(text: text)
++        if self.isJinenModel {
++            // [hazkey-community patch] jinen (Qwen3) は NFKC 正規化済みテキストで学習されており、
++            // zenz 用の space→U+3000 / newline 削除ハックは適用しない。
++            return text.precomposedStringWithCompatibilityMapping
++        }
++        return self.preprocessText(text: text)
++    }
++
++    /// [hazkey-community patch] GGUF の `general.architecture` が "qwen3" のとき true。
++    /// jinen-v2 (karukan) 系は NFKC 前提・BOS 無し・条件トークン (U+EE03-EE06) 無しで
++    /// 学習されているため、zenz (v2/v3) とは異なる前処理・符号化を使う。
++    var isJinenModel: Bool {
++        self.sharedModel.architecture == "qwen3"
+     }
+ 
+     func encodeEvaluationPrompt(
+@@ -1038,13 +1065,17 @@
+         if let cached = memoizationCache.cachedEvaluationPromptTokens(for: prompt) {
+             return cached
+         }
+-        let tokens = self.encode(prompt, addBOS: true, addEOS: false)
++        // [hazkey-community patch] jinen (Qwen3) は BOS (<s>) を付加せずに学習されている
++        // (HF の post_processor は </s> のみ付加)。zenz は従来どおり BOS を付加する。
++        let tokens = self.encode(prompt, addBOS: !self.isJinenModel, addEOS: false)
+         memoizationCache.cacheEvaluationPromptTokens(tokens, for: prompt)
+         return tokens
+     }
+ 
+     func encode(_ text: String, addBOS: Bool, addEOS: Bool = false) -> [llama_token] {
+-        self.tokenize(text: self.preprocessText(text: text), add_bos: addBOS, add_eos: addEOS)
++        // [hazkey-community patch] zenz は preprocessText (space→U+3000 / newline 削除) のまま、
++        // jinen は normalizeForModel が NFKC 正規化を返す。zenz の挙動は不変。
++        self.tokenize(text: self.normalizeForModel(text), add_bos: addBOS, add_eos: addEOS)
+     }
+ 
+     func encodeRaw(_ text: String, addBOS: Bool, addEOS: Bool = false) -> [llama_token] {
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzCandidateEvaluator.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzCandidateEvaluator.swift
+@@ -140,20 +140,29 @@
+     ) -> CandidateEvaluationResult {
+         debug("Evaluate", candidate)
+         var userDictionaryPrompt = ""
+-        for item in candidate.data where item.metadata.contains(.isFromUserDictionary) {
+-            userDictionaryPrompt += "\(item.word)(\(item.ruby.toHiragana()))"
+-        }
++        if !context.isJinenModel {
++            // [hazkey-community patch] jinen (Qwen3) は「辞書:」条件プロンプト
++            // (U+EE03-EE06 体系) を学習していないため、条件を付与しない。
++            for item in candidate.data where item.metadata.contains(.isFromUserDictionary) {
++                userDictionaryPrompt += "\(item.word)(\(item.ruby.toHiragana()))"
++            }
++        }
++        // [hazkey-community patch] jinen では profile/topic/style/preference・右文脈・
++        // alignment separator を落とし、zenz v3 と同一のタグ構造 (EE02/EE00/EE01) にする。
++        let effectiveConfig = context.isJinenModel
++            ? Self.jinenAdjustedMode(versionDependentConfig)
++            : versionDependentConfig
+         let prompt = ZenzPromptBuilder.candidateEvaluationPrompt(
+             input: input,
+             inputCursorPosition: inputCursorPosition,
+             userDictionaryPrompt: userDictionaryPrompt,
+-            versionDependentConfig: versionDependentConfig
++            versionDependentConfig: effectiveConfig
+         )
+         let candidateTextForEvaluation = self.candidateTextForEvaluation(
+             candidateText: candidate.text,
+             input: input,
+             inputCursorPosition: inputCursorPosition,
+-            versionDependentConfig: versionDependentConfig
++            versionDependentConfig: effectiveConfig
+         )
+         let normalizedPrompt = context.normalizeForModel(prompt)
+         let prevPrompt = context.previousEvaluationPrompt()
+@@ -428,6 +437,25 @@
+         )
+     }
+ 
++    /// [hazkey-community patch] jinen (Qwen3) 用に v3 条件 (profile/topic/style/preference)、
++    /// 右文脈、alignment separator を除いたモードを返す。既存 zenz のモードは無変更。
++    static func jinenAdjustedMode(
++        _ config: ConvertRequestOptions.ZenzaiVersionDependentMode
++    ) -> ConvertRequestOptions.ZenzaiVersionDependentMode {
++        switch config {
++        case .v2:
++            return config
++        case .v3(var mode):
++            mode.profile = nil
++            mode.topic = nil
++            mode.style = nil
++            mode.preference = nil
++            mode.rightSideContext = nil
++            mode.enableAlignmentSeparator = false
++            return .v3(mode)
++        }
++    }
++
+     static func candidateTextForEvaluation(
+         candidateText: String,
+         input: String,
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzInputTextGenerator.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/ZenzInputTextGenerator.swift
+@@ -20,10 +20,14 @@
+         guard count > 0 else {
+             return ""
+         }
++        // [hazkey-community patch] jinen (Qwen3) は条件トークン (U+EE03-EE06) を学習していない。
++        let effectiveConfig = context.isJinenModel
++            ? ZenzCandidateEvaluator.jinenAdjustedMode(versionDependentConfig)
++            : versionDependentConfig
+         guard let prompt = ZenzPromptBuilder.inputPredictionPrompt(
+             leftSideContext: leftSideContext,
+             composingText: composingText,
+-            versionDependentConfig: versionDependentConfig
++            versionDependentConfig: effectiveConfig
+         ) else {
+             return ""
+         }
+@@ -42,7 +46,8 @@
+             })
+         }
+ 
+-        var promptTokens = context.encode(prompt, addBOS: true, addEOS: false)
++        // [hazkey-community patch] jinen (Qwen3) は BOS (<s>) を付加しない。
++        var promptTokens = context.encode(prompt, addBOS: !context.isJinenModel, addEOS: false)
+         let minLength = max(1, min(minLength, count))
+         let vocabSize = Int(context.vocabSize)
+         let stopCharacters: Set<Character> = ["、", "。", "！", "？"]
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/Zenz.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/Zenz/Zenz.swift
+@@ -80,6 +80,12 @@
+         } catch {
+             throw error
+         }
++    }
++
++    /// [hazkey-community patch] ロード中モデルが jinen (Qwen3) 系かどうか。
++    /// `Kana2Kanji.all_zenzai` が辞書表記との制約比較を NFKC 正規化して行うために参照する。
++    package var isJinenModel: Bool {
++        self.zenzContext?.isJinenModel ?? false
+     }
+ 
+     package func endSession() {
+--- a/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/zenzai.swift
++++ b/Sources/KanaKanjiConverterModule/ConversionAlgorithms/Zenzai/zenzai.swift
+@@ -198,6 +198,9 @@
+     ) -> (result: LatticeNode, lattice: Lattice, cache: ZenzaiCache) {
+         // [hazkey-community patch] opt-in Zenzai CPU latency deadline (HAZKEY_ZENZAI_DEADLINE_MS)
+         ZenzInferencePerf.shared.beginDeadlineWindow()
++        // [hazkey-community patch] jinen (Qwen3) は NFKC 正規化空間で出力するため、
++        // 辞書表記との制約比較を NFKC 正規化して行う (fixRequired/wholeResult の空振り防止)。
++        let isJinen = zenz.isJinenModel
+         let latticeInputData = Self.zenzaiLatticeInputData(for: inputData)
+         let zenzInputCursorPosition = Self.zenzaiInputCursorPosition(for: inputData)
+         let inputStyle = inputData.input.last?.inputStyle ?? .direct
+@@ -445,7 +448,8 @@
+                     candidateIndex: index,
+                     candidates: candidates,
+                     reviewResult: reviewResult,
+-                    constraint: &constraint
++                    constraint: &constraint,
++                    isJinen: isJinen
+                 )
+                 switch nextAction {
+                 case .return(let constraint, let alternativeConstraints, let satisfied):
+@@ -459,7 +463,7 @@
+                             )
+                             // constructed candidatesのうちalternativeConstraint.prefixConstraintを満たすものを列挙する
+                             let mostLiklyCandidate = constructedCandidates.filter {
+-                                self.candidate($0.1, satisfies: normalizedAlternativeConstraint)
++                                self.candidate($0.1, satisfies: normalizedAlternativeConstraint, isJinen: isJinen)
+                             }.max {
+                                 $0.1.value < $1.1.value
+                             }
+@@ -562,7 +566,8 @@
+         candidateIndex: Int,
+         candidates: [Candidate],
+         reviewResult: consuming CandidateEvaluationResult,
+-        constraint: inout PrefixConstraint
++        constraint: inout PrefixConstraint,
++        isJinen: Bool
+     ) -> NextAction {
+         switch reviewResult {
+         case .error:
+@@ -591,7 +596,7 @@
+                     debug("same constraint (fixRequired), but retry without memory and user dictionary:", newConstraint)
+                     constraint.ignoreMemoryAndUserDictionary = true
+                     for (i, candidate) in candidates.indexed() where i != candidateIndex {
+-                        if self.candidate(candidate, satisfies: newConstraint) && self.heuristicRetryValidation(candidate.text) {
++                        if self.candidate(candidate, satisfies: newConstraint, isJinen: isJinen) && self.heuristicRetryValidation(candidate.text) {
+                             debug("found \(candidate.text) as another retry")
+                             return .retry(candidateIndex: i)
+                         }
+@@ -612,7 +617,7 @@
+                 // この処理の正当性は、prefix constraintが漸進的に更新され、candidatesの構築時に可能な候補がすべて確認されたことに由来する
+                 // このため、学習候補などが最終ドラフトとして採択され、prefix constraintが漸進的更新になっていない場合（!isIncrementalUpdate）この処理は行わない
+                 for (i, candidate) in candidates.indexed() where i != candidateIndex {
+-                    if self.candidate(candidate, satisfies: newConstraint) && self.heuristicRetryValidation(candidate.text) {
++                    if self.candidate(candidate, satisfies: newConstraint, isJinen: isJinen) && self.heuristicRetryValidation(candidate.text) {
+                         debug("found \(candidate.text) as another retry")
+                         return .retry(candidateIndex: i)
+                     }
+@@ -638,7 +643,7 @@
+                     debug("same constraint (wholeResult), but retry without memory and user dictionary:", constraint)
+                     constraint.ignoreMemoryAndUserDictionary = true
+                     for (i, candidate) in candidates.indexed() where i != candidateIndex {
+-                        if self.candidate(candidate, satisfies: newConstraint) && self.heuristicRetryValidation(candidate.text) {
++                        if self.candidate(candidate, satisfies: newConstraint, isJinen: isJinen) && self.heuristicRetryValidation(candidate.text) {
+                             debug("found \(candidate.text) as another retry")
+                             return .retry(candidateIndex: i)
+                         }
+@@ -658,7 +663,7 @@
+                 // もし制約を満たす候補があるならそれを使って再レビューチャレンジを戦うことで、推論を減らせる
+                 // 上記と同様に、prefix constraintが漸進的更新になっていない場合（!isIncrementalUpdate）この処理は行わない
+                 for (i, candidate) in candidates.indexed() where i != candidateIndex {
+-                    if self.candidate(candidate, satisfies: newConstraint) && self.heuristicRetryValidation(candidate.text) {
++                    if self.candidate(candidate, satisfies: newConstraint, isJinen: isJinen) && self.heuristicRetryValidation(candidate.text) {
+                         debug("found \(candidate.text) as another retry")
+                         return .retry(candidateIndex: i)
+                     }
+@@ -694,11 +699,24 @@
+         return nil
+     }
+ 
+-    private func candidate(_ candidate: Candidate, satisfies constraint: PrefixConstraint) -> Bool {
++    private func candidate(_ candidate: Candidate, satisfies constraint: PrefixConstraint, isJinen: Bool = false) -> Bool {
++        if !isJinen {
++            // zenz は従来どおり生バイト比較 (挙動不変)。
++            if constraint.hasEOS {
++                return candidate.text.utf8.elementsEqual(constraint.constraint)
++            } else {
++                return candidate.text.utf8.hasPrefix(constraint.constraint)
++            }
++        }
++        // [hazkey-community patch] jinen (Qwen3) は NFKC 正規化空間で出力するため、
++        // モデル出力由来の制約バイトと辞書候補表記を NFKC 正規化して比較する。
++        let candidateText = candidate.text.precomposedStringWithCompatibilityMapping
++        let constraintText = String(decoding: constraint.constraint, as: UTF8.self)
++            .precomposedStringWithCompatibilityMapping
+         if constraint.hasEOS {
+-            return candidate.text.utf8.elementsEqual(constraint.constraint)
++            return candidateText.utf8.elementsEqual(constraintText.utf8)
+         } else {
+-            return candidate.text.utf8.hasPrefix(constraint.constraint)
++            return candidateText.utf8.hasPrefix(constraintText.utf8)
+         }
+     }
+ 
