@@ -71,6 +71,14 @@ struct ZenzaiModelFamily {
     QString licenseName;
     /** @brief ライセンス全文への絶対URL */
     QString licenseUrl;
+    /**
+     * @brief プロファイル/話題/文体/好みの条件付けに対応するかどうか
+     *
+     * @details zenz系は条件トークン (U+EE03〜U+EE06) による条件付けに対応する
+     *          jinen-v2系は条件付けを持たず、対応する4項目は設定UI上で無効化する
+     *          既定値はtrueで、不明な系列は有効側に倒す
+     */
+    bool supportsConditioning = true;
 };
 
 /**
@@ -95,6 +103,41 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies();
  * @return 一致したアーティファクトへのポインタ、またはnullptr
  */
 const ZenzaiModelOption* findZenzaiModelByKey(const QString& key);
+
+/**
+ * @brief 系列キーまたはバリアントキーからモデル系列を検索する
+ *
+ * @details availableZenzaiModelFamilies()を線形探索し、familyKeyの一致または
+ *          いずれかのvariants要素のkey一致で系列へのポインタを返す
+ *          返されるポインタはプロセス内で保持される固定値を指す
+ *
+ * @param key 系列キーまたはバリアントキー
+ * @return 一致した系列へのポインタ、またはnullptr
+ */
+const ZenzaiModelFamily* findZenzaiFamilyByKey(const QString& key);
+
+/**
+ * @brief 指定モデルの条件付け対応可否を返す
+ *
+ * @details カタログに登録された系列はそのsupportsConditioningを返し、
+ *          未登録のキー (カスタム重み等) はファイル名に "jinen" を含む場合のみfalse、
+ *          それ以外はtrueを返す (不明な場合は有効側に倒す)
+ *
+ * @param modelKey モデルキーまたはモデルファイル名
+ * @return 条件付けに対応する場合はtrue
+ */
+bool zenzaiModelSupportsConditioning(const QString& modelKey);
+
+/**
+ * @brief パスまたはファイル名がJinen系モデルを指すかどうかを返す
+ *
+ * @details ファイル名部分に "jinen" を含むかどうかを大文字小文字を区別せず判定する
+ *          カタログ外のカスタム重みに対するフォールバック判定用
+ *
+ * @param path モデルファイルのパスまたはファイル名
+ * @return Jinen系と推定される場合はtrue
+ */
+bool isJinenModelPath(const QString& path);
 
 /**
  * @brief アプリケーションが提供する固定Zenzaiモデルカタログを返す

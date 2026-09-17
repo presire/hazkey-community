@@ -67,6 +67,8 @@ private slots:
     void testLabelFormatting();
     /** @brief jinen-v2ファミリがカタログに存在することを検証する (failing-first用) */
     void testJinenCatalogPresence();
+    /** @brief 条件付け対応フラグとその判定フォールバックを検証する */
+    void testConditioningSupport();
     /** @brief カタログ検査結果がディスク変更まで不変であることを検証する */
     void testDownloadedModelKeysSnapshot();
 
@@ -588,6 +590,43 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
     QCOMPARE(again.size(), families.size());
     QCOMPARE(again[4].variants.size(), 4);
     QCOMPARE(again[4].variants[2].key, QString("jinen-v2-xsmall-Q5_K_M"));
+}
+
+void ZenzaiModelManagementTest::testConditioningSupport() {
+    // 1. Catalog flags: 3 zenz families support conditioning, 2 jinen-v2 families do not.
+    const QVector<ZenzaiModelFamily>& families = availableZenzaiModelFamilies();
+    QVERIFY2(families[0].supportsConditioning, "zenz must support conditioning");
+    QVERIFY2(families[1].supportsConditioning, "zenz-xsmall must support conditioning");
+    QVERIFY2(families[2].supportsConditioning, "legacy zenz must support conditioning");
+    QVERIFY2(!families[3].supportsConditioning, "jinen-v2-small must not support conditioning");
+    QVERIFY2(!families[4].supportsConditioning, "jinen-v2-xsmall must not support conditioning");
+
+    // 2. Family lookup resolves both family keys and variant keys.
+    const ZenzaiModelFamily* zenz = findZenzaiFamilyByKey("zenz-v3.2-small");
+    QVERIFY2(zenz != nullptr, "findZenzaiFamilyByKey must resolve zenz-v3.2-small");
+    QVERIFY(zenz->supportsConditioning);
+    const ZenzaiModelFamily* jinenVariant = findZenzaiFamilyByKey("jinen-v2-xsmall-Q5_K_M");
+    QVERIFY2(jinenVariant != nullptr, "findZenzaiFamilyByKey must resolve jinen variant key");
+    QCOMPARE(jinenVariant->familyKey, QString("jinen-v2-xsmall"));
+    QVERIFY(!jinenVariant->supportsConditioning);
+    QCOMPARE(findZenzaiFamilyByKey("no-such-model-key"), nullptr);
+
+    // 3. Catalog decision: zenz enabled, jinen variants disabled.
+    QVERIFY(zenzaiModelSupportsConditioning("zenz-v3.2-small"));
+    QVERIFY(zenzaiModelSupportsConditioning("zenz-v3.1-small"));
+    QVERIFY(!zenzaiModelSupportsConditioning("jinen-v2-small-Q4_K_M"));
+    QVERIFY(!zenzaiModelSupportsConditioning("jinen-v2-xsmall-f16"));
+
+    // 4. Off-catalog fallback: jinen file names disabled, unknown stays enabled.
+    QVERIFY(!zenzaiModelSupportsConditioning("/path/to/jinen-v2-small-Q4_K_M.gguf"));
+    QVERIFY(zenzaiModelSupportsConditioning("my-custom-model"));
+    QVERIFY(zenzaiModelSupportsConditioning(QString()));
+
+    // 5. Path heuristic is case-insensitive on the file name part.
+    QVERIFY(isJinenModelPath("JINEN-V2-SMALL.gguf"));
+    QVERIFY(isJinenModelPath("/models/jinen-v2-xsmall-Q5_K_M.gguf"));
+    QVERIFY(!isJinenModelPath("zenz-v3.2-small.gguf"));
+    QVERIFY(!isJinenModelPath(QString()));
 }
 
 QTEST_MAIN(ZenzaiModelManagementTest)

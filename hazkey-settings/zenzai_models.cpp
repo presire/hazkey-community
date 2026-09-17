@@ -171,6 +171,8 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
             QStringLiteral("https://huggingface.co/togatogah/jinen-v2-small.gguf"),
             QStringLiteral("CC-BY-SA-4.0"),
             QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            // jinen-v2系は条件トークンによる条件付けを持たない
+            false,
         },
         /** @brief jinen-v2 xsmall系列 (4量子化バリアント) */
         {
@@ -248,6 +250,8 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
             QStringLiteral("https://huggingface.co/togatogah/jinen-v2-xsmall.gguf"),
             QStringLiteral("CC-BY-SA-4.0"),
             QStringLiteral("https://creativecommons.org/licenses/by-sa/4.0/"),
+            // jinen-v2系は条件トークンによる条件付けを持たない
+            false,
         },
     };
     return families;
@@ -278,6 +282,34 @@ const ZenzaiModelOption* findZenzaiModelByKey(const QString& key) {
         }
     }
     return nullptr;
+}
+
+const ZenzaiModelFamily* findZenzaiFamilyByKey(const QString& key) {
+    for (const auto& family : availableZenzaiModelFamilies()) {
+        if (family.familyKey == key) {
+            return &family;
+        }
+        for (const auto& variant : family.variants) {
+            if (variant.key == key) {
+                return &family;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool isJinenModelPath(const QString& path) {
+    const QString fileName = QFileInfo(path).fileName();
+    const QString target = fileName.isEmpty() ? path : fileName;
+    return target.contains(QStringLiteral("jinen"), Qt::CaseInsensitive);
+}
+
+bool zenzaiModelSupportsConditioning(const QString& modelKey) {
+    if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKey)) {
+        return family->supportsConditioning;
+    }
+    // カタログ外 (カスタム重み等) はファイル名で推定し、不明な場合は有効側に倒す
+    return !isJinenModelPath(modelKey);
 }
 
 QString ZenzaiModelManager::getZenzaiDir() {

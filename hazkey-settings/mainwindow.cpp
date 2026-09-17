@@ -472,7 +472,10 @@ void MainWindow::connectSignals() {
     connect(ui_->zenzaiPreference, &QLineEdit::textChanged, this,
             [this](const QString&) { recomputeDirtyState(); });
     connect(ui_->zenzaiWeightPath, &QLineEdit::textChanged, this,
-            [this](const QString&) { recomputeDirtyState(); });
+            [this](const QString&) {
+                updateConditioningUi();
+                recomputeDirtyState();
+            });
 
     connect(ui_->liveConvertHotkey, &QKeySequenceEdit::keySequenceChanged, this,
             [this](const QKeySequence&) { recomputeDirtyState(); });
@@ -516,12 +519,13 @@ void MainWindow::onUseZenzaiCustomWeightToggled(bool enabled) {
         enabled && ui_->useZenzaiCustomWeight->isEnabled();
     ui_->zenzaiWeightPath->setEnabled(customWeightEnabled);
     ui_->browseZenzaiWeightPath->setEnabled(customWeightEnabled);
+    updateConditioningUi();
     recomputeDirtyState();
 }
 
 void MainWindow::onBrowseZenzaiWeightPath() {
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("Select custom Zenzai weight"), ui_->zenzaiWeightPath->text(),
+        this, tr("Select custom weight"), ui_->zenzaiWeightPath->text(),
         tr("GGUF files (*.gguf)"));
     if (!path.isEmpty()) {
         ui_->zenzaiWeightPath->setText(path);
@@ -559,6 +563,10 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiTopic->setEnabled(false);
         ui_->zenzaiStyle->setEnabled(false);
         ui_->zenzaiPreference->setEnabled(false);
+        ui_->zenzaiUserProfileLabel->setEnabled(false);
+        ui_->zenzaiTopicLabel->setEnabled(false);
+        ui_->zenzaiStyleLabel->setEnabled(false);
+        ui_->zenzaiPreferenceLabel->setEnabled(false);
         ui_->useZenzaiCustomWeight->setEnabled(false);
         ui_->zenzaiWeightPath->setEnabled(false);
         ui_->browseZenzaiWeightPath->setEnabled(false);
@@ -568,7 +576,7 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->manageZenzaiModels->setVisible(false);
 
         QWidget* warningWidget = createWarningWidget(
-            tr("<b>Warning:</b> Zenzai support not installed."), "yellow");
+            tr("<b>Warning:</b> Neural conversion support not installed."), "yellow");
         ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
     } else if (!currentConfig_.zenzai_model_available()) {
         ui_->enableZenzai->setEnabled(false);
@@ -578,6 +586,10 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiTopic->setEnabled(false);
         ui_->zenzaiStyle->setEnabled(false);
         ui_->zenzaiPreference->setEnabled(false);
+        ui_->zenzaiUserProfileLabel->setEnabled(false);
+        ui_->zenzaiTopicLabel->setEnabled(false);
+        ui_->zenzaiStyleLabel->setEnabled(false);
+        ui_->zenzaiPreferenceLabel->setEnabled(false);
         ui_->useZenzaiCustomWeight->setEnabled(false);
         ui_->zenzaiWeightPath->setEnabled(false);
         ui_->browseZenzaiWeightPath->setEnabled(false);
@@ -587,7 +599,7 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->manageZenzaiModels->setVisible(false);
 
         QWidget* warningWidget = createWarningWidget(
-            tr("<b>Warning:</b> Zenzai model not found."), "yellow",
+            tr("<b>Warning:</b> Neural conversion model not found."), "yellow",
             tr("Download Model"), [this]() { onDownloadZenzaiModel(); });
         ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
     } else {
@@ -598,11 +610,18 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiTopic->setEnabled(true);
         ui_->zenzaiStyle->setEnabled(true);
         ui_->zenzaiPreference->setEnabled(true);
+        ui_->zenzaiUserProfileLabel->setEnabled(true);
+        ui_->zenzaiTopicLabel->setEnabled(true);
+        ui_->zenzaiStyleLabel->setEnabled(true);
+        ui_->zenzaiPreferenceLabel->setEnabled(true);
         ui_->useZenzaiCustomWeight->setEnabled(true);
         ui_->zenzaiBackendDevice->setEnabled(true);
         ui_->zenzaiToggleHotkey->setEnabled(true);
         ui_->manageZenzaiModels->setEnabled(true);
         ui_->manageZenzaiModels->setVisible(true);
+
+        // 条件付け非対応モデル (Jinen系等) では条件4項目だけを追加で無効化する
+        updateConditioningUi();
 
         // Check if model needs update by comparing checksums. We only
         // flag the user when the installed model matches one of the
@@ -636,6 +655,38 @@ void MainWindow::updateZenzaiAvailabilityUi() {
             }
         }
     }
+}
+
+void MainWindow::updateConditioningUi() {
+    // AIタブ全体が無効な場合はupdateZenzaiAvailabilityUi()が全項目を無効化済み
+    if (!ui_->enableZenzai->isEnabled()) {
+        return;
+    }
+    const QString customPath = ui_->zenzaiWeightPath->text().trimmed();
+    const bool useCustomWeight =
+        ui_->useZenzaiCustomWeight->isChecked() && !customPath.isEmpty();
+    bool supported = true;
+    if (useCustomWeight) {
+        // カタログ外のカスタム重みはファイル名で推定する
+        supported = !isJinenModelPath(customPath);
+    } else {
+        supported = zenzaiModelSupportsConditioning(
+            ZenzaiModelManager::getActiveModelKey());
+    }
+    ui_->zenzaiUserPlofile->setEnabled(supported);
+    ui_->zenzaiTopic->setEnabled(supported);
+    ui_->zenzaiStyle->setEnabled(supported);
+    ui_->zenzaiPreference->setEnabled(supported);
+    ui_->zenzaiUserProfileLabel->setEnabled(supported);
+    ui_->zenzaiTopicLabel->setEnabled(supported);
+    ui_->zenzaiStyleLabel->setEnabled(supported);
+    ui_->zenzaiPreferenceLabel->setEnabled(supported);
+    const QString reason =
+        supported ? QString() : tr("Not supported by the active model.");
+    ui_->zenzaiUserPlofile->setToolTip(reason);
+    ui_->zenzaiTopic->setToolTip(reason);
+    ui_->zenzaiStyle->setToolTip(reason);
+    ui_->zenzaiPreference->setToolTip(reason);
 }
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
@@ -2134,12 +2185,12 @@ void MainWindow::onDownloadZenzaiModel() {
     const QVector<ZenzaiModelOption>& models = availableZenzaiModels();
     if (models.isEmpty()) {
         QMessageBox::critical(this, tr("Download Error"),
-                              tr("No Zenzai models are configured."));
+                              tr("No neural conversion models are configured."));
         return;
     }
 
     {
-        QProgressDialog waitDialog(tr("Checking downloaded Zenzai models..."), QString(), 0,
+        QProgressDialog waitDialog(tr("Checking downloaded neural conversion models..."), QString(), 0,
                                    0, this);
         waitDialog.setWindowModality(Qt::WindowModal);
         waitDialog.setMinimumDuration(0);
@@ -2159,7 +2210,7 @@ void MainWindow::onDownloadZenzaiModel() {
     while (true) {
         QDialog dialog(this);
         zenzaiModelDialog_ = &dialog;
-        dialog.setWindowTitle(tr("Manage Zenzai Models"));
+        dialog.setWindowTitle(tr("Manage neural conversion models"));
         QVBoxLayout* dialogLayout = new QVBoxLayout(&dialog);
 
         QLabel* introLabel =
@@ -2254,7 +2305,7 @@ void MainWindow::onDownloadZenzaiModel() {
                     if (ZenzaiModelManager::activateModel(chosen.key)) {
                         bool reloadSucceeded = false;
                         {
-                            QProgressDialog waitDialog(tr("Loading Zenzai model..."),
+                            QProgressDialog waitDialog(tr("Loading neural conversion model..."),
                                                        QString(), 0, 0, &dialog);
                             waitDialog.setWindowModality(Qt::WindowModal);
                             waitDialog.setMinimumDuration(0);
@@ -2271,8 +2322,8 @@ void MainWindow::onDownloadZenzaiModel() {
                         }
                         if (!reloadSucceeded) {
                             QMessageBox::warning(
-                                &dialog, tr("Zenzai Model Warning"),
-                                tr("The selected model is active, but Zenzai could not finish loading it."));
+                                &dialog, tr("Neural Conversion Model Warning"),
+                                tr("The selected model is active, but neural conversion could not finish loading it."));
                         }
                         dialog.accept();
                     } else {
@@ -2323,7 +2374,7 @@ void MainWindow::beginZenzaiModelDownload(const QString& key) {
     const ZenzaiModelOption* selectedModel = findZenzaiModelByKey(key);
     if (!selectedModel) {
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
-                              tr("Selected Zenzai model is no longer available."));
+                              tr("Selected neural conversion model is no longer available."));
         refreshZenzaiDialogButtonStates();
         return;
     }
@@ -2339,7 +2390,7 @@ void MainWindow::beginZenzaiModelDownload(const QString& key) {
     if (legacyInfo.exists() && !legacyInfo.isSymLink()) {
         QMessageBox::StandardButton reply = QMessageBox::question(
             zenzaiDialogParent(), tr("Preserve Custom Model"),
-            tr("A custom Zenzai model \"zenzai.gguf\" already exists.\n"
+            tr("A custom neural conversion model \"zenzai.gguf\" already exists.\n"
                "Do you want to preserve it before downloading a new one?"),
             QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
 
@@ -2392,7 +2443,7 @@ void MainWindow::beginZenzaiModelDownload(const QString& key) {
 
     // 2. Now build the progress dialog (parent = MainWindow).
     downloadProgressDialog_ =
-        new QProgressDialog(tr("Downloading Zenzai model..."), tr("Cancel"), 0, 100, this);
+        new QProgressDialog(tr("Downloading neural conversion model..."), tr("Cancel"), 0, 100, this);
     downloadProgressDialog_->setWindowModality(Qt::WindowModal);
     downloadProgressDialog_->setMinimumDuration(0);
     // Prevent auto-close/reset when progress hits 100 before verification is done.
@@ -2415,7 +2466,7 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
     const ZenzaiModelOption* model = findZenzaiModelByKey(key);
     if (!model) {
         QMessageBox::critical(zenzaiDialogParent(), tr("Error"),
-                              tr("Selected Zenzai model is no longer available."));
+                              tr("Selected neural conversion model is no longer available."));
         return;
     }
 
@@ -2455,7 +2506,7 @@ void MainWindow::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal) {
         double receivedMB = bytesReceived / 1024.0 / 1024.0;
         double totalMB = bytesTotal / 1024.0 / 1024.0;
         downloadProgressDialog_->setLabelText(
-            tr("Downloading Zenzai model... %1 MB / %2 MB")
+            tr("Downloading neural conversion model... %1 MB / %2 MB")
                 .arg(receivedMB, 0, 'f', 2)
                 .arg(totalMB, 0, 'f', 2));
     }
@@ -2503,7 +2554,7 @@ void MainWindow::onDownloadFinished() {
     if (!downloadedModel) {
         QFile::remove(ZenzaiModelManager::getModelPath(currentDownloadKey_) + ".tmp");
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
-                              tr("Selected Zenzai model is no longer available."));
+                              tr("Selected neural conversion model is no longer available."));
         clearAndRefresh();
         return;
     }
@@ -2593,8 +2644,8 @@ void MainWindow::onDownloadFinished() {
         // Minor 2: dialog was already closed.
         QMessageBox::information(
             this, tr("Download Complete"),
-            tr("Zenzai model has been downloaded successfully.\n"
-               "Open Manage Zenzai Models to activate it."));
+            tr("Neural conversion model has been downloaded successfully.\n"
+               "Open \"Manage neural conversion models\" to activate it."));
     }
 }
 
@@ -2628,7 +2679,7 @@ void MainWindow::onDownloadError(QNetworkReply::NetworkError error) {
     if (error != QNetworkReply::OperationCanceledError) {
         QMessageBox::critical(
             zenzaiDialogParent(), tr("Download Error"),
-            tr("Failed to download Zenzai model: %1").arg(errorString));
+            tr("Failed to download neural conversion model: %1").arg(errorString));
     }
 }
 

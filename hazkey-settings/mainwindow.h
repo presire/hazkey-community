@@ -278,6 +278,15 @@ class MainWindow : public QWidget {
      * 確定後にZenzai実行時情報だけを更新する用途にも呼び出せる
      */
     void updateZenzaiAvailabilityUi();
+    /**
+     * @brief 有効なニューラル変換モデルの条件付け対応可否に合わせて条件4項目の有効状態を更新する
+     *
+     * @details AIタブ全体が利用可能な場合に限り、ユーザープロファイル/話題/文体/好みの
+     *          入力欄とラベルを切り替える カスタム重み使用時はファイルパス名で推定し、
+     *          管理モデル使用時はカタログのsupportsConditioningを使う
+     *          不明なモデルは有効側に倒すため、UI状態の読み取り専用でdirtyには触れない
+     */
+    void updateConditioningUi();
     /** @brief ディスク状態とダウンロード状態からモデル管理ダイアログのボタンを復元する */
     void refreshZenzaiDialogButtonStates();
     /** @brief ダイアログ用のダウンロード済みモデル検査結果をディスクから再作成する */

@@ -1715,7 +1715,7 @@
              <item>
               <widget class="QLabel" name="zenzaiHeaderLabel">
                <property name="text">
-                <string>Zenzai (Neural Conversion)</string>
+                <string>Neural Conversion</string>
                </property>
               </widget>
              </item>
@@ -1763,7 +1763,7 @@
                 </sizepolicy>
                </property>
                <property name="text">
-                <string>Enable Zenzai</string>
+                <string>Enable neural conversion</string>
                </property>
               </widget>
              </item>
@@ -1844,7 +1844,7 @@
                <item row="7" column="0">
                 <widget class="QLabel" name="useZenzaiCustomWeightLabel">
                  <property name="text">
-                  <string>Use custom Zenzai weight</string>
+                  <string>Use custom weight</string>
                  </property>
                 </widget>
                </item>
@@ -1885,7 +1885,7 @@
                <item row="10" column="0">
                 <widget class="QLabel" name="zenzaiToggleHotkeyLabel">
                  <property name="text">
-                  <string>Zenzai toggle hotkey</string>
+                  <string>Neural conversion toggle hotkey</string>
                  </property>
                 </widget>
                </item>
@@ -1895,7 +1895,7 @@
                <item row="11" column="0" colspan="2">
                <widget class="QPushButton" name="manageZenzaiModels">
                 <property name="text">
-                 <string>Manage Zenzai Models</string>
+                 <string>Manage neural conversion models</string>
                 </property>
                </widget>
               </item>
