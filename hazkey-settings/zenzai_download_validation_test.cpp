@@ -30,6 +30,12 @@ class ZenzaiDownloadValidationTest : public QObject {
     void testRejectedDownloadClearsStaleTmpAndPreservesExistingModel();
     void testMalformedInputsLeaveNoArtifacts();
     void testPostRejectionFilesystemListing();
+    void testStreamedAcceptedArtifactIsFinalized();
+    void testStreamedSizeMismatchPrecedesChecksum();
+    void testStreamedChecksumMismatchLeavesNoArtifact();
+    void testStreamedUnknownExpectedBytesUsesShaOnly();
+    void testStreamedChecksumComparisonIsCaseInsensitive();
+    void testStreamedRejectionClearsTmpAndPreservesExistingModel();
 
    private:
     QString modelDirectory() const;
@@ -226,6 +232,95 @@ void ZenzaiDownloadValidationTest::testPostRejectionFilesystemListing() {
     QVERIFY(!listingOutput.contains(QStringLiteral(".tmp")));
     qInfo().noquote() << QStringLiteral("Post-rejection ls -la %1:\n%2")
                              .arg(directory, listingOutput);
+}
+
+void ZenzaiDownloadValidationTest::testStreamedAcceptedArtifactIsFinalized() {
+    const QByteArray streamedData("verified streamed model artifact");
+    const QString path = modelPath("streamed-accepted");
+    writeFile(path + ".tmp", streamedData);
+
+    const ModelDownloadValidation validation = validateStreamedModelDownload(
+        streamedData.size(), streamedData.size(), sha256(streamedData),
+        sha256(streamedData));
+
+    QCOMPARE(static_cast<int>(validation),
+             static_cast<int>(ModelDownloadValidation::Accepted));
+    QVERIFY(finalizeStreamedModelDownload(path, validation));
+    QVERIFY(QFile::exists(path));
+    QCOMPARE(readFile(path), streamedData);
+    QVERIFY(!QFile::exists(path + ".tmp"));
+}
+
+void ZenzaiDownloadValidationTest::testStreamedSizeMismatchPrecedesChecksum() {
+    const QByteArray streamedData("truncated");
+    const QString path = modelPath("streamed-size-mismatch");
+    writeFile(path + ".tmp", streamedData);
+
+    const ModelDownloadValidation validation = validateStreamedModelDownload(
+        streamedData.size(), streamedData.size() + 1,
+        sha256(streamedData),
+        sha256(QByteArray("different body with a different checksum")));
+
+    QCOMPARE(static_cast<int>(validation),
+             static_cast<int>(ModelDownloadValidation::SizeMismatch));
+    QVERIFY(!finalizeStreamedModelDownload(path, validation));
+    QVERIFY(!QFile::exists(path));
+    QVERIFY(!QFile::exists(path + ".tmp"));
+}
+
+void ZenzaiDownloadValidationTest::testStreamedChecksumMismatchLeavesNoArtifact() {
+    const QByteArray streamedData("same-size payload");
+    const QString path = modelPath("streamed-checksum-mismatch");
+    writeFile(path + ".tmp", streamedData);
+
+    const ModelDownloadValidation validation = validateStreamedModelDownload(
+        streamedData.size(), streamedData.size(), sha256(streamedData),
+        sha256(QByteArray("other-payload-xx")));
+
+    // 受信本文のハッシュと期待SHAが一致しないため ChecksumMismatch になる
+    QCOMPARE(static_cast<int>(validation),
+             static_cast<int>(ModelDownloadValidation::ChecksumMismatch));
+    QVERIFY(!finalizeStreamedModelDownload(path, validation));
+    QVERIFY(!QFile::exists(path));
+    QVERIFY(!QFile::exists(path + ".tmp"));
+}
+
+void ZenzaiDownloadValidationTest::testStreamedUnknownExpectedBytesUsesShaOnly() {
+    const QByteArray streamedData("legacy zenz body");
+
+    QCOMPARE(static_cast<int>(validateStreamedModelDownload(
+                 streamedData.size(), 0, sha256(streamedData), sha256(streamedData))),
+             static_cast<int>(ModelDownloadValidation::Accepted));
+    QCOMPARE(static_cast<int>(validateStreamedModelDownload(
+                 streamedData.size(), -1, sha256(streamedData), sha256(streamedData))),
+             static_cast<int>(ModelDownloadValidation::Accepted));
+}
+
+void ZenzaiDownloadValidationTest::testStreamedChecksumComparisonIsCaseInsensitive() {
+    const QByteArray streamedData("uppercase expected SHA256");
+
+    QCOMPARE(static_cast<int>(validateStreamedModelDownload(
+                 streamedData.size(), streamedData.size(), sha256(streamedData),
+                 sha256(streamedData).toUpper())),
+             static_cast<int>(ModelDownloadValidation::Accepted));
+}
+
+void ZenzaiDownloadValidationTest::testStreamedRejectionClearsTmpAndPreservesExistingModel() {
+    const QString path = modelPath("streamed-preserve-existing");
+    const QByteArray existingData("previously verified managed model");
+    writeFile(path, existingData);
+    const QByteArray rejectedData("short");
+    writeFile(path + ".tmp", rejectedData);
+
+    const ModelDownloadValidation validation = validateStreamedModelDownload(
+        rejectedData.size(), rejectedData.size() + 1, sha256(rejectedData),
+        sha256(QByteArray("wrong checksum")));
+
+    QCOMPARE(static_cast<int>(validation),
+             static_cast<int>(ModelDownloadValidation::SizeMismatch));
+    QVERIFY(!finalizeStreamedModelDownload(path, validation));
+    QCOMPARE(readFile(path), existingData);
+    QVERIFY(!QFile::exists(path + ".tmp"));
 }
 
 QTEST_MAIN(ZenzaiDownloadValidationTest)

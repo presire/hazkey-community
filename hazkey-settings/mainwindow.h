@@ -25,6 +25,8 @@
 #include "zenzai_models.h"
 
 class LearningHistoryDialog;
+class QFile;
+class QCryptographicHash;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -147,6 +149,14 @@ class MainWindow : public QWidget {
      * @param error 発生したネットワークエラー種別
      */
     void onDownloadError(QNetworkReply::NetworkError error);
+    /**
+     * @brief 到着した受信断片を一時ファイルへ追記し、増分ハッシュを更新する
+     *
+     * @details currentDownload_ の readyRead 駆動で呼ばれ、本文全体をメモリに保持しない。
+     *          一時ファイルの初回利用時に modelPath + ".tmp" を開く (遅延生成)。
+     *          書出しに失敗した場合は downloadFileError_ に理由を記録して応答を中断する。
+     */
+    void onDownloadReadyRead();
     /** @brief サーバ既定設定を取得して保存前のプレビューとして反映する */
     void onResetConfiguration();
 
@@ -317,6 +327,32 @@ class MainWindow : public QWidget {
      */
     void requestZenzaiModelDeletion(const QString& key, QDialog* dialog);
     /**
+     * @brief 現在のダウンロードに対応する一時ファイルパスを返す
+     * @return currentDownloadKey_ の modelPath + ".tmp"、キーが不明なら空文字列
+     */
+    QString currentDownloadTempPath() const;
+    /**
+     * @brief 受信一時ファイルと増分ハッシュを遅延生成する
+     * @return ストリームを利用可能ならtrue、生成・書出しに失敗したらfalse
+     *
+     * @details 失敗時は downloadFileError_ に理由を記録する。初回は modelPath + ".tmp"
+     *          を切り詰めて開き直すため、再試行時の古い部分ファイルは残らない。
+     */
+    bool ensureDownloadStream();
+    /**
+     * @brief 受信ストリームを閉じて一時ファイルと増分ハッシュの所有を破棄する
+     *
+     * @details ディスク上の一時ファイルは残す (確定または破棄は呼び出し元が行う)。
+     *          受信バイト数と書出しエラー記録はそのまま保持する。
+     */
+    void closeDownloadStream();
+    /**
+     * @brief 受信ストリームを閉じて部分的な一時ファイルを削除する
+     *
+     * @details 中断・エラー・取消経路で呼び出し、受信バイト数と書出しエラー記録も消去する。
+     */
+    void discardPartialDownload();
+    /**
      * @brief UI読込中のdirty判定を抑止するガードを設定する
      * @param loading 設定読込または内部同期中ならtrue
      */
@@ -375,6 +411,14 @@ class MainWindow : public QWidget {
     QString currentDownloadKey_;
     /** @brief ダウンロード要求の応答確立前にモデル管理ダイアログを操作不能にするための印 */
     bool zenzaiDownloadPending_ = false;
+    /** @brief readyRead駆動で追記中の受信一時ファイルで、終了時に閉じて破棄する */
+    QFile* downloadTempFile_ = nullptr;
+    /** @brief 受信断片を逐次投入する増分SHA256で、終了時に破棄する */
+    QCryptographicHash* downloadHash_ = nullptr;
+    /** @brief 一時ファイルへ書き出した実際の受信バイト数 */
+    qint64 downloadReceivedBytes_ = 0;
+    /** @brief 一時ファイルの生成・書出しに失敗した理由で、空なら書出し正常 */
+    QString downloadFileError_;
     /** @brief ユーザ辞書TSVと表ウィジェット間で共有する編集用エントリ一覧 */
     QVector<UserDictEntry> userDictEntries_;
 };

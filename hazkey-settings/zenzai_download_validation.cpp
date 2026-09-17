@@ -22,22 +22,37 @@ void removeTemporaryFile(const QString& temporaryPath) {
     QFile::remove(temporaryPath);
 }
 
+ModelDownloadValidation validateSizeAndHash(qint64 receivedBytes,
+                                            qint64 expectedBytes,
+                                            const QString& actualSha256Hex,
+                                            const QString& expectedSha256) {
+    if (expectedBytes > 0 && receivedBytes != expectedBytes) {
+        return ModelDownloadValidation::SizeMismatch;
+    }
+
+    if (actualSha256Hex.compare(expectedSha256, Qt::CaseInsensitive) != 0) {
+        return ModelDownloadValidation::ChecksumMismatch;
+    }
+
+    return ModelDownloadValidation::Accepted;
+}
+
 }  // namespace
 
 ModelDownloadValidation validateModelDownload(
     const QByteArray& downloadedData, qint64 expectedBytes,
     const QString& expectedSha256) {
-    if (expectedBytes > 0 && downloadedData.size() != expectedBytes) {
-        return ModelDownloadValidation::SizeMismatch;
-    }
-
     const QString calculatedSha256 = QString::fromLatin1(
         QCryptographicHash::hash(downloadedData, QCryptographicHash::Sha256).toHex());
-    if (calculatedSha256.compare(expectedSha256, Qt::CaseInsensitive) != 0) {
-        return ModelDownloadValidation::ChecksumMismatch;
-    }
+    return validateSizeAndHash(downloadedData.size(), expectedBytes,
+                               calculatedSha256, expectedSha256);
+}
 
-    return ModelDownloadValidation::Accepted;
+ModelDownloadValidation validateStreamedModelDownload(
+    qint64 receivedBytes, qint64 expectedBytes,
+    const QString& actualSha256Hex, const QString& expectedSha256) {
+    return validateSizeAndHash(receivedBytes, expectedBytes, actualSha256Hex,
+                               expectedSha256);
 }
 
 bool finalizeModelDownload(const QString& modelPath, const QByteArray& downloadedData,
@@ -81,6 +96,43 @@ bool finalizeModelDownload(const QString& modelPath, const QByteArray& downloade
         return false;
     }
     temporaryFile.close();
+
+    if (QFile::exists(modelPath) && !QFile::remove(modelPath)) {
+        setErrorMessage(errorMessage,
+                        QStringLiteral("Failed to remove old model file: %1")
+                            .arg(modelPath));
+        removeTemporaryFile(temporaryPath);
+        return false;
+    }
+
+    if (!QFile::rename(temporaryPath, modelPath)) {
+        setErrorMessage(errorMessage,
+                        QStringLiteral("Failed to rename temporary model file: %1")
+                            .arg(temporaryPath));
+        removeTemporaryFile(temporaryPath);
+        return false;
+    }
+
+    return true;
+}
+
+bool finalizeStreamedModelDownload(const QString& modelPath,
+                                   ModelDownloadValidation validation,
+                                   QString* errorMessage) {
+    const QString temporaryPath = modelPath + ".tmp";
+    if (validation != ModelDownloadValidation::Accepted) {
+        removeTemporaryFile(temporaryPath);
+        return false;
+    }
+
+    const QString parentDirectory = QFileInfo(modelPath).absolutePath();
+    if (!QDir().mkpath(parentDirectory)) {
+        setErrorMessage(errorMessage,
+                        QStringLiteral("Failed to create model directory: %1")
+                            .arg(parentDirectory));
+        removeTemporaryFile(temporaryPath);
+        return false;
+    }
 
     if (QFile::exists(modelPath) && !QFile::remove(modelPath)) {
         setErrorMessage(errorMessage,

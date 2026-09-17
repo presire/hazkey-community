@@ -2108,6 +2108,11 @@ MainWindow::~MainWindow() {
         currentDownload_->abort();
         currentDownload_->deleteLater();
     }
+    closeDownloadStream();
+    const QString leftoverTemp = currentDownloadTempPath();
+    if (!leftoverTemp.isEmpty()) {
+        QFile::remove(leftoverTemp);
+    }
 
     if (downloadProgressDialog_) {
         delete downloadProgressDialog_;
@@ -2355,13 +2360,24 @@ void MainWindow::beginZenzaiModelDownload(const QString& key) {
     currentDownloadExpectedBytes_ = selectedModel->expectedBytes;
     currentDownloadKey_ = selectedModel->key;
 
+    // ストリーミング状態を初期化する (一時ファイルと増分ハッシュは初回readyReadで遅延生成する)
+    downloadReceivedBytes_ = 0;
+    downloadFileError_.clear();
+
     // --- Major 3: 正しい初期化順序 ---
     // 1. 応答を先に作り、イベント処理呼び出し(例: setValue)が再入する前に
     //    currentDownload_を設定する。
+    //    停滞した転送は30秒で中断し (TimeoutError)、302応答は安全な範囲で追随し、
+    //    削除直後の再取得で古いkeep-alive接続に張り付かないよう取得前に破棄する。
     QUrl dlUrl(currentDownloadUrl_);
     QNetworkRequest request(dlUrl);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(30000);
+    networkManager_->clearAccessCache();
     currentDownload_ = networkManager_->get(request);
 
+    connect(currentDownload_, &QNetworkReply::readyRead, this, &MainWindow::onDownloadReadyRead);
     connect(currentDownload_, &QNetworkReply::downloadProgress, this, &MainWindow::onDownloadProgress);
     connect(currentDownload_, &QNetworkReply::finished, this, &MainWindow::onDownloadFinished);
     connect(currentDownload_, QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::errorOccurred), this, &MainWindow::onDownloadError);
@@ -2425,16 +2441,93 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
 void MainWindow::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal) {
     // ガード: 古い応答からのシグナルを無視する
     if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) return;
+    if (!downloadProgressDialog_) return;
 
-    if (downloadProgressDialog_ && bytesTotal > 0) {
-        int progress = static_cast<int>((bytesReceived * 100) / bytesTotal);
-        downloadProgressDialog_->setValue(progress);
-
-        // ダウンロード量をMB表示する
-        double receivedMB = bytesReceived / 1024.0 / 1024.0;
-        double totalMB = bytesTotal / 1024.0 / 1024.0;
-        downloadProgressDialog_->setLabelText(tr("Downloading neural conversion model... %1 MB / %2 MB").arg(receivedMB, 0, 'f', 2).arg(totalMB, 0, 'f', 2));
+    if (bytesTotal <= 0) {
+        // 総量不明の間は不確定表示にし、受信量だけを示す (0%貼り付きを避ける)
+        downloadProgressDialog_->setRange(0, 0);
+        const double receivedMB = bytesReceived / 1024.0 / 1024.0;
+        downloadProgressDialog_->setLabelText(
+            tr("Downloading neural conversion model... %1 MB received").arg(receivedMB, 0, 'f', 2));
+        return;
     }
+
+    // 総量が判明したら確定表示に戻す (不確定表示からの復帰を含む)
+    if (downloadProgressDialog_->minimum() == 0 && downloadProgressDialog_->maximum() == 0) {
+        downloadProgressDialog_->setRange(0, 100);
+    }
+    int progress = static_cast<int>((bytesReceived * 100) / bytesTotal);
+    downloadProgressDialog_->setValue(progress);
+
+    // ダウンロード量をMB表示する
+    double receivedMB = bytesReceived / 1024.0 / 1024.0;
+    double totalMB = bytesTotal / 1024.0 / 1024.0;
+    downloadProgressDialog_->setLabelText(tr("Downloading neural conversion model... %1 MB / %2 MB").arg(receivedMB, 0, 'f', 2).arg(totalMB, 0, 'f', 2));
+}
+
+void MainWindow::onDownloadReadyRead() {
+    // ガード: 古い応答からのシグナルを無視する
+    QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
+    if (reply != currentDownload_ || !currentDownload_) return;
+
+    // 遅延生成: 初回断片で一時ファイルと増分ハッシュを用意する
+    if (!downloadTempFile_ && !ensureDownloadStream()) {
+        currentDownload_->abort();
+        return;
+    }
+
+    const QByteArray chunk = currentDownload_->readAll();
+    if (chunk.isEmpty()) return;
+    downloadHash_->addData(chunk);
+    if (downloadTempFile_->write(chunk) != chunk.size()) {
+        downloadFileError_ = downloadTempFile_->errorString();
+        currentDownload_->abort();
+        return;
+    }
+    downloadReceivedBytes_ += chunk.size();
+}
+
+QString MainWindow::currentDownloadTempPath() const {
+    if (currentDownloadKey_.isEmpty()) return QString();
+    return ZenzaiModelManager::getModelPath(currentDownloadKey_) + ".tmp";
+}
+
+bool MainWindow::ensureDownloadStream() {
+    if (downloadTempFile_) return true;
+    const QString temporaryPath = currentDownloadTempPath();
+    if (temporaryPath.isEmpty()) return false;
+    QDir().mkpath(QFileInfo(temporaryPath).absolutePath());
+    downloadTempFile_ = new QFile(temporaryPath);
+    if (!downloadTempFile_->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        downloadFileError_ = downloadTempFile_->errorString();
+        delete downloadTempFile_;
+        downloadTempFile_ = nullptr;
+        return false;
+    }
+    downloadHash_ = new QCryptographicHash(QCryptographicHash::Sha256);
+    return true;
+}
+
+void MainWindow::closeDownloadStream() {
+    if (downloadTempFile_) {
+        downloadTempFile_->close();
+        delete downloadTempFile_;
+        downloadTempFile_ = nullptr;
+    }
+    if (downloadHash_) {
+        delete downloadHash_;
+        downloadHash_ = nullptr;
+    }
+}
+
+void MainWindow::discardPartialDownload() {
+    closeDownloadStream();
+    const QString temporaryPath = currentDownloadTempPath();
+    if (!temporaryPath.isEmpty()) {
+        QFile::remove(temporaryPath);
+    }
+    downloadReceivedBytes_ = 0;
+    downloadFileError_.clear();
 }
 
 void MainWindow::onDownloadFinished() {
@@ -2464,21 +2557,52 @@ void MainWindow::onDownloadFinished() {
 
     // ネットワークエラーを確認する (onDownloadErrorで報告済み)
     if (currentDownload_->error() != QNetworkReply::NoError) {
+        discardPartialDownload();
         currentDownload_->deleteLater();
         currentDownload_ = nullptr;
         // onDownloadError側でclearAndRefresh相当の処理を呼んだため、ここでは戻るだけ
         return;
     }
 
-    // ダウンロードデータを読み出す
-    QByteArray downloadedData = currentDownload_->readAll();
+    // 応答に残る未読分を回収する (readyRead未発火の末尾断片があり得る)
+    if (!ensureDownloadStream()) {
+        const QString saveError = downloadFileError_;
+        discardPartialDownload();
+        currentDownload_->deleteLater();
+        currentDownload_ = nullptr;
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"), tr("Failed to save model file: %1").arg(saveError));
+        clearAndRefresh();
+        return;
+    }
+    const QByteArray tail = currentDownload_->readAll();
+    if (!tail.isEmpty()) {
+        downloadHash_->addData(tail);
+        if (downloadTempFile_->write(tail) != tail.size() && downloadFileError_.isEmpty()) {
+            downloadFileError_ = downloadTempFile_->errorString();
+        }
+        downloadReceivedBytes_ += tail.size();
+    }
     currentDownload_->deleteLater();
     currentDownload_ = nullptr;
+
+    // 書出し失敗は検証前に保存エラーとして扱う
+    if (!downloadFileError_.isEmpty()) {
+        const QString saveError = downloadFileError_;
+        discardPartialDownload();
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"), tr("Failed to save model file: %1").arg(saveError));
+        clearAndRefresh();
+        return;
+    }
+
+    const QString calculatedHashHex =
+        QString::fromLatin1(downloadHash_->result().toHex());
+    const qint64 receivedBytes = downloadReceivedBytes_;
+    closeDownloadStream();
 
     const ZenzaiModelOption* downloadedModel =
         findZenzaiModelByKey(currentDownloadKey_);
     if (!downloadedModel) {
-        QFile::remove(ZenzaiModelManager::getModelPath(currentDownloadKey_) + ".tmp");
+        discardPartialDownload();
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
                               tr("Selected neural conversion model is no longer available."));
         clearAndRefresh();
@@ -2486,35 +2610,34 @@ void MainWindow::onDownloadFinished() {
     }
 
     const QString modelPath = ZenzaiModelManager::getModelPath(downloadedModel->key);
-    const ModelDownloadValidation validation = validateModelDownload(
-        downloadedData, currentDownloadExpectedBytes_,
-        currentDownloadExpectedSha256_);
+    const ModelDownloadValidation validation = validateStreamedModelDownload(
+        receivedBytes, currentDownloadExpectedBytes_,
+        calculatedHashHex, currentDownloadExpectedSha256_);
     if (validation == ModelDownloadValidation::SizeMismatch) {
-        finalizeModelDownload(modelPath, downloadedData, validation);
+        finalizeStreamedModelDownload(modelPath, validation);
         QMessageBox::critical(
             zenzaiDialogParent(), tr("Download Error"),
             tr("Downloaded file verification failed. Size mismatch.\n"
                "Expected: %1 bytes\n"
                "Got: %2 bytes")
                 .arg(currentDownloadExpectedBytes_)
-                .arg(downloadedData.size()));
+                .arg(receivedBytes));
         clearAndRefresh();
         return;
     }
 
     if (validation == ModelDownloadValidation::ChecksumMismatch) {
-        const QString calculatedHashHex = QString::fromLatin1(QCryptographicHash::hash(downloadedData, QCryptographicHash::Sha256).toHex());
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
                               tr("Downloaded file verification failed. Checksum mismatch.\n"
                                  "Expected: %1\n"
                                  "Got: %2").arg(currentDownloadExpectedSha256_).arg(calculatedHashHex));
-        finalizeModelDownload(modelPath, downloadedData, validation);
+        finalizeStreamedModelDownload(modelPath, validation);
         clearAndRefresh();
         return;
     }
 
     QString saveError;
-    if (!finalizeModelDownload(modelPath, downloadedData, validation, &saveError)) {
+    if (!finalizeStreamedModelDownload(modelPath, validation, &saveError)) {
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"), tr("Failed to save model file: %1").arg(saveError));
         clearAndRefresh();
         return;
@@ -2525,7 +2648,7 @@ void MainWindow::onDownloadFinished() {
     const QString downloadedKey = downloadedModel->key;
     refreshZenzaiDownloadedSnapshot();
     clearAndRefresh();
-    // currentDownload_は既にnull (上記readAll後に設定済み)
+    // currentDownload_は既にnull (上記応答破棄後に設定済み)
 
     // 開いているダイアログがまだあればその場で更新する
     if (zenzaiModelDialog_) {
@@ -2585,6 +2708,11 @@ void MainWindow::onDownloadError(QNetworkReply::NetworkError error) {
     currentDownload_->deleteLater();
     currentDownload_ = nullptr;
 
+    // 書出し失敗で中断した場合は取消扱いにせず保存エラーとして報告する
+    const QString fileError = downloadFileError_;
+    const QString retryKey = currentDownloadKey_;
+    discardPartialDownload();
+
     // ダウンロード単位の選択状態を消去する
     currentDownloadUrl_.clear();
     currentDownloadExpectedSha256_.clear();
@@ -2594,6 +2722,26 @@ void MainWindow::onDownloadError(QNetworkReply::NetworkError error) {
 
     // ダイアログのボタン状態を戻す (currentDownload_は既にnullptr)
     refreshZenzaiDialogButtonStates();
+
+    if (!fileError.isEmpty()) {
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
+                              tr("Failed to save model file: %1").arg(fileError));
+        return;
+    }
+
+    // 停滞中断は再試行を選択できる (保存済みキーで取得をやり直す)
+    if (error == QNetworkReply::TimeoutError) {
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            zenzaiDialogParent(), tr("Download Error"),
+            tr("The download stalled and timed out.\n"
+               "Do you want to retry the download?\n"
+               "Details: %1").arg(errorString),
+            QMessageBox::Retry | QMessageBox::Cancel);
+        if (reply == QMessageBox::Retry && !retryKey.isEmpty()) {
+            beginZenzaiModelDownload(retryKey);
+        }
+        return;
+    }
 
     // ユーザがキャンセルした場合はエラーを表示しない
     if (error != QNetworkReply::OperationCanceledError) {
