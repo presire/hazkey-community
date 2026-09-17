@@ -45,6 +45,8 @@ set(PROJECT_SOURCES
     keysequence_util.h
     zenzai_models.cpp
     zenzai_models.h
+    zenzai_dialog_selection.cpp
+    zenzai_dialog_selection.h
     zenzai_download_validation.cpp
     zenzai_download_validation.h
     zenzai_family_row.cpp
@@ -151,6 +153,13 @@ qt_add_executable(zenzai_model_management_test
 )
 target_link_libraries(zenzai_model_management_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME zenzai_model_management_test COMMAND zenzai_model_management_test)
+
+qt_add_executable(zenzai_dialog_selection_test
+    zenzai_dialog_selection_test.cpp
+    zenzai_dialog_selection.cpp
+)
+target_link_libraries(zenzai_dialog_selection_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME zenzai_dialog_selection_test COMMAND zenzai_dialog_selection_test)
 
 qt_add_executable(zenzai_download_validation_test
     zenzai_download_validation_test.cpp

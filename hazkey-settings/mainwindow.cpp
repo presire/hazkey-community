@@ -54,6 +54,7 @@
 #include "keysequence_util.h"
 #include "serverconnector.h"
 #include "userdict_model.h"
+#include "zenzai_dialog_selection.h"
 #include "zenzai_download_validation.h"
 #include "zenzai_models.h"
 
@@ -64,6 +65,34 @@ class OverrideCursorGuard {
     OverrideCursorGuard() { QApplication::setOverrideCursor(Qt::WaitCursor); }
     ~OverrideCursorGuard() { QApplication::restoreOverrideCursor(); }
 };
+
+/**
+ * @brief 現在チェックされている系列/バリアントを返す
+ * @param group 系列ごとのラジオボタンを束ねるボタングループ
+ * @return チェック中の選択。未チェックならnullopt
+ */
+std::optional<ZenzaiDialogSelection> currentZenzaiDialogSelection(QButtonGroup* group) {
+    if (!group || !group->checkedButton()) {
+        return std::nullopt;
+    }
+
+    const int familyIndex = group->id(group->checkedButton());
+    ZenzaiFamilyRow* row = qobject_cast<ZenzaiFamilyRow*>(group->checkedButton()->parentWidget());
+    if (!row || familyIndex < 0) {
+        return std::nullopt;
+    }
+
+    return ZenzaiDialogSelection{familyIndex, row->variantIndex()};
+}
+
+void clearZenzaiDialogSelection(QButtonGroup* group) {
+    if (!group || !group->checkedButton()) {
+        return;
+    }
+    group->setExclusive(false);
+    group->checkedButton()->setChecked(false);
+    group->setExclusive(true);
+}
 
 /**
  * @brief ユーザ辞書TSVで許可する正規化済み品詞トークン
@@ -2073,23 +2102,21 @@ void MainWindow::refreshZenzaiDialogButtonStates() {
 
     // ダイアログは固定の完全性スナップショットを持つ
     // ディスクI/Oはダイアログ構築時か、確定したディスク変更の直後にのみ行う
-    bool anyDownloaded = false;
     const auto rows = zenzaiModelDialog_->findChildren<ZenzaiFamilyRow*>();
     for (ZenzaiFamilyRow* row : rows) {
         row->refreshState(locked, activeKey);
-        for (const ZenzaiModelOption& variant : row->family().variants) {
-            if (zenzaiDownloadedSnapshot_.contains(variant.key)) {
-                anyDownloaded = true;
-            }
-        }
     }
 
     // OKボタンとキャンセルボタン
     QDialogButtonBox* bb = zenzaiModelDialog_->findChild<QDialogButtonBox*>();
     if (bb) {
         if (bb->button(QDialogButtonBox::Ok)) {
-            // OK: モデルが1件以上ダウンロード済み、かつダウンロード中でない場合に有効
-            bb->button(QDialogButtonBox::Ok)->setEnabled(anyDownloaded && !locked);
+            QButtonGroup* group = zenzaiModelDialog_->findChild<QButtonGroup*>();
+            const auto selection = currentZenzaiDialogSelection(group);
+            const bool selectedArtifactDownloaded =
+                isZenzaiSelectionActivatable(availableZenzaiModelFamilies(),
+                                             zenzaiDownloadedSnapshot_, selection);
+            bb->button(QDialogButtonBox::Ok)->setEnabled(selectedArtifactDownloaded && !locked);
         }
 
         if (bb->button(QDialogButtonBox::Cancel)) {
@@ -2169,15 +2196,6 @@ void MainWindow::onDownloadZenzaiModel() {
         QVector<ZenzaiFamilyRow*> rows;
         QString activeKey = ZenzaiModelManager::getActiveModelKey();
         int defaultFamilyIndex = -1;
-        bool anyDownloaded = false;
-
-        for (const ZenzaiModelFamily& family : families) {
-            for (const ZenzaiModelOption& variant : family.variants) {
-                if (zenzaiDownloadedSnapshot_.contains(variant.key)) {
-                    anyDownloaded = true;
-                }
-            }
-        }
 
         // 系列ごとに1行
         // 複数バリアント系列 (jinen-v2) では量子化が選択でき、単一バリアント系列 (zenz) は従来通りの見た目になる
@@ -2216,6 +2234,8 @@ void MainWindow::onDownloadZenzaiModel() {
             connect(row, &ZenzaiFamilyRow::deleteRequested, this, [this, &dialog](const QString& key) {
                 requestZenzaiModelDeletion(key, &dialog);
             });
+            connect(row, &ZenzaiFamilyRow::boundVariantChanged, this,
+                    [this](const QString&) { refreshZenzaiDialogButtonStates(); });
 
             row->refreshState(currentDownload_ != nullptr || zenzaiDownloadPending_, activeKey);
             dialogLayout->addWidget(row);
@@ -2231,8 +2251,7 @@ void MainWindow::onDownloadZenzaiModel() {
 
         QDialogButtonBox* buttons = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-        // OKはモデルが1件以上ダウンロード済みの場合のみ有効
-        buttons->button(QDialogButtonBox::Ok)->setEnabled(anyDownloaded);
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
         buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
 
         // OKボタン: 選択行に束縛中のアーティファクトを有効化する
@@ -2280,6 +2299,7 @@ void MainWindow::onDownloadZenzaiModel() {
                 });
 
         dialogLayout->addWidget(buttons);
+        refreshZenzaiDialogButtonStates();
 
         // ダイアログ寸法を明示する
         dialog.resize(700, 500);
@@ -2420,16 +2440,52 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
         return;
     }
 
-    bool wasActive = (ZenzaiModelManager::getActiveModelKey() == key);
+    QButtonGroup* group = dialog ? dialog->findChild<QButtonGroup*>() : nullptr;
+    const std::optional<ZenzaiDialogSelection> previousSelection =
+        currentZenzaiDialogSelection(group);
+    const QString activeKey = ZenzaiModelManager::getActiveModelKey();
+    const bool wasActive = activeKey == key;
     if (ZenzaiModelManager::deleteModel(key)) {
         if (wasActive) {
             server_.reloadZenzaiModel();
         }
 
         if (dialog) {
-            // 管理ダイアログは閉じずに開いたままにする
-            // スナップショットを更新し、各行をその場で更新する (ダイアログの破棄・再構築はしない)
             refreshZenzaiDownloadedSnapshot();
+
+            const std::optional<ZenzaiDialogSelection> reconciled =
+                reconcileZenzaiDialogSelection(availableZenzaiModelFamilies(),
+                                               zenzaiDownloadedSnapshot_, key,
+                                               previousSelection, activeKey);
+            const bool selectionChanged =
+                previousSelection.has_value() != reconciled.has_value() ||
+                (previousSelection.has_value() && reconciled.has_value() &&
+                 (previousSelection->familyIndex != reconciled->familyIndex ||
+                  previousSelection->variantIndex != reconciled->variantIndex));
+
+            if (selectionChanged) {
+                if (!reconciled.has_value()) {
+                    clearZenzaiDialogSelection(group);
+                }
+                else {
+                    QAbstractButton* replacementButton = group
+                        ? group->button(reconciled->familyIndex)
+                        : nullptr;
+                    ZenzaiFamilyRow* replacementRow = replacementButton
+                        ? qobject_cast<ZenzaiFamilyRow*>(replacementButton->parentWidget())
+                        : nullptr;
+                    if (replacementRow) {
+                        // onDownloadFinishedと同じ順序で、束縛を更新してからチェックする
+                        replacementRow->setVariantIndex(reconciled->variantIndex);
+                        refreshZenzaiDialogButtonStates();
+                        replacementButton->setChecked(true);
+                    }
+                    else {
+                        clearZenzaiDialogSelection(group);
+                    }
+                }
+            }
+
             refreshZenzaiDialogButtonStates();
         }
     }
