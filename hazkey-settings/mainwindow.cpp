@@ -516,17 +516,17 @@ void MainWindow::onUseUserDictToggled(bool enabled) {
 }
 
 void MainWindow::updateZenzaiAvailabilityUi() {
-    // AIタブ上の既存の警告ウィジェットを除去する
-    if (ui_->aiTabScrollContentsLayout->count() > 1) {
+    // AIタブ上の既存の警告ウィジェットを全て除去する
+    // (GPUフォールバック通知とモデル更新通知など複数のバナーが積み重なるため)
+    while (ui_->aiTabScrollContentsLayout->count() > 1) {
         QLayoutItem* item = ui_->aiTabScrollContentsLayout->itemAt(1);
-        if (item && item->widget()) {
-            QWidget* widget = item->widget();
-            if (widget->styleSheet().contains("background-color: yellow") ||
-                widget->styleSheet().contains("background-color: lightblue")) {
-                ui_->aiTabScrollContentsLayout->removeWidget(widget);
-                widget->deleteLater();
-            }
+        QWidget* widget = item ? item->widget() : nullptr;
+        if (!widget || !(widget->styleSheet().contains("background-color: yellow") ||
+                         widget->styleSheet().contains("background-color: lightblue"))) {
+            break;
         }
+        ui_->aiTabScrollContentsLayout->removeWidget(widget);
+        widget->deleteLater();
     }
 
     if (currentConfig_.available_zenzai_backend_devices_size() <= 0) {
@@ -623,6 +623,19 @@ void MainWindow::updateZenzaiAvailabilityUi() {
                 }
             }
         }
+    }
+
+    // GPUバックエンド安全確認 (分離プローブ) の結果、
+    // CPU専用にフォールバックした場合はユーザに通知する (ICDピン留めの案内を表示)
+    if (currentConfig_.zenzai_gpu_probe_fallback()) {
+        QWidget* warningWidget = createWarningWidget(
+            tr("<b>Warning:</b> GPU acceleration was disabled because the Vulkan driver check "
+               "crashed or timed out (often caused by mixed GPU vendors). "
+               "Neural conversion runs on the CPU for this session. "
+               "To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey/env "
+               "to a single driver file and restart the input method."),
+            "yellow");
+        ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
     }
 }
 

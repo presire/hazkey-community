@@ -1,89 +1,41 @@
 #!/usr/bin/env sh
 
-# hazkey-server wrapper script
-# XDG_CONFIG_HOME is optional per the XDG base directory spec and is unset on
-# many desktop sessions; without this fallback the path collapses to
-# "/hazkey/env" and every user setting below is silently ignored.
+# hazkey-serverラッパースクリプト
+# 環境変数XDG_CONFIG_HOMEは、XDG Base Directory仕様では任意であり、多くのデスクトップセッションでは未設定である
+# このフォールバックが無いと、パスは"/hazkey/env"に潰れてしまい、以下のユーザ設定がすべて無言で無視される
 ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hazkey/env"
-# Load user defined environment variables.
-# `set -a` is required: the settings are consumed by the hazkey-server process
-# this script exec()s at the end, and a plain `KEY=value` line in a sourced
-# file only creates a shell-local variable, which is NOT part of the
-# environment handed to exec. `.` is used instead of the bash-only `source`
-# because this script runs under POSIX sh.
+
+# ユーザ定義の環境変数を読み込む
+#
+# 下記の設定 ("set -a"コマンドは必須) は、このスクリプトが最後に実行するhazkey-serverプロセスが消費するが、
+# sourceしたファイル内の"KEY=value"行はシェルのローカル変数を定義するだけであり、実行時に渡される環境変数にはならない
+# (Bash専用の"source"コマンドではなく、"."を使用しているのは、このスクリプトがPOSIX shで動作するため)
 if [ -f "$ENV_FILE" ]; then
     set -a
     . "$ENV_FILE"
     set +a
 fi
 
-# Optional Zenzai CPU settings are read by hazkey-server from the sourced file:
+# 任意のCPU設定は、sourceしたファイルからhazkey-serverが読み取る
 # HAZKEY_ZENZAI_CPU_THREADS=1..8
-# HAZKEY_ZENZAI_DEADLINE_MS=0..2000 (0 disables the deadline)
+# HAZKEY_ZENZAI_DEADLINE_MS=0..2000 ("0"は期限なし)
 
-# Mitigate SIGILL crash on multi-GPU systems where Vulkan ICDs from
-# different vendors (e.g. nvidia_icd.json + radeon_icd.json) coexist.
-# Ref: https://github.com/7ka-Hiira/hazkey/issues/29
-# When neither VK_DRIVER_FILES nor VK_ICD_FILENAMES is set, restrict the
-# loader to the ICDs of the first vendor found so that
-# ggml_backend_load_all() does not initialize conflicting vendor drivers
-# simultaneously (which triggers a Swift runtime precondition failure ->
-# SIGILL). All ICDs of that vendor are kept because same-vendor ICDs
-# coexist safely, while pinning a single file can pick the wrong driver:
-# intel_hasvk_icd.x86_64.json sorts before intel_icd.x86_64.json, and
-# HASVK only supports Gen7/8, so a Kaby Lake (Gen9.5) iGPU would become
-# invisible even though ANV supports it.
-# User-provided values (via shell env or $XDG_CONFIG_HOME/hazkey/env) are
-# always respected.
-if [ -z "${VK_DRIVER_FILES:-}" ] && [ -z "${VK_ICD_FILENAMES:-}" ]; then
-    # Collect installed ICD manifests in search order.
-    _icds=""
-    for icd_dir in \
-        /usr/share/vulkan/icd.d \
-        /usr/local/share/vulkan/icd.d \
-        /etc/vulkan/icd.d
-    do
-        [ -d "$icd_dir" ] || continue
-        for f in "$icd_dir"/*.json; do
-            [ -f "$f" ] || continue
-            _icds="${_icds}${f}
-"
-        done
-    done
-
-    # Keep every ICD that belongs to the same vendor as the first one
-    # (e.g. intel_icd + intel_hasvk on Intel, radeon_icd + amd_icd on AMD).
-    # Unrecognized filenames form their own single-file group, preserving
-    # the previous first-ICD behavior for unknown drivers.
-    _selected=""
-    _vendor=""
-    while IFS= read -r _f; do
-        [ -n "$_f" ] || continue
-        case "${_f##*/}" in
-            intel*) _v="intel" ;;
-            *nvidia*) _v="nvidia" ;;
-            *radeon*|*amd*) _v="amd" ;;
-            *lvp*) _v="lvp" ;;
-            *) _v="$_f" ;;
-        esac
-        if [ -z "$_vendor" ]; then
-            _vendor="$_v"
-        fi
-        [ "$_v" = "$_vendor" ] || continue
-        if [ -z "$_selected" ]; then
-            _selected="$_f"
-        else
-            _selected="${_selected}:${_f}"
-        fi
-    done <<EOF
-${_icds}
-EOF
-
-    if [ -n "$_selected" ]; then
-        VK_DRIVER_FILES="$_selected"
-        VK_ICD_FILENAMES="$_selected"
-        export VK_DRIVER_FILES VK_ICD_FILENAMES
-    fi
-fi
-
+# Vulkan ICDの選択は、システムのVulkan Loaderの標準探索へ意図的に委ねる
+# (VK_DRIVER_FILES/VK_ICD_FILENAMESを上書きしない)
+# 以前は、マルチGPU環境でのSIGILLクラッシュ (https://github.com/7ka-Hiira/hazkey/issues/29) を回避するため、
+# 最初に検出したベンダーのICDへ固定するヒューリスティックをこのスクリプトに置いていた
+#
+# しかし、その最初のmanifestが未認識またはアーキテクチャ不一致のドライバーである場合、
+# GPUアクセラレーションが無言で無効化されていた
+# (https://github.com/presire/hazkey-community/issues/2)
+#
+# Vulkan Loader (>=1.3.219) は、library_archが不一致のマニフェストを既に除外し、Mesa (>=25.2.1) はそのフィールドを出力するため、
+# このスクリプトが探索を推測し直す必要はない
+#
+# マルチベンダー構成のクラッシュ対策は現在、hazkey-server自身が隔離バックエンドプローブ子プロセスでセッションごとに処理する
+# ("backendProbe.swift"ファイルを参照すること)
+# この方式は、静的なファイル一覧への固定と異なり、動作するGPUを無言で隠すことがない
+# 特定のドライバを強制したい場合は、引き続き、
+# "$XDG_CONFIG_HOME/hazkey/env"ファイルのVK_DRIVER_FILES、VK_ICD_FILENAMES、VK_LOADER_DRIVERS_SELECT等を使用する
+# 例は、README.mdを参照すること
 exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey/hazkey-server" "$@"

@@ -92,7 +92,7 @@ message GetCurrentInputModeInfo {}
 
 message SaveLearningData {}
 
-// 現在の変換内容や候補リストをリセットせず、アクティブなプロファイルのZenzai有効化のみを切り替える
+// 現在の変換内容や候補リストをリセットせず、アクティブなプロファイルのAIモデル有効化のみを切り替える
 message ToggleZenzai {}
 
 message ToggleZenzaiResult {
@@ -115,7 +115,7 @@ message CandidatesResult {
     message Candidate {
         string text = 1;
         string sub_hiragana = 2;
-        // AzooKey学習メモリがこの候補に一致するエントリを保持している場合にtrue ([削除可]注釈として表示される)
+        // AzooKey学習メモリがこの候補に一致するエントリを保持している場合はTrue ([削除可]注釈として表示される)
         optional bool has_learning_entry = 3;
     }
 

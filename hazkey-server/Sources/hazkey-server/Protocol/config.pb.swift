@@ -438,7 +438,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiPreference`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiPreference() {_uniqueStorage()._zenzaiPreference = nil}
 
-  /// [community] Hotkey for deleting the focused candidate's learning data.
+  /// フォーカス中の候補の学習データを削除するホットキー
   var deleteLearningHotkey: String {
     get {_storage._deleteLearningHotkey ?? String()}
     set {_uniqueStorage()._deleteLearningHotkey = newValue}
@@ -662,9 +662,8 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `hazkeyVersion`. Subsequent reads from it will return its default value.
     mutating func clearHazkeyVersion() {self._hazkeyVersion = nil}
 
-    /// [community] Relative-date candidates (きょう → 今日 + 2026年8月11日 + ...).
-    /// When enabled, formatted date strings are appended after the kanji
-    /// representation of recognized trigger words.
+    /// 相対日付候補 (きょう -> 今日 + 2026年8月11日 + ...)
+    /// 有効時は、認識したトリガー語の漢字表記の後に整形した日付文字列を付加する
     var relativeDate: Bool {
       get {_relativeDate ?? false}
       set {_relativeDate = newValue}
@@ -870,6 +869,12 @@ nonisolated struct Hazkey_Config_CurrentConfig: Sendable {
 
   var zenzaiModelPath: String = String()
 
+  /// 隔離バックエンドプローブがクラッシュ、タイムアウト、またはエラー終了し、
+  /// このセッションが CPU 専用フォールバックで動作している場合に true。GPU
+  /// アクセラレーションの無言の低下を防ぐため、GUI は ~/.config/hazkey/env で
+  /// 単一 ICD を固定する案内を表示する。
+  var zenzaiGpuProbeFallback: Bool = false
+
   var xdgConfigHomePath: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -884,12 +889,12 @@ nonisolated struct Hazkey_Config_GetLearningHistory: Sendable {
 
   var profileID: String = String()
 
-  /// Partial match on reading or word is applied before pagination.
+  /// ページング前に読み・単語への部分一致を適用する
   var query: String = String()
 
   var offset: UInt32 = 0
 
-  /// The server clamps this value to at most 200.
+  /// サーバ側で上限200にクランプされる
   var limit: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -944,7 +949,7 @@ nonisolated struct Hazkey_Config_LearningHistoryEntry: Sendable {
 
   var count: UInt32 = 0
 
-  /// Days since the Unix epoch.
+  /// Unixエポックタイムからの経過日数
   var lastUsedUnixDay: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1787,7 +1792,7 @@ nonisolated extension Hazkey_Config_ReloadZenzaiModel: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".CurrentConfig"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_hashes\0\u{1}profiles\0\u{3}available_keymaps\0\u{3}available_tables\0\u{4}\u{2}xdg_config_home_path\0\u{3}available_zenzai_backend_devices\0\u{3}zenzai_model_available\0\u{3}zenzai_model_path\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}file_hashes\0\u{1}profiles\0\u{3}available_keymaps\0\u{3}available_tables\0\u{4}\u{2}xdg_config_home_path\0\u{3}available_zenzai_backend_devices\0\u{3}zenzai_model_available\0\u{3}zenzai_model_path\0\u{3}zenzai_gpu_probe_fallback\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1803,6 +1808,7 @@ nonisolated extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftP
       case 7: try { try decoder.decodeRepeatedMessageField(value: &self.availableZenzaiBackendDevices) }()
       case 8: try { try decoder.decodeSingularBoolField(value: &self.zenzaiModelAvailable) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.zenzaiModelPath) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.zenzaiGpuProbeFallback) }()
       default: break
       }
     }
@@ -1833,6 +1839,9 @@ nonisolated extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftP
     if !self.zenzaiModelPath.isEmpty {
       try visitor.visitSingularStringField(value: self.zenzaiModelPath, fieldNumber: 9)
     }
+    if self.zenzaiGpuProbeFallback != false {
+      try visitor.visitSingularBoolField(value: self.zenzaiGpuProbeFallback, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1844,6 +1853,7 @@ nonisolated extension Hazkey_Config_CurrentConfig: SwiftProtobuf.Message, SwiftP
     if lhs.availableZenzaiBackendDevices != rhs.availableZenzaiBackendDevices {return false}
     if lhs.zenzaiModelAvailable != rhs.zenzaiModelAvailable {return false}
     if lhs.zenzaiModelPath != rhs.zenzaiModelPath {return false}
+    if lhs.zenzaiGpuProbeFallback != rhs.zenzaiGpuProbeFallback {return false}
     if lhs.xdgConfigHomePath != rhs.xdgConfigHomePath {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

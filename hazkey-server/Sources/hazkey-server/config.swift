@@ -2,8 +2,8 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftProtobuf
 
-let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024  //1MB
-let TABLE_FILE_SIZE_LIMIT = 1024 * 1024  //1MB
+let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024  // ユーザ定義キーマップTSVのサイズ上限 (1[MB])
+let TABLE_FILE_SIZE_LIMIT = 1024 * 1024   // ユーザ定義入力テーブルTSVのサイズ上限 (1[MB])
 
 enum ConfigError: LocalizedError {
     case invalidJSONTopLevel
@@ -62,6 +62,7 @@ class HazkeyServerConfig {
     var zenzaiAvailable: Bool
     var zenzaiModelPath: URL?
     var ggmlBackendDevices: [GGMLBackendDevice]
+    let backendProbeOutcome: BackendProbeOutcome?
 
     init() {
         do {
@@ -76,7 +77,8 @@ class HazkeyServerConfig {
 
         let fileManager = FileManager()
 
-        // set dictionary path
+        // 辞書ディレクトリのパスを決める
+        // 環境変数HAZKEY_DICTIONARYが実在パスを指す場合はそれを使用し、無ければシステム配備のDictionaryを使用する
         dictionaryPath = {
             if let envPath = ProcessInfo.processInfo.environment["HAZKEY_DICTIONARY"],
                 fileManager.fileExists(atPath: envPath)
@@ -90,7 +92,9 @@ class HazkeyServerConfig {
 
         self.zenzaiModelPath = nil
         self.zenzaiAvailable = false
-        self.ggmlBackendDevices = getZenzaiDevices()
+        let backendLoad = loadZenzaiDevicesSafely()
+        self.ggmlBackendDevices = backendLoad.devices
+        self.backendProbeOutcome = backendLoad.probeOutcome
         zenzaiModelPath = resolveActiveZenzaiModelPath()
         self.zenzaiAvailable = (ggmlBackendDevices.count > 0) && (zenzaiModelPath != nil)
     }
@@ -198,6 +202,7 @@ class HazkeyServerConfig {
             $0.availableKeymaps = keymaps
             $0.availableTables = inputTables
             $0.availableZenzaiBackendDevices = zenzaiDevices
+            $0.zenzaiGpuProbeFallback = zenzaiGPUFallbackActive(backendProbeOutcome)
             $0.profiles = profiles
         }
         return Hazkey_ResponseEnvelope.with {
@@ -373,13 +378,14 @@ class HazkeyServerConfig {
         let configDir = Self.getConfigDirectory()
         let configPath = configDir.appendingPathComponent("config.json")
 
-        // Check if config file exists
+        // 設定ファイルの有無を確認する
+        // 存在しなければ既定プロファイルから生成した正規化済み設定を返す
         guard FileManager.default.fileExists(atPath: configPath.path) else {
             NSLog("Config file does not exist at: \(configPath.path), returning empty config")
             return try normalizeProfiles([Self.genDefaultConfig()])
         }
 
-        // Read file contents
+        // 設定ファイルの内容を読み込む
         let jsonData = try Data(contentsOf: configPath)
 
         let configs = try decodeProfiles(from: jsonData)
@@ -496,7 +502,7 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgConfigHome).appendingPathComponent("hazkey")
         }
 
-        // Fallback to ~/.config/hazkey
+        // XDG_CONFIG_HOME未設定時の代替として、"~/.config/hazkey/"ディレクトリを使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".config").appendingPathComponent("hazkey")
     }
@@ -508,7 +514,7 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgDataHome).appendingPathComponent("hazkey")
         }
 
-        // Fallback to ~/.local/share/hazkey
+        // XDG_DATA_HOME未設定時の代替として、"~/.local/share/hazkey/"ディレクトリを使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("share")
             .appendingPathComponent("hazkey")
@@ -521,7 +527,7 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgStateHome).appendingPathComponent("hazkey")
         }
 
-        // Fallback to ~/.local/state/hazkey
+        // XDG_STATE_HOME未設定時の代替として、"~/.local/state/hazkey/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("state")
             .appendingPathComponent("hazkey")
@@ -534,7 +540,7 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgCacheHome).appendingPathComponent("hazkey")
         }
 
-        // Fallback to ~/.cache/hazkey
+        // XDG_CACHE_HOME未設定時の代替として、"~/.cache/hazkey/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".cache").appendingPathComponent("hazkey")
     }
@@ -610,14 +616,15 @@ class HazkeyServerConfig {
             ? "CPU" : currentProfile.zenzaiBackendDeviceName
 
         if zenzaiAvailable, let zenzaiModelPath = zenzaiModelPath, currentProfile.zenzaiEnable {
-            // The converter keeps loaded models in a process-global registry keyed by
-            // the weight path string (`SharedZenzModelCache.cacheKey(path:deviceConfig:)`).
-            // Handing it the managed `zenzai.gguf` symlink unchanged would therefore keep
-            // serving the previously loaded model after the link is retargeted, so a model
-            // switch in Settings only took effect after a server restart. Resolving the
-            // link here makes the key track the real artifact. `zenzaiModelPath` itself
-            // intentionally stays the managed symlink path (CurrentConfig.zenzai_model_path
-            // and its tests depend on it).
+            // 変換エンジンは読み込み済みモデルをプロセス全体のレジストリに保持し、重みパス文字列をキーにしている
+            // (SharedZenzModelCache.cacheKey(path:deviceConfig:))
+            //
+            // 管理下のzenzai.ggufシンボリックリンクをそのまま渡すと、リンク先を切り替えても以前のモデルを供給し続けるため、
+            // [Hazkey 設定]画面でのモデル切替がサーバ再起動後まで反映されない
+            //
+            // ここでリンクを実体に解決することにより、キーが実ファイルを追跡するようにする
+            // なお、zenzaiModelPath自体は意図的に管理下シンボリックリンクのままにしている
+            // (CurrentConfig.zenzai_model_pathとそのテストが依存しているため)
             return ConvertRequestOptions.ZenzaiMode.on(
                 weight: zenzaiModelPath.resolvingSymlinksInPath(),
                 inferenceLimit: Int(currentProfile.zenzaiInferLimit),
@@ -684,11 +691,11 @@ class HazkeyServerConfig {
             specialCandidateProviders: specialCandidateProviders,
             zenzaiMode: zenzaiMode,
             preloadDictionary: false,
-            // [converter-fork migration] The hazkey fork (base upstream 93766c4)
-            // replaced `needTypoCorrection: Bool` with `typoCorrectionMode:
-            // TypoCorrectionMode`. `.disabled` is the exact behavioral equivalent
-            // of the previous `needTypoCorrection: false` (unconditional disable;
-            // see KanaKanjiConverter.isClassicTypoCorrectionEnabled).
+            // aZooKeyリポジ鳥のhazkey (基点の上流93766c4) において、
+            // "needTypoCorrection: Bool"が"typoCorrectionMode: TypoCorrectionMode"に置き換えられた
+            //
+            // ".disabled"は、従来の"needTypoCorrection: false"と動作上完全に等価 (無条件に無効化)
+            // (KanaKanjiConverter.isClassicTypoCorrectionEnabledを参照)
             typoCorrectionMode: .disabled,
             metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey \(hazkeyVersion)")
         )
@@ -719,7 +726,7 @@ class HazkeyServerConfig {
                     continue outer
                 }
             } else {
-                // load custom keymap
+                // ユーザ定義キーマップを読み込む
                 let customKeymapFile = HazkeyServerConfig.getConfigDirectory()
                     .appendingPathComponent(
                         "keymap", isDirectory: true
@@ -775,7 +782,7 @@ class HazkeyServerConfig {
                     continue outer
                 }
             } else {
-                // load custom table
+                // ユーザ定義入力テーブルを読み込む
                 let customTableFile = HazkeyServerConfig.getConfigDirectory()
                     .appendingPathComponent(
                         "table", isDirectory: true
@@ -805,24 +812,28 @@ class HazkeyServerConfig {
 }
 
 extension Hazkey_Config_Profile {
-    /// Legacy or missing config keeps history shared between profiles.
+    /// 旧設定または項目欠落時はプロファイル間で履歴を共有する (従来動作を維持)
     var useProfileIndependentHistoryEffective: Bool {
         hasUseProfileIndependentHistory ? useProfileIndependentHistory : false
     }
 
-    /// [community] Effective value of the extended-emoji candidate setting.
-    /// Legacy or missing config defaults to true to preserve existing behavior.
+    /// 拡張絵文字候補設定の実効値
+    /// 旧設定または項目欠落時は既存動作維持のため真を既定とする
     var extendedEmojiEffective: Bool {
         let mode = specialConversionMode
         return mode.hasExtendedEmoji ? mode.extendedEmoji : true
     }
 }
 
-func getZenzaiDevices() -> [GGMLBackendDevice] {
+/// backendDirectoryOverrideは、nil以外の場合はGGML_BACKEND_DIRとシステム既定値より優先する
+/// backendProbe.swiftのcpuOnlyBackendDirectory()がVulkanバックエンドプラグインを含まないフィルタ済みディレクトリをGGMLに指定するために使用する
+/// これにより、プローブ子プロセスが危険と判定したドライバ組み合わせを、再びdlopenしない
+func getZenzaiDevices(backendDirectoryOverride: String? = nil) -> [GGMLBackendDevice] {
     var ggmlBackendDirectory =
-        ProcessInfo.processInfo.environment["GGML_BACKEND_DIR"]
+        backendDirectoryOverride
+        ?? ProcessInfo.processInfo.environment["GGML_BACKEND_DIR"]
         ?? (systemLibraryPath + "/libllama/backends/")
-    // trailing slash is important
+    // 末尾のスラッシュが必須
     if !ggmlBackendDirectory.hasSuffix("/") {
         ggmlBackendDirectory.append("/")
     }

@@ -161,6 +161,9 @@ message CurrentConfig {
     repeated BackendDevice available_zenzai_backend_devices = 7;
     bool zenzai_model_available = 8;
     string zenzai_model_path = 9;
+    // 隔離バックエンドプローブがクラッシュ・タイムアウト・エラー終了して、このセッションがCPU専用フォールバックで動作している場合はTrue
+    // GPUアクセラレーションの無言の低下を防ぐため、GUIは"~/.config/hazkey/env"ファイルで単一ICDを固定する案内を表示する
+    bool zenzai_gpu_probe_fallback = 10;
     string xdg_config_home_path = 6;
 }
 
