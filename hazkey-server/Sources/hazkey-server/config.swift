@@ -361,6 +361,14 @@ class HazkeyServerConfig {
 
         NSLog("Config saved to: \(configPath.path)")
 
+        // [community] Pending learning belongs to the profile that was active
+        // when it was typed. Commit it while `currentProfile` (and therefore
+        // `memoryDirectory()`) still points at the old directory, otherwise the
+        // next commit merges it into the incoming profile's history.
+        if let state {
+            _ = state.saveLearningData()
+        }
+
         profiles = normalizedProfiles
         guard let firstProfile = normalizedProfiles.first else {
             throw ConfigError.emptyProfiles
