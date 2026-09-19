@@ -775,6 +775,35 @@ systemctl --user restart fcitx5.service   # 完全再起動
 
 学習データは、`~/.local/state/hazkey/`ディレクトリ内に保持されるため失われません。  
 
+### XIMを使用するアプリケーションで読みと変換結果が重複表示される
+
+X11環境でXIMを使うアプリに入力した時、入力中の読みと変換結果が同じ行に連結されて表示される場合があります。  
+これは、Fcitx 5のXIMフロントエンドでOn The Spotスタイルが無効になり、入力パネル側の表示にフォールバックしている時に発生します。  
+
+**対処方法**:  
+
+1. Fcitx 5の設定ツール (`fcitx5-configtool`) またはデスクトップ環境の入力メソッド設定を開きます。  
+2. [X Input Method フロントエンド]の設定で、[XIMでOn The Spotスタイルを使う]チェックボックスを有効にします。  
+3. 設定ファイルで指定する場合は、次のように記述します。  
+
+   ```ini
+   # ~/.config/fcitx5/conf/xim.conf
+   
+   UseOnTheSpot=True
+   ```
+
+   `XDG_CONFIG_HOME`を設定している場合は、`$XDG_CONFIG_HOME/fcitx5/conf/xim.conf`を使用します。  
+   `[General]`などのセクションを付けると、Fcitx 5では設定が読み込まれません。  
+4. Fcitx 5を完全に再起動し、対象アプリケーションも再起動します。  
+   
+   ```sh
+   fcitx5 -r
+   # または
+   systemctl --user restart fcitx5.service
+   ```
+   
+   `fcitx5-remote -r`だけでは、既存のXIMサーバに設定が反映されない場合があります。  
+
 ### IBusが新しいバージョンを認識しない
 
 ```sh
