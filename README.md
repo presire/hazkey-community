@@ -4,10 +4,12 @@
 
 Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
-オプションでZenzaiニューラル変換 (llama.cppバックエンド、Vulkan GPU / CPU対応) を利用できます。  
+オプションでニューラル変換 (Zenzai、llama.cppバックエンド、Vulkan GPU / CPU対応) を利用でき、標準のzenz系列に加えてQwen3ベースの**jinen-v2**モデルにも対応しています。  
 
 Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフロントエンド (ibus-hazkey) を同梱します。  
-(IBus版のソースビルドにはビルドオプション `ENABLE_IBUS` オプションが必要。既定はOFF。バイナリパッケージは両フロントエンド分を頒布します)  
+
+> IBus版をソースコードからビルドする場合は、CMakeで `ENABLE_IBUS` オプションが必要です。(デフォルトはOFF)  
+> バイナリパッケージは両フロントエンド分を頒布します。  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.27** です。  
 
@@ -44,10 +46,11 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
 | 学習データの削除・履歴管理 | 候補フォーカス中に `Ctrl+D` (設定で変更可能、「候補学習削除ホットキー」) でその候補の学習データを削除<br>設定UIの「入力履歴データの管理」から入力履歴を選択して削除するダイアログも利用可能 |
 | Emoji 17直接変換 | Emoji 17.0辞書による絵文字の直接変換候補を追加 (設定UI「拡張絵文字」、デフォルトON)<br>通常変換の候補にのみ注入され、サジェスト・ライブ変換には混入しない |
 | 候補ウィンドウのマウス選択 | 変換候補ウィンドウの候補をマウスクリックでも選択できる |
-| Zenzai設定の拡充 | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、リッチ候補の候補一覧 / サジェスト個別切替、GUIからのZenzaiモデル管理 (ダウンロード・有効化・削除) |
+| ニューラル変換設定の拡充 (Zenzai) | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、リッチ候補の候補一覧 / サジェスト個別切替、GUIからのニューラル変換モデル管理 (ダウンロード・有効化・削除) |
+| 複数のニューラル変換モデルに対応 (zenz / jinen-v2) | 標準の **zenz** 系列 (Apache-2.0 / CC-BY-SA-4.0) に加え、[togatogah](https://huggingface.co/togatogah) 氏が公開する Qwen3 ベースの **jinen-v2** (small / xsmall、量子化 `f16`/`Q8_0`/`Q5_K_M`/`Q4_K_M` を選択可、CC-BY-SA-4.0) に対応<br>設定UIの表記もモデルに依存しない「ニューラル変換」に統一<br>jinen系モデルはプロファイル・トピック・文体・好み (条件トークン) に対応しないため、有効化中は該当欄が自動的にグレーアウトされる |
 | プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
 | サーバ管理の安定化 | クライアント更新時のhazkey-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
-| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を3層の自動回避で解消 (下記トラブルシューティング参照) |
+| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を、隔離子プロセスによる起動前のバックエンド安全確認とCPU専用への自動フォールバックで解消<br>(フォールバック発生時は設定UIの[AI]タブに警告を表示。下記トラブルシューティング参照) |
 
 <br>
 
@@ -62,31 +65,37 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
    フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey: Fcitx 5用、ibus-hazkey: IBus用)  
    
    使用するフレームワークのパッケージを選んでください。  
-   両方入れておくこともできます (Fcitx 5 と IBus を同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)。  
+   両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)  
    
-   - Debian / Ubuntu (`.deb`): 両パッケージは共有ファイル (`hazkey-server` / `hazkey-settings` / 辞書など) を相互に上書きできるよう `Replaces` を宣言しており、どちらの順に入れても共存できます。  
-   - RPM (`.rpm`): 追加の宣言なしに共存できます。  
-   両フロントエンドのパッケージは同じバージョンで揃えて使用してください (異なるバージョンの混在は非サポートです)。  
+   - Debian / Ubuntu (`.deb`):  
+     両パッケージは共有ファイル (`hazkey-server` / `hazkey-settings` / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
+     どちらの順に入れても共存できます。  
+   - RPM (`.rpm`):  
+     追加の宣言なしに共存できます。  
    
-   > **共有ファイルの扱い (Debian / Ubuntu)**: 両パッケージは `/usr/bin/hazkey-server` などの共有ファイルを同じパスに含みます。  
-   > dpkg は共有ファイルを「最後にインストールした側」の所有として扱うため、後から入れた側を `apt remove` / `dpkg -r` すると、残した側の共有ファイルも一緒に削除されます。  
+   両フロントエンドのパッケージは同じバージョンで揃えて使用してください。(異なるバージョンの混在は非サポートです)  
+   
+   > **共有ファイルの扱い (Debian / Ubuntu)**:  
+   > 両パッケージは `/usr/bin/hazkey-server` 等の共有ファイルを同じパスに含みます。  
+   > dpkgは共有ファイルを「最後にインストールした側」の所有として扱うため、  
+   > 後から入れた側を `apt remove` / `dpkg -r` すると、残した側の共有ファイルも一緒に削除されます。  
    > 残す側のパッケージを再インストール (例: `sudo apt install --reinstall ./fcitx5-hazkey_*_amd64.deb`) すると復旧します。  
    > RPM (`.rpm`) では、片方を削除してももう片方が残っていれば共有ファイルは削除されません。  
 3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
    
    ```sh
-   # Fedora (使うフレームワークのパッケージを指定。例は両方)
+   # Fedora (使用するフレームワークのパッケージを指定。例は両方)
    sudo dnf install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
    
-   # openSUSE (使うフレームワークのパッケージを指定。例は両方)
+   # openSUSE (使用するフレームワークのパッケージを指定。例は両方)
    sudo zypper install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
    
-   # Debian / Ubuntu 系 (使うフレームワークのパッケージを指定。例は両方)
+   # Debian / Ubuntu系 (使用するフレームワークのパッケージを指定。例は両方)
    sudo apt install ./fcitx5-hazkey_*_amd64.deb ./ibus-hazkey_*_amd64.deb
    ```
    
 4. 使用しているフレームワークを再起動します。  
-   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` など)  
+   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` 等)  
 
 > インストール後、設定UI (hazkey-settings) と サーバ (hazkey-server) は同じバージョンで揃います。  
 > クライアントとサーバのバージョンが不一致になった場合は、hazkey-server が自動的に再起動されます。  
@@ -94,7 +103,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
 ### ダウンロードの検証 (SHA-256・GPG署名)
 
 Releasesページにはパッケージと合わせて `SHA256SUMS` が置かれています。  
-ダウンロード後は、次の手順で破損・改ざんの有無を確認できます。  
+ダウンロード後は、次の手順で破損・改竄の有無を確認できます。  
 
 ```sh
 # .deb / .rpmと同じディレクトリにSHA256SUMSを配置して実行
@@ -114,7 +123,7 @@ rpm -K ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
 ```
 
 ビルドの来歴証明 (Artifact Attestation) も付与されています。  
-ghコマンドがある環境では、次のコマンドで「このCIでビルドされた」ことを検証できます。(任意)  
+ghコマンドがある環境では、次のコマンドで「このCIでビルドされた」ことを検証 (任意) できます。  
 
 ```sh
 gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
@@ -134,14 +143,14 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
    ```
    
 2. Fcitx 5の設定ツール (タスクトレイアイコンから[設定]、または `fcitx5-configtool`) を開き、入力メソッドの追加から **Hazkey** を登録します。  
-3. 入力メソッドの切替 (デフォルトでは `Super+Space` など、Fcitx 5側の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
+3. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、Fcitx 5側の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
 4. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-settings** を起動します。  
    
    ```sh
    hazkey-settings
    ```
 
-### IBus に登録 (実験的)
+### IBusに登録 (実験的)
 
 1. ibus-daemonを再起動します。  
    
@@ -150,14 +159,14 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
    # またはログアウト / ログイン
    ```
    
-2. ibus list-engineに **hazkey** が表示されることを確認します。  
+2. ibus list-engineに**hazkey**が表示されることを確認します。  
    
    ```sh
    ibus list-engine | grep hazkey
    ```
    
-3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]など) または `ibus-setup` から **Hazkey** を追加します。  
-4. 入力メソッドの切替 (デフォルトでは `Super+Space` など、環境の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
+3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から **Hazkey** を追加します。  
+4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
 5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-settings** を起動します。  
    
    ```sh
@@ -195,7 +204,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 > 立ち上がりエッジ型デバウンス (リーディングエッジ方式のデバウンス) とは  
 > デバウンスとは、短時間に連続して発生するイベントを1回にまとめる (間引く) 手法のことです。  
-> 元々は、チャタリングする物理スイッチの信号処理用語で、ソフトウェアではリサイズ・スクロール・キー入力時の連続リフレッシュ抑制などに使われます。  
+> 元々は、チャタリングする物理スイッチの信号処理用語で、ソフトウェアではリサイズ・スクロール・キー入力時の連続リフレッシュ抑制等に使われます。  
 >  
 > 連続キー入力中に候補表示の更新要求が連発しても、先頭の1件はすぐ反映し、30[ms]以内の後続要求は捨てることにより、  
 > 入力応答性を落とさず描画負荷だけを抑えている。  
@@ -204,7 +213,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 - **Fcitx 5とIBusの同時有効化による入力に対応しています。**  
   hazkey-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
-  変換エンジン・ユーザ辞書・学習メモリ・Zenzai モデルは全接続で共有します。(`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
+  変換エンジン・ユーザ辞書・学習メモリ・Zenzaiモデルは全接続で共有します。(`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
   接続を奪い合いません。  
 - **hazkey-settingsを起動しても、IME側の入力接続は切断されません。**  
 - **同時接続の上限は8です**  
@@ -258,17 +267,22 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 <br>
 
-## Zenzai (ニューラル変換) のセットアップ
+## ニューラル変換 (Zenzai / Jinen v2) のセットアップ
 
 Zenzaiは、llama.cppをバックエンドとするオプションのニューラル変換機能です。  
 **GPU (Vulkan) がなくてもCPUだけで使用できます**。  
+
+設定UI ([AI]タブ) では、zenz系・jinen系等モデルの種類に依存しない表記として**「ニューラル変換」**を使用しています。  
+
+> タブ見出し・有効化チェックボックス・カスタム重み・トグルホットキー・モデル管理ダイアログ等  
+> protobufのフィールド名やウィジェットのオブジェクト名、ファイル名・環境変数名は引き続き `zenzai` を使用します。  
 
 ローエンドGPUよりCPUの方が速い・安定な場合もあるため、必ずしもGPUが必要ではありません。  
 
 ### モデルの選択
 
-Zenzaiモデルは、設定UIの[AI]タブにある[Zenzaiモデルの管理]からダウンロード・有効化・削除できます。  
-ダウンロード時は、SHA-256の検証が行われます。  
+Zenzaiモデルは、設定UIの[AI]タブにある[ニューラル変換モデルの管理]からダウンロード・有効化・削除できます。  
+ダウンロード時は、受信バイト数とSHA-256の両方が照合されます。転送が30秒間停止した場合はタイムアウトし、再試行またはキャンセルを選べます。  
 
 現在提供されているモデルは以下の通りです。  
 
@@ -285,34 +299,52 @@ CPU中心で使う・軽量重視の場合は **zenz-v3.2-xsmall** が適して�
 
 v3.1はv3.2の後継に置き換えられているため、既存環境の再現用途以外での新規利用は推奨しません。  
 
-#### karukan jinen-v2 (実験的、Qwen3ベース)
+#### karukan jinen-v2 (実験的: Qwen3ベース)
 
 jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する **Qwen3** ベースの日本語変換モデルで、[CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) のもとで配布されています。  
-[Zenzaiモデルの管理] では系列ごとに量子化 (`f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M`) を選択でき、選択したアーティファクトだけがダウンロードされます。  
+[ニューラル変換モデルの管理] では系列ごとに量子化 (`f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M`) を選択でき、選択したアーティファクトだけがダウンロードされます。  
 
 | 系列 | 配布リポジトリ | 量子化 | サイズ |
 |---|---|---|---|
-| jinen-v2-small | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M` | 約 69〜210 [MB] |
-| jinen-v2-xsmall | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M` | 約 25〜69 [MB] |
+| jinen-v2-small | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 69〜210 [MB] |
+| jinen-v2-xsmall | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 25〜69 [MB] |
 
-- **帰属**: 本モデルは togatogah 氏の成果物です。ライセンスは CC-BY-SA-4.0 です。設定画面の[Zenzaiモデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
-- **重みは非同梱**: モデルの重みはHazkeyのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
-- **完全性検証**: ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
-- **Qwen3 前提**: jinen-v2はQwen3アーキテクチャのため、コンバータ依存 (`presire/AzooKeyKanaKanjiConverter` の `hazkey` ブランチ) に Qwen3 対応が焼き込み済みである必要があります (`Package.resolved` が指すリビジョン以降)。この対応はGGUFの `general.architecture == "qwen3"` を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
-- **トークナイザ**: 追加の `tokenizer.json` は不要です (llama.cpp内蔵トークナイザのみを使用します)。  
-- **zenzの既定は不変**: 推奨モデルは従来どおり **zenz-v3.2-small** で、zenz側のラベル・推奨表示・既定の有効化状態・旧世代警告 (`zenz-v3.1-small`) は変更ありません。jinen-v2は推奨にも既定にもせず、旧世代扱いもしません。  
+- **帰属**:  
+  本モデルは、togatogah氏の成果物です。(ライセンスは、CC-BY-SA-4.0)  
+  設定画面の[ニューラル変換モデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
+- **重みは非同梱**:  
+  モデルの重みはHazkeyのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。  
+  上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
+- **完全性検証**:  
+  ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
+- **Qwen3 前提**:  
+  jinen-v2はQwen3アーキテクチャのため、  
+  コンバータ依存 (`presire/AzooKeyKanaKanjiConverter`の`hazkey`ブランチ) に Qwen3 対応が焼き込み済みである必要があります。(`Package.resolved`が指すリビジョン以降)  
+  この対応は、GGUFの`general.architecture == "qwen3"`を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、  
+  既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
+- **トークナイザ**:  
+  追加の`tokenizer.json`は不要です。(llama.cpp内蔵トークナイザのみを使用します)  
+- **zenzの既定は不変**:  
+  推奨モデルは従来通り、**zenz-v3.2-small**で、zenz側のラベル・推奨表示・既定の有効化状態・旧世代警告 (`zenz-v3.1-small`) は変更ありません。  
+  jinen-v2は推奨にも既定にもせず、旧世代扱いもしません。  
+- **条件付けフィールドは自動的に無効化**:  
+  jinen-v2はプロファイル・トピック・文体・好み (条件トークン: U+EE03〜EE06) に対応していません。  
+  jinen系モデルが有効な間は、設定UIの該当4項目とラベルが自動的にグレーアウトされ、ツールチップで理由 (「有効なモデルでは対応していません。」) を表示します。  
+  カスタム重み指定時はファイル名からjinenモデルかどうかを推定し、判別できない場合は既定で有効のままにします。  
 
-jinen-v2は実験的な位置づけであり、新規利用の第一候補は従来どおり **zenz-v3.2-small** です。  
+jinen-v2は実験的な位置づけであり、新規利用の第一候補は**zenz-v3.2-small**です。  
 
 ### 有効化の手順
 
 1. `hazkey-settings` を起動し、[AI]タブを開きます。  
-2. [Zenzaiモデルの管理]から利用したいモデルをダウンロードします。  
-3. [Zenzaiを有効化]にチェックを入れ、バックエンドデバイス (CPUまたはVulkan GPU) を選択して、[適用]または[OK]を押します。  
+2. [ニューラル変換モデルの管理]から利用したいモデルをダウンロードします。  
+3. [ニューラル変換を有効化]にチェックを入れ、バックエンドデバイス (CPUまたはVulkan GPU) を選択して、[適用]または[OK]を押します。  
+   有効化には数十秒かかる場合があり、進行中は待機ダイアログが表示されます。反映後はサーバが起動時 (設定リロード時) にモデルを事前ウォームアップするため、  
+   切替直後の初回変換が極端に遅くなることはありません。  
 4. GPUバックエンドの選択肢に表示されない場合は、Vulkanドライバの導入状態を確認した上で、使用中のフレームワークを再起動します。
    (Fcitx 5: `systemctl --user restart fcitx5.service`、IBus: `ibus restart`)
 
-Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANVなど) が必要です。  
+Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANV等) が必要です。  
 `vulkaninfo --summary` (パッケージ `vulkan-tools`) でGPUが列挙されれば利用可能です。  
 
 #### Vulkanドライバのインストール例
@@ -413,14 +445,14 @@ GPU/iGPUが条件を満たさない場合や、GPU/iGPUよりCPUの方が適し�
   `~/.local/share/hazkey/zenzai/models/<モデルキー名>.gguf`  
 - アクティブなモデル:  
   `~/.local/share/hazkey/zenzai/zenzai.gguf`  
-  (上記models配下へのシンボリックリンク。[Zenzaiモデルの管理]のアクティブ化 / 無効化でこのリンクが切り替わります)  
-- サーバは `HAZKEY_ZENZAI_MODEL` 環境変数 (任意) > ユーザディレクトリの `zenzai.gguf` > システム配備のモデル の順に探索します。  
+  (上記models配下へのシンボリックリンク。[ニューラル変換モデルの管理]のアクティブ化 / 無効化でこのリンクが切り替わります)  
+- サーバは、環境変数`HAZKEY_ZENZAI_MODEL` (任意) > ユーザディレクトリのzenzai.gguf > システム配備のモデルの順に探索します。  
 
 <br>
 
 ## 設定・環境のリファレンス
 
-hazkey-communityが使うファイルの場所と、サーバ起動時に効く環境変数をここにまとめます。  
+hazkey-communityが使用するファイルの場所と、サーバ起動時に効く環境変数をここにまとめます。  
 
 ### ファイルの場所 (XDGベースディレクトリ準拠)
 
@@ -442,7 +474,7 @@ hazkey-communityが使うファイルの場所と、サーバ起動時に効く�
 
 | 変数名 | 用途 | 設定値 |
 |---|---|---|
-| `VK_DRIVER_FILES` | 使用するVulkan ICDの固定 (マルチGPUのSIGILL回避) | ICDのJSONパス<br>(例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br><br>実在名は `ls /usr/share/vulkan/icd.d/` コマンドで確認 |
+| `VK_DRIVER_FILES` | 使用するVulkan ICDの明示指定<br>(設定するとhazkey-serverはバックエンド安全確認プローブを省略してこの指定をそのまま使用する。マルチGPU環境のSIGILL回避にもなる) | ICDのJSONパス<br>(例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br><br>実在名は `ls /usr/share/vulkan/icd.d/` コマンドで確認 |
 | `VK_ICD_FILENAMES` | 同上 (Vulkan loader向けの別名)<br>`VK_DRIVER_FILES` と同じ値を書く | 同上 |
 | `HAZKEY_ZENZAI_CPU_THREADS` | Zenzai CPU推論のスレッド数 | `1`〜`8`<br>未設定・無効値時は既定動作 |
 | `HAZKEY_ZENZAI_DEADLINE_MS` | Zenzai CPU推論1回の上限時間 (ミリ秒) | `0`〜`2000`<br>`0` は期限なし。<br>超過時はニューラル変換なしにフォールバック |
@@ -598,7 +630,7 @@ swift --version
 
 各ディストリビューションでの依存パッケージの導入コマンドは以下の通りです。  
 `-DGGML_VULKAN=OFF` のCPU専用ビルドでは、  
-Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` など) のインストールを省略できます。  
+Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` 等) のインストールを省略できます。  
 
 #### Fedora 44
 
@@ -703,20 +735,33 @@ NVIDIA GPUとAMD/Intel iGPUが同居する環境 (両方のVulkan ICDがイン�
 Zenzai初期化時にVulkan loaderがシステム内の全ICDをロードし、ベンダー混在の競合状態でSwiftランタイムのprecondition failure (`ud2` 命令、SIGILL) が発生します。  
 SIGILLはtrap命令のため `do/catch` で捕捉できません。  
 
-**コミュニティ版の自動回避 (3層)**:  
+**コミュニティ版の自動回避 (隔離プローブ方式)**:  
 
-1. **ラッパースクリプト** (`hazkey-server.sh`):  
-   `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` が未設定の場合、検出したICDのうち最初の1つだけを設定してサーバを起動します。  
-2. **変換エンジン (フォーク版) 内蔵のピン留め**:  
-   使用中のAzooKeyKanaKanjiConverterフォーク版 (`presire/AzooKeyKanaKanjiConverter` のhazkeyブランチ) が、バックエンド初期化の前にICDを1つに絞る処理を組み込みで実行します。  
-3. **CPUフォールバック**:  
-   Vulkanを完全に無効化したい場合は `-DGGML_VULKAN=OFF` のCPU専用ビルドが可能です。  
+`hazkey-server` は起動のたびに、GPUバックエンド (Vulkan) のロードをまず**隔離した子プロセス** (自分自身を `--probe-backends` で再実行) で試します。  
+この子プロセスがクラッシュ・タイムアウト (既定5秒)・異常終了した場合、実サーバ本体を巻き込まずに危険なドライバ組み合わせを検出し、  
+そのセッションはVulkanを含まないバックエンドディレクトリから読み込み直して**CPU専用のニューラル変換に自動フォールバック**します。  
 
-それでも症状が出る・特定のGPUに固定したい場合は、`~/.config/hazkey/env` で `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` を明示してください。  
+GPUアクセラレーションが無言で無効化されないよう、フォールバックが発生した場合は設定UI ([AI]タブ) に警告バナーが表示され、  
+`~/.config/hazkey/env` で単一ICDを固定してから使用中のフレームワークを再起動するよう案内します。  
+
+`VK_DRIVER_FILES` / `VK_ICD_FILENAMES` / `VK_ADD_DRIVER_FILES` / `VK_LOADER_DRIVERS_SELECT` / `VK_LOADER_DRIVERS_DISABLE` のいずれかが設定されている場合、  
+その明示指定を信頼してこの安全確認プローブ自体を省略します (ユーザの明示指定が常に最優先されます)。  
+
+> **旧方式との違い**:  
+> 以前は、`hazkey-server.sh` (ラッパースクリプト) が、`VK_DRIVER_FILES` / `VK_ICD_FILENAMES` 未設定時に  
+> 「最初に検出したベンダーのICDへ固定する」ヒューリスティックを実装していましたが、  
+> 最初に列挙されたマニフェストが未認識ドライバやアーキテクチャ不一致のドライバだった場合、動作するGPUが無言で不可視になる問題がありました。([Issue #2](https://github.com/presire/hazkey-community/issues/2))  
+> 現在のラッパースクリプトはVulkan ICDの選択に一切関与せず、Vulkan Loaderの標準探索にそのまま委ねます。  
+> (Vulkan Loader >= 1.3.219 とMesa >= 25.2.1 の組み合わせでは、loaderがアーキテクチャ不一致のマニフェストを自動的に除外)  
+> マルチベンダー構成のクラッシュ対策は、上記の隔離バックエンドプローブに一本化されています。  
+
+それでも症状が出る・特定のGPUに固定したい場合は、`~/.config/hazkey/env`ファイルで`VK_DRIVER_FILES` / `VK_ICD_FILENAMES`を設定してください。  
 (書式・設定例は上記「設定・環境のリファレンス」参照)  
 
+Vulkanを完全に無効化したい場合は、`-DGGML_VULKAN=OFF` のCPU専用ビルドも可能です。  
+
 ICDのファイル名はドライバにより異なります。  
-(NVIDIA: `nvidia_icd.json`、AMD Mesa: `radeon_icd.json`、AMD 公式: `amd_icd.x86_64.json`、Intel Mesa: `intel_icd.x86_64.json` など)  
+(NVIDIA: `nvidia_icd.json`、AMD Mesa: `radeon_icd.json`、AMD 公式: `amd_icd.x86_64.json`、Intel Mesa: `intel_icd.x86_64.json` 等)  
 
 実際のファイル名は `ls /usr/share/vulkan/icd.d/` コマンドで確認してください。  
 
@@ -728,9 +773,9 @@ rm -rf ~/.cache/fcitx5/hazkey/            # キャッシュクリア
 systemctl --user restart fcitx5.service   # 完全再起動
 ```
 
-学習データは `~/.local/state/hazkey/` に保持されるため失われません。  
+学習データは、`~/.local/state/hazkey/`ディレクトリ内に保持されるため失われません。  
 
-### IBus が新しいバージョンを認識しない
+### IBusが新しいバージョンを認識しない
 
 ```sh
 ibus restart                              # デーモン再起動
@@ -746,17 +791,17 @@ pgrep -af hazkey-server                              # 起動確認
 ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
 ```
 
-サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBus デーモン) を再起動すると再度起動します。  
+サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBusデーモン) を再起動すると再度起動します。  
 手動起動での切り分けは、インストール先の `hazkey-server` (ラッパースクリプト) を実行して確認できます。  
 
 ### ユーザ辞書が反映されない
 
-- `~/.config/hazkey/user_dictionary.tsv` の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
-- サーバはファイルの更新日時を監視して自動再読込しますが、反映されない場合は `pkill -u $USER -x hazkey-server` でサーバを再起動してください。  
+- `~/.config/hazkey/user_dictionary.tsv`の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
+- サーバはファイルの更新日時を監視して自動再読込しますが、反映されない場合は `pkill -u $USER -x hazkey-server` コマンドを実行してサーバを再起動してください。  
 
 ### ZenzaiのGPUデバイスが選択肢に出ない
 
-- `vulkaninfo --summary` で GPUが列挙されるか確認してください。  
+- `vulkaninfo --summary` コマンドでGPUが列挙されるか確認してください。  
 - Vulkan ドライバ導入後は、使用中のフレームワーク (およびサーバ) の再起動が必要です。  
 - CPUでもZenzaiは使用可能です。  
   バックエンドデバイスに「CPU」を選択してください。  
@@ -770,7 +815,8 @@ ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
 | [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) | 本プロジェクトの上流<br>ドキュメント: [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs) |
 | [azooKey/AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) | 変換エンジン (本プロジェクトは、forkのhazkeyブランチを使用) |
 | [ensan-hcl/azooKey](https://github.com/ensan-hcl/azooKey) | 動詞活用エンジンの移植元 |
-| [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) / [zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) / [zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | Zenzaiモデル (GGUF) |
+| [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) / [zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) / [zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | ニューラル変換モデル (GGUF、zenz系) |
+| [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) / [jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | ニューラル変換モデル (GGUF、Qwen3ベース、CC-BY-SA-4.0) |
 | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Zenzaiの推論バックエンド |
 | [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | インプットメソッドフレームワーク (Fcitx 5 フロントエンド) |
 | [ibus/ibus](https://github.com/ibus/ibus) | インプットメソッドフレームワーク (実験的 IBus フロントエンド) |
