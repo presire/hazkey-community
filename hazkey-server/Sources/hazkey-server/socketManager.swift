@@ -7,11 +7,10 @@ protocol SocketManagerDelegate: AnyObject {
     func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32)
 }
 
-/// Admission policy for simultaneous socket clients.
+/// 同時接続クライアントの受入ポリシー
 ///
-/// Each accepted connection owns an isolated composition session, but every
-/// connection still costs a polled fd and per-request work on the single
-/// server thread, so the count is capped.
+/// acceptされた各接続は独立したcomposition sessionを持つが、
+/// それでも各接続は単一のサーバスレッド上でpoll対象のfdとリクエストごとの処理コストを消費するため、接続数には上限を設けている
 enum ClientSessionLimit {
     static func accepts(currentCount: Int) -> Bool {
         currentCount < SocketManager.maxClientCount
@@ -21,13 +20,13 @@ enum ClientSessionLimit {
 class SocketManager {
     weak var delegate: SocketManagerDelegate?
 
-    /// Maximum simultaneous client connections. fcitx5 + IBus +
-    /// hazkey-settings = 3 in the full setup; the headroom covers transient
-    /// reconnects (a client reconnecting before its stale fd is reaped).
-    /// Internal so tests can drive the cap exactly.
+    /// 同時接続クライアントの最大数
+    /// フル構成では、Fcitx5 + IBus + hazkey-settings = 3接続だが、
+    /// 余裕分は一時的な再接続 (古いfdが回収される前にクライアントが再接続してくるケース) を吸収するためのもの
+    /// テストが上限値を正確に操作できるようinternalにしている
     static let maxClientCount = 8
 
-    /// Number of currently connected clients.
+    /// 現在接続中のクライアント数
     var connectedClientCount: Int { clientFds.count }
 
     private var signalSources: [DispatchSourceSignal] = []
@@ -77,7 +76,7 @@ class SocketManager {
             throw SocketError.readFailed("Failed to listen", errno)
         }
 
-        // Set non-blocking
+        // 非ブロッキングに設定
         let flags = fcntl(serverFd, F_GETFL, 0)
         let fcntlRes = fcntl(serverFd, F_SETFL, flags | O_NONBLOCK)
         if fcntlRes != 0 {
@@ -102,7 +101,7 @@ class SocketManager {
             source.setEventHandler { [weak self] in
                 NSLog("Signal \(sig) received, shutting down...")
                 self?.continueServing = false
-                // stop poll
+                // poll を止める
                 if let pipeFd = self?.pipeFds[1] {
                     close(pipeFd)
                     self?.pipeFds[1] = -1
@@ -118,14 +117,14 @@ class SocketManager {
         while continueServing {
             var pollFds: [pollfd] = []
 
-            // Always poll the server socket for new connections
+            // 新規接続を検知するため、サーバソケットは常にpoll対象に含める
             pollFds.append(pollfd(fd: serverFd, events: Int16(POLLIN), revents: 0))
 
-            // poll stopper
+            // poll停止用のパイプ
             pollFds.append(pollfd(fd: pipeFds[0], events: Int16(POLLIN), revents: 0))
 
-            // Poll every connected client. `polledClientFds` snapshots the
-            // fd set so index 2+i maps to a concrete fd for this iteration.
+            // 接続中の全クライアントをpollする
+            // polledClientFdsはfd集合のスナップショットで、このイテレーションではindex 2 + iが具体的なfdに対応する
             for clientFd in clientFds {
                 pollFds.append(pollfd(fd: clientFd, events: Int16(POLLIN), revents: 0))
             }
@@ -135,7 +134,7 @@ class SocketManager {
 
             if pollRes < 0 {
                 if errno == EINTR {
-                    // signal received
+                    // シグナルを受信した
                     continue
                 }
                 NSLog("Poll failed: \(errno)")
@@ -143,22 +142,20 @@ class SocketManager {
             }
 
             if pollRes == 0 {
-                // Timeout
+                // タイムアウト
                 continue
             }
 
-            // pipe closed by signalhandler
+            // シグナルハンドラによってパイプが閉じられた
             if pollFds[1].revents & Int16(POLLIN|POLLHUP) != 0 {
                 break
             }
 
-            // Serve existing clients BEFORE accepting new connections.
-            // Accepting last means accept() cannot reuse an fd number that
-            // closeClient() just released earlier in this iteration before
-            // its revents were processed — the multi-fd equivalent of the old
-            // `polledClientFd == currentClientFd` stale-event guard. The
-            // `clientFds.contains` check below additionally skips fds that
-            // were closed earlier in this same iteration.
+            // 新規接続をacceptするより先に、既存クライアントを処理する
+            // acceptを最後に行うことで、accept()がこのイテレーション内でcloseClient()によって直前に解放されたfd番号を、
+            // そのreventsが処理される前に再利用してしまう事態を防げる
+            // これは旧来のpolledClientFd == currentClientFdという古いイベントに対するガードを、複数fdに対応させたものに相当する
+            // さらに下のclientFds.containsチェックは、同一イテレーション内で既にクローズされたfdをスキップする
             for (index, polledFd) in polledClientFds.enumerated() {
                 guard clientFds.contains(polledFd) else { continue }
                 let clientEvents = Int32(pollFds[2 + index].revents)
@@ -174,24 +171,24 @@ class SocketManager {
                 }
             }
 
-            // Check if server socket has a new connection
+            // サーバソケットに新規接続があるか確認
             if pollFds[0].revents & Int16(POLLIN) != 0 {
                 handleNewConnection()
             }
         }
     }
 
-    /// Accepts one pending connection. Internal (not private) so tests can
-    /// drive the real accept path directly without the poll loop.
+    /// 保留中の接続を1件acceptする
+    /// pollループを介さずテストが実際のaccept経路を直接実行できるよう、privateではなくinternalにしている
     func handleNewConnection() {
         var clientAddr = sockaddr()
         var clientLen: socklen_t = socklen_t(MemoryLayout<sockaddr>.size)
         let newClientFd = accept(serverFd, &clientAddr, &clientLen)
 
         if newClientFd != -1 {
-            // Multi-client contract: every connection keeps its own session;
-            // new connections never evict existing clients. Over the cap the
-            // newcomer is rejected (closed immediately) instead.
+            // マルチクライアントの契約:
+            // 各接続は自分自身のセッションを保持し、新規接続が既存クライアントを追い出すことはない
+            // 上限を超える場合は、代わりに新規接続を拒否する (即座にクローズする)
             if !ClientSessionLimit.accepts(currentCount: clientFds.count) {
                 NSLog(
                     "Client limit reached (\(Self.maxClientCount)); rejecting connection \(newClientFd)"
@@ -200,10 +197,10 @@ class SocketManager {
                 return
             }
 
-            // Set up the new client
+            // 新規クライアントをセットアップする
             NSLog("Client connected: \(newClientFd)")
 
-            // Make client non-blocking
+            // クライアントを非ブロッキングにする
             let clientFlags = fcntl(newClientFd, F_GETFL, 0)
             let fcntlRes = fcntl(newClientFd, F_SETFL, clientFlags | O_NONBLOCK)
             if fcntlRes != 0 {
@@ -218,10 +215,10 @@ class SocketManager {
 
     private func handleClientData(_ clientFd: Int32) {
         do {
-            // Handle client request
-            let maxMessageSize: UInt32 = 1024 * 1024  // 1MB limit
+            // クライアントのリクエストを処理する
+            let maxMessageSize: UInt32 = 1024 * 1024  // 1[MB]の上限
 
-            // Read message length header
+            // メッセージ長ヘッダを読み込む
             debugLog("Reading data from client \(clientFd)...")
             let lengthData = try readData(from: clientFd, count: 4)
             let readLen = lengthData.withUnsafeBytes {
@@ -229,26 +226,26 @@ class SocketManager {
             }
             debugLog("Message length: \(readLen)")
 
-            // Sanity check
+            // 妥当性チェック
             guard readLen <= maxMessageSize else {
                 throw SocketError.messageTooLarge(readLen)
             }
 
-            // Read message body
+            // メッセージボディを読み込む
             let query = try readData(from: clientFd, count: Int(readLen))
             debugLog("Successfully read \(query.count) bytes")
 
-            // Process and respond
+            // 処理してレスポンスを返す
             let response =
                 delegate?.socketManager(self, didReceiveData: query, from: clientFd) ?? Data()
             debugLog("Processed request, response size: \(response.count)")
 
-            // Write response length
+            // レスポンス長を書き込む
             var writeLen = UInt32(response.count).bigEndian
             let lengthHeader = withUnsafeBytes(of: &writeLen) { Data($0) }
             try writeData(to: clientFd, data: lengthHeader)
 
-            // Write response body
+            // レスポンスボディを書き込む
             try writeData(to: clientFd, data: response)
 
             fsync(clientFd)
@@ -283,8 +280,7 @@ class SocketManager {
     }
 
     private func closeClient(_ clientFd: Int32) {
-        // No-op if already removed (e.g. a stale poll event for an fd closed
-        // earlier in the same iteration, or a duplicate HUP/ERR).
+        // 既に削除済みの場合はNOP (同一イテレーション内で先に閉じられたfdに対する古いpollイベント、または、重複したHUP / ERRの場合等)
         guard clientFds.contains(clientFd) else { return }
         NSLog("Closing client connection: \(clientFd)")
         close(clientFd)

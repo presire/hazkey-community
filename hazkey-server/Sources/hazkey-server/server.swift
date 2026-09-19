@@ -3,11 +3,11 @@ import Foundation
 class HazkeyServer: SocketManagerDelegate {
     private let processManager: ProcessManager
     private var socketManager: SocketManager
-    /// Server-wide converter, config, and learning state shared by every
-    /// connection. Created once after the lock is acquired.
+    /// 全接続で共有されるサーバ全体の変換エンジン・設定・学習状態
+    /// ロック取得後に1度だけ生成される
     private var shared: HazkeySharedResources?
-    /// Per-connection composition sessions, keyed by client fd. The server
-    /// loop is single-threaded, so plain-dictionary access is sufficient.
+    /// クライアントfdをキーとした、接続単位の入力セッション
+    /// サーバループはシングルスレッドなので、通常のDictionaryアクセスで十分
     private var sessions: [Int32: HazkeyServerState] = [:]
 
     private let runtimeDir: URL
@@ -49,8 +49,8 @@ class HazkeyServer: SocketManagerDelegate {
         do {
             try processManager.tryLock(force: forceRestart)
         } catch ProcessManagerError.anotherInstanceRunning {
-            // NSLogged by tryLock()
-            // expected exit
+            // tryLock()がNSLog済み
+            // 想定内の終了
             return
         } catch {
             NSLog("Failed to start hazkey-server: \(error)")
@@ -58,10 +58,10 @@ class HazkeyServer: SocketManagerDelegate {
         }
         self.shared = HazkeySharedResources(emojiDictionaryURL: nil)
         try socketManager.setupSocket()
-        // start main loop
+        // メインループ開始
         NSLog("start listening...")
         socketManager.startListening()
-        // finish process
+        // プロセス終了処理
         let _ = shared?.saveLearningData()
     }
 
@@ -72,15 +72,15 @@ class HazkeyServer: SocketManagerDelegate {
             NSLog("No session for client fd \(clientFd); dropping request.")
             return Data()
         }
-        // ProtocolHandler is thin and per-request; no shared state of its own.
+        // ProtocolHandlerは薄いラッパーでリクエストごとに生成され、自身は状態を持たない
         return ProtocolHandler(state: session).processProto(data: data)
     }
 
     func socketManager(_ manager: SocketManager, clientDidConnect clientFd: Int32) {
         guard let shared else { return }
-        // fd-reuse safety: the OS may hand a fresh connection the same fd
-        // number a just-closed connection used. Drop any stale session for
-        // this fd before creating the new one.
+        // fd再利用への対策:
+        // OSは閉じたばかりの接続と同じfd番号を新しい接続に割り当てることがある
+        // 新規セッションを作る前に、このfdに紐づく古いセッションを破棄しておく
         sessions.removeValue(forKey: clientFd)?.close()
         sessions[clientFd] = HazkeyServerState(shared: shared)
         NSLog("Session created for client fd \(clientFd) (\(sessions.count) active)")

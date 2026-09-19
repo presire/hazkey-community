@@ -1,8 +1,11 @@
 import Foundation
 
-// Ported from azooKey's JapaneseConjugationBuilder (ensan-hcl/azooKey, commit 79686594).
-// Changed public struct -> struct (internal) and public static func -> static func (internal).
-// Helper functions remain private. Conjugation types and 行 enum live in ConjugationRow.swift.
+// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey, commit 79686594)
+// public struct -> struct (internal) および public static func -> static func (internal) に変更
+//
+// ヘルパ関数は、privateのままである
+//
+// 活用の種類と行enumは、ConjugationRow.swiftにある
 
 struct JapaneseConjugationBuilder {
     static private func 動詞情報照会(cid: Int) -> (活用: 活用の種類, 行の名前: 行)? {

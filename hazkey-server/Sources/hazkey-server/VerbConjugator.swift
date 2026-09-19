@@ -2,48 +2,46 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftUtils
 
-/// Tail-detection layer that maps a verb's hiragana reading tail to the correct
-/// base CID, then expands the verb into all conjugated `DicdataElement` forms.
+/// 動詞のひらがな読みの末尾を正しい基本CIDへ対応付け、その動詞をすべての活用形のDicdataElementへ展開する末尾検出レイヤー
 ///
-/// Known limitation: 一段 vs 五段-る ambiguity (e.g. 切る/走る/帰る end in -iru/-eru
-/// but are actually 五段) is not resolvable from the reading alone without a
-/// dictionary. Ambiguous cases default to 一段 (CID 619). The base form
-/// (終止形) is always injected regardless, so users still get the dictionary form.
+/// 既知の限界:
+/// 一段 vs 五段-る の曖昧さ (例: "切る/走る/帰る"は、"-iru/-eru"で終わるが、実際には五段) は、辞書なしでは読みだけから解決できない
+/// 曖昧なケースは一段 (CID 619) にフォールバックする
+/// 基本形 (終止形) は常に注入されるため、いずれにせよユーザは辞書形を得られる
 enum VerbConjugator {
-    // イ段 kana used to detect 一段(上) verbs (prev kana before final る).
+    // 一段(上)動詞を検出するために使うイ段のかな (末尾の「る」の直前のかな)
     private static let ichidanIPrev: Set<Character> = [
         "い", "き", "し", "ち", "に", "ひ", "み", "り", "ぎ", "じ", "び", "ぴ",
     ]
-    // エ段 kana used to detect 一段(下) verbs (prev kana before final る).
+    // 一段(下)動詞を検出するために使うエ段のかな (末尾の「る」の直前のかな)
     private static let ichidanEPrev: Set<Character> = [
         "え", "け", "せ", "て", "ね", "へ", "め", "れ", "げ", "ぜ", "べ", "ぺ",
     ]
 
-    /// Detects the base conjugation CID from the hiragana reading's tail.
-    /// Returns nil for カ変 (くる) and undetectable tails; the caller falls
-    /// back to a single element with CID 772 in that case.
+    /// ひらがな読みの末尾から基本活用CIDを検出する
+    /// カ変 (くる) と検出不能な末尾ではnilを返し、呼び出し側はその場合はCID 772の単一要素にフォールバックする
     static func detectBaseCid(hiraganaReading: String) -> Int? {
-        // Priority 1: サ変 (する)
+        // 優先度1: サ変 (する)
         if hiraganaReading.hasSuffix("する") { return 583 }
-        // Priority 2: カ変 (くる) — deferred to nil
+        // 優先度2: カ変 (くる) - nilを返す
         if hiraganaReading.hasSuffix("くる") { return nil }
 
         let chars = Array(hiraganaReading)
 
         if hiraganaReading.hasSuffix("る") {
-            // Need at least 2 chars to check prev kana.
+            // 直前のかなを調べるには最低2文字必要
             if chars.count >= 2 {
                 let prev = chars[chars.count - 2]
-                // Priority 3: 一段(上) — prev kana in イ段
+                // 優先度3: 一段(上) - 直前のかながイ段
                 if ichidanIPrev.contains(prev) { return 619 }
-                // Priority 4: 一段(下) — prev kana in エ段
+                // 優先度4: 一段(下) - 直前のかながエ段
                 if ichidanEPrev.contains(prev) { return 619 }
             }
-            // Priority 5: other -る → 五段ラ行
+            // 優先度5: それ以外の -る → 五段ラ行
             return 772
         }
 
-        // Priority 6-13: single-kana tails
+        // 優先度6-13: 1文字のかなの末尾
         guard let last = chars.last else { return nil }
         switch last {
         case "く": return 679   // 五段カ行(イ音便)
@@ -53,17 +51,16 @@ enum VerbConjugator {
         case "ぬ": return 746   // 五段ナ行
         case "ぶ": return 754   // 五段バ行
         case "む": return 762   // 五段マ行
-        case "う": return 802   // 五段ワ行(ウ音便)
-        default: return nil     // Priority 14: undetectable
+        case "う": return 802   // 五段ワ行 (ウ音便)
+        default: return nil     // 優先度14: 検出不能
         }
     }
 
-    /// Expands a verb into all conjugated `DicdataElement` forms (including the
-    /// base 終止形). Falls back to a single element with CID 772 when the base
-    /// CID cannot be detected (カ変/くる or non-verb tails).
+    /// 動詞を全活用形のDicdataElement (基本形の終止形を含む) へ展開する
+    /// 基本CIDを検出できない場合 (カ変 / くる、または動詞以外の末尾) は、CID 772の単一要素にフォールバックする
     static func dicdataElements(word: String, hiraganaReading: String) -> [DicdataElement] {
         guard let baseCid = detectBaseCid(hiraganaReading: hiraganaReading) else {
-            // Undetectable (incl. カ変/くる): fall back to single element with CID 772.
+            // 検出不能 (カ変 / くるを含む): CID 772の単一要素にフォールバックする
             return [DicdataElement(word: word, ruby: hiraganaReading.toKatakana(),
                                    cid: 772, mid: MIDData.一般.mid, value: -5)]
         }

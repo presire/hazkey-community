@@ -1,6 +1,6 @@
 import Foundation
 
-// log for debugging
+// デバッグ用ログ
 public func debugLog(
     _ items: Any?, function: String = #function
 ) {

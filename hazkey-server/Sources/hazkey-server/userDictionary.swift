@@ -2,7 +2,7 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftUtils
 
-/// User-defined word entry (reading -> word).
+/// ユーザ定義の単語エントリ (読み -> 単語)
 struct UserDictionaryEntry {
     let reading: String
     let word: String
@@ -16,7 +16,7 @@ struct UserDictionaryEntry {
         self.pos = pos
     }
 
-    /// Returns a `DicdataElement` usable by the kana-kanji converter.
+    /// かな漢字変換エンジンで使用できるDicdataElementを返す
     func toDicdataElement() -> DicdataElement {
         let cid: Int
         if pos == "verb" {
@@ -33,8 +33,8 @@ struct UserDictionaryEntry {
         )
     }
 
-    /// Expands this entry into one or more `DicdataElement` values.
-    /// Verb entries produce all conjugated forms; other POS produce a single element.
+    /// このエントリを1つ以上のDicdataElementへ展開する
+    /// 動詞エントリは全活用形を生成し、それ以外の品詞は単一の要素を生成する
     func expandedDicdataElements() -> [DicdataElement] {
         if pos == "verb" {
             return VerbConjugator.dicdataElements(word: word, hiraganaReading: reading)
@@ -42,7 +42,7 @@ struct UserDictionaryEntry {
         return [toDicdataElement()]
     }
 
-    // Verb POS is handled separately via VerbConjugator (tail-detection + conjugation).
+    // 動詞の品詞は、VerbConjugator (末尾検出 + 活用展開) で別途処理する
     private static func cid(for pos: String) -> Int {
         switch pos {
         case "noun":
@@ -58,24 +58,25 @@ struct UserDictionaryEntry {
     }
 }
 
-/// Loads and caches the user dictionary file.
+/// ユーザ辞書ファイルを読み込み、キャッシュする
 ///
-/// File format (TSV, UTF-8):
+/// ファイル形式 (TSV, UTF-8):
 ///   reading<TAB>word[<TAB>comment][<TAB>pos]
-/// Lines starting with '#' and empty lines are ignored.
-/// Reading is normalized to hiragana for matching.
+/// '#' で始まる行と空行は無視される
+/// 読みは照合のためにひらがなへ正規化される
 class UserDictionary {
     private var entries: [UserDictionaryEntry] = []
     private var lastModified: Date? = nil
     private var lastLoadedPath: String = ""
 
-    /// Default path: $XDG_CONFIG_HOME/hazkey/user_dictionary.tsv
+    /// 既定パス: $XDG_CONFIG_HOME/hazkey/user_dictionary.tsv
     static func defaultPath() -> URL {
         return HazkeyServerConfig.getConfigDirectory()
             .appendingPathComponent("user_dictionary.tsv", isDirectory: false)
     }
 
-    /// Parse a single TSV line into an entry, or nil for comments/empty/invalid lines.
+    /// TSVの1行をエントリへパースする
+    /// コメント行・空行・不正な行は、nilを返す
     static func parseLine(_ line: String) -> UserDictionaryEntry? {
         if line.isEmpty || line.hasPrefix("#") { return nil }
         let cols = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -97,9 +98,8 @@ class UserDictionary {
         return UserDictionaryEntry(reading: reading, word: word, comment: comment, pos: pos)
     }
 
-    /// Reload from disk if the file's mtime changed (or never loaded).
-    /// Safe to call frequently.
-    /// Returns `true` when entries were (re)loaded or the file became empty/absent.
+    /// ファイルのmtimeが変化していれば (または未ロードなら) ディスクから再読込する (頻繁に呼び出しても安全)
+    /// エントリが (再) 読み込まれた場合、またはファイルが空 / 存在しなくなった場合にTrueを返す
     @discardableResult
     func reloadIfNeeded() -> Bool {
         let url = Self.defaultPath()
@@ -137,17 +137,17 @@ class UserDictionary {
         }
     }
 
-    /// Returns entries whose reading exactly equals `hiragana`.
+    /// 読みがhiraganaと完全一致するエントリを返す
     func exactMatches(hiragana: String) -> [UserDictionaryEntry] {
         if hiragana.isEmpty { return [] }
         return entries.filter { $0.reading == hiragana }
     }
 
-    /// Returns all entries as `DicdataElement` values for converter integration.
+    /// 変換エンジンとの統合のため、全エントリをDicdataElementとして返す
     func toDicdataElements() -> [DicdataElement] {
         return entries.flatMap { $0.expandedDicdataElements() }
     }
 
-    /// Total entry count (for diagnostics).
+    /// エントリの総数 (診断用)
     var count: Int { entries.count }
 }

@@ -1,20 +1,19 @@
 import Foundation
 import KanaKanjiConverterModule
 
-/// [community] Cached immutable emoji candidate source for Emoji 17.0 direct
-/// conversion.
+/// Emoji 17.0直接変換用の、キャッシュされた不変の絵文字候補ソース
 ///
-/// Owns one `TextReplacer` built once from an injected dictionary URL. The
-/// provider never reparses: `HazkeyServerState` constructs it at state
-/// creation and reuses it for every `makeCandidatesResult` call (asset
-/// refresh happens only when the server state itself is recreated).
+/// 注入された辞書URLから一度だけ構築したTextReplacerを1つ保持する
 ///
-/// Unreadable, malformed, or empty assets disable injection: construction
-/// logs once via `NSLog` and returns `nil`, leaving normal conversion to
-/// continue without emoji candidates.
+/// このプロバイダは再パースを行わない:
+/// HazkeyServerStateが状態生成時に構築し、以降のmakeCandidatesResult呼び出しではそれを使い回す
+/// (アセットの再読込はサーバ状態そのものが再生成されたときのみ発生する)
+///
+/// アセットが読み取り不能・不正・空のいずれかの場合は注入を無効化する:
+/// 構築時にNSLogで1度だけログを出力してnilを返し、通常の変換は絵文字候補なしで継続する
 final class EmojiCandidateProvider {
-    /// Production asset installed at the shared data directory.
-    /// Tests never read this path; they inject temporary fixture URLs.
+    /// 共有データディレクトリにインストールされる本番アセット
+    /// テストではこのパスを読まず、一時的なフィクスチャURLを注入する
     static var defaultDictionaryURL: URL {
         URL(fileURLWithPath: systemResourcePath)
             .appendingPathComponent("emoji_all_E17.0.txt", isDirectory: false)
@@ -22,8 +21,7 @@ final class EmojiCandidateProvider {
 
     private let replacer: TextReplacer
 
-    /// Failable construction: returns `nil` (after one `NSLog`) when the
-    /// asset is unreadable, malformed, or empty.
+    /// 失敗可能な初期化: アセットが読み取り不能・不正・空のいずれかの場合は、NSLogを1度出力した後にnilを返す
     init?(dictionaryURL: URL) {
         guard FileManager.default.isReadableFile(atPath: dictionaryURL.path) else {
             NSLog(
@@ -43,20 +41,20 @@ final class EmojiCandidateProvider {
         self.replacer = TextReplacer(emojiDataProvider: { url })
     }
 
-    /// Direct search for `.emoji` targets. Returns the original
-    /// `SearchResultItem`s unchanged: `text` is preserved byte-for-byte (no
-    /// ZWJ/VS16/tag/skin-tone normalization or filtering) and `query` carries
-    /// the matched normalized hiragana length used for prefix completion.
-    /// No custom prefix scanning is performed; matching is entirely delegated
-    /// to `TextReplacer`.
+    /// .emojiターゲットに対する直接検索
+    /// 元のSearchResultItemをそのまま返す:
+    ///
+    /// textは、バイト単位で保持され (ZWJ / VS16 / タグ / 肌色の正規化やフィルタリングは行わない)、
+    /// queryには、プレフィックス変換で使用される一致した正規化済みひらがな長が入る
+    ///
+    /// 独自のプレフィックス走査は行わず、マッチングは全てTextReplacerに委譲する
     func emojiCandidates(for reading: String) -> [TextReplacer.SearchResultItem] {
         replacer.getSearchResult(query: reading, target: [.emoji])
     }
 
-    /// Asset validation mirroring `TextReplacer`'s TSV shape
-    /// (`base TAB queries TAB variations`): every non-empty line must have
-    /// exactly three columns with a non-empty base and query section, and at
-    /// least one such line must exist.
+    /// TextReplacerのTSV形式 (base TAB queries TAB variations) に対応したアセット検証:
+    /// 空でない各行はちょうど3列を持ち、baseとqueryの区画が空でないこと
+    /// そうした行が少なくとも1つ存在すること
     private static func hasValidEntry(_ contents: String) -> Bool {
         var found = false
         for line in contents.components(separatedBy: .newlines) {

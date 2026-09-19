@@ -1,6 +1,7 @@
 import Foundation
 
-/// Test-only request evidence sink. It is absent unless HAZKEY_PERF_EVIDENCE names a file.
+/// テスト専用のリクエスト証跡シンク
+/// HAZKEY_PERF_EVIDENCEがファイルを指定しない限り存在しない
 final class PerfProbe: @unchecked Sendable {
     struct RequestMeasurement {
         fileprivate let type: String

@@ -26,9 +26,9 @@ class ProcessManager {
     }
 
     func tryLock(force: Bool) throws {
-        // parent directory is created by HazkeyServer.start()
+        // 親ディレクトリは、HazkeyServer.start()が作成する
 
-        // try lock
+        // ロックを試行
         self.lockFd = open(lockFilePath, O_CREAT | O_RDWR, 0o600)
         guard self.lockFd != -1 else {
             NSLog("Failed to get lock info.")
@@ -36,7 +36,7 @@ class ProcessManager {
         }
 
         if flock(lockFd, LOCK_EX | LOCK_NB) != 0 {
-            // lock fail
+            // ロック失敗
             if let (oldPid, versionMatch) = readLockFile() {
                 if !force, versionMatch {
                     NSLog("Another hazkey-server is already running.")
@@ -48,17 +48,17 @@ class ProcessManager {
                     NSLog("Version mismatch detected. Terminating old server...")
                 }
 
-                // terminate process
+                // プロセスを終了
                 if kill(oldPid, 0) == 0 {
                     try terminateAnotherServer(pid: oldPid)
                 }
             } else {
-                // broken lockfile
+                // 壊れたロックファイル
                 NSLog("Failed to read existing lock info.")
                 terminateOtherServers()
             }
 
-            // retry lock
+            // ロックを再試行
             close(lockFd)
             self.lockFd = open(lockFilePath, O_CREAT | O_RDWR, 0o600)
             if flock(self.lockFd, LOCK_EX | LOCK_NB) != 0 {
@@ -67,7 +67,7 @@ class ProcessManager {
             }
         }
 
-        // write current process info
+        // 現在のプロセス情報を書き込む
         writeLockFile()
     }
 
@@ -77,7 +77,7 @@ class ProcessManager {
         let buffer = UnsafeMutablePointer<Int8>.allocate(capacity: capacity)
         buffer.initialize(repeating: 0, count: capacity)
         defer { buffer.deallocate() }
-        // capacity - 1 because last byte should be 0
+        // 末尾バイトは0にする必要があるので capacity - 1
         let bytesRead = read(lockFd, buffer, capacity - 1)
         guard bytesRead > 0 else { return nil }
         let fullContent = String(cString: buffer)
@@ -127,25 +127,25 @@ class ProcessManager {
     private func terminateAnotherServer(pid: pid_t) throws {
         NSLog("Terminating existing server with PID \(pid)...")
 
-        // Send SIGTERM to gracefully terminate
+        // SIGTERMを送って正常終了させる
         if kill(pid, SIGTERM) != 0 { return }
 
-        for attempt in 1...30 {  // 30 try * 0.1 sec
-            usleep(100_000)  // 0.1 sec
+        for attempt in 1...30 {  // 30回試行 * 0.1秒
+            usleep(100_000)  // 0.1秒
 
-            // Check if process is still running
+            // プロセスがまだ動いているか確認
             if kill(pid, 0) != 0 {
                 NSLog("Existing server terminated successfully")
                 return
             }
 
-            if attempt == 15 {  // try SIGKILL
+            if attempt == 15 {  // SIGKILLを試行
                 NSLog("Server didn't respond to SIGTERM, sending SIGKILL...")
                 kill(pid, SIGKILL)
             }
         }
 
-        // Final check
+        // 最終確認
         if kill(pid, 0) == 0 {
             NSLog("Failed to terminate existing server")
             throw ProcessManagerError.terminationFailed
@@ -156,12 +156,12 @@ class ProcessManager {
 
     private func terminateOtherServers() {
         let otherPids: [Int32]
-        // terminate processes running without lock
+        // ロックなしで動いているプロセスを終了させる
         do {
             otherPids = try getOtherServerPIDs()
         } catch {
-            // continue even if getOtherServerPIDs() fails.
-            // generally no problem because servers are already terminated.
+            // getOtherServerPIDs()が失敗しても処理を続行する
+            // サーバは既に終了しているため、通常は問題ない
             NSLog("getOtherServerPIDs failed: \(error)")
             otherPids = []
         }

@@ -1,50 +1,51 @@
 import Foundation
 
-/// Provides dynamic date candidates for relative-date trigger words.
+/// 相対日付のトリガーワードに対して、動的な日付候補を提供する
 ///
-/// トリガーワード (`きょう`, `きのう`, `あした`, `こんげつ`, `ことし`, `げつまつ`,
-/// `ねんまつ`, 等) を入力ひらがなと完全一致で検出する。エンジンが対応する漢字表現
-/// (例: `今日`) を候補として返した場合、現在日時に基づいて計算した日付文字列を
-/// 漢字表現の直後に挿入する。
+/// トリガーワード (きょう, きのう, あした, こんげつ, ことし, げつまつ, ねんまつ等) を入力ひらがなと完全一致で検出する
+/// エンジンが対応する漢字表現 (例: 今日) を候補として返した場合、現在日時に基づいて計算した日付文字列を漢字表現の直後に挿入する
 ///
 /// 出力フォーマット (target に依存):
 ///   - day / monthEnd / yearAbsolute:
-///       `yyyy年M月d日` / `yyyy-MM-dd` / `yyyy/MM/dd` / `Gy年M月d日` (和暦) /
-///       `yyyy年M月d日(曜日)` / `Gy年M月d日(曜日)` (和暦+曜日)
-///   - month: `yyyy年M月` / `yyyy-MM` / `yyyy/MM` / `Gy年M月` (和暦)
-///   - year:  `yyyy年` / `Gy年` (和暦)
+///       yyyy年M月d日 / yyyy-MM-dd / yyyy/MM/dd / Gy年M月d日 (和暦) /
+///       yyyy年M月d日(曜日) / Gy年M月d日(曜日) (和暦+曜日)
+///   - month: yyyy年M月 / yyyy-MM / yyyy/MM / Gy年M月 (和暦)
+///   - year:  yyyy年 / Gy年 (和暦)
 ///
-/// 和暦は `Calendar(identifier: .japanese)` を使用し、元号境界 (例: 2019-04-30
-/// 平成 → 2019-05-01 令和) を自動処理する。元号の初年は DateFormatter 標準動作に
-/// より「元年」と表記される。
+/// 和暦はCalendar(identifier: .japanese)を使用し、元号境界 (例: 2019-04-30 平成 → 2019-05-01 令和) を自動処理する
+/// 元号の初年は、DateFormatter標準動作により「元年」と表記される
 enum RelativeDateProvider {
 
-    /// 計算対象とオフセットを表す。
+    /// 計算対象とオフセットを表す
     enum DateTarget: Equatable {
-        /// 日単位の相対指定 (例: 今日=0, 昨日=-1, 明日=+1)。出力は年月日+曜日。
+        /// 日単位の相対指定 (例: 今日=0, 昨日=-1, 明日=+1)
+        /// 出力は年月日+曜日
         case day(offset: Int)
-        /// 月単位の相対指定 (例: 今月=0, 先月=-1, 来月=+1)。出力は年月のみ。
+        /// 月単位の相対指定 (例: 今月=0, 先月=-1, 来月=+1)
+        /// 出力は年月のみ
         case month(offset: Int)
-        /// 年単位の相対指定 (例: 今年=0, 去年=-1, 来年=+1)。出力は年のみ。
+        /// 年単位の相対指定 (例: 今年=0, 去年=-1, 来年=+1)
+        /// 出力は年のみ
         case year(offset: Int)
-        /// 月末の相対指定 (例: 月末=0, 来月末=+1, 先月末=-1)。
-        /// 対象月の最終日を計算して出力する (年月日+曜日)。
+        /// 月末の相対指定 (例: 月末=0, 来月末=+1, 先月末=-1)
+        /// 対象月の最終日を計算して出力する (年月日+曜日)
         case monthEnd(offset: Int)
-        /// 当年内の固定月日 (例: 年末=(12,31), 年始=(1,1))。出力は年月日+曜日。
+        /// 当年内の固定月日 (例: 年末=(12,31), 年始=(1,1))
+        /// 出力は年月日+曜日
         case yearAbsolute(month: Int, day: Int)
     }
 
-    /// A trigger word that activates date candidate injection.
+    /// 日付候補の注入を発動させるトリガーワード
     struct Trigger: Equatable {
-        /// ひらがなの読み (`composingText.toHiragana()` と完全一致で判定)。
+        /// ひらがなの読み (composingText.toHiragana()と完全一致で判定)
         let reading: String
-        /// エンジンが返す漢字表現。この候補の直後に日付文字列を挿入する。
+        /// エンジンが返す漢字表現
+        /// この候補の直後に日付文字列を挿入する
         let kanji: String
         let target: DateTarget
-        /// エンジンがこの読みに対して `kanji` を候補として返さない場合に
-        /// プロバイダ側で合成アンカーを生成するかどうか。
-        /// 既存トリガーおよびエンジンが漢字を返すことが確認済みのトリガーは
-        /// `false` のままにすること。現在 `さきおとつい` のみ `true`。
+        /// エンジンがこの読みに対してkanjiを候補として返さない場合、プロバイダ側で合成アンカーを生成するかどうか
+        /// 既存トリガーおよびエンジンが漢字を返すことが確認済みのトリガーは、Falseのままにすること
+        /// 現在、"さきおとつい"のみTrue
         let synthesizeKanjiWhenMissing: Bool
 
         init(
@@ -60,22 +61,23 @@ enum RelativeDateProvider {
         }
     }
 
-    /// All trigger words recognized by this provider.
-    /// 読みの重複 (例: あした/あす → 明日) は別トリガーとして登録する。
+    /// このプロバイダが認識する全トリガーワード
+    /// 読みの重複 (例: あした / あす → 明日) は別トリガーとして登録する
     static let triggers: [Trigger] = [
         // === 日単位 ===
         Trigger(reading: "きょう",        kanji: "今日",    target: .day(offset:  0)),
         Trigger(reading: "きのう",        kanji: "昨日",    target: .day(offset: -1)),
         Trigger(reading: "おととい",      kanji: "一昨日",  target: .day(offset: -2)),
-        // おとつい は おととい の異表記エイリアス。エンジンは一昨日を返す。
+        // おとつい は おととい の異表記エイリアス
+        // エンジンは一昨日を返す
         Trigger(reading: "おとつい",      kanji: "一昨日",  target: .day(offset: -2)),
         Trigger(reading: "あした",        kanji: "明日",    target: .day(offset:  1)),
         Trigger(reading: "あす",          kanji: "明日",    target: .day(offset:  1)),
         Trigger(reading: "あさって",      kanji: "明後日",  target: .day(offset:  2)),
         Trigger(reading: "しあさって",    kanji: "明々後日", target: .day(offset:  3)),
-        // さきおととい: エンジンが一昨昨日を返す読み。
+        // さきおととい: エンジンが一昨昨日を返す読み
         Trigger(reading: "さきおととい",  kanji: "一昨昨日", target: .day(offset: -3)),
-        // さきおとつい: エンジンが一昨昨日を返さないため、プロバイダ側で合成アンカーを生成する。
+        // さきおとつい: エンジンが一昨昨日を返さないため、プロバイダ側で合成アンカーを生成する
         Trigger(reading: "さきおとつい",  kanji: "一昨昨日", target: .day(offset: -3),
                 synthesizeKanjiWhenMissing: true),
         // === 月単位 (年月のみ出力) ===
@@ -100,15 +102,15 @@ enum RelativeDateProvider {
         Trigger(reading: "がんじつ",    kanji: "元日",    target: .yearAbsolute(month:  1, day:  1)),
     ]
 
-    /// Detect a trigger matching the composing hiragana exactly.
-    /// Returns nil if no match (caller should not inject date candidates).
+    /// 入力ひらがなと完全一致するトリガーを検出する
+    /// 一致しない場合はnilを返す (呼び出し側は日付候補を注入しないこと)
     static func detectTrigger(composingHiragana: String) -> Trigger? {
         return triggers.first { $0.reading == composingHiragana }
     }
 
-    /// Generate formatted date strings for the trigger, in display order.
-    /// - Parameter now: Inject `Date` for testing; defaults to current date.
-    /// - Returns: Empty array if date computation fails (should not happen).
+    /// トリガーに対応するフォーマット済み日付文字列を表示順に生成する
+    /// - Parameter now: テスト用に注入するDate (既定値は現在日時)
+    /// - Returns: 日付計算に失敗した場合は空配列 (通常は発生しない)
     static func generateDateStrings(for trigger: Trigger, now: Date = Date()) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
 
@@ -120,7 +122,7 @@ enum RelativeDateProvider {
             return fullDateFormats(date: date, calendar: calendar)
 
         case .month(let offset):
-            // day=1 で計算し、月末オーバーフロー (1月31日 + 1ヶ月等) を回避する。
+            // "day=1"で計算し、月末オーバーフロー (1月31日 + 1ヶ月等) を回避する
             var baseComps = calendar.dateComponents([.year, .month], from: now)
             baseComps.day = 1
             guard let baseDate = calendar.date(from: baseComps),
@@ -150,7 +152,8 @@ enum RelativeDateProvider {
             else {
                 return []
             }
-            // 当該月の最終日を組み立てる。range.count がその月の日数。
+            // 当該月の最終日を組み立てる
+            // range.countがその月の日数
             var lastDayComps = calendar.dateComponents([.year, .month], from: monthDate)
             lastDayComps.day = range.count
             guard let date = calendar.date(from: lastDayComps) else { return [] }
@@ -167,8 +170,8 @@ enum RelativeDateProvider {
 
     // MARK: - Format builders
 
-    /// 年月日(+曜日)の6形式を返す。
-    /// 曜日付きバリアントはビジネス文書で一般的な "(火)" 形式。
+    /// 年月日(+ 曜日)の6形式を返す
+    /// 曜日付きバリアントはビジネス文書で一般的な "(火)" 形式
     private static func fullDateFormats(date: Date, calendar: Calendar) -> [String] {
         let comps = calendar.dateComponents([.year, .month, .day], from: date)
         guard let year = comps.year, let month = comps.month, let day = comps.day else {
@@ -186,7 +189,7 @@ enum RelativeDateProvider {
         ]
     }
 
-    /// 年月の4形式を返す (曜日なし)。
+    /// 年月の4形式を返す (曜日なし)
     private static func monthOnlyFormats(date: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
         let comps = calendar.dateComponents([.year, .month], from: date)
@@ -199,7 +202,7 @@ enum RelativeDateProvider {
         ]
     }
 
-    /// 年の2形式を返す。
+    /// 年の2形式を返す
     private static func yearOnlyFormats(date: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
         let comps = calendar.dateComponents([.year], from: date)
@@ -212,20 +215,22 @@ enum RelativeDateProvider {
 
     // MARK: - Helpers
 
-    /// 曜日を表す漢字 (1文字)。Calendar.component(.weekday) は 1=日曜 ... 7=土曜。
+    /// 曜日を表す漢字 (1文字)
+    /// Calendar.component(.weekday) は、1=日曜 ... 7=土曜
     private static let weekdayKanjiArray = ["日", "月", "火", "水", "木", "金", "土"]
 
-    /// 指定日付の曜日漢字を返す (例: "火")。
+    /// 指定日付の曜日漢字を返す (例: "火")
     private static func weekdayKanji(for date: Date) -> String {
         let weekday = Calendar(identifier: .gregorian).component(.weekday, from: date)
-        // 1=Sunday ... 7=Saturday → 0-indexed
+        // "1=Sunday" ... "7=Saturday"なので、0 - indexedに変換する
         guard weekday >= 1 && weekday <= 7 else { return "" }
         return weekdayKanjiArray[weekday - 1]
     }
 
-    /// 和暦文字列を生成する。`Calendar(identifier: .japanese)` と `DateFormatter`
-    /// を使用し、元号境界を自動処理する。元号初年は「元年」と表記される
-    /// (DateFormatter 標準動作)。
+    /// 和暦文字列を生成する
+    /// "Calendar(identifier: .japanese)"と"DateFormatter"を使用し、元号境界を自動処理する
+    /// 元号初年は「元年」と表記される
+    /// (DateFormatter標準動作)
     private static func formatWareki(date: Date, dateFormat: String) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .japanese)

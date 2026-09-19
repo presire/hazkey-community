@@ -1,9 +1,8 @@
 import Foundation
 
-// Ported from azooKey's JapaneseConjugationBuilder (ensan-hcl/azooKey, commit 79686594).
-// Original placed these enums as file-private in a single file; split across two
-// files here, so they are module-internal instead. Helper functions inside the
-// builder struct remain private.
+// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey, commit 79686594)
+// 元実装では、これらのenumを単一ファイル内のfile-privateに置いていたが、ここでは2ファイルに分割しているため、module-internalとしている
+// builder構造体内のヘルパ関数はprivateのまま
 
 enum 活用の種類 {
     case 一段
@@ -101,7 +100,7 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
-    // NOTE: ウ段/う段 OMITTED (never used in 活用形取得, removes Character/String mismatch).
+    // NOTE: ウ段 / う段は省略 (活用形取得では未使用であり、Character / Stringの不整合を解消するため)
     var エ段: String {
         switch self {
         case .ア行: return "エ"

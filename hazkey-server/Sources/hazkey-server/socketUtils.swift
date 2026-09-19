@@ -11,16 +11,15 @@ enum SocketError: Error {
     case ioTimeout(String)
 }
 
-/// Maximum time (milliseconds) `readData`/`writeData` wait for progress on a
-/// single client before giving up. The server loop is single-threaded, so an
-/// unbounded wait on one connection would stall every other client. Chosen to
-/// match the client-side read timeout (`HazkeyServerConnector::transact`),
-/// so a client still waiting for its response is never aborted early.
+/// readData / writeDataが単一クライアントの進捗を待つ最大時間 (ミリ秒)
+/// サーバループはシングルスレッドなので、1つの接続を無制限に待つと他の全クライアントが止まってしまう
+/// この値は、クライアント側の読み込みタイムアウト (HazkeyServerConnector::transact) に合わせて選択しており、
+/// レスポンス待ち中のクライアントが早期に打ち切られることはない
 let socketIOProgressTimeoutMs: Int32 = 10_000
 
-/// Waits until `fd` is ready for `events`, up to `timeoutMs`. Returns
-/// normally when the fd is ready (the caller's read()/write() then reports
-/// EOF/EAGAIN precisely); throws `SocketError.ioTimeout` when it is not.
+/// fdがeventsに対して準備完了になるまでtimeoutMsを上限に待つ
+/// fdが準備できれば正常に返る。(呼び出し元のread() / write()がその後EOF / EAGAINを正確に検知する)
+/// 準備できなければ、SocketError.ioTimeoutを投げる
 private func waitForSocketReady(fd: Int32, events: Int16, timeoutMs: Int32) throws {
     var pfd = pollfd(fd: fd, events: events, revents: 0)
     while true {

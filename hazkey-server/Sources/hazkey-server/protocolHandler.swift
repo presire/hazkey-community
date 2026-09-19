@@ -91,8 +91,7 @@ class ProtocolHandler {
             }
         case .deleteLearningEntries(let req):
             do {
-                // Entries are merged rows keyed by (reading, word); every CID
-                // variant of each surface is deleted.
+                // エントリは (reading, word) をキーにマージされた行であり、各表記の全CID変種を削除する
                 let deletedCount = try state.forgetLearningSurfaces(
                     req.entries.map { ($0.reading, $0.word) })
                 response = Hazkey_ResponseEnvelope.with {
