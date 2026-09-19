@@ -9,7 +9,7 @@ Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフ
 Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフロントエンド (ibus-hazkey) を同梱します。  
 (IBus版のソースビルドにはビルドオプション `ENABLE_IBUS` オプションが必要。既定はOFF。バイナリパッケージは両フロントエンド分を頒布します)  
 
-本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.26** です。  
+本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.27** です。  
 
 > **上流版 (hazkey公式) の情報**  
 > - ホームページ: [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
