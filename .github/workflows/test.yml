@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       # ネイティブ (非エミュレート) ランナー:
-      # ubuntu-24.04上のx86_64とubuntu-24.04-arm上のネイティブAArch64を使う
+      # ubuntu-24.04上のx86_64とubuntu-24.04-arm上のネイティブAArch64を使用する
       # 一方のアーキテクチャでの回帰時にも他方の結果を報告できるよう、fail-fastは無効にする
       fail-fast: false
       matrix:
@@ -40,8 +40,8 @@ jobs:
             cxx: c++
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
-          # AArch64 / arm64: Ubuntu 24.04向けの公式AArch64 Swift 6.3.3アーカイブを使う
-          # ネイティブ ARM64 ランナーである
+          # AArch64 / arm64: Ubuntu 24.04向けの公式AArch64 Swift 6.3.3アーカイブを使用する
+          # ネイティブARM64ランナーである
           - runner: ubuntu-24.04-arm
             dpkg_arch: arm64
             expected_machine: aarch64
@@ -110,13 +110,13 @@ jobs:
           set -eux
           swift --version
           # 公式Swiftアーカイブはアーキテクチャ固有のため、
-          # ダウンロードしたツールチェーンがこのマトリクス行で指定した triple を正確に対象とすることをアサートする
+          # ダウンロードしたツールチェーンがこのマトリクス行で指定したtripleを正確に対象とすることをアサートする
           # "swiftc -print-target-info"コマンドは、解決済みのtarget tripleを出力する
           # (例: aarch64-unknown-linux-gnu または x86_64-unknown-linux-gnu)
           swiftc -print-target-info 2>/dev/null | grep -qF -- "${SWIFT_TARGET}"
 
       - name: Fix llama.cpp safe.directory
-        # ネストしたリポジトリ内のgit submodule操作では、これがないと"dubious ownership" エラーが発生する
+        # ネストしたリポジトリ内のgit submodule操作では、これがないと"dubious ownership"エラーが発生する
         run: |
           git config --global --add safe.directory \
             "$(pwd)/hazkey-server/llama.cpp"
@@ -167,13 +167,12 @@ jobs:
           # vulkan-shaders-genは、最大16個のglslcサブプロセスを並列にフォークする
           # 制約のあるCIコンテナでは、プロセステーブル上限を超え、シェーダーシンボルが暗黙に欠落する可能性がある
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
-          # C++ライブラリ、実行ファイル、CTest登録済みテストバイナリ
+          # C++ライブラリ、実行ファイル、CTest登録済みテストバイナリを速度のため並列ビルドする
           # (zenzai_model_management_test、zenzai_dialog_selection_test、zenzai_download_validation_test、
           #  zenzai_family_row_test、keysequence_util_test、userdict_model_test、live_convert_mode_test、
           #  hazkey_candidate_selection_test、hazkey_client_rpc_probe_test、hazkey_client_cache_test、
           #  candidate_refresh_coalescer_test、hazkey_client_transact_safety_test、hazkey_frontend_async_test、
           #  ibus_hazkey_state_test、learninghistorydialog_test)
-          # を速度のため並列ビルドする
           # learninghistorydialog_testは、Swiftサーバビルド (build_hazkey_server) にも依存するため、以下のステップで単一スレッドによりビルドする
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
@@ -226,6 +225,12 @@ jobs:
           set -eux
           export LLAMA_LIB_DIR="${GITHUB_WORKSPACE}/build/bin"
           export LD_LIBRARY_PATH="${LLAMA_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+          # swift testは、ninja installを経ないビルド木に対して直接実行されるため、
+          # backendProbe.swiftが既定で参照するインストール後のsystemLibraryPathが存在せず、
+          # BackendProbeのCPU専用フォールバックがバックエンドを発見できずZenzaiを無効化してしまう
+          # (ConfigValidationTestsのZenzaiモデル切替系テストが失敗する)
+          # GGML_BACKEND_DIRは、getZenzaiDevices()が読む明示上書き変数のため、ビルド木のbinを指定する
+          export GGML_BACKEND_DIR="${LLAMA_LIB_DIR}"
           cd hazkey-server
           swift package resolve
           number_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
