@@ -60,6 +60,21 @@ func learningHistoryMatches(query: String, reading: String, word: String) -> Boo
         || katakanaNormalized(word).contains(normalizedQuery)
 }
 
+/// [community] The two readings a converter candidate can be stored under in
+/// the learning memory, katakana-normalized to exact trie keys.
+///
+/// `prefixReading` is the typed reading truncated to the candidate
+/// (`min(rubyCount, requestHiraganaPreeditLen)`), which is where a plain
+/// conversion is stored. `fullRuby` is the candidate's whole ruby, which is
+/// where a *prediction* is stored: the prediction extends past what has been
+/// typed, so the truncated reading points at a different trie node and would
+/// never match. Empty when the candidate carries no `data` (cached prediction
+/// path), in which case only `prefixReading` is used.
+struct CandidateLearningReadings {
+    let prefixReading: String
+    let fullRuby: String
+}
+
 /// [community] (reading, word) surface key identifying a candidate's learning
 /// entries across CID variants. Reading is katakana-normalized so that a
 /// hiragana reading from the composing text matches the katakana ruby stored
@@ -107,6 +122,16 @@ class HazkeySharedResources {
     /// unrecoverable failure would otherwise write one log line per key.
     private var lastLearningLookupFailureLog: ContinuousClock.Instant?
     private static let learningLookupFailureLogInterval: Duration = .seconds(60)
+
+    private var lastLearningCommitFailureLog: ContinuousClock.Instant?
+    private static let learningCommitFailureLogInterval: Duration = .seconds(60)
+
+    /// [community] Point lookup behind both the "deletable" annotation and the
+    /// delete handler. `nil` is the production path
+    /// (`converter.persistedLearningMemoryKeys(exactReadings:)`); tests
+    /// substitute a failing closure to exercise the degradation path without
+    /// corrupting a real shard, which could trap in an unchecked parse.
+    var learningSurfaceKeyLookup: (([String]) throws -> [PersistedLearningMemoryKey])?
 
     /// Session IDs of all live connections. Learning deletions invalidate
     /// every session's cached conversion state, not just the requester's, so
@@ -231,11 +256,26 @@ extension HazkeySharedResources {
                 memoryURL: baseConvertRequestOptions.memoryDirectoryURL))
     }
 
+    /// [community] Persists pending learning. A failed commit keeps
+    /// `learningDataNeedsCommit` set and reports `.failed`: the converter
+    /// retains the pending temporary memory, so the next trigger (another
+    /// `save_learning_data` RPC, a disconnect, a config change) retries it.
+    /// Clearing the flag here would silently discard learning that never
+    /// reached the disk.
     func saveLearningData() -> Hazkey_ResponseEnvelope {
-        if learningDataNeedsCommit {
-            converter.commitUpdateLearningData()
-            learningDataNeedsCommit = false
+        guard learningDataNeedsCommit else {
+            return Hazkey_ResponseEnvelope.with { $0.status = .success }
         }
+        do {
+            try converter.commitUpdateLearningData()
+        } catch {
+            reportLearningCommitFailure(error)
+            return Hazkey_ResponseEnvelope.with {
+                $0.status = .failed
+                $0.errorMessage = "Failed to persist learning data: \(error)"
+            }
+        }
+        learningDataNeedsCommit = false
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -384,7 +424,7 @@ extension HazkeySharedResources {
         // An entry can only be stored under its own reading, so point-looking up
         // just the requested readings is equivalent to scanning everything.
         let existingKeys = Set(
-            try converter.persistedLearningMemoryKeys(
+            try persistedLearningMemoryKeys(
                 exactReadings: Array(Set(uniqueKeys.map(\.reading)))
             ).map {
                 LearningHistoryKey(
@@ -445,12 +485,21 @@ extension HazkeySharedResources {
         try converter.allLearningMemoryEntries(limit: Self.learningEnumerationLimit).entries
     }
 
+    private func persistedLearningMemoryKeys(
+        exactReadings readings: [String]
+    ) throws -> [PersistedLearningMemoryKey] {
+        if let learningSurfaceKeyLookup {
+            return try learningSurfaceKeyLookup(readings)
+        }
+        return try converter.persistedLearningMemoryKeys(exactReadings: readings)
+    }
+
     /// [community] Surface keys of the persisted learning entries stored under
     /// `readings`, used to annotate converter candidates as "deletable".
     /// Readings must already be katakana-normalized: they are exact trie keys.
     func learningSurfaceKeys(forReadings readings: [String]) throws -> Set<LearningSurfaceKey> {
         Set(
-            try converter.persistedLearningMemoryKeys(exactReadings: readings).map {
+            try persistedLearningMemoryKeys(exactReadings: readings).map {
                 LearningSurfaceKey(reading: $0.reading, word: $0.word)
             })
     }
@@ -463,16 +512,38 @@ extension HazkeySharedResources {
         reading: String,
         word: String
     ) throws -> [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] {
-        let target = LearningSurfaceKey(reading: reading, word: word)
-        return try converter.persistedLearningMemoryKeys(exactReadings: [target.reading])
-            .filter { LearningSurfaceKey(reading: $0.reading, word: $0.word) == target }
-            .map {
+        try matchingLearningEntryKeys(readings: [reading], word: word)
+    }
+
+    /// [community] Same as above for a candidate stored under either of its
+    /// readings (plain conversion under the typed prefix, prediction under the
+    /// full ruby). All readings go into one lookup: deleting must never issue
+    /// one request per reading.
+    func matchingLearningEntryKeys(
+        readings: [String],
+        word: String
+    ) throws -> [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] {
+        var targets: Set<LearningSurfaceKey> = []
+        for reading in readings where !reading.isEmpty {
+            targets.insert(LearningSurfaceKey(reading: reading, word: word))
+        }
+        guard !targets.isEmpty else { return [] }
+
+        var seenKeys: Set<LearningHistoryKey> = []
+        var matches: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
+        for key in try persistedLearningMemoryKeys(exactReadings: targets.map(\.reading))
+        where targets.contains(LearningSurfaceKey(reading: key.reading, word: key.word)) {
+            let historyKey = LearningHistoryKey(
+                reading: key.reading, word: key.word,
+                lcid: UInt32(clamping: key.lcid), rcid: UInt32(clamping: key.rcid))
+            guard seenKeys.insert(historyKey).inserted else { continue }
+            matches.append(
                 (
-                    reading: $0.reading, word: $0.word,
-                    lcid: UInt32(clamping: $0.lcid),
-                    rcid: UInt32(clamping: $0.rcid)
-                )
-            }
+                    reading: historyKey.reading, word: historyKey.word,
+                    lcid: historyKey.lcid, rcid: historyKey.rcid
+                ))
+        }
+        return matches
     }
 
     func reportLearningLookupFailure(_ error: Error) {
@@ -484,6 +555,19 @@ extension HazkeySharedResources {
         }
         lastLearningLookupFailureLog = now
         NSLog("Failed to look up learning memory for annotations: \(error)")
+    }
+
+    /// [community] Every commit trigger retries while the dirty flag is set, so
+    /// a persistent disk failure would otherwise log once per commit.
+    func reportLearningCommitFailure(_ error: Error) {
+        let now = ContinuousClock.now
+        if let lastLearningCommitFailureLog,
+            now - lastLearningCommitFailureLog < Self.learningCommitFailureLogInterval
+        {
+            return
+        }
+        lastLearningCommitFailureLog = now
+        NSLog("Failed to persist learning memory: \(error)")
     }
 }
 
@@ -994,6 +1078,10 @@ class HazkeyServerState {
     /// [community] Sets `has_learning_entry` on the converter candidates from a
     /// single batched point lookup against the persisted learning memory.
     ///
+    /// Both readings of each candidate go into one lookup and a candidate is
+    /// annotated when either matches, so the call count stays at one per
+    /// request no matter how many candidates are shown.
+    ///
     /// - Important: Only valid after `converter.requestCandidates(...)`. The
     ///   converter applies the active profile's `memoryDirectoryURL` lazily
     ///   inside that call, so looking up earlier would read the previous
@@ -1001,21 +1089,34 @@ class HazkeyServerState {
     /// - Note: A failed lookup leaves every candidate unannotated, which is the
     ///   same conservative degradation as before the point lookup existed.
     private func annotateLearningEntries(
-        readings: [String],
+        readings: [CandidateLearningReadings],
         into clientCandidates: inout [Hazkey_Commands_CandidatesResult.Candidate]
     ) {
-        guard !readings.isEmpty else { return }
+        var lookupReadings: Set<String> = []
+        for entry in readings {
+            if !entry.prefixReading.isEmpty { lookupReadings.insert(entry.prefixReading) }
+            if !entry.fullRuby.isEmpty { lookupReadings.insert(entry.fullRuby) }
+        }
+        guard !lookupReadings.isEmpty else { return }
         let learnedSurfaces: Set<LearningSurfaceKey>
         do {
-            learnedSurfaces = try shared.learningSurfaceKeys(forReadings: Array(Set(readings)))
+            learnedSurfaces = try shared.learningSurfaceKeys(forReadings: Array(lookupReadings))
         } catch {
             shared.reportLearningLookupFailure(error)
             return
         }
         guard !learnedSurfaces.isEmpty else { return }
         for index in clientCandidates.indices where index < readings.count {
-            clientCandidates[index].hasLearningEntry_p = learnedSurfaces.contains(
-                LearningSurfaceKey(reading: readings[index], word: clientCandidates[index].text))
+            let word = clientCandidates[index].text
+            let entry = readings[index]
+            let isLearned =
+                (!entry.prefixReading.isEmpty
+                    && learnedSurfaces.contains(
+                        LearningSurfaceKey(reading: entry.prefixReading, word: word)))
+                || (!entry.fullRuby.isEmpty
+                    && learnedSurfaces.contains(
+                        LearningSurfaceKey(reading: entry.fullRuby, word: word)))
+            clientCandidates[index].hasLearningEntry_p = isLearned
         }
     }
 
@@ -1035,11 +1136,11 @@ class HazkeyServerState {
         // concatenated list must skip later duplicates.
         var appendedTexts: Set<String> = []
 
-        // [community] Katakana-normalized reading of every converter candidate
+        // [community] Katakana-normalized readings of every converter candidate
         // emitted below, positionally aligned with `clientCandidates`. The
         // "deletable" annotation is resolved from these in one batched point
         // lookup once the converter has returned — see `annotateLearningEntries`.
-        var annotationReadings: [String] = []
+        var annotationReadings: [CandidateLearningReadings] = []
 
         func canAppend(
             isSuggest: Bool,
@@ -1064,7 +1165,8 @@ class HazkeyServerState {
             let endIndex = min(candidate.rubyCount, requestHiraganaPreeditLen)
             clientCandidate.subHiragana = String(fullHiraganaPreedit.dropFirst(endIndex))
             annotationReadings.append(
-                katakanaNormalized(String(fullHiraganaPreedit.prefix(endIndex))))
+                candidate.learningReadings(
+                    truncatedTo: String(fullHiraganaPreedit.prefix(endIndex))))
 
             clientCandidates.append(clientCandidate)
             serverCandidates.append(.fromConverter(candidate))
@@ -1469,20 +1571,22 @@ class HazkeyServerState {
             }
         }
 
-        // Reading of the candidate, with the same formula as appendCandidate.
+        // Readings of the candidate, with the same formula as appendCandidate.
         let fullHiraganaPreedit = composingText.value.toHiragana()
         let requestHiraganaPreeditLen = candidateRequestText(
             is_suggest: currentCandidateListIsSuggest
         ).toHiragana().count
-        let reading = String(
-            fullHiraganaPreedit.prefix(min(candidate.rubyCount, requestHiraganaPreeditLen)))
+        let readings = candidate.learningReadings(
+            truncatedTo: String(
+                fullHiraganaPreedit.prefix(min(candidate.rubyCount, requestHiraganaPreeditLen))))
 
         // Collect every (reading, word) match across CID variants. An empty
         // match (not learned) is a normal "nothing deleted" result, not an
         // error.
         let matchingKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
         do {
-            matchingKeys = try shared.matchingLearningEntryKeys(reading: reading, word: candidate.text)
+            matchingKeys = try shared.matchingLearningEntryKeys(
+                readings: [readings.prefixReading, readings.fullRuby], word: candidate.text)
         } catch {
             NSLog("Failed to enumerate learning memory for deletion: \(error)")
             return Hazkey_ResponseEnvelope.with {
@@ -1525,6 +1629,17 @@ class HazkeyServerState {
         }
     }
 
+}
+
+extension Candidate {
+    /// [community] Single derivation of the candidate's learning-memory keys,
+    /// shared by the annotation and the delete handler so that a candidate
+    /// shown as deletable is always deletable.
+    func learningReadings(truncatedTo typedPrefix: String) -> CandidateLearningReadings {
+        CandidateLearningReadings(
+            prefixReading: katakanaNormalized(typedPrefix),
+            fullRuby: katakanaNormalized(data.map(\.ruby).joined()))
+    }
 }
 
 extension Hazkey_Config_Profile {
