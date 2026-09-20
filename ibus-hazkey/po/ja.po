@@ -35,8 +35,8 @@ msgstr "A"
 msgid "Hiragana input"
 msgstr "ひらがな入力"
 
-msgid "Zenzai"
-msgstr "Zenzai"
+msgid "Neural conversion"
+msgstr "ニューラル変換"
 
 msgid "Neural conversion enabled"
 msgstr "ニューラル変換を有効化しました"

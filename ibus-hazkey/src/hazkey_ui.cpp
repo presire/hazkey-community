@@ -237,7 +237,7 @@ void HazkeyUi::registerProperties(bool directInput, bool zenzaiEnabled) {
             PROP_STATE_UNCHECKED, nullptr);
         zenzaiProperty_ = ibus_property_new(
             "Zenzai", PROP_TYPE_TOGGLE,
-            ibus_text_new_from_string(tr("Zenzai")), nullptr,
+            ibus_text_new_from_string(tr("Neural conversion")), nullptr,
             ibus_text_new_from_string(tr("Neural conversion disabled")), TRUE, TRUE,
             PROP_STATE_UNCHECKED, nullptr);
         g_object_ref_sink(inputModeProperty_);

@@ -46,7 +46,8 @@ msgstr ""
 msgid "Hiragana input"
 msgstr ""
 
-msgid "Zenzai"
+# Persistent Neural conversion property label shown in the IBus panel.
+msgid "Neural conversion"
 msgstr ""
 
 # Persistent Neural conversion property tooltip.
