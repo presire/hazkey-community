@@ -56,7 +56,7 @@ final class LearningMemoryEnumerationTests: XCTestCase {
             )
             converter.stopComposition()
         }
-        converter.commitUpdateLearningData()
+        XCTAssertNoThrow(try converter.commitUpdateLearningData())
     }
 
     func testEntriesReturnPersistedRowsAndPagination() throws {

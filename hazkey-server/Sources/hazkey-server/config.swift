@@ -11,6 +11,7 @@ enum ConfigError: LocalizedError {
     case emptyProfiles
     case unrecognizedEnum(field: String, rawValue: Int)
     case valueOutOfRange(field: String, value: Int32, range: ClosedRange<Int32>)
+    case learningCommitFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,10 @@ enum ConfigError: LocalizedError {
             return "Invalid \(field) enum value: \(rawValue)."
         case .valueOutOfRange(let field, let value, let range):
             return "Invalid \(field) value \(value); expected \(range.lowerBound)...\(range.upperBound)."
+        case .learningCommitFailed(let message):
+            return
+                "Failed to persist the pending learning data of the active profile; "
+                + "the configuration was not changed. \(message)"
         }
     }
 }
@@ -341,6 +346,22 @@ class HazkeyServerConfig {
         let configDir = Self.getConfigDirectory()
         let configPath = configDir.appendingPathComponent("config.json")
 
+        // [community] Pending learning belongs to the profile that was active
+        // when it was typed. Commit it while `currentProfile` (and therefore
+        // `memoryDirectory()`) still points at the old directory, otherwise the
+        // next commit merges it into the incoming profile's history.
+        //
+        // This runs before config.json is written so that a failed commit
+        // leaves disk and memory consistent: nothing is written, the profile
+        // switch is abandoned, and the pending learning stays attached to the
+        // still-active old profile. Applying the settings again retries.
+        if let state {
+            let commitResult = state.saveLearningData()
+            guard commitResult.status == .success else {
+                throw ConfigError.learningCommitFailed(commitResult.errorMessage)
+            }
+        }
+
         try FileManager.default.createDirectory(
             at: configDir, withIntermediateDirectories: true, attributes: nil)
 
@@ -360,14 +381,6 @@ class HazkeyServerConfig {
         try jsonData.write(to: configPath)
 
         NSLog("Config saved to: \(configPath.path)")
-
-        // [community] Pending learning belongs to the profile that was active
-        // when it was typed. Commit it while `currentProfile` (and therefore
-        // `memoryDirectory()`) still points at the old directory, otherwise the
-        // next commit merges it into the incoming profile's history.
-        if let state {
-            _ = state.saveLearningData()
-        }
 
         profiles = normalizedProfiles
         guard let firstProfile = normalizedProfiles.first else {

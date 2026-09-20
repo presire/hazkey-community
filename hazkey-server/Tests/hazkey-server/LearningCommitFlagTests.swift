@@ -1,6 +1,7 @@
 import Foundation
 import Glibc
 import KanaKanjiConverterModule
+import SwiftProtobuf
 import XCTest
 
 @testable import hazkey_server
@@ -71,6 +72,55 @@ final class LearningCommitFlagTests: XCTestCase {
     /// something to consume.
     private func composeOneCharacter(_ state: HazkeyServerState) {
         state.composingText.value.insertAtCursorPosition("あ", inputStyle: .direct)
+    }
+
+    private func send(
+        _ request: Hazkey_RequestEnvelope,
+        to state: HazkeyServerState
+    ) throws -> Hazkey_ResponseEnvelope {
+        try Hazkey_ResponseEnvelope(
+            serializedBytes: ProtocolHandler(state: state).processProto(data: request.serializedData()))
+    }
+
+    private func saveLearningDataRequest() -> Hazkey_RequestEnvelope {
+        .with { $0.saveLearningData = Hazkey_Commands_SaveLearningData() }
+    }
+
+    /// 永続化に失敗したコミットは成功として扱わない。dirty フラグを維持したまま
+    /// FAILED を返し、保存先が復旧した後の次のトリガーで同じ学習が永続化される。
+    func testFailedLearningCommitKeepsDirtyFlagAndReportsFailure() throws {
+        let shared = HazkeySharedResources()
+        let first = HazkeyServerState(shared: shared)
+        let second = HazkeyServerState(shared: shared)
+        defer {
+            first.close()
+            second.close()
+        }
+
+        composeOneCharacter(first)
+        first.currentCandidateList = [.fromConverter(learnableCandidate(text: "亜", ruby: "ア"))]
+        XCTAssertEqual(first.completePrefix(candidateIndex: 0).status, .success)
+        XCTAssertTrue(shared.learningDataNeedsCommit)
+
+        // 保存先を同名の通常ファイルに置き換えて書き込みを ENOTDIR で失敗させる。
+        // chmod は CI コンテナの root が迂回できるため使わない。
+        let memoryDirectory = shared.serverConfig.memoryDirectory()
+        try FileManager.default.removeItem(at: memoryDirectory)
+        XCTAssertTrue(FileManager.default.createFile(atPath: memoryDirectory.path, contents: Data()))
+
+        let failure = try send(saveLearningDataRequest(), to: first)
+        XCTAssertEqual(failure.status, .failed)
+        XCTAssertFalse(failure.errorMessage.isEmpty)
+        XCTAssertTrue(shared.learningDataNeedsCommit)
+
+        try FileManager.default.removeItem(at: memoryDirectory)
+        try FileManager.default.createDirectory(at: memoryDirectory, withIntermediateDirectories: true)
+
+        let recovered = try send(saveLearningDataRequest(), to: second)
+        XCTAssertEqual(recovered.status, .success)
+        XCTAssertFalse(shared.learningDataNeedsCommit)
+        let keys = try shared.converter.persistedLearningMemoryKeys(exactReadings: ["ア"])
+        XCTAssertTrue(keys.contains { $0.reading == "ア" && $0.word == "亜" })
     }
 
     func testUserDictCommitDoesNotClearPendingLearningPersistence() {

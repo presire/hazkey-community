@@ -77,7 +77,7 @@ final class LearningHistoryServerTests: XCTestCase {
             )
             state.converter.stopComposition()
         }
-        state.converter.commitUpdateLearningData()
+        XCTAssertNoThrow(try state.converter.commitUpdateLearningData())
     }
 
     private func send(
