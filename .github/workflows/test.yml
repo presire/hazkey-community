@@ -171,8 +171,9 @@ jobs:
           # (zenzai_model_management_test、zenzai_dialog_selection_test、zenzai_download_validation_test、
           #  zenzai_family_row_test、keysequence_util_test、userdict_model_test、live_convert_mode_test、
           #  hazkey_candidate_selection_test、hazkey_client_rpc_probe_test、hazkey_client_cache_test、
-          #  candidate_refresh_coalescer_test、hazkey_client_transact_safety_test、hazkey_frontend_async_test、
-          #  ibus_hazkey_state_test、learninghistorydialog_test)
+          #  hazkey_client_config_revision_test、candidate_refresh_coalescer_test、
+          #  hazkey_client_transact_safety_test、hazkey_composing_cursor_view_test、
+          #  hazkey_frontend_async_test、ibus_hazkey_state_test、learninghistorydialog_test)
           # learninghistorydialog_testは、Swiftサーバビルド (build_hazkey_server) にも依存するため、以下のステップで単一スレッドによりビルドする
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
@@ -184,8 +185,10 @@ jobs:
           cmake --build build --target hazkey_candidate_selection_test --parallel
           cmake --build build --target hazkey_client_rpc_probe_test --parallel
           cmake --build build --target hazkey_client_cache_test --parallel
+          cmake --build build --target hazkey_client_config_revision_test --parallel
           cmake --build build --target candidate_refresh_coalescer_test --parallel
           cmake --build build --target hazkey_client_transact_safety_test --parallel
+          cmake --build build --target hazkey_composing_cursor_view_test --parallel
           cmake --build build --target hazkey_frontend_async_test --parallel
           cmake --build build --target ibus_hazkey_state_test --parallel
           cmake --build build --target zenzai_dialog_selection_test --parallel
