@@ -49,6 +49,13 @@ bool isPreeditHandledKey(guint keyval) {
         case IBUS_KEY_ISO_Left_Tab:
         case IBUS_KEY_Left:
         case IBUS_KEY_Right:
+        // [community] Home/End move the COMPOSITION cursor while composing, so
+        // they must be consumed here too. Without a composition they fall
+        // through to the idle branch and stay with the application.
+        case IBUS_KEY_Home:
+        case IBUS_KEY_KP_Home:
+        case IBUS_KEY_End:
+        case IBUS_KEY_KP_End:
             return true;
         default:
             return false;

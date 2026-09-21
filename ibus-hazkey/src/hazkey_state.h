@@ -248,6 +248,33 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
         const std::optional<std::string>& fallback, bool isSuggest);
     void showPreeditCandidateList();
 
+    // [community] Live-conversion pause (composition cursor not at the end).
+    //
+    // A kana offset cannot be mapped into the converted text (kana <-> kanji is
+    // many-to-many), so instead of drawing a caret at a guessed position the
+    // live-conversion display is suspended: the raw kana is shown with a real
+    // caret until the cursor returns to the end. The mode decision and the
+    // caret arithmetic are shared with fcitx5-hazkey via
+    // hazkey-frontend-common/composing_cursor_view.h so the two frontends
+    // cannot drift apart; this is the exact counterpart of
+    // fcitx5-hazkey/src/hazkey_state.h's block of the same name.
+
+    // Renders the paused display: raw kana + caret, no lookup table, and
+    // livePreeditIndex_ = -1 so Return commits exactly what is on screen.
+    void showPausedRawPreedit(
+        const hazkey::frontend::ComposingTextWithCursor& parts);
+    // Renders the paused display when the cursor is not at the end. Returns
+    // true when it did, i.e. when the caller must not run a conversion.
+    bool showPausedPreeditIfCursorInside();
+    // Moves the composition cursor and re-renders. Reaching the end resumes
+    // live conversion with exactly one synchronous re-conversion; a forward
+    // move that is already at the end is consumed without any RPC.
+    void moveComposingCursor(int offset);
+    // Re-renders after an edit that mutated the composition: schedules the
+    // usual coalesced live-conversion refresh at the end, or redraws the
+    // paused display without computing a conversion nobody would see.
+    void refreshAfterComposingEdit();
+
     // Coalescing entry point for the display-only refresh that follows an
     // inputable keystroke. Mirrors fcitx5-hazkey's scheduleCandidateRefresh():
     // the first request of a burst runs immediately (leading edge) and rapid
@@ -337,7 +364,6 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
 
     std::string preeditText_;
     int livePreeditIndex_ = -1;
-    bool isCursorMoving_ = false;
     bool isDirectConversionMode_ = false;
     // Tracks whether Shift is currently pressed without any other modifier,
     // so the release can report RELEASE (lone tap) vs CANCEL.
@@ -367,6 +393,12 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     bool cachedZenzaiEnabled_ = false;
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
+    // [community] Raw-hiragana AuxUp visibility. Gated HERE rather than on the
+    // server, so getHiraganaWithCursor() stays a structural API the preedit
+    // caret can depend on. Seeded with the server default profile value
+    // (HazkeyServerConfig.genDefaultConfig() writes auxTextShowWhenCursorNotAtEnd).
+    hazkey::config::Profile_AuxTextMode cachedAuxTextMode_ =
+        hazkey::config::Profile_AuxTextMode_AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END;
 };
 
 }  // namespace hazkey::ibus

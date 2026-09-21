@@ -12,6 +12,7 @@
 #include <iostream>
 #include <unordered_set>
 
+#include "composing_cursor_view.h"
 #include "hazkey_frontend.h"
 #include "hazkey_state.h"
 #include "live_convert_mode.h"
@@ -473,6 +474,76 @@ void testConsumeDecision() {
     std::cout << "[PASS] synchronous consume decision\n";
 }
 
+// [community] Home/End move the COMPOSITION cursor (fcitx5-hazkey consumes
+// them the same way), so while composing they must never reach the
+// application. Without a composition they must still reach it, or the caret
+// keys would be swallowed in every text field.
+void testHomeEndConsumeDecision() {
+    using hazkey::ibus::HazkeyFrontend;
+    using hazkey::ibus::HazkeyState;
+
+    HazkeyFrontend::DecisionInput idle;
+    idle.profileLoaded = true;
+    idle.liveConvert = HazkeyState::parseHotkey("", "Control+Shift+L");
+    idle.zenzaiToggle = HazkeyState::parseHotkey("", "Control+Alt+Z");
+    idle.acceptPrediction = HazkeyState::parseHotkey("", "F5");
+    idle.deleteLearning = HazkeyState::parseHotkey("", "Control+D");
+
+    // Idle: the application owns Home/End, including the keypad variants.
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Home, 0, idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_End, 0, idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_Home, 0, idle));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_End, 0, idle));
+
+    // Composing: the IME owns them, so they cannot move the application's
+    // cursor out from under an open composition.
+    auto composing = idle;
+    composing.composing = true;
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Home, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_End, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_Home, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_End, 0, composing));
+
+    // Left/Right keep their existing behavior: application when idle, IME
+    // while composing (the cursor-move keys the pause mode is driven by).
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Right, 0, idle));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Left, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Right, 0, composing));
+
+    // A modifier combo on Home/End is not an IME key even while composing
+    // (Ctrl+Home is a document-level application shortcut).
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Home, IBUS_CONTROL_MASK,
+                                             composing));
+
+    std::cout << "[PASS] Home/End consumed only while composing\n";
+}
+
+// [community] The shared pause-mode rules must be the ones the IBus frontend
+// uses; a local re-implementation would let the two frontends drift apart.
+void testPauseModeRulesAreShared() {
+    using hazkey::frontend::caretCharOffset;
+    using hazkey::frontend::composingTextOf;
+    using hazkey::frontend::ComposingTextWithCursor;
+    using hazkey::frontend::cursorAtEnd;
+
+    const ComposingTextWithCursor atEnd{"あいう", "", ""};
+    assert(cursorAtEnd(atEnd));
+
+    // On the last character is NOT the end, so live conversion stays paused.
+    const ComposingTextWithCursor onLast{"あい", "う", ""};
+    assert(!cursorAtEnd(onLast));
+    // IBus takes a CHARACTER offset, so kana must count as one each.
+    assert(caretCharOffset(onLast) == 2);
+    assert(composingTextOf(onLast) == "あいう");
+
+    const ComposingTextWithCursor middle{"あ", "い", "うえ"};
+    assert(!cursorAtEnd(middle));
+    assert(caretCharOffset(middle) == 1);
+    assert(composingTextOf(middle) == "あいうえ");
+
+    std::cout << "[PASS] pause-mode rules come from the shared module\n";
+}
+
 void testForwardedKeyPairing() {
     using hazkey::ibus::HazkeyFrontend;
 
@@ -537,6 +608,8 @@ int main() {
     testCapabilityAvailability();
     testLookupPageArithmetic();
     testConsumeDecision();
+    testHomeEndConsumeDecision();
+    testPauseModeRulesAreShared();
     testForwardedKeyPairing();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
