@@ -119,8 +119,10 @@ class ProtocolHandler {
     }
 
     private func serializeResult(unserialized: Hazkey_ResponseEnvelope) -> Data {
+        var response = unserialized
+        response.configRevision = state.serverConfig.configRevision
         do {
-            let serialized = try unserialized.serializedData()
+            let serialized = try response.serializedData()
             return serialized
         } catch {
             NSLog("Failed to serialize response message: \(unserialized)")

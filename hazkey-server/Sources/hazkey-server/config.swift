@@ -63,6 +63,9 @@ let builtInInputTables = [
 class HazkeyServerConfig {
     var profiles: [Hazkey_Config_Profile]
     var currentProfile: Hazkey_Config_Profile
+    // Bumped on every successful SetConfig; carried on every response so
+    // frontends can reload their cached profile when it changes.
+    private(set) var configRevision: UInt64 = 0
     let dictionaryPath: URL
     var zenzaiAvailable: Bool
     var zenzaiModelPath: URL?
@@ -393,6 +396,8 @@ class HazkeyServerConfig {
         if let state = state {
             state.reinitializeConfiguration()
         }
+
+        configRevision &+= 1
     }
 
     static func loadConfig() throws -> [Hazkey_Config_Profile] {

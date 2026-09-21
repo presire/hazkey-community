@@ -58,4 +58,9 @@ message ResponseEnvelope {
         hazkey.config.GetLearningHistoryResult get_learning_history_result = 101;
         hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;
     }
+
+    // Monotonic revision of the persisted configuration, bumped on every
+    // successful SetConfig and carried by every response so frontends can
+    // reload their cached profile as soon as it changes.
+    uint64 config_revision = 103;
 }

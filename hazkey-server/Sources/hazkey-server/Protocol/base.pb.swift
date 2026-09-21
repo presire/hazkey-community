@@ -381,6 +381,11 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .deleteLearningEntriesResult(newValue)}
   }
 
+  /// Monotonic revision of the persisted configuration, bumped on every
+  /// successful SetConfig and carried by every response so frontends can
+  /// reload their cached profile as soon as it changes.
+  var configRevision: UInt64 = 0
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum OneOf_Payload: Equatable, Sendable {
@@ -851,7 +856,7 @@ nonisolated extension Hazkey_RequestEnvelope: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ResponseEnvelope"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}error_message\0\u{1}text\0\u{1}candidates\0\u{3}text_with_cursor\0\u{3}current_input_mode_info\0\u{3}clause_boundary_result\0\u{3}delete_candidate_learning_data_result\0\u{3}toggle_zenzai_result\0\u{4}[\u{1}current_config\0\u{3}get_learning_history_result\0\u{3}delete_learning_entries_result\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}error_message\0\u{1}text\0\u{1}candidates\0\u{3}text_with_cursor\0\u{3}current_input_mode_info\0\u{3}clause_boundary_result\0\u{3}delete_candidate_learning_data_result\0\u{3}toggle_zenzai_result\0\u{4}[\u{1}current_config\0\u{3}get_learning_history_result\0\u{3}delete_learning_entries_result\0\u{3}config_revision\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -986,6 +991,7 @@ nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProto
           self.payload = .deleteLearningEntriesResult(v)
         }
       }()
+      case 103: try { try decoder.decodeSingularUInt64Field(value: &self.configRevision) }()
       default: break
       }
     }
@@ -1045,6 +1051,9 @@ nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProto
     }()
     case nil: break
     }
+    if self.configRevision != 0 {
+      try visitor.visitSingularUInt64Field(value: self.configRevision, fieldNumber: 103)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1052,6 +1061,7 @@ nonisolated extension Hazkey_ResponseEnvelope: SwiftProtobuf.Message, SwiftProto
     if lhs.status != rhs.status {return false}
     if lhs.errorMessage != rhs.errorMessage {return false}
     if lhs.payload != rhs.payload {return false}
+    if lhs.configRevision != rhs.configRevision {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
