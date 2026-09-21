@@ -138,6 +138,11 @@ final class OutputParityTests: XCTestCase {
         let state = HazkeyServerState()
         // config.swift:578 enables neural conversion when this remains true.
         state.serverConfig.currentProfile.zenzaiEnable = false
+        // 拡張絵文字候補はホストの /usr/share/hazkey/emoji_all_E17.0.txt の有無で
+        // 注入結果が変わる (CI はアセットを配置しない)。辞書パリティ検証を環境に
+        // 依存させないため無効化する。絵文字注入自体は注入URLを使う
+        // Emoji17DirectConversionTests が検証する。
+        state.serverConfig.currentProfile.specialConversionMode.extendedEmoji = false
         if case .full(let numCandidatesPerPage, _) = fixture.request,
             let numCandidatesPerPage
         {
