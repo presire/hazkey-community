@@ -4,7 +4,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -88,6 +90,15 @@ class HazkeyServerConnector {
 
     std::optional<hazkey::config::CurrentConfig> getServerConfig();
     bool setServerConfig(const hazkey::config::CurrentConfig& config);
+
+    // True once after the server reported a config revision different from the
+    // previous one. Frontends check it before a key event to reload the cached
+    // profile as soon as settings are applied.
+    bool consumeConfigChanged();
+
+    uint64_t configRevision() const {
+        return lastConfigRevision_.load(std::memory_order_relaxed);
+    }
 
     void newComposingText();
 
@@ -181,6 +192,12 @@ class HazkeyServerConnector {
     // not treated as a blocking bug, since the reconnect path already
     // recovers correctly.
     void invalidateCache();
+
+    void recordConfigRevision(uint64_t revision);
+
+    std::atomic<uint64_t> lastConfigRevision_{0};
+    std::atomic<bool> configRevisionKnown_{false};
+    std::atomic<bool> configChanged_{false};
 
     int sock_ = -1;
     std::string socket_path_;

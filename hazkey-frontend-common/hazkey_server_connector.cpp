@@ -411,7 +411,24 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     lastSuccessfulTransaction_ = std::chrono::steady_clock::now();
 
     HAZKEY_LOG_DEBUG() << "Successfully received and parsed response";
+    recordConfigRevision(resp.config_revision());
     return resp;
+}
+
+void HazkeyServerConnector::recordConfigRevision(uint64_t revision) {
+    const uint64_t previous = lastConfigRevision_.load(std::memory_order_relaxed);
+    if (configRevisionKnown_.exchange(true, std::memory_order_relaxed)) {
+        if (revision != previous) {
+            lastConfigRevision_.store(revision, std::memory_order_relaxed);
+            configChanged_.store(true, std::memory_order_relaxed);
+        }
+    } else {
+        lastConfigRevision_.store(revision, std::memory_order_relaxed);
+    }
+}
+
+bool HazkeyServerConnector::consumeConfigChanged() {
+    return configChanged_.exchange(false, std::memory_order_relaxed);
 }
 
 std::string HazkeyServerConnector::getComposingText(

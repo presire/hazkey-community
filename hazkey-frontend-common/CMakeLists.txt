@@ -139,6 +139,17 @@ if(BUILD_TESTING)
     add_test(NAME hazkey_client_cache_test
         COMMAND hazkey_client_cache_test)
 
+    add_executable(hazkey_client_config_revision_test
+        hazkey_client_config_revision_test.cpp)
+    target_link_libraries(hazkey_client_config_revision_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_client_config_revision_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_client_config_revision_test hazkey-proto-headers)
+    add_test(NAME hazkey_client_config_revision_test
+        COMMAND hazkey_client_config_revision_test)
+
     add_executable(hazkey_client_transact_safety_test
         hazkey_client_transact_safety_test.cpp)
     target_link_libraries(hazkey_client_transact_safety_test PRIVATE
