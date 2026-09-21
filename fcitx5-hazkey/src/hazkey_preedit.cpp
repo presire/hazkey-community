@@ -28,6 +28,17 @@ void HazkeyPreedit::setSimplePreedit(const std::string &text) {
     setMultiSegmentPreedit(texts, -1);
 }
 
+void HazkeyPreedit::setRawPreeditWithCaret(const std::string &text,
+                                           int caretByteOffset) {
+    auto preedit = Text();
+    // Same Underline styling setSimplePreedit() produces (cursorSegment = -1
+    // falls into setMultiSegmentPreedit()'s Underline branch), so pausing live
+    // conversion only ADDS the caret instead of restyling the preedit.
+    preedit.append(text, TextFormatFlag::Underline);
+    preedit.setCursor(caretByteOffset);
+    setPreedit(preedit);
+}
+
 void HazkeyPreedit::setMultiSegmentPreedit(std::vector<std::string> &texts,
                                            int cursorSegment = 0) {
     auto preedit = Text();

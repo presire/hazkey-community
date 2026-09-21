@@ -14,6 +14,11 @@ class HazkeyPreedit {
     void setSimplePreeditHighlighted(const std::string &text);
     // set the preedit text; prediction mode (not highlighted)
     void setSimplePreedit(const std::string &text);
+    // [community] set the raw-kana preedit with a REAL caret inside it.
+    // caretByteOffset is a UTF-8 byte offset (fcitx::Text::setCursor() is
+    // documented "by byte" in fcitx5's text.h). Used while live conversion is
+    // paused, i.e. while the composition cursor is not at the end.
+    void setRawPreeditWithCaret(const std::string &text, int caretByteOffset);
     // set the preedit text; multi-segment mode
     void setMultiSegmentPreedit(std::vector<std::string> &texts, int cursor);
     // set the preedit text

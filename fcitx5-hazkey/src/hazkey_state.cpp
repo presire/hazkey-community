@@ -14,6 +14,7 @@
 
 #include "candidate_refresh_coalescer.h"
 #include "commands.pb.h"
+#include "composing_cursor_view.h"
 #include "fcitx-utils/keysym.h"
 #include "hazkey_candidate.h"
 #include "hazkey_engine.h"
@@ -216,9 +217,7 @@ void HazkeyState::preeditKeyEvent(
                 // Keep Zenzai leftContext fresh.
                 updateSurroundingText();
                 engine_->server().inputChar(" ");
-                // Display-only refresh: coalesce (see
-                // scheduleCandidateRefresh()).
-                scheduleCandidateRefresh(/*isSuggest=*/true);
+                refreshAfterComposingEdit();
             } else {
                 showNonPredictCandidateList();
             }
@@ -255,17 +254,27 @@ void HazkeyState::preeditKeyEvent(
                 showNonPredictCandidateList();
                 moveSegmentBoundary(false);
             } else {
-                isCursorMoving_ = true;
-                engine_->server().moveCursor(-1);
+                moveComposingCursor(-1);
             }
             break;
         case FcitxKey_Right:
             if (key.states() == KeyState::Shift) {
                 showNonPredictCandidateList();
                 moveSegmentBoundary(true);
-            } else if (isCursorMoving_) {
-                engine_->server().moveCursor(1);
+            } else {
+                moveComposingCursor(1);
             }
+            break;
+        // [community] Home/End are always consumed while composing, so they
+        // move the composition cursor instead of the application's. The server
+        // clamps the offset. ibus-hazkey consumes them identically.
+        case FcitxKey_Home:
+        case FcitxKey_KP_Home:
+            moveComposingCursor(-1024);
+            break;
+        case FcitxKey_End:
+        case FcitxKey_KP_End:
+            moveComposingCursor(1024);
             break;
         default:
             if (event.key().states() == KeyState::Ctrl) {
@@ -303,9 +312,7 @@ void HazkeyState::preeditKeyEvent(
                 // Zenzai leftContext更新のため。
                 updateSurroundingText();
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
-                // Display-only refresh: coalesce (see
-                // scheduleCandidateRefresh()).
-                scheduleCandidateRefresh(/*isSuggest=*/true);
+                refreshAfterComposingEdit();
             }
             break;
     }
@@ -493,6 +500,7 @@ void HazkeyState::loadServerProfile() {
     deleteLearningHotkey_ =
         Key(deleteHotkey.empty() ? "Control+D" : deleteHotkey);
     cachedAutoConvertMode_ = profile.auto_convert_mode();
+    cachedAuxTextMode_ = profile.aux_text_mode();
     using M = hazkey::config::Profile_AutoConvertMode;
     // Only update the remembered "ON" mode when the server's mode is not
     // DISABLED. When DISABLED (e.g. after a previous hotkey toggle-off), keep
@@ -685,8 +693,70 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
 
 bool HazkeyState::showCandidateList(bool isSuggest) {
     currentListIsSuggest_ = isSuggest;
+    // [community] The live-conversion display is the only one that pauses.
+    // Non-predict conversion either snapped the cursor to the end already
+    // (showNonPredictCandidateList) or is a focused clause-boundary
+    // adjustment, which legitimately keeps the cursor inside.
+    if (isSuggest && showPausedPreeditIfCursorInside()) {
+        return false;
+    }
     auto response = engine_->server().getCandidates(isSuggest);
     return showCandidateList(response);
+}
+
+void HazkeyState::showPausedRawPreedit(
+    const hazkey::frontend::ComposingTextWithCursor& parts) {
+    ic_->inputPanel().reset();
+    preedit_.setRawPreeditWithCaret(
+        hazkey::frontend::composingTextOf(parts),
+        static_cast<int>(hazkey::frontend::caretByteOffset(parts)));
+    // No live_text is on screen, so Return must commit the raw kana instead of
+    // completing a candidate the user cannot see.
+    livePreeditIndex_ = -1;
+    // inputPanel().reset() cleared AuxDown; restore the "[Direct Input]"
+    // indicator. There is no candidate list, so no "Press Tab" hint.
+    setAuxDownText(std::nullopt);
+}
+
+bool HazkeyState::showPausedPreeditIfCursorInside() {
+    const auto parts = engine_->server().getComposingHiraganaWithCursor();
+    if (hazkey::frontend::cursorAtEnd(parts)) {
+        return false;
+    }
+    showPausedRawPreedit(parts);
+    return true;
+}
+
+void HazkeyState::moveComposingCursor(int offset) {
+    if (offset > 0 && hazkey::frontend::cursorAtEnd(
+                          engine_->server().getComposingHiraganaWithCursor())) {
+        // Right/End at the end of the composition: nothing to move to. The key
+        // is still consumed by the caller, but no RPC and no redraw happen.
+        return;
+    }
+    // Any deferred refresh is superseded by the synchronous render below.
+    cancelPendingRefresh();
+    engine_->server().moveCursor(offset);
+    // moveCursor() invalidates the connector cache, so this re-read sees the
+    // new position. The server clamps the offset, so +-1024 is safe.
+    const auto parts = engine_->server().getComposingHiraganaWithCursor();
+    if (hazkey::frontend::cursorAtEnd(parts)) {
+        showPreeditCandidateList();
+        return;
+    }
+    showPausedRawPreedit(parts);
+}
+
+void HazkeyState::refreshAfterComposingEdit() {
+    const auto parts = engine_->server().getComposingHiraganaWithCursor();
+    if (!hazkey::frontend::cursorAtEnd(parts)) {
+        cancelPendingRefresh();
+        showPausedRawPreedit(parts);
+        return;
+    }
+    // Display-only refresh: coalesce rapid successive keystrokes (see
+    // scheduleCandidateRefresh() for the rationale).
+    scheduleCandidateRefresh(/*isSuggest=*/true);
 }
 
 bool HazkeyState::showCandidateList(
@@ -730,8 +800,13 @@ bool HazkeyState::showCandidateList(
         // preedit conversion is enabled and conversion result is found
         // show preedit conversion result
         preedit_.setSimplePreedit(response.live_text());
+        // livePreeditIndex_ means "this live_text is what the user sees", not
+        // "the response carried an index": Return completes that candidate, so
+        // it must only be set on the branch that actually displays live_text.
+        livePreeditIndex_ = response.live_text_index();
     } else if (fallbackPreedit != std::nullopt) {
         preedit_.setSimplePreedit(*fallbackPreedit);
+        livePreeditIndex_ = -1;
     } else {
         // preedit conversion is disabled or conversion result is not
         // available show hiragana preedit
@@ -739,9 +814,8 @@ bool HazkeyState::showCandidateList(
             hazkey::commands::GetComposingString_CharType_HIRAGANA,
             preedit_.text());
         preedit_.setSimplePreedit(hiragana);
+        livePreeditIndex_ = -1;
     }
-
-    livePreeditIndex_ = response.live_text_index();
 
     const bool hasCandidates =
         response.page_size() > 0 && response.candidates_size() > 0;
@@ -1069,8 +1143,13 @@ void HazkeyState::setHiraganaAUX() {
     // The shared transport returns a neutral ComposingTextWithCursor; the
     // fcitx adapter applies the cursor underline (was done inside the
     // connector before the extraction).
-    ic_->inputPanel().setAuxUp(composingTextWithCursorToFcitxText(
-        engine_->server().getComposingHiraganaWithCursor()));
+    const auto parts = engine_->server().getComposingHiraganaWithCursor();
+    if (!hazkey::frontend::shouldShowAuxText(
+            cachedAuxTextMode_, hazkey::frontend::cursorAtEnd(parts))) {
+        ic_->inputPanel().setAuxUp(Text());
+        return;
+    }
+    ic_->inputPanel().setAuxUp(composingTextWithCursorToFcitxText(parts));
 }
 
 /// Reset
@@ -1079,7 +1158,6 @@ void HazkeyState::reset() {
     FCITX_DEBUG() << "HazkeyState reset";
     isDirectConversionMode_ = false;
     livePreeditIndex_ = -1;
-    isCursorMoving_ = false;
     isClauseBoundaryAdjusting_ = false;
     currentListIsSuggest_ = false;
     // Explicit cancellation (do not rely on RAII alone): reset() is called

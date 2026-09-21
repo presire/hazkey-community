@@ -12,6 +12,7 @@
 #include "candidate_refresh_coalescer.h"
 #include "config.pb.h"
 #include "hazkey_candidate.h"
+#include "hazkey_frontend_hooks.h"
 #include "hazkey_preedit.h"
 
 namespace fcitx {
@@ -84,6 +85,32 @@ class HazkeyState : public InputContextProperty {
     std::unique_ptr<HazkeyCandidateList> createCandidateList(
         std::vector<std::vector<std::string>> candidates,
         std::shared_ptr<std::vector<std::string>> preeditSegments);
+
+    // [community] Live-conversion pause (composition cursor not at the end).
+    //
+    // A kana offset cannot be mapped into the converted text (kana <-> kanji is
+    // many-to-many), so instead of drawing a caret at a guessed position the
+    // live-conversion display is suspended: the raw kana is shown with a real
+    // caret until the cursor returns to the end. The mode decision and the
+    // caret arithmetic are shared with ibus-hazkey via
+    // hazkey-frontend-common/composing_cursor_view.h so the two frontends
+    // cannot drift apart.
+
+    // Renders the paused display: raw kana + caret, no candidate list, and
+    // livePreeditIndex_ = -1 so Return commits exactly what is on screen.
+    void showPausedRawPreedit(
+        const hazkey::frontend::ComposingTextWithCursor& parts);
+    // Renders the paused display when the cursor is not at the end. Returns
+    // true when it did, i.e. when the caller must not run a conversion.
+    bool showPausedPreeditIfCursorInside();
+    // Moves the composition cursor and re-renders. Reaching the end resumes
+    // live conversion with exactly one synchronous re-conversion; a forward
+    // move that is already at the end is consumed without any RPC.
+    void moveComposingCursor(int offset);
+    // Re-renders after an edit that mutated the composition: schedules the
+    // usual coalesced live-conversion refresh at the end, or redraws the
+    // paused display without computing a conversion nobody would see.
+    void refreshAfterComposingEdit();
 
     // prepare candidate list for normal conversion
     void showNonPredictCandidateList(bool preserveTarget = false);
@@ -165,7 +192,6 @@ class HazkeyState : public InputContextProperty {
 
     bool isAltDigitKeyEvent(const KeyEvent& keyEvent);
 
-    bool isCursorMoving_ = false;
     bool isClauseBoundaryAdjusting_ = false;
 
     // Coalescing state for scheduleCandidateRefresh(). keyEvent() and the
@@ -201,6 +227,12 @@ class HazkeyState : public InputContextProperty {
     bool currentListIsSuggest_ = false;
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
+    // [community] Raw-hiragana AuxUp visibility. Gated HERE rather than on the
+    // server, so getHiraganaWithCursor() stays a structural API the preedit
+    // caret can depend on. Seeded with the server default profile value
+    // (HazkeyServerConfig.genDefaultConfig() writes auxTextShowWhenCursorNotAtEnd).
+    hazkey::config::Profile_AuxTextMode cachedAuxTextMode_ =
+        hazkey::config::Profile_AuxTextMode_AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END;
     bool serverProfileLoaded_ = false;
 
     // engine
