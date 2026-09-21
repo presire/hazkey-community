@@ -52,6 +52,7 @@ void HazkeyEngine::activate([[maybe_unused]] const InputMethodEntry &entry,
     auto inputContext = event.inputContext();
     auto state = inputContext->propertyFor(&factory_);
     state->reset();
+    state->invalidateServerProfile();
     inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 

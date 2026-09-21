@@ -54,6 +54,9 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     gboolean processKeyEvent(guint keyval, guint keycode, guint state);
     void focusIn();
     void focusOut();
+
+    // Drops the cached server profile so the next load reloads it.
+    void invalidateServerProfile() { serverProfileLoaded_ = false; }
     void reset();
     void enable();
     void disable();

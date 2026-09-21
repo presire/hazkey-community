@@ -55,7 +55,7 @@ void HazkeyState::keyEvent(KeyEvent& event) {
     }
 
     if (!event.isRelease()) {
-        if (!serverProfileLoaded_) {
+        if (!serverProfileLoaded_ || engine_->server().consumeConfigChanged()) {
             loadServerProfile();
         }
         if (event.key().check(liveConvertHotkey_)) {

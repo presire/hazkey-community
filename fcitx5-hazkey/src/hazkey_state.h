@@ -34,6 +34,9 @@ class HazkeyState : public InputContextProperty {
     //  reset to the initial state
     void reset();
 
+    // Drops the cached server profile so the next key event reloads it.
+    void invalidateServerProfile() { serverProfileLoaded_ = false; }
+
    private:
     enum class ConversionMode {
         Hiragana,

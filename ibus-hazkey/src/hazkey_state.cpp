@@ -349,7 +349,7 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
     }
     shiftPressedAlone_ = false;
 
-    if (!serverProfileLoaded_) {
+    if (!serverProfileLoaded_ || server_.consumeConfigChanged()) {
         loadServerProfile();
     }
 
@@ -1639,6 +1639,7 @@ void HazkeyState::clearSurroundingText() {
 
 void HazkeyState::focusIn() {
     resetState();
+    invalidateServerProfile();
     registerProperties();
 }
 
