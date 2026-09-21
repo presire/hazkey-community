@@ -981,6 +981,10 @@ class HazkeyServerState {
 
     /// ComposingText -> Characters
 
+    /// 構造APIであり表示設定は適用しない。auxTextMode によるAUXの表示・非表示は
+    /// フロントエンド側 (hazkey-frontend-common/composing_cursor_view.h —
+    /// hazkey::frontend::shouldShowAuxText) が判断する。ここで空文字列を返すと
+    /// preedit のキャレット位置まで設定に従属してしまうため、常に実際の3分割を返す。
     func getHiraganaWithCursor() -> Hazkey_ResponseEnvelope {
         func safeSubstring(_ text: String, start: Int, end: Int) -> String {
             guard start >= 0, end >= 0, start < text.count, end <= text.count, start < end else {
@@ -995,22 +999,6 @@ class HazkeyServerState {
 
         let hiragana = composingText.value.toHiragana()
         let cursorPos = composingText.value.convertTargetCursorPosition
-
-        if (serverConfig.currentProfile.auxTextMode
-            == Hazkey_Config_Profile.AuxTextMode.auxTextDisabled)
-            || (serverConfig.currentProfile.auxTextMode
-                == Hazkey_Config_Profile.AuxTextMode.auxTextShowWhenCursorNotAtEnd
-                && hiragana.count == cursorPos)
-        {
-            return Hazkey_ResponseEnvelope.with {
-                $0.status = .success
-                $0.textWithCursor = Hazkey_Commands_TextWithCursor.with {
-                    $0.beforeCursosr = ""
-                    $0.onCursor = ""
-                    $0.afterCursor = ""
-                }
-            }
-        }
 
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
