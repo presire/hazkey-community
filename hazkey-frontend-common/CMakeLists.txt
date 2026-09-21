@@ -39,6 +39,7 @@ add_library(hazkey-frontend-common STATIC
     hazkey_server_connector.cpp
     hazkey_frontend_hooks.cpp
     serial_task_executor.cpp
+    composing_cursor_view.cpp
 )
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
@@ -148,6 +149,21 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_client_transact_safety_test hazkey-proto-headers)
     add_test(NAME hazkey_client_transact_safety_test
         COMMAND hazkey_client_transact_safety_test)
+
+    # Shared composition-cursor presentation rules (live-conversion pause mode
+    # decision, caret byte/character offsets, aux-text gate). Both frontends
+    # call these, so the test belongs here and must run in an IBus-only build
+    # as well.
+    add_executable(hazkey_composing_cursor_view_test
+        composing_cursor_view_test.cpp)
+    target_link_libraries(hazkey_composing_cursor_view_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_composing_cursor_view_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_composing_cursor_view_test hazkey-proto-headers)
+    add_test(NAME hazkey_composing_cursor_view_test
+        COMMAND hazkey_composing_cursor_view_test)
 
     # Async transport foundation: SerialTaskExecutor + the main-loop post hook
     # that the IBus frontend uses to keep process_key_event non-blocking.
