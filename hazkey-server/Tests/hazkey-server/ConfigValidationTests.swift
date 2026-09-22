@@ -508,4 +508,25 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertFalse(normalized.specialConversionMode.extendedEmoji)
         XCTAssertFalse(normalized.extendedEmojiEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingAddressDictionaryAndPreservesExplicitFalse() throws {
+        // Given: a legacy profile missing the address-dictionary field and one opting out.
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearUseAddressDictionary()
+        XCTAssertFalse(missing.hasUseAddressDictionary)
+        var disabled = HazkeyServerConfig.genDefaultConfig()
+        disabled.useAddressDictionary = false
+
+        // When: each crosses the configuration boundary.
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedDisabled = try HazkeyServerConfig.normalizeProfile(disabled)
+
+        // Then: the missing field defaults to disabled while the explicit opt-out survives.
+        XCTAssertTrue(normalizedMissing.hasUseAddressDictionary)
+        XCTAssertFalse(normalizedMissing.useAddressDictionary)
+        XCTAssertFalse(normalizedMissing.useAddressDictionaryEffective)
+        XCTAssertTrue(normalizedDisabled.hasUseAddressDictionary)
+        XCTAssertFalse(normalizedDisabled.useAddressDictionary)
+        XCTAssertFalse(normalizedDisabled.useAddressDictionaryEffective)
+    }
 }

@@ -257,6 +257,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("useUserDict", ui_->useUserDict->isChecked());
     state.insert("halfwidthKatakanaConversion", ui_->halfwidthKatakanaConversion->isChecked());
     state.insert("extendedEmojiConversion", ui_->extendedEmojiConversion->isChecked());
+    state.insert("useAddressDict", ui_->useAddressDict->isChecked());
     state.insert("commaSeparatedNumCoversion", ui_->commaSeparatedNumCoversion->isChecked());
     state.insert("calendarConversion", ui_->calendarConversion->isChecked());
     state.insert("timeConversion", ui_->timeConversion->isChecked());
@@ -420,6 +421,8 @@ void MainWindow::connectSignals() {
     connect(ui_->halfwidthKatakanaConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->extendedEmojiConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->useAddressDict, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->commaSeparatedNumCoversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
@@ -797,6 +800,12 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                  specialConversions->relative_date(),
                  ConfigDefs::CheckboxDefaults::RELATIVE_DATE);
 
+    const bool useAddressDict = currentProfile_->has_use_address_dictionary()
+                                    ? currentProfile_->use_address_dictionary()
+                                    : ConfigDefs::CheckboxDefaults::ADDRESS_DICTIONARY;
+    SET_CHECKBOX(ui_->useAddressDict, useAddressDict,
+                 ConfigDefs::CheckboxDefaults::ADDRESS_DICTIONARY);
+
     ui_->stopStoreNewHistory->setEnabled(currentProfile_->use_input_history());
     onUseZenzaiCustomWeightToggled(ui_->useZenzaiCustomWeight->isChecked());
 
@@ -940,6 +949,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->hazkeyVersionConversion));
     specialConversions->set_relative_date(
         GET_CHECKBOX_BOOL(ui_->relativeDateConversion));
+    currentProfile_->set_use_address_dictionary(
+        GET_CHECKBOX_BOOL(ui_->useAddressDict));
 
     currentProfile_->set_submode_entry_point_chars(
         GET_LINEEDIT_STRING(ui_->submodeEntryPointChars));

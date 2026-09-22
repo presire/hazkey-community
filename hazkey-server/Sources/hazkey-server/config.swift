@@ -67,6 +67,8 @@ class HazkeyServerConfig {
     // frontends can reload their cached profile when it changes.
     private(set) var configRevision: UInt64 = 0
     let dictionaryPath: URL
+    /// [community] 住所辞書 (補助LOUDS辞書) のディレクトリ。未配備なら `nil`。
+    let addressDictionaryPath: URL?
     var zenzaiAvailable: Bool
     var zenzaiModelPath: URL?
     var ggmlBackendDevices: [GGMLBackendDevice]
@@ -96,6 +98,26 @@ class HazkeyServerConfig {
                 return URL(fileURLWithPath: systemResourcePath).appendingPathComponent(
                     "Dictionary", isDirectory: true)
             }
+        }()
+
+        // 住所辞書は任意配備。存在しなければnilを渡し、通常変換のみで動作する
+        addressDictionaryPath = {
+            let candidate: URL =
+                if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ADDRESS_DICTIONARY"],
+                    fileManager.fileExists(atPath: envPath)
+                {
+                    URL(filePath: envPath)
+                } else {
+                    URL(fileURLWithPath: systemResourcePath).appendingPathComponent(
+                        "AddressDictionary", isDirectory: true)
+                }
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+                isDirectory.boolValue
+            else {
+                return nil
+            }
+            return candidate
         }()
 
         self.zenzaiModelPath = nil
@@ -233,6 +255,18 @@ class HazkeyServerConfig {
             }
         }
 
+        // [community] 設定適用後にニューラル変換モデルを再ウォームアップする。
+        // デバイスやモデルの切替があっても、そのロードコストを次の打鍵に持たせない。
+        // 設定の保存自体は成功しているため、ウォームアップ失敗は応答をfailedにせず
+        // ログのみで報告する (モデル管理ダイアログ経由のreloadZenzaiModel RPCが
+        // 失敗をUIへ報告する経路を持つ)。
+        if let state {
+            let warmup = state.reloadZenzaiModel()
+            if warmup.status == .failed {
+                NSLog("[hazkey] Post-config neural model warmup failed: \(warmup.errorMessage)")
+            }
+        }
+
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -280,6 +314,7 @@ class HazkeyServerConfig {
         newConf.numCandidatesPerPage = 9
         newConf.useRichCandidates = false
         newConf.useInputHistory = true
+        newConf.useAddressDictionary = false
         newConf.specialConversionMode = Hazkey_Config_Profile.SpecialConversionMode.with {
             $0.commaSeparatedNumber = true
             $0.mailDomain = true
@@ -489,6 +524,9 @@ class HazkeyServerConfig {
         if !normalized.specialConversionMode.hasExtendedEmoji {
             normalized.specialConversionMode.extendedEmoji =
                 defaults.specialConversionMode.extendedEmoji
+        }
+        if !normalized.hasUseAddressDictionary {
+            normalized.useAddressDictionary = defaults.useAddressDictionary
         }
 
         try validateEnums(normalized)
@@ -848,6 +886,12 @@ extension Hazkey_Config_Profile {
     var extendedEmojiEffective: Bool {
         let mode = specialConversionMode
         return mode.hasExtendedEmoji ? mode.extendedEmoji : true
+    }
+
+    /// 住所辞書設定の実効値
+    /// 旧設定または項目欠落時は既定OFF扱いとする
+    var useAddressDictionaryEffective: Bool {
+        hasUseAddressDictionary ? useAddressDictionary : false
     }
 }
 

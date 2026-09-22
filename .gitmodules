@@ -8,3 +8,6 @@
 	path = hazkey-server/llama.cpp
 	url = https://github.com/presire/llama.cpp.git
 	branch = hazkey
+[submodule "hazkey-address-dictionary"]
+	path = hazkey-address-dictionary
+	url = https://github.com/presire/hazkey-address-dictionary.git

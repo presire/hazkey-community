@@ -212,3 +212,16 @@ endif()
 #install emoji dictionary
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_emoji_dictionary_storage/EmojiDictionary/emoji_all_E17.0.txt
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)
+
+# install address dictionary (supplemental LOUDS, community extension)
+set(HAZKEY_ADDRESS_DICTIONARY_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-address-dictionary/AddressDictionary)
+if(EXISTS ${HAZKEY_ADDRESS_DICTIONARY_DIR}/louds/charID.chid)
+    install(DIRECTORY ${HAZKEY_ADDRESS_DICTIONARY_DIR}
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)
+else()
+    message(WARNING
+        "hazkey-address-dictionary submodule is not checked out; "
+        "the address dictionary will not be installed. "
+        "Run: git submodule update --init hazkey-address-dictionary")
+endif()

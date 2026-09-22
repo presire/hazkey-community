@@ -132,6 +132,8 @@ message Profile {
     optional string delete_learning_hotkey = 124;
     optional string accept_prediction_hotkey = 125;
     optional string zenzai_toggle_hotkey = 126;
+    // 住所辞書 (日本全国の難読地名) を変換候補に使用する
+    optional bool use_address_dictionary = 127;
 }
 
 // Request messages

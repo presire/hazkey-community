@@ -215,6 +215,12 @@ jobs:
           test -f /work/workdir/usr/share/hazkey/emoji_all_E17.0.txt
           test ! -e /work/workdir/usr/share/hazkey/emoji_all_E16.0.txt
 
+          # 住所辞書ステージングinstallアサーション: コンパイル済みLOUDSのみがステージングツリーに存在し、ソースTSVは含まれないこと
+          test -f /work/workdir/usr/share/hazkey/AddressDictionary/louds/charID.chid
+          test -n "$(find /work/workdir/usr/share/hazkey/AddressDictionary/louds -name '*.louds' -print -quit)"
+          test ! -e /work/workdir/usr/share/hazkey/AddressDictionary/data
+          test -z "$(find /work/workdir/usr/share/hazkey -name 'address_entries.tsv' -print -quit)"
+
           # libllamaステージングinstallアサーション: 主要な3ライブラリがステージングツリーに存在すること
           # (install (CODE) がDESTDIRを無視し、backends/だけがpackageに入ったLeap 16のRPM自己依存失敗に対する回帰ガード)
           # GNUInstallDirsはLinuxディストリビューションに応じて lib、lib64、lib/<triplet>配下に配置する
@@ -304,6 +310,14 @@ jobs:
             || { echo "missing staged ibus applications desktop" >&2; exit 1; }
           test -f workdir-ibus/usr/share/hazkey/emoji_all_E17.0.txt \
             || { echo "missing staged ibus emoji dict" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey/AddressDictionary/louds/charID.chid \
+            || { echo "missing staged ibus address dict" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr/share/hazkey/AddressDictionary/louds -name '*.louds' -print -quit)" \
+            || { echo "missing staged ibus address louds" >&2; exit 1; }
+          test ! -e workdir-ibus/usr/share/hazkey/AddressDictionary/data \
+            || { echo "ibus staging tree bundles address TSV source" >&2; exit 1; }
+          test -z "$(cd workdir-ibus && find usr/share/hazkey -name 'address_entries.tsv' -print -quit)" \
+            || { echo "ibus staging tree bundles address_entries.tsv" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
             || { echo "missing staged ibus icons" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr -path '*hazkey/libllama/libllama.so*' -print -quit)" \
@@ -358,6 +372,7 @@ jobs:
             # 同梱するlibllamaランタイムは、deb内に存在しなければならない
             # そうでなければ、hazkey-serverは起動時にlibllama.so.0の欠落で失敗する
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey/libllama/libllama.so'
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid'
             # Debian 13 / Ubuntu 26.04は、protobuf liteランタイムをこのパッケージ名で提供する
             # コンパイラとヘッダはビルド依存関係のみであり、ランタイム依存関係にしてはならない
             dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
@@ -403,6 +418,7 @@ jobs:
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/libllama/libllama.so'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/applications/hazkey-settings.desktop'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/emoji_all_E17.0.txt'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
             # fcitx5アドオンペイロードがibus-hazkeyパッケージに混入してはならない
@@ -504,6 +520,9 @@ jobs:
               echo "fcitx5-hazkey RPM bundles IBus payload" >&2
               exit 1
             fi
+            # 住所辞書LOUDSは、fcitx5-hazkeyパッケージ内に存在しなければならない
+            rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid' \
+              || { echo "fcitx5-hazkey RPM misses address dict" >&2; exit 1; }
             # IBus component XMLとengineバイナリは、ibus-hazkeyパッケージ内に存在しなければならない
             # そうでなければ、IBusはengineを登録できない
             rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey.xml' \
@@ -517,7 +536,7 @@ jobs:
             # 共有server/settingsディレクトリ群は、fcitx5-hazkeyと同様にibus-hazkeyパッケージ内にも存在しなければならない
             for _ibus_shared in /usr/bin/hazkey-server /usr/bin/hazkey-settings \
                 share/applications/hazkey-settings.desktop \
-                share/hazkey/emoji_all_E17.0.txt share/icons \
+                share/hazkey/emoji_all_E17.0.txt share/hazkey/AddressDictionary/louds/charID.chid share/icons \
                 hazkey/hazkey-server hazkey/hazkey-settings \
                 hazkey/libllama/libllama.so; do
               rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \

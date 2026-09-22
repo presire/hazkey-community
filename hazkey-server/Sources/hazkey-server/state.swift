@@ -149,7 +149,9 @@ class HazkeySharedResources {
         self.emojiProvider = EmojiCandidateProvider(
             dictionaryURL: emojiDictionaryURL ?? EmojiCandidateProvider.defaultDictionaryURL)
 
-        self.converter = KanaKanjiConverter.init(dictionaryURL: serverConfig.dictionaryPath)
+        self.converter = KanaKanjiConverter.init(
+            dictionaryURL: serverConfig.dictionaryPath,
+            supplementalDictionaryURL: serverConfig.addressDictionaryPath)
 
         // Initialize keymap and table
         self.keymap = serverConfig.loadKeymap()
@@ -189,6 +191,7 @@ class HazkeySharedResources {
 
         // Initialize base convert options
         self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
+        syncConverterAddressDictionary()
         var learningInitializationOptions = baseConvertRequestOptions
         learningInitializationOptions.zenzaiMode = .off
         _ = converter.requestCandidates(
@@ -242,6 +245,15 @@ extension HazkeySharedResources {
             NSLog("Failed to create user memory directory: \(error.localizedDescription)")
         }
         syncConverterLearningConfig()
+        syncConverterAddressDictionary()
+    }
+
+    /// [community] Applies the `[変換]` tab's address-dictionary toggle. The
+    /// supplemental source is wired at converter construction, so turning it
+    /// off only has to flip this flag; no rebuild and no asset reload.
+    func syncConverterAddressDictionary() {
+        converter.setSupplementalDictionaryEnabled(
+            serverConfig.currentProfile.useAddressDictionaryEffective)
     }
 
     /// [community] The converter applies `memoryDirectoryURL` lazily inside

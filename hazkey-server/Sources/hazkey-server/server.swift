@@ -58,6 +58,20 @@ class HazkeyServer: SocketManagerDelegate {
         }
         self.shared = HazkeySharedResources(emojiDictionaryURL: nil)
         try socketManager.setupSocket()
+        // [community] サーバ起動時にニューラル変換モデルをウォームアップする。
+        // 初回推論はモデルロードとバックエンド (Vulkan) のデバイス・パイプライン初期化を
+        // 支払うため、これをポーリング開始前に済ませて最初の打鍵から費用を外す。
+        // この時点でソケットはlisten済みのため、ウォームアップ中に接続したクライアントは
+        // バックログに滞留し、拒否されない。
+        if let shared {
+            NSLog("Warming up the neural conversion model...")
+            let warmup = shared.reloadZenzaiModel()
+            if warmup.status == .failed {
+                NSLog("[hazkey] \(warmup.errorMessage)")
+            } else {
+                NSLog("Neural conversion model warmup finished.")
+            }
+        }
         // メインループ開始
         NSLog("start listening...")
         socketManager.startListening()
