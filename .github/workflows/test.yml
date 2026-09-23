@@ -216,12 +216,12 @@ jobs:
             --parallel "$(nproc)"
 
       - name: Install system dictionary
-        # learning-memoryとhistoryのXCTest スイートは、システム上の/usr/share/hazkey/Dictionaryから実際の辞書を読み取る
+        # learning-memoryとhistoryのXCTest スイートは、システム上の/usr/share/hazkey-community/Dictionaryから実際の辞書を読み取る
         # これがないとアサーションに失敗するため、Swiftテスト実行直前にリポジトリの辞書を配置する
         run: |
           set -eux
-          sudo mkdir -p /usr/share/hazkey
-          sudo cp -a hazkey-server/azooKey_dictionary_storage/Dictionary /usr/share/hazkey/
+          sudo mkdir -p /usr/share/hazkey-community
+          sudo cp -a hazkey-server/azooKey_dictionary_storage/Dictionary /usr/share/hazkey-community/
 
       - name: Run Swift XCTest (ZenzaiSupport)
         run: |

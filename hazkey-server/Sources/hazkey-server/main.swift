@@ -10,7 +10,7 @@ if CommandLine.arguments.contains("--probe-backends") {
 }
 
 do {
-    NSLog("Starting hazkey-server...")
+    NSLog("Starting hazkey-community-server...")
     let server = HazkeyServer()
 
     try server.start()

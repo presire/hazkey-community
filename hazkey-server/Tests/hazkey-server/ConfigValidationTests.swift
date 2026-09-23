@@ -185,7 +185,7 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testManagedZenzaiSymlinkToJinenModelIsAcceptedByResolver() throws {
-        // Given: a managed <dataDir>/hazkey/zenzai/zenzai.gguf symlink pointing at a jinen-key GGUF.
+        // Given: a managed <dataDir>/hazkey-community/zenzai/zenzai.gguf symlink pointing at a jinen-key GGUF.
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -197,7 +197,7 @@ final class ConfigValidationTests: XCTestCase {
             at: modelsDirectory, withIntermediateDirectories: true)
         let jinenModel = modelsDirectory.appendingPathComponent("jinen-v2-small-Q5_K_M.gguf")
         try Data("jinen-fixture".utf8).write(to: jinenModel)
-        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        let managedDirectory = directory.appendingPathComponent("hazkey-community/zenzai", isDirectory: true)
         try FileManager.default.createDirectory(
             at: managedDirectory, withIntermediateDirectories: true)
         let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")
@@ -254,7 +254,7 @@ final class ConfigValidationTests: XCTestCase {
         try Data("jinen-fixture-a".utf8).write(to: firstJinenModel)
         let secondJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-xsmall-Q4_K_M.gguf")
         try Data("jinen-fixture-b".utf8).write(to: secondJinenModel)
-        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        let managedDirectory = directory.appendingPathComponent("hazkey-community/zenzai", isDirectory: true)
         try FileManager.default.createDirectory(
             at: managedDirectory, withIntermediateDirectories: true)
         let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")
@@ -329,7 +329,7 @@ final class ConfigValidationTests: XCTestCase {
         try Data("jinen-fixture-a".utf8).write(to: firstJinenModel)
         let secondJinenModel = modelsDirectory.appendingPathComponent("jinen-v2-xsmall-Q4_K_M.gguf")
         try Data("jinen-fixture-b".utf8).write(to: secondJinenModel)
-        let managedDirectory = directory.appendingPathComponent("hazkey/zenzai", isDirectory: true)
+        let managedDirectory = directory.appendingPathComponent("hazkey-community/zenzai", isDirectory: true)
         try FileManager.default.createDirectory(
             at: managedDirectory, withIntermediateDirectories: true)
         let managedSymlink = managedDirectory.appendingPathComponent("zenzai.gguf")

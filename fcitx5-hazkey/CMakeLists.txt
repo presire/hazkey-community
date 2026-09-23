@@ -13,7 +13,7 @@ include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_definitions(-DFCITX_GETTEXT_DOMAIN=\"fcitx5-hazkey\")
+add_definitions(-DFCITX_GETTEXT_DOMAIN=\"fcitx5-hazkey-community\")
 
 find_package(Protobuf REQUIRED)
 
@@ -37,7 +37,7 @@ find_package(Gettext REQUIRED)
 add_subdirectory(po)
 add_subdirectory(src)
 
-fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in
-                              org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml XML)
+fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.HazkeyCommunity.metainfo.xml.in
+                              org.fcitx.Fcitx5.Addon.HazkeyCommunity.metainfo.xml XML)
 
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml" DESTINATION "${CMAKE_INSTALL_FULL_DATADIR}/metainfo")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Fcitx5.Addon.HazkeyCommunity.metainfo.xml" DESTINATION "${CMAKE_INSTALL_FULL_DATADIR}/metainfo")

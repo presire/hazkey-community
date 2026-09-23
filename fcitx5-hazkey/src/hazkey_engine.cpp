@@ -29,7 +29,7 @@ HazkeyEngine::HazkeyEngine(Instance *instance)
     // `server_ = HazkeyServerConnector();` built a second connector and
     // shallow-assigned its fd over the first, leaking a connection; the
     // connector now owns its fd (non-copyable RAII) and that line is gone.
-    instance->inputContextManager().registerProperty("hazkeyState", &factory_);
+    instance->inputContextManager().registerProperty("hazkeyCommunityState", &factory_);
     reloadConfig();
 }
 
@@ -93,12 +93,12 @@ void HazkeyEngine::reset([[maybe_unused]] const InputMethodEntry &entry,
 
 void HazkeyEngine::setConfig(const RawConfig &config) {
     config_.load(config, true);
-    safeSaveAsIni(config_, "conf/hazkey.conf");
+    safeSaveAsIni(config_, "conf/hazkey-community.conf");
     reloadConfig();
 }
 
 void HazkeyEngine::reloadConfig() {
-    readAsIni(config_, "conf/hazkey.conf");
+    readAsIni(config_, "conf/hazkey-community.conf");
 
     std::string lastVersion = config_.lastVersion.value();
 
@@ -107,7 +107,7 @@ void HazkeyEngine::reloadConfig() {
         server_.startHazkeyServer(true);
 
         config_.lastVersion.setValue(HAZKEY_VERSION);
-        safeSaveAsIni(config_, "conf/hazkey.conf");
+        safeSaveAsIni(config_, "conf/hazkey-community.conf");
     }
 }
 

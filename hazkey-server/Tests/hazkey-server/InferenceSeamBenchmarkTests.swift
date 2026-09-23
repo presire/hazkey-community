@@ -87,7 +87,7 @@ final class InferenceSeamBenchmarkTests: XCTestCase {
             throw BenchmarkError.missingHome
         }
         let path = URL(fileURLWithPath: home)
-            .appendingPathComponent(".local/share/hazkey/zenzai/zenzai.gguf").path
+            .appendingPathComponent(".local/share/hazkey-community/zenzai/zenzai.gguf").path
         guard FileManager.default.fileExists(atPath: path) else {
             throw BenchmarkError.modelMissing(path)
         }
@@ -117,7 +117,7 @@ final class InferenceSeamBenchmarkTests: XCTestCase {
             process.waitUntilExit()
         }
 
-        let socketURL = root.appendingPathComponent("runtime/hazkey-server.\(getuid()).sock")
+        let socketURL = root.appendingPathComponent("runtime/hazkey-community-server.\(getuid()).sock")
         let socketIsIsolated = socketURL.standardizedFileURL.path.hasPrefix(
             root.standardizedFileURL.path + "/")
         XCTAssertTrue(socketIsIsolated, "Test socket must remain under its temporary XDG root.")

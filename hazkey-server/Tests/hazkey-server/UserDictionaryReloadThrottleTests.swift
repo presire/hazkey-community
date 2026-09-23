@@ -40,7 +40,7 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         return try body(root)
     }
 
-    /// `$XDG_CONFIG_HOME/hazkey/user_dictionary.tsv` へ内容を書き込む。
+    /// `$XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv` へ内容を書き込む。
     /// `modificationDate` を渡すとmtimeを明示的に固定する (スロットル判定を
     /// sleepに頼らず決定的にするため)。
     @discardableResult
@@ -50,7 +50,7 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         modificationDate: Date? = nil
     ) throws -> URL {
         let directory = root.appendingPathComponent("config", isDirectory: true)
-            .appendingPathComponent("hazkey", isDirectory: true)
+            .appendingPathComponent("hazkey-community", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("user_dictionary.tsv", isDirectory: false)
         try contents.write(to: url, atomically: true, encoding: .utf8)

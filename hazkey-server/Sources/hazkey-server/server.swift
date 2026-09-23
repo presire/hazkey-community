@@ -19,10 +19,10 @@ class HazkeyServer: SocketManagerDelegate {
         self.runtimeDir = URL(
             fileURLWithPath:
                 ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-                ?? "/tmp/hazkey-runtime-\(uid)", isDirectory: true)
+                ?? "/tmp/hazkey-community-runtime-\(uid)", isDirectory: true)
 
-        self.socketPath = "\(runtimeDir.path)/hazkey-server.\(uid).sock"
-        self.lockFilePath = "\(runtimeDir.path)/hazkey-server.\(uid).lock"
+        self.socketPath = "\(runtimeDir.path)/hazkey-community-server.\(uid).sock"
+        self.lockFilePath = "\(runtimeDir.path)/hazkey-community-server.\(uid).lock"
 
         self.processManager = ProcessManager(lockFilePath: lockFilePath)
         self.socketManager = SocketManager(socketPath: socketPath)
@@ -53,7 +53,7 @@ class HazkeyServer: SocketManagerDelegate {
             // 想定内の終了
             return
         } catch {
-            NSLog("Failed to start hazkey-server: \(error)")
+            NSLog("Failed to start hazkey-community-server: \(error)")
             exit(1)
         }
         self.shared = HazkeySharedResources(emojiDictionaryURL: nil)

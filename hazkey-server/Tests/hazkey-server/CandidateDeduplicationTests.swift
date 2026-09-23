@@ -36,9 +36,9 @@ final class CandidateDeduplicationTests: XCTestCase {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
         }
-        // config/hazkey/ holds the user dictionary TSV consumed by the server.
+        // config/hazkey-community/ holds the user dictionary TSV consumed by the server.
         try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("config/hazkey"), withIntermediateDirectories: true)
+            at: root.appendingPathComponent("config/hazkey-community"), withIntermediateDirectories: true)
 
         let paths = [
             "XDG_DATA_HOME": "data",
@@ -72,7 +72,7 @@ final class CandidateDeduplicationTests: XCTestCase {
         // Register 衛宮 (えみや) through the real TSV pipeline. The word is
         // expected to surface both as a prediction of its own best node and as
         // a conversion candidate, reproducing the reported duplicate.
-        let tsv = root.appendingPathComponent("config/hazkey/user_dictionary.tsv")
+        let tsv = root.appendingPathComponent("config/hazkey-community/user_dictionary.tsv")
         try "えみや\t衛宮\tregression test\tperson\n"
             .write(to: tsv, atomically: true, encoding: .utf8)
     }

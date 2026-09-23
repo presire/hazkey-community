@@ -191,8 +191,8 @@ jobs:
 
           # ルート専用のサーバビルド (learninghistorydialog_test -> build_hazkey_server) に依存するターゲットを正しく解決するため、
           # リポジトリルートから1度だけ設定する
-          # 実験的なIBusフロントエンドを有効にし、これらのpackageジョブで下記の個別のibus-hazkey .deb/.rpmも生成する
-          # IBusファイルは、fcitx5-hazkeyに決して同梱しない (ステージングツリーのinstallアサーション後の分割手順を参照)
+          # 実験的なIBusフロントエンドを有効にし、これらのpackageジョブで下記の個別のibus-hazkey-community .deb/.rpmも生成する
+          # IBusファイルは、fcitx5-hazkey-communityに決して同梱しない (ステージングツリーのinstallアサーション後の分割手順を参照)
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -208,18 +208,18 @@ jobs:
           # ルートのビルドツリーからinstallするアーティファクトと生成メタデータを単一スレッドでビルドし、
           # ステージングディレクトリへ1度だけinstallする
           # これらの生成ファイルはいずれもターゲットのため、ターゲット指定ビルドでは明示的に列挙する必要がある
-          cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.Hazkey.metainfo.xml.in-fmt ibus-engine-hazkey ibus-hazkey-translations build_hazkey_server --parallel 1
+          cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-community-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.HazkeyCommunity.metainfo.xml.in-fmt ibus-engine-hazkey ibus-hazkey-translations build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
           # Emoji 17.0ステージングinstallアサーション: E17アセットがステージングツリーに存在し、E16アセットが存在しないこと
-          test -f /work/workdir/usr/share/hazkey/emoji_all_E17.0.txt
-          test ! -e /work/workdir/usr/share/hazkey/emoji_all_E16.0.txt
+          test -f /work/workdir/usr/share/hazkey-community/emoji_all_E17.0.txt
+          test ! -e /work/workdir/usr/share/hazkey-community/emoji_all_E16.0.txt
 
           # 住所辞書ステージングinstallアサーション: コンパイル済みLOUDSのみがステージングツリーに存在し、ソースTSVは含まれないこと
-          test -f /work/workdir/usr/share/hazkey/AddressDictionary/louds/charID.chid
-          test -n "$(find /work/workdir/usr/share/hazkey/AddressDictionary/louds -name '*.louds' -print -quit)"
-          test ! -e /work/workdir/usr/share/hazkey/AddressDictionary/data
-          test -z "$(find /work/workdir/usr/share/hazkey -name 'address_entries.tsv' -print -quit)"
+          test -f /work/workdir/usr/share/hazkey-community/AddressDictionary/louds/charID.chid
+          test -n "$(find /work/workdir/usr/share/hazkey-community/AddressDictionary/louds -name '*.louds' -print -quit)"
+          test ! -e /work/workdir/usr/share/hazkey-community/AddressDictionary/data
+          test -z "$(find /work/workdir/usr/share/hazkey-community -name 'address_entries.tsv' -print -quit)"
 
           # アイコンステージングinstallアサーション: コミュニティ版のテーマ名 (hazkey-community) のSVGアイコンがステージングツリーに存在すること
           test -f /work/workdir/usr/share/icons/hicolor/scalable/apps/hazkey-community.svg
@@ -228,60 +228,60 @@ jobs:
           # (install (CODE) がDESTDIRを無視し、backends/だけがpackageに入ったLeap 16のRPM自己依存失敗に対する回帰ガード)
           # GNUInstallDirsはLinuxディストリビューションに応じて lib、lib64、lib/<triplet>配下に配置する
           for _lib in libggml-base.so libggml.so libllama.so; do
-            _found="$(find /work/workdir/usr -path "*/hazkey/libllama/${_lib}*" -print -quit)"
+            _found="$(find /work/workdir/usr -path "*/hazkey-community/libllama/${_lib}*" -print -quit)"
             test -n "$_found" || { echo "missing staged lib: $_lib" >&2; exit 1; }
             test -e "$_found" || { echo "dangling staged lib: $_found" >&2; exit 1; }
           done
-          test -n "$(find /work/workdir/usr -path '*/hazkey/libllama/backends/*.so' -print -quit)"
+          test -n "$(find /work/workdir/usr -path '*/hazkey-community/libllama/backends/*.so' -print -quit)"
 
           # IBusステージングinstallアサーション: component XML、engine binary、gettext catalogがステージングツリーに存在すること
           # ここでは、GNUInstallDirsがすべてのLinuxディストリビューションでengineをlibexec配下に配置するため、
           # ハードコードしたパスではなく、findコマンドで見つける
-          test -f /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
-          _ibus_engine="$(find /work/workdir/usr -path '*libexec/ibus-hazkey/ibus-engine-hazkey' -print -quit)"
+          test -f /work/workdir/usr/share/ibus/component/ibus-hazkey-community.xml
+          _ibus_engine="$(find /work/workdir/usr -path '*libexec/ibus-hazkey-community/ibus-engine-hazkey-community' -print -quit)"
           test -n "$_ibus_engine" || { echo "missing staged IBus engine" >&2; exit 1; }
           test -x "$_ibus_engine" || { echo "staged IBus engine not executable" >&2; exit 1; }
-          test -n "$(find /work/workdir/usr/share/locale -name 'ibus-hazkey.mo' -print -quit)" \
-            || { echo "missing staged ibus-hazkey.mo" >&2; exit 1; }
+          test -n "$(find /work/workdir/usr/share/locale -name 'ibus-hazkey-community.mo' -print -quit)" \
+            || { echo "missing staged ibus-hazkey-community.mo" >&2; exit 1; }
           # component fileは、このcomponentのwell-known bus nameを宣言し、
-          # install済みのengineはhazkey-serverに接続せず、engine descriptionを報告しなければならない
+          # install済みのengineはhazkey-community-serverに接続せず、engine descriptionを報告しなければならない
           # ("--xml"は、埋め込み済みのengine descriptionを出力し、ibus_init()前に終了する。src/main.cppを参照。
           #  component bus nameではなく、<engines> snippet を出力することに注意)
-          grep -Fq 'org.freedesktop.IBus.Hazkey' /work/workdir/usr/share/ibus/component/ibus-hazkey.xml
-          "$_ibus_engine" --xml | grep -Fq '<name>hazkey</name>'
+          grep -Fq 'org.freedesktop.IBus.HazkeyCommunity' /work/workdir/usr/share/ibus/component/ibus-hazkey-community.xml
+          "$_ibus_engine" --xml | grep -Fq '<name>hazkey-community</name>'
 
           # IBusペイロードを共有ステージングツリーから分離する
-          # IBusは個別のibus-hazkey packageとして提供し、fcitx5-hazkey packageに同梱してはならない
+          # IBusは個別のibus-hazkey-community packageとして提供し、fcitx5-hazkey-community packageに同梱してはならない
           # 注: このheredocは、Debian/Ubuntuではdashである
           #     sh上で実行するため、ループはPOSIX-sh互換に保つ
           # ("read -d"コマンドは使わない。移動対象のパスには改行がないため、改行区切りの"-print"は安全である)
           mkdir -p workdir-ibus
           (
             cd workdir
-            find usr \( -path 'usr/share/ibus/component/ibus-hazkey.xml' \
-              -o -path 'usr/libexec/ibus-hazkey/*' \
-              -o -path 'usr/share/locale/*/LC_MESSAGES/ibus-hazkey.mo' \) \
+            find usr \( -path 'usr/share/ibus/component/ibus-hazkey-community.xml' \
+              -o -path 'usr/libexec/ibus-hazkey-community/*' \
+              -o -path 'usr/share/locale/*/LC_MESSAGES/ibus-hazkey-community.mo' \) \
               \( -type f -o -type l \) -print | while IFS= read -r _f; do
               mkdir -p "../workdir-ibus/$(dirname "$_f")"
               mv "$_f" "../workdir-ibus/$_f"
             done
           )
           # 空になったIBusディレクトリをfcitxツリーから削除する
-          rmdir workdir/usr/libexec/ibus-hazkey workdir/usr/share/ibus/component 2>/dev/null || true
-          test -z "$(cd workdir && find usr \( -path 'usr/share/ibus/*' -o -path 'usr/libexec/ibus-hazkey/*' -o -name 'ibus-hazkey*' \) -print -quit)" \
+          rmdir workdir/usr/libexec/ibus-hazkey-community workdir/usr/share/ibus/component 2>/dev/null || true
+          test -z "$(cd workdir && find usr \( -path 'usr/share/ibus/*' -o -path 'usr/libexec/ibus-hazkey-community/*' -o -name 'ibus-hazkey-community*' \) -print -quit)" \
             || { echo "IBus payload remains in fcitx staging tree" >&2; exit 1; }
 
-          # ibus-hazkeyをfcitx5-hazkeyと同様に単独install可能にするため、共有server/settingsペイロードをibusツリーへ複製する:
-          # - usr/bin/ (hazkey-server wrapper、hazkey-settings symlink)
-          # - usr/lib*/hazkey/ (server/settings binary、libllama runtime)
-          # - usr/share/applications/、usr/share/hazkey/、usr/share/icons/
+          # ibus-hazkey-communityをfcitx5-hazkey-communityと同様に単独install可能にするため、共有server/settingsペイロードをibusツリーへ複製する:
+          # - usr/bin/ (hazkey-community-server wrapper、hazkey-community-settings symlink)
+          # - usr/lib*/hazkey-community/ (server/settings binary、libllama runtime)
+          # - usr/share/applications/、usr/share/hazkey-community/、usr/share/icons/
           # Fcitx固有のペイロード (fcitx5 addon、metainfo、fcitx5 .mo) は、fcitxツリーのみに残す
           # 複製 (mvではなくcp) は意図的であり、両packageが同じ共有ファイルを保持する
           mkdir -p workdir-ibus/usr
           if [ -d workdir/usr/bin ]; then
             cp -a workdir/usr/bin workdir-ibus/usr/
           fi
-          for _shared in usr/share/applications usr/share/hazkey usr/share/icons; do
+          for _shared in usr/share/applications usr/share/hazkey-community usr/share/icons; do
             if [ -d "workdir/$_shared" ]; then
               mkdir -p "workdir-ibus/$(dirname "$_shared")"
               rm -rf "workdir-ibus/$_shared"
@@ -289,9 +289,9 @@ jobs:
             fi
           done
           # ライブラリディレクトリは、Linuxディストリビューションにより異なる (RPMでは/usr/lib64、DEBでは/usr/lib/<triplet>)
-          # fcitx5サブディレクトリは決してコピーせず、hazkeyサブディレクトリだけをコピーする
+          # fcitx5サブディレクトリは決してコピーせず、hazkey-communityサブディレクトリだけをコピーする
           # dashでは不一致のglobがリテラルのまま残るため、明示的にスキップする
-          for _libhazkey in workdir/usr/lib64/hazkey workdir/usr/lib/hazkey workdir/usr/lib/*/hazkey; do
+          for _libhazkey in workdir/usr/lib64/hazkey-community workdir/usr/lib/hazkey-community workdir/usr/lib/*/hazkey-community; do
             case "$_libhazkey" in '*'*) continue;; esac
             [ -d "$_libhazkey" ] || continue
             _dest="workdir-ibus/${_libhazkey#workdir/}"
@@ -302,35 +302,35 @@ jobs:
           unset _shared _libhazkey _dest
           # 複製した共有ペイロードのステージングインストールアサーション:
           # ibusツリーは、fcitxツリーと同じディレクトリ群を保持し、fcitxツリーも引き続きそれらを保持すること (移動ではなくコピー)
-          test -f workdir/usr/bin/hazkey-server
-          test -f workdir-ibus/usr/bin/hazkey-server
-          # usr/binのhazkey-settingsは、libdirペイロードへのsymlinkのため、
+          test -f workdir/usr/bin/hazkey-community-server
+          test -f workdir-ibus/usr/bin/hazkey-community-server
+          # usr/binのhazkey-community-settingsは、libdirペイロードへのsymlinkのため、
           # ステージングツリー内ではdanglingである (targetは、install後にのみ存在する)
           # "test -e"コマンドは、symlinkをたどりdangling linkで失敗するため、"test -L"コマンドでsymlink自体を受け入れる
-          test -L workdir-ibus/usr/bin/hazkey-settings || test -e workdir-ibus/usr/bin/hazkey-settings \
-            || { echo "missing staged ibus usr/bin/hazkey-settings" >&2; exit 1; }
-          test -f workdir-ibus/usr/share/applications/hazkey-settings.desktop \
+          test -L workdir-ibus/usr/bin/hazkey-community-settings || test -e workdir-ibus/usr/bin/hazkey-community-settings \
+            || { echo "missing staged ibus usr/bin/hazkey-community-settings" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/applications/hazkey-community-settings.desktop \
             || { echo "missing staged ibus applications desktop" >&2; exit 1; }
-          test -f workdir-ibus/usr/share/hazkey/emoji_all_E17.0.txt \
+          test -f workdir-ibus/usr/share/hazkey-community/emoji_all_E17.0.txt \
             || { echo "missing staged ibus emoji dict" >&2; exit 1; }
-          test -f workdir-ibus/usr/share/hazkey/AddressDictionary/louds/charID.chid \
+          test -f workdir-ibus/usr/share/hazkey-community/AddressDictionary/louds/charID.chid \
             || { echo "missing staged ibus address dict" >&2; exit 1; }
-          test -n "$(find workdir-ibus/usr/share/hazkey/AddressDictionary/louds -name '*.louds' -print -quit)" \
+          test -n "$(find workdir-ibus/usr/share/hazkey-community/AddressDictionary/louds -name '*.louds' -print -quit)" \
             || { echo "missing staged ibus address louds" >&2; exit 1; }
-          test ! -e workdir-ibus/usr/share/hazkey/AddressDictionary/data \
+          test ! -e workdir-ibus/usr/share/hazkey-community/AddressDictionary/data \
             || { echo "ibus staging tree bundles address TSV source" >&2; exit 1; }
-          test -z "$(cd workdir-ibus && find usr/share/hazkey -name 'address_entries.tsv' -print -quit)" \
+          test -z "$(cd workdir-ibus && find usr/share/hazkey-community -name 'address_entries.tsv' -print -quit)" \
             || { echo "ibus staging tree bundles address_entries.tsv" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
             || { echo "missing staged ibus icons" >&2; exit 1; }
-          test -n "$(find workdir-ibus/usr -path '*hazkey/libllama/libllama.so*' -print -quit)" \
+          test -n "$(find workdir-ibus/usr -path '*hazkey-community/libllama/libllama.so*' -print -quit)" \
             || { echo "missing staged ibus libllama" >&2; exit 1; }
-          test -n "$(find workdir-ibus/usr -path '*hazkey/hazkey-server' -print -quit)" \
-            || { echo "missing staged ibus hazkey-server binary" >&2; exit 1; }
-          test -n "$(find workdir-ibus/usr -path '*hazkey/hazkey-settings' -print -quit)" \
-            || { echo "missing staged ibus hazkey-settings binary" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr -path '*hazkey-community/hazkey-community-server' -print -quit)" \
+            || { echo "missing staged ibus hazkey-community-server binary" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr -path '*hazkey-community/hazkey-community-settings' -print -quit)" \
+            || { echo "missing staged ibus hazkey-community-settings binary" >&2; exit 1; }
            # fcitx5 addon ペイロードが ibus ツリーに混入してはならない。
-          test -z "$(cd workdir-ibus && find usr \( -path 'usr/share/fcitx5/*' -o -path 'usr/lib*/fcitx5/*' -o -path 'usr/share/metainfo/*Fcitx5*' -o -name 'fcitx5-hazkey*' \) -print -quit)" \
+          test -z "$(cd workdir-ibus && find usr \( -path 'usr/share/fcitx5/*' -o -path 'usr/lib*/fcitx5/*' -o -path 'usr/share/metainfo/*Fcitx5*' -o -name 'fcitx5-hazkey-community*' \) -print -quit)" \
             || { echo "fcitx payload leaked into ibus staging tree" >&2; exit 1; }
 
           ref_name="${GITHUB_REF_NAME#v}"
@@ -341,24 +341,24 @@ jobs:
           esac
 
           if [ "$PACKAGE_TYPE" = "deb" ]; then
-            fcitx_deb="packages/fcitx5-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
-            ibus_deb="packages/ibus-hazkey_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            fcitx_deb="packages/fcitx5-hazkey-community_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
+            ibus_deb="packages/ibus-hazkey-community_${version}-1~${PACKAGE_SUFFIX}_${PACKAGE_ARCH}.deb"
             mkdir -p workdir/DEBIAN
             {
-              printf '%s\n' 'Package: fcitx5-hazkey'
+              printf '%s\n' 'Package: fcitx5-hazkey-community'
               printf 'Version: %s\n' "${version}-1~${PACKAGE_SUFFIX}"
               printf '%s\n' 'Section: utils'
               printf '%s\n' 'Priority: optional'
               printf 'Architecture: %s\n' "$PACKAGE_ARCH"
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
               printf '%s\n' 'Depends: fcitx5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
-              # 両パッケージは、同じ共有server/settingsペイロード (usr/bin、usr/share/hazkey、libllama) を提供する
+              # 両パッケージは、同じ共有server/settingsペイロード (usr/bin、usr/share/hazkey-community、libllama) を提供する
               # 双方向のUNVERSIONED Replacesにより、どちらのインストール順序でもsiblingのコピーを上書きできる
-              # versioned "Replaces: ibus-hazkey (<< X)"は、同一バージョンのsiblingの上書きを許可しない (dpkgで計測。下記の共存インストールアサーションを参照)
+              # versioned "Replaces: ibus-hazkey-community (<< X)"は、同一バージョンのsiblingの上書きを許可しない (dpkgで計測。下記の共存インストールアサーションを参照)
               # Conflictsを追加してはならない:
               # 共存はサポートする (ただし、同時利用はサポートしない)
-              printf '%s\n' 'Replaces: ibus-hazkey'
-              printf '%s\n' 'Description: Hazkey Japanese input method for Fcitx5'
+              printf '%s\n' 'Replaces: ibus-hazkey-community'
+              printf '%s\n' 'Description: Hazkey-Community Japanese input method for Fcitx5'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
             } > workdir/DEBIAN/control
@@ -367,15 +367,15 @@ jobs:
             test "$(dpkg-deb --field "$fcitx_deb" Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info "$fcitx_deb"
             dpkg-deb --contents "$fcitx_deb"
-            # IBusペイロードがfcitx5-hazkeyパッケージに混入してはならない
-            if dpkg-deb --contents "$fcitx_deb" | grep -Eq 'ibus-hazkey|share/ibus/component'; then
-              echo "fcitx5-hazkey DEB bundles IBus payload" >&2
+            # IBusペイロードがfcitx5-hazkey-communityパッケージに混入してはならない
+            if dpkg-deb --contents "$fcitx_deb" | grep -Eq 'ibus-hazkey-community|share/ibus/component'; then
+              echo "fcitx5-hazkey-community DEB bundles IBus payload" >&2
               exit 1
             fi
             # 同梱するlibllamaランタイムは、deb内に存在しなければならない
-            # そうでなければ、hazkey-serverは起動時にlibllama.so.0の欠落で失敗する
-            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey/libllama/libllama.so'
-            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid'
+            # そうでなければ、hazkey-community-serverは起動時にlibllama.so.0の欠落で失敗する
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey-community/libllama/libllama.so'
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
             # Debian 13 / Ubuntu 26.04は、protobuf liteランタイムをこのパッケージ名で提供する
             # コンパイラとヘッダはビルド依存関係のみであり、ランタイム依存関係にしてはならない
             dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
@@ -385,7 +385,7 @@ jobs:
             fi
             mkdir -p workdir-ibus/DEBIAN
             {
-              printf '%s\n' 'Package: ibus-hazkey'
+              printf '%s\n' 'Package: ibus-hazkey-community'
               printf 'Version: %s\n' "${version}-1~${PACKAGE_SUFFIX}"
               printf '%s\n' 'Section: utils'
               printf '%s\n' 'Priority: optional'
@@ -393,14 +393,14 @@ jobs:
               printf '%s\n' 'Maintainer: presire <presire@users.noreply.github.com>'
               # "libibus-1.0-5"は、Debian 13 / Ubuntu 26.04の両方で"libibus-1.0.so.5"ランタイムである
               # (1.5.xでSONAMEは安定している)
-              # 共有server/settingsペイロード (hazkey-settings、hazkey-server vulkan/protobufランタイム) はこのパッケージに複製するため、
-              # Qt/Vulkan/protobuf/ncursesのランタイム依存関係は、fcitx5-hazkeyと同じ (fcitx5を除き、ibusを追加)
+              # 共有server/settingsペイロード (hazkey-community-settings、hazkey-community-server vulkan/protobufランタイム) はこのパッケージに複製するため、
+              # Qt/Vulkan/protobuf/ncursesのランタイム依存関係は、fcitx5-hazkey-communityと同じ (fcitx5を除き、ibusを追加)
               printf '%s\n' 'Depends: ibus, libibus-1.0-5, libqt6widgets6, libqt6network6, libprotobuf-lite32t64, libvulkan1, libc6, libncurses6'
-              # 双方向・unversioned Replacesの逆側 (上記のfcitx5-hazkey controlを参照) :
+              # 双方向・unversioned Replacesの逆側 (上記のfcitx5-hazkey-community controlを参照) :
               # どちらのインストール順序でも共有ペイロードを所有できる
               # Conflictsは不要: 共存をサポートする
-              printf '%s\n' 'Replaces: fcitx5-hazkey'
-              printf '%s\n' 'Description: Hazkey Japanese input method for IBus'
+              printf '%s\n' 'Replaces: fcitx5-hazkey-community'
+              printf '%s\n' 'Description: Hazkey-Community Japanese input method for IBus'
               printf '%s\n' ' Japanese input method using AzooKeyKanaKanjiConverter.'
               printf '%s\n' 'Homepage: https://github.com/presire/hazkey-community'
             } > workdir-ibus/DEBIAN/control
@@ -408,39 +408,39 @@ jobs:
             test "$(dpkg-deb --field "$ibus_deb" Architecture)" = "$PACKAGE_ARCH"
             dpkg-deb --info "$ibus_deb"
             dpkg-deb --contents "$ibus_deb"
-            # IBus component XMLとエンジンバイナリは、ibus-hazkeyパッケージ内に存在しなければならない
+            # IBus component XMLとエンジンバイナリは、ibus-hazkey-communityパッケージ内に存在しなければならない
             # そうでなければ、IBusはエンジンを登録できない
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/ibus/component/ibus-hazkey.xml'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'ibus-engine-hazkey'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/ibus/component/ibus-hazkey-community.xml'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'ibus-engine-hazkey-community'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libibus-1.0-5'
-            #共有server/settingsディレクトリ群は、fcitx5-hazkeyと同様にibus-hazkeyパッケージ内にも存在しなければならない
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-server'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-settings'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/hazkey-server'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/hazkey-settings'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey/libllama/libllama.so'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/applications/hazkey-settings.desktop'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/emoji_all_E17.0.txt'
-            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid'
+            #共有server/settingsディレクトリ群は、fcitx5-hazkey-communityと同様にibus-hazkey-communityパッケージ内にも存在しなければならない
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-community-server'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'usr/bin/hazkey-community-settings'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey-community/hazkey-community-server'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey-community/hazkey-community-settings'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'hazkey-community/libllama/libllama.so'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/applications/hazkey-community-settings.desktop'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/emoji_all_E17.0.txt'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
-            # fcitx5アドオンペイロードがibus-hazkeyパッケージに混入してはならない
-            if dpkg-deb --contents "$ibus_deb" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
-              echo "ibus-hazkey DEB bundles fcitx payload" >&2
+            # fcitx5アドオンペイロードがibus-hazkey-communityパッケージに混入してはならない
+            if dpkg-deb --contents "$ibus_deb" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey-community'; then
+              echo "ibus-hazkey-community DEB bundles fcitx payload" >&2
               exit 1
             fi
             if dpkg-deb --field "$ibus_deb" Depends | grep -Eq '(^|, )(protobuf|protobuf-compiler|protobuf-dev|libprotobuf(-lite)?-dev|fcitx5)(,|$)'; then
-              echo "ibus-hazkey DEB contains a wrong-framework dependency" >&2
+              echo "ibus-hazkey-community DEB contains a wrong-framework dependency" >&2
               exit 1
             fi
           else
             topdir=/work/rpmbuild
             mkdir -p "$topdir"
             {
-              printf '%s\n' 'Name: fcitx5-hazkey'
+              printf '%s\n' 'Name: fcitx5-hazkey-community'
               printf 'Version: %s\n' "$version"
               printf 'Release: %s\n' "1.${PACKAGE_SUFFIX}"
-              printf '%s\n' 'Summary: Hazkey Japanese input method for Fcitx5'
+              printf '%s\n' 'Summary: Hazkey-Community Japanese input method for Fcitx5'
               printf '%s\n' 'License: MIT'
               printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
               printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
@@ -470,17 +470,17 @@ jobs:
               --define "_buildrootdir $topdir/BUILDROOT" \
               --define "_rpmdir $topdir/RPMS" \
               --define "_srcrpmdir $topdir/SRPMS"
-            find "$topdir/RPMS" -type f -name 'fcitx5-hazkey-*.rpm' -exec cp {} packages/ \;
-            rpm_file="$(find packages -type f -name 'fcitx5-hazkey-*.rpm' -print -quit)"
-            rpm_target="packages/fcitx5-hazkey-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
+            find "$topdir/RPMS" -type f -name 'fcitx5-hazkey-community-*.rpm' -exec cp {} packages/ \;
+            rpm_file="$(find packages -type f -name 'fcitx5-hazkey-community-*.rpm' -print -quit)"
+            rpm_target="packages/fcitx5-hazkey-community-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
             if [ "$rpm_file" != "$rpm_target" ]; then
               mv "$rpm_file" "$rpm_target"
             fi
             {
-              printf '%s\n' 'Name: ibus-hazkey'
+              printf '%s\n' 'Name: ibus-hazkey-community'
               printf 'Version: %s\n' "$version"
               printf 'Release: %s\n' "1.${PACKAGE_SUFFIX}"
-              printf '%s\n' 'Summary: Hazkey Japanese input method for IBus'
+              printf '%s\n' 'Summary: Hazkey-Community Japanese input method for IBus'
               printf '%s\n' 'License: MIT'
               printf '%s\n' 'URL: https://github.com/presire/hazkey-community'
               printf 'BuildArch: %s\n' "$PACKAGE_ARCH"
@@ -508,9 +508,9 @@ jobs:
               --define "_buildrootdir $topdir/BUILDROOT" \
               --define "_rpmdir $topdir/RPMS" \
               --define "_srcrpmdir $topdir/SRPMS"
-            find "$topdir/RPMS" -type f -name 'ibus-hazkey-*.rpm' -exec cp {} packages/ \;
-            ibus_rpm_file="$(find packages -type f -name 'ibus-hazkey-*.rpm' -print -quit)"
-            ibus_rpm_target="packages/ibus-hazkey-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
+            find "$topdir/RPMS" -type f -name 'ibus-hazkey-community-*.rpm' -exec cp {} packages/ \;
+            ibus_rpm_file="$(find packages -type f -name 'ibus-hazkey-community-*.rpm' -print -quit)"
+            ibus_rpm_target="packages/ibus-hazkey-community-${version}-1.${PACKAGE_SUFFIX}.${PACKAGE_ARCH}.rpm"
             if [ "$ibus_rpm_file" != "$ibus_rpm_target" ]; then
               mv "$ibus_rpm_file" "$ibus_rpm_target"
             fi
@@ -518,41 +518,41 @@ jobs:
             rpm -qp --filesbypkg "$rpm_target"
             rpm -qp --requires "$ibus_rpm_target"
             rpm -qp --filesbypkg "$ibus_rpm_target"
-            # IBusペイロードが、fcitx5-hazkeyパッケージに混入してはならない
-            if rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'ibus-hazkey'; then
-              echo "fcitx5-hazkey RPM bundles IBus payload" >&2
+            # IBusペイロードが、fcitx5-hazkey-communityパッケージに混入してはならない
+            if rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'ibus-hazkey-community'; then
+              echo "fcitx5-hazkey-community RPM bundles IBus payload" >&2
               exit 1
             fi
-            # 住所辞書LOUDSは、fcitx5-hazkeyパッケージ内に存在しなければならない
-            rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey/AddressDictionary/louds/charID.chid' \
-              || { echo "fcitx5-hazkey RPM misses address dict" >&2; exit 1; }
-            # IBus component XMLとengineバイナリは、ibus-hazkeyパッケージ内に存在しなければならない
+            # 住所辞書LOUDSは、fcitx5-hazkey-communityパッケージ内に存在しなければならない
+            rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid' \
+              || { echo "fcitx5-hazkey-community RPM misses address dict" >&2; exit 1; }
+            # IBus component XMLとengineバイナリは、ibus-hazkey-communityパッケージ内に存在しなければならない
             # そうでなければ、IBusはengineを登録できない
-            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey.xml' \
-              || { echo "ibus-hazkey RPM misses component XML" >&2; exit 1; }
-            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus-engine-hazkey' \
-              || { echo "ibus-hazkey RPM misses engine binary" >&2; exit 1; }
+            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey-community.xml' \
+              || { echo "ibus-hazkey-community RPM misses component XML" >&2; exit 1; }
+            rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus-engine-hazkey-community' \
+              || { echo "ibus-hazkey-community RPM misses engine binary" >&2; exit 1; }
             rpm -qp --requires "$ibus_rpm_target" | grep -Fqx 'ibus' \
-              || { echo "ibus-hazkey RPM misses Requires: ibus" >&2; exit 1; }
+              || { echo "ibus-hazkey-community RPM misses Requires: ibus" >&2; exit 1; }
             rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libibus-1\.0\.so\.5\(\)\(64bit\)$' \
-              || { echo "ibus-hazkey RPM misses auto libibus SONAME require" >&2; exit 1; }
-            # 共有server/settingsディレクトリ群は、fcitx5-hazkeyと同様にibus-hazkeyパッケージ内にも存在しなければならない
-            for _ibus_shared in /usr/bin/hazkey-server /usr/bin/hazkey-settings \
-                share/applications/hazkey-settings.desktop \
-                share/hazkey/emoji_all_E17.0.txt share/hazkey/AddressDictionary/louds/charID.chid share/icons \
-                hazkey/hazkey-server hazkey/hazkey-settings \
-                hazkey/libllama/libllama.so; do
+              || { echo "ibus-hazkey-community RPM misses auto libibus SONAME require" >&2; exit 1; }
+            # 共有server/settingsディレクトリ群は、fcitx5-hazkey-communityと同様にibus-hazkey-communityパッケージ内にも存在しなければならない
+            for _ibus_shared in /usr/bin/hazkey-community-server /usr/bin/hazkey-community-settings \
+                share/applications/hazkey-community-settings.desktop \
+                share/hazkey-community/emoji_all_E17.0.txt share/hazkey-community/AddressDictionary/louds/charID.chid share/icons \
+                hazkey-community/hazkey-community-server hazkey-community/hazkey-community-settings \
+                hazkey-community/libllama/libllama.so; do
               rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \
-                || { echo "ibus-hazkey RPM misses shared payload: $_ibus_shared" >&2; exit 1; }
+                || { echo "ibus-hazkey-community RPM misses shared payload: $_ibus_shared" >&2; exit 1; }
             done
-            # fcitx5アドオンペイロードがibus-hazkeyパッケージに混入してはならない
-            if rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey'; then
-              echo "ibus-hazkey RPM bundles fcitx payload" >&2
+            # fcitx5アドオンペイロードがibus-hazkey-communityパッケージに混入してはならない
+            if rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Eq 'share/fcitx5/|lib/fcitx5|Fcitx5.*metainfo|fcitx5-hazkey-community'; then
+              echo "ibus-hazkey-community RPM bundles fcitx payload" >&2
               exit 1
             fi
-            # 同梱するlibllamaランタイムは、ibusパッケージ内でも自身のSONAME requiresを満たさなければならない (上記のfcitx5-hazkeyと同じ自己依存回帰ガード)
+            # 同梱するlibllamaランタイムは、ibusパッケージ内でも自身のSONAME requiresを満たさなければならない (上記のfcitx5-hazkey-communityと同じ自己依存回帰ガード)
             rpm -qp --requires "$ibus_rpm_target" | grep -Eq '^libprotobuf-lite\.so\.[0-9.]+\(\)\(64bit\)$' \
-              || { echo "ibus-hazkey RPM misses auto libprotobuf-lite SONAME require" >&2; exit 1; }
+              || { echo "ibus-hazkey-community RPM misses auto libprotobuf-lite SONAME require" >&2; exit 1; }
             for _bad_dep in protobuf protobuf-devel protobuf-compiler protobuf-lite-devel; do
               if rpm -qp --requires "$rpm_target" | grep -Fqx "$_bad_dep"; then
                 echo "RPM contains a build-time protobuf dependency: $_bad_dep" >&2
@@ -571,7 +571,7 @@ jobs:
           fi
 
           # -----------------------------------------------------------------
-          # P2: 複製した共有server/settingsペイロード (hazkey-server、hazkey-settings、libllama、Emoji 17辞書、icon、applications entry) の
+          # P2: 複製した共有server/settingsペイロード (hazkey-community-server、hazkey-community-settings、libllama、Emoji 17辞書、icon、applications entry) の
           #     共存インストール / 削除アサーション
           #
           # 計測済みのdpkgの意味論 (Debian 13 / Ubuntu 26.04) :
@@ -594,10 +594,10 @@ jobs:
             # versioned形式への回帰はこのアサーションで失敗させる
             # unversioned Replacesは、2フロントエンドで異なるpackage versionを混在させる構成をサポートしないことを意味する
             # (READMEは、同一バージョンの利用を記載する)
-            test "$(dpkg-deb --field "$fcitx_deb" Replaces)" = "ibus-hazkey" \
-              || { echo "fcitx5-hazkey DEB Replaces must be exactly 'ibus-hazkey'" >&2; exit 1; }
-            test "$(dpkg-deb --field "$ibus_deb" Replaces)" = "fcitx5-hazkey" \
-              || { echo "ibus-hazkey DEB Replaces must be exactly 'fcitx5-hazkey'" >&2; exit 1; }
+            test "$(dpkg-deb --field "$fcitx_deb" Replaces)" = "ibus-hazkey-community" \
+              || { echo "fcitx5-hazkey-community DEB Replaces must be exactly 'ibus-hazkey-community'" >&2; exit 1; }
+            test "$(dpkg-deb --field "$ibus_deb" Replaces)" = "fcitx5-hazkey-community" \
+              || { echo "ibus-hazkey-community DEB Replaces must be exactly 'fcitx5-hazkey-community'" >&2; exit 1; }
             if [ -n "$(dpkg-deb --field "$fcitx_deb" Conflicts 2>/dev/null)" ] ||
                [ -n "$(dpkg-deb --field "$ibus_deb" Conflicts 2>/dev/null)" ]; then
               echo "unexpected Conflicts field in a hazkey DEB" >&2
@@ -620,50 +620,50 @@ jobs:
                 --force-depends "$@"
             }
 
-            echo "### P2 DEB: install fcitx5-hazkey then ibus-hazkey"
+            echo "### P2 DEB: install fcitx5-hazkey-community then ibus-hazkey-community"
             dpkg_probe_root /tmp/p2root-ab
             dpkg_probe /tmp/p2root-ab -i "$fcitx_deb"
             dpkg_probe /tmp/p2root-ab -i "$ibus_deb"
-            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey ibus-hazkey \
-              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
-              || { echo "fcitx5-hazkey not installed after A->B" >&2; exit 1; }
-            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey ibus-hazkey \
-              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
-              || { echo "ibus-hazkey not installed after A->B" >&2; exit 1; }
-            test -e /tmp/p2root-ab/usr/bin/hazkey-server \
+            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey-community ibus-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey-community' \
+              || { echo "fcitx5-hazkey-community not installed after A->B" >&2; exit 1; }
+            dpkg --root=/tmp/p2root-ab -l fcitx5-hazkey-community ibus-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey-community' \
+              || { echo "ibus-hazkey-community not installed after A->B" >&2; exit 1; }
+            test -e /tmp/p2root-ab/usr/bin/hazkey-community-server \
               || { echo "shared payload missing after A->B" >&2; exit 1; }
 
-            echo "### P2 DEB: install ibus-hazkey then fcitx5-hazkey (reverse)"
+            echo "### P2 DEB: install ibus-hazkey-community then fcitx5-hazkey-community (reverse)"
             dpkg_probe_root /tmp/p2root-ba
             dpkg_probe /tmp/p2root-ba -i "$ibus_deb"
             dpkg_probe /tmp/p2root-ba -i "$fcitx_deb"
-            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey ibus-hazkey \
-              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
-              || { echo "fcitx5-hazkey not installed after B->A" >&2; exit 1; }
-            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey ibus-hazkey \
-              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
-              || { echo "ibus-hazkey not installed after B->A" >&2; exit 1; }
+            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey-community ibus-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey-community' \
+              || { echo "fcitx5-hazkey-community not installed after B->A" >&2; exit 1; }
+            dpkg --root=/tmp/p2root-ba -l fcitx5-hazkey-community ibus-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey-community' \
+              || { echo "ibus-hazkey-community not installed after B->A" >&2; exit 1; }
 
             echo "### P2 DEB: removing the last installer drops the shared payload"
             dpkg_probe_root /tmp/p2root-rmb
             dpkg_probe /tmp/p2root-rmb -i "$fcitx_deb"
             dpkg_probe /tmp/p2root-rmb -i "$ibus_deb"
-            dpkg --root=/tmp/p2root-rmb -r ibus-hazkey
-            dpkg --root=/tmp/p2root-rmb -l fcitx5-hazkey \
-              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey' \
-              || { echo "fcitx5-hazkey lost after removing ibus-hazkey" >&2; exit 1; }
-            test ! -e /tmp/p2root-rmb/usr/bin/hazkey-server \
+            dpkg --root=/tmp/p2root-rmb -r ibus-hazkey-community
+            dpkg --root=/tmp/p2root-rmb -l fcitx5-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+fcitx5-hazkey-community' \
+              || { echo "fcitx5-hazkey-community lost after removing ibus-hazkey-community" >&2; exit 1; }
+            test ! -e /tmp/p2root-rmb/usr/bin/hazkey-community-server \
               || { echo "shared payload unexpectedly kept after removing last installer" >&2; exit 1; }
 
             echo "### P2 DEB: removing the replaced package keeps the shared payload"
             dpkg_probe_root /tmp/p2root-rma
             dpkg_probe /tmp/p2root-rma -i "$fcitx_deb"
             dpkg_probe /tmp/p2root-rma -i "$ibus_deb"
-            dpkg --root=/tmp/p2root-rma -r fcitx5-hazkey
-            dpkg --root=/tmp/p2root-rma -l ibus-hazkey \
-              | grep -Eq '^ii[[:space:]]+ibus-hazkey' \
-              || { echo "ibus-hazkey lost after removing the replaced sibling" >&2; exit 1; }
-            test -e /tmp/p2root-rma/usr/bin/hazkey-server \
+            dpkg --root=/tmp/p2root-rma -r fcitx5-hazkey-community
+            dpkg --root=/tmp/p2root-rma -l ibus-hazkey-community \
+              | grep -Eq '^ii[[:space:]]+ibus-hazkey-community' \
+              || { echo "ibus-hazkey-community lost after removing the replaced sibling" >&2; exit 1; }
+            test -e /tmp/p2root-rma/usr/bin/hazkey-community-server \
               || { echo "shared payload lost after removing the replaced sibling" >&2; exit 1; }
           else
             # RPMは、Conflicts/Obsoletesを宣言してはならない (上記のヘッダコメントを参照)
@@ -676,54 +676,54 @@ jobs:
 
             rpm_probe_cleanup() {
               # "rpm -e A B"はいずれかが存在しないと中断するため、それぞれを個別に削除する
-              rpm -e --nodeps --noscripts ibus-hazkey 2>/dev/null || true
-              rpm -e --nodeps --noscripts fcitx5-hazkey 2>/dev/null || true
+              rpm -e --nodeps --noscripts ibus-hazkey-community 2>/dev/null || true
+              rpm -e --nodeps --noscripts fcitx5-hazkey-community 2>/dev/null || true
             }
 
-            echo "### P2 RPM: install fcitx5-hazkey then ibus-hazkey"
+            echo "### P2 RPM: install fcitx5-hazkey-community then ibus-hazkey-community"
             rpm_probe_cleanup
             rpm -i --nodeps --noscripts "$rpm_target"
             rpm -i --nodeps --noscripts "$ibus_rpm_target"
-            rpm -q fcitx5-hazkey ibus-hazkey >/dev/null \
+            rpm -q fcitx5-hazkey-community ibus-hazkey-community >/dev/null \
               || { echo "RPM co-install failed" >&2; exit 1; }
-            test -e /usr/bin/hazkey-server \
+            test -e /usr/bin/hazkey-community-server \
               || { echo "RPM shared payload missing after co-install" >&2; exit 1; }
 
             echo "### P2 RPM: removing one keeps the shared payload"
-            rpm -e --nodeps --noscripts ibus-hazkey
-            if rpm -q ibus-hazkey >/dev/null 2>&1; then
-              echo "ibus-hazkey RPM not removed" >&2
+            rpm -e --nodeps --noscripts ibus-hazkey-community
+            if rpm -q ibus-hazkey-community >/dev/null 2>&1; then
+              echo "ibus-hazkey-community RPM not removed" >&2
               exit 1
             fi
-            rpm -q fcitx5-hazkey >/dev/null \
-              || { echo "fcitx5-hazkey RPM lost" >&2; exit 1; }
-            test -e /usr/bin/hazkey-server \
+            rpm -q fcitx5-hazkey-community >/dev/null \
+              || { echo "fcitx5-hazkey-community RPM lost" >&2; exit 1; }
+            test -e /usr/bin/hazkey-community-server \
               || { echo "RPM shared payload dropped when the sibling was removed" >&2; exit 1; }
 
             echo "### P2 RPM: reverse install order"
             rpm_probe_cleanup
             rpm -i --nodeps --noscripts "$ibus_rpm_target"
             rpm -i --nodeps --noscripts "$rpm_target"
-            rpm -q fcitx5-hazkey ibus-hazkey >/dev/null \
+            rpm -q fcitx5-hazkey-community ibus-hazkey-community >/dev/null \
               || { echo "RPM reverse co-install failed" >&2; exit 1; }
             rpm_probe_cleanup
-            test ! -e /usr/bin/hazkey-server \
+            test ! -e /usr/bin/hazkey-community-server \
               || { echo "RPM shared payload kept after removing both packages" >&2; exit 1; }
           fi
 
           chmod -R a+rX packages
           EOF
 
-      - name: Upload fcitx5-hazkey package artifacts
+      - name: Upload fcitx5-hazkey-community package artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: fcitx5-hazkey-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
-          path: packages/fcitx5-hazkey*
+          name: fcitx5-hazkey-community-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
+          path: packages/fcitx5-hazkey-community*
           if-no-files-found: error
 
-      - name: Upload ibus-hazkey package artifacts
+      - name: Upload ibus-hazkey-community package artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: ibus-hazkey-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
-          path: packages/ibus-hazkey*
+          name: ibus-hazkey-community-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
+          path: packages/ibus-hazkey-community*
           if-no-files-found: error

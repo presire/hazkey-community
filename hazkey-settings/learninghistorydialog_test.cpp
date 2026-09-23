@@ -262,7 +262,7 @@ void LearningHistoryDialogTest::setIsolatedEnvironment() {
              QString::fromUtf8(originalLlamaLibraryPath_))
                 .toUtf8());
 
-    QFile fallbackServer(root + "/bin/hazkey-server");
+    QFile fallbackServer(root + "/bin/hazkey-community-server");
     QVERIFY(fallbackServer.open(QIODevice::WriteOnly | QIODevice::Truncate));
     fallbackServer.write("#!/bin/sh\nexit 0\n");
     fallbackServer.close();
@@ -271,7 +271,7 @@ void LearningHistoryDialogTest::setIsolatedEnvironment() {
 }
 
 QString LearningHistoryDialogTest::socketPath() const {
-    return temporaryDirectory_.path() + "/runtime/hazkey-server." +
+    return temporaryDirectory_.path() + "/runtime/hazkey-community-server." +
            QString::number(::getuid()) + ".sock";
 }
 

@@ -133,20 +133,23 @@ target_link_libraries(hazkey-settings PRIVATE
 )
 
 include(GNUInstallDirs)
+# Installed as hazkey-community-settings under ${LIBDIR}/hazkey-community so it
+# can coexist with an upstream hazkey package.
+set_target_properties(hazkey-settings PROPERTIES OUTPUT_NAME hazkey-community-settings)
 install(TARGETS hazkey-settings
-    RUNTIME DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey
+    RUNTIME DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community
 )
 
 # install desktop entry
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/hazkey-settings.desktop"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/hazkey-community-settings.desktop"
     DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/applications)
 
 # create a symlink in the binary directory
 install(CODE "
     file(MAKE_DIRECTORY \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_BINDIR}\")
     file(CREATE_LINK
-    \"${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/hazkey-settings\"
-    \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_BINDIR}/hazkey-settings\"
+    \"${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community/hazkey-community-settings\"
+    \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_BINDIR}/hazkey-community-settings\"
     SYMBOLIC)
 ")
 

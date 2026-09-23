@@ -76,7 +76,7 @@ final class CPUBudgetControlsTests: XCTestCase {
             }
         }
 
-        let socketURL = root.appendingPathComponent("runtime/hazkey-server.\(getuid()).sock")
+        let socketURL = root.appendingPathComponent("runtime/hazkey-community-server.\(getuid()).sock")
         try waitForSocket(at: socketURL.path)
 
         let client = try QARPCClient(socketPath: socketURL.path)
@@ -122,7 +122,7 @@ final class CPUBudgetControlsTests: XCTestCase {
             throw QAError.missingHome
         }
         let path = URL(fileURLWithPath: home)
-            .appendingPathComponent(".local/share/hazkey/zenzai/zenzai.gguf").path
+            .appendingPathComponent(".local/share/hazkey-community/zenzai/zenzai.gguf").path
         guard FileManager.default.fileExists(atPath: path) else {
             throw QAError.modelMissing(path)
         }

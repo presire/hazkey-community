@@ -79,7 +79,7 @@ class UserDictionary {
     private static let reloadThrottleIntervalNanoseconds: UInt64 =
         UInt64(reloadThrottleInterval * 1_000_000_000)
 
-    /// 既定パス: $XDG_CONFIG_HOME/hazkey/user_dictionary.tsv
+    /// 既定パス: $XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv
     static func defaultPath() -> URL {
         return HazkeyServerConfig.getConfigDirectory()
             .appendingPathComponent("user_dictionary.tsv", isDirectory: false)

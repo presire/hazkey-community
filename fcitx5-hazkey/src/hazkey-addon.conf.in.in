@@ -1,8 +1,8 @@
 [Addon]
-Name=Hazkey
+Name=Hazkey-Community
 Category=InputMethod
 Version=@PROJECT_VERSION@
-Library=fcitx5-hazkey
+Library=fcitx5-hazkey-community
 Type=SharedLibrary
 OnDemand=True
 Configurable=True

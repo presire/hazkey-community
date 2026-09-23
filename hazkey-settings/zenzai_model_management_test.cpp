@@ -107,7 +107,7 @@ void ZenzaiModelManagementTest::cleanup() {
 
 void ZenzaiModelManagementTest::testPaths() {
     QString zenzaiDir = ZenzaiModelManager::getZenzaiDir();
-    QCOMPARE(zenzaiDir, tempDir.path() + "/hazkey/zenzai");
+    QCOMPARE(zenzaiDir, tempDir.path() + "/hazkey-community/zenzai");
     
     QString modelsDir = ZenzaiModelManager::getModelsDir();
     QCOMPARE(modelsDir, zenzaiDir + "/models");

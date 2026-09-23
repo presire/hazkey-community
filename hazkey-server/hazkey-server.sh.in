@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 
-# hazkey-serverラッパースクリプト
+# hazkey-community-serverラッパースクリプト
 # 環境変数XDG_CONFIG_HOMEは、XDG Base Directory仕様では任意であり、多くのデスクトップセッションでは未設定である
-# このフォールバックが無いと、パスは"/hazkey/env"に潰れてしまい、以下のユーザ設定がすべて無言で無視される
-ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hazkey/env"
+# このフォールバックが無いと、パスは"/hazkey-community/env"に潰れてしまい、以下のユーザ設定がすべて無言で無視される
+ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hazkey-community/env"
 
 # ユーザ定義の環境変数を読み込む
 #
@@ -36,6 +36,6 @@ fi
 # ("backendProbe.swift"ファイルを参照すること)
 # この方式は、静的なファイル一覧への固定と異なり、動作するGPUを無言で隠すことがない
 # 特定のドライバを強制したい場合は、引き続き、
-# "$XDG_CONFIG_HOME/hazkey/env"ファイルのVK_DRIVER_FILES、VK_ICD_FILENAMES、VK_LOADER_DRIVERS_SELECT等を使用する
+# "$XDG_CONFIG_HOME/hazkey-community/env"ファイルのVK_DRIVER_FILES、VK_ICD_FILENAMES、VK_LOADER_DRIVERS_SELECT等を使用する
 # 例は、README.mdを参照すること
-exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey/hazkey-server" "$@"
+exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey-community/hazkey-community-server" "$@"

@@ -7,15 +7,15 @@ namespace hazkey::ibus {
 inline constexpr const char* kEngineDescriptionXml = R"xml(<?xml version="1.0" encoding="utf-8"?>
 <engines>
   <engine>
-    <name>hazkey</name>
+    <name>hazkey-community</name>
     <language>ja</language>
     <license>MIT</license>
     <author>Hiira, Presire</author>
     <icon>@HAZKEY_ENGINE_ICON@</icon>
     <layout>default</layout>
-    <longname>Hazkey Community</longname>
-    <description>Hazkey AI Japanese input method (hazkey-community)</description>
-    <textdomain>ibus-hazkey</textdomain>
+    <longname>Hazkey-Community</longname>
+    <description>Hazkey-Community AI Japanese input method</description>
+    <textdomain>ibus-hazkey-community</textdomain>
     <rank>1</rank>
     <setup>@HAZKEY_ENGINE_SETUP@</setup>
   </engine>

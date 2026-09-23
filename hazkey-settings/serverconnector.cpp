@@ -41,7 +41,8 @@ ServerConnector::~ServerConnector() { endSession(); }
 std::string ServerConnector::getSocketPath() {
     const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
     uid_t uid = getuid();
-    std::string sockname = "hazkey-server." + std::to_string(uid) + ".sock";
+    std::string sockname =
+        "hazkey-community-server." + std::to_string(uid) + ".sock";
     if (xdg_runtime_dir && xdg_runtime_dir[0] != '\0') {
         return std::string(xdg_runtime_dir) + "/" + sockname;
     } else {
@@ -178,9 +179,9 @@ int ServerConnector::createConnection() {
         }
         close(sock);
         if (attempt == ATTEMPT_TRY_START) {
-            QProcess::startDetached("hazkey-server", {}, "/");
+            QProcess::startDetached("hazkey-community-server", {}, "/");
         } else if (attempt == ATTEMPT_TRY_START_FORCE) {
-            QProcess::startDetached("hazkey-server", {"-r"}, "/");
+            QProcess::startDetached("hazkey-community-server", {"-r"}, "/");
         }
         std::this_thread::sleep_for(
             std::chrono::milliseconds(RETRY_INTERVAL_MS));
@@ -379,13 +380,13 @@ void ServerConnector::setCurrentConfig(
     auto response = transact(request);
     if (response == std::nullopt) {
         throw std::runtime_error(
-            "Failed to communicate with the hazkey server while saving configuration.");
+            "Failed to communicate with the hazkey-community-server while saving configuration.");
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         const std::string errorMessage = responseVal.error_message();
         throw std::runtime_error(
-            errorMessage.empty() ? "The hazkey server rejected the configuration."
+            errorMessage.empty() ? "The hazkey-community-server rejected the configuration."
                                  : errorMessage);
     }
 }

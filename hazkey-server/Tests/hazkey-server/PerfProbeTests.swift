@@ -65,7 +65,7 @@ final class PerfProbeTests: XCTestCase {
         }
 
         let socketPath = temporaryRoot.appendingPathComponent(
-            "runtime/hazkey-server.\(getuid()).sock").path
+            "runtime/hazkey-community-server.\(getuid()).sock").path
         try waitForSocket(at: socketPath)
         let client = try EnvelopeClient(socketPath: socketPath)
         defer { client.close() }

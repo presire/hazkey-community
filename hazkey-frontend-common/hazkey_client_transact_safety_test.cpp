@@ -214,7 +214,7 @@ void lateResponseNeverParsedAfterTimeout() {
     CHECK(directory != nullptr);
     const std::string root(directory);
     const std::string socketPath =
-        root + "/hazkey-server." + std::to_string(getuid()) + ".sock";
+        root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
     CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
 
     // 1 second instead of the production 10 seconds, purely so this test
@@ -308,7 +308,7 @@ void forceRestartWindowGatesRecentSuccess() {
     CHECK(directory != nullptr);
     const std::string root(directory);
     const std::string socketPath =
-        root + "/hazkey-server." + std::to_string(getuid()) + ".sock";
+        root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
     CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
     HazkeyServerConnector::setTestReadTimeoutSeconds(1);
 

@@ -36,7 +36,7 @@ HazkeyServerConnector& sharedServerConnector() {
 // <datadir>/locale/<lang>/LC_MESSAGES/ibus-hazkey.mo). The IBus panel uses the
 // same domain for the engine <longname>/<description>.
 const char* tr(const char* messageId) {
-    return g_dgettext("ibus-hazkey", messageId);
+    return g_dgettext("ibus-hazkey-community", messageId);
 }
 
 // IBus clients/toolkits report Super under different masks (X11 commonly sends

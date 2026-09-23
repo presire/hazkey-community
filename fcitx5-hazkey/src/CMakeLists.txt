@@ -57,12 +57,14 @@ if(BUILD_TESTING)
     # added at all.
 endif()
 
-set_target_properties(fcitx5-hazkey PROPERTIES PREFIX "")
+# Installed as fcitx5-hazkey-community.so (addon "hazkey-community") so it can
+# coexist with an upstream fcitx5-hazkey package.
+set_target_properties(fcitx5-hazkey PROPERTIES PREFIX "" OUTPUT_NAME fcitx5-hazkey-community)
 install(TARGETS fcitx5-hazkey DESTINATION "${FCITX_INSTALL_LIBDIR}/fcitx5")
 
 configure_file(hazkey-addon.conf.in.in hazkey-addon.conf.in @ONLY)
 fcitx5_translate_desktop_file("${CMAKE_CURRENT_BINARY_DIR}/hazkey-addon.conf.in" "hazkey-addon.conf")
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hazkey-addon.conf" RENAME hazkey.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hazkey-addon.conf" RENAME hazkey-community.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon")
 
 fcitx5_translate_desktop_file(hazkey-im.conf.in hazkey-im.conf)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hazkey-im.conf" RENAME hazkey.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/hazkey-im.conf" RENAME hazkey-community.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod")

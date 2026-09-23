@@ -119,18 +119,27 @@ endif()
 # ---- install ---- #
 
 # install hazkey-server
+# Community edition installs under its own names (hazkey-community-server in
+# ${LIBDIR}/hazkey-community) so it can coexist with an upstream hazkey
+# package. The SwiftPM product keeps its "hazkey-server" name; only the
+# installed file is renamed.
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/swift-build/${SWIFT_BUILD_TYPE}/hazkey-server
-        DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey)
+        DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community
+        RENAME hazkey-community-server)
 
-# configure and install hazkey-server wrapper script
+# configure and install hazkey-community-server wrapper script
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/hazkey-server.sh.in
-    ${CMAKE_CURRENT_BINARY_DIR}/hazkey-server
+    ${CMAKE_CURRENT_BINARY_DIR}/hazkey-community-server
     @ONLY
 )
 
-install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/hazkey-server
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/hazkey-community-server
         DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
+
+# install the manual data migration script (upstream hazkey -> hazkey-community)
+install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/hazkey-community-migrate.sh
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 
 # install llama libraries
 if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
@@ -159,18 +168,18 @@ if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
                 message(FATAL_ERROR \"Missing llama library: ${HAZKEY_SERVER_LIBLLAMA_BINDIR}/\${_llama_lib} (HAZKEY_SERVER_LIBLLAMA_BINDIR wrong or llama build failed)\")
             endif()
         endforeach()
-        file(MAKE_DIRECTORY \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\")
+        file(MAKE_DIRECTORY \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community/libllama\")
         file(COPY
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml-base.so\"
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libggml.so\"
             \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/libllama.so\"
-            DESTINATION \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama\"
+            DESTINATION \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community/libllama\"
             FOLLOW_SYMLINK_CHAIN
         )
     ")
 
     install(DIRECTORY "${HAZKEY_SERVER_LIBLLAMA_BINDIR}/"
-        DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/hazkey/libllama/backends"
+        DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community/libllama/backends"
         FILES_MATCHING
         PATTERN "*.so"
         PATTERN "libggml-base.so" EXCLUDE
@@ -202,21 +211,21 @@ if(HAZKEY_SERVER_INSTALL_DICTIONARY)
     endif()
 
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_dictionary_storage/Dictionary
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 
     set(CMAKE_INSTALL_MESSAGE ${_OLD_INSTALL_MESSAGE})
 endif()
 
 #install emoji dictionary
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_emoji_dictionary_storage/EmojiDictionary/emoji_all_E17.0.txt
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 
 # install address dictionary (supplemental LOUDS, community extension)
 set(HAZKEY_ADDRESS_DICTIONARY_DIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-address-dictionary/AddressDictionary)
 if(EXISTS ${HAZKEY_ADDRESS_DICTIONARY_DIR}/louds/charID.chid)
     install(DIRECTORY ${HAZKEY_ADDRESS_DICTIONARY_DIR}
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey)
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 else()
     message(WARNING
         "hazkey-address-dictionary submodule is not checked out; "

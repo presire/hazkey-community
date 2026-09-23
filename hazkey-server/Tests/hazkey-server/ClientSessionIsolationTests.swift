@@ -36,7 +36,7 @@ final class ClientSessionIsolationTests: XCTestCase {
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
         }
         try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("config/hazkey"), withIntermediateDirectories: true)
+            at: root.appendingPathComponent("config/hazkey-community"), withIntermediateDirectories: true)
 
         let paths = [
             "XDG_DATA_HOME": "data",

@@ -160,7 +160,7 @@ public:
      * @brief Zenzai関連ファイルの基本ディレクトリを返す
      *
      * @details XDG_DATA_HOMEが空でない場合はその値を使い、空の場合はQDir::homePath() + "/.local/share"を使い、
-     *          いずれも末尾に"/hazkey/zenzai"を付加する
+     *          いずれも末尾に"/hazkey-community/zenzai"を付加する
      *
      * @return Zenzaiの基本ディレクトリパス
      */

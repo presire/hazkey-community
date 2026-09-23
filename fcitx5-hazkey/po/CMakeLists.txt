@@ -1,1 +1,1 @@
-fcitx5_install_translation(fcitx5-hazkey)
+fcitx5_install_translation(fcitx5-hazkey-community)

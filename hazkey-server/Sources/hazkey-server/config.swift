@@ -563,50 +563,50 @@ class HazkeyServerConfig {
         if let xdgConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
             !xdgConfigHome.isEmpty
         {
-            return URL(fileURLWithPath: xdgConfigHome).appendingPathComponent("hazkey")
+            return URL(fileURLWithPath: xdgConfigHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_CONFIG_HOME未設定時の代替として、"~/.config/hazkey/"ディレクトリを使用する
+        // XDG_CONFIG_HOME未設定時の代替として、"~/.config/hazkey-community/"ディレクトリを使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        return homeDir.appendingPathComponent(".config").appendingPathComponent("hazkey")
+        return homeDir.appendingPathComponent(".config").appendingPathComponent("hazkey-community")
     }
 
     static func getDataDirectory() -> URL {
         if let xdgDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"],
             !xdgDataHome.isEmpty
         {
-            return URL(fileURLWithPath: xdgDataHome).appendingPathComponent("hazkey")
+            return URL(fileURLWithPath: xdgDataHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_DATA_HOME未設定時の代替として、"~/.local/share/hazkey/"ディレクトリを使用する
+        // XDG_DATA_HOME未設定時の代替として、"~/.local/share/hazkey-community/"ディレクトリを使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("share")
-            .appendingPathComponent("hazkey")
+            .appendingPathComponent("hazkey-community")
     }
 
     static func getStateDirectory() -> URL {
         if let xdgStateHome = ProcessInfo.processInfo.environment["XDG_STATE_HOME"],
             !xdgStateHome.isEmpty
         {
-            return URL(fileURLWithPath: xdgStateHome).appendingPathComponent("hazkey")
+            return URL(fileURLWithPath: xdgStateHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_STATE_HOME未設定時の代替として、"~/.local/state/hazkey/"を使用する
+        // XDG_STATE_HOME未設定時の代替として、"~/.local/state/hazkey-community/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("state")
-            .appendingPathComponent("hazkey")
+            .appendingPathComponent("hazkey-community")
     }
 
     static func getCacheDirectory() -> URL {
         if let xdgCacheHome = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"],
             !xdgCacheHome.isEmpty
         {
-            return URL(fileURLWithPath: xdgCacheHome).appendingPathComponent("hazkey")
+            return URL(fileURLWithPath: xdgCacheHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_CACHE_HOME未設定時の代替として、"~/.cache/hazkey/"を使用する
+        // XDG_CACHE_HOME未設定時の代替として、"~/.cache/hazkey-community/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        return homeDir.appendingPathComponent(".cache").appendingPathComponent("hazkey")
+        return homeDir.appendingPathComponent(".cache").appendingPathComponent("hazkey-community")
     }
 
     static func requestRichCandidates(
@@ -761,7 +761,7 @@ class HazkeyServerConfig {
             // ".disabled"は、従来の"needTypoCorrection: false"と動作上完全に等価 (無条件に無効化)
             // (KanaKanjiConverter.isClassicTypoCorrectionEnabledを参照)
             typoCorrectionMode: .disabled,
-            metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey \(hazkeyVersion)")
+            metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey-Community \(hazkeyVersion)")
         )
     }
 

@@ -24,7 +24,7 @@ final class InferenceSeamTests: XCTestCase {
             throw InferenceSeamError.missingHome
         }
         let modelPath = URL(fileURLWithPath: String(cString: home))
-            .appendingPathComponent(".local/share/hazkey/zenzai/zenzai.gguf").path
+            .appendingPathComponent(".local/share/hazkey-community/zenzai/zenzai.gguf").path
         try XCTSkipUnless(
             FileManager.default.fileExists(atPath: modelPath),
             "Zenzai model is not installed at \(modelPath)")
@@ -67,7 +67,7 @@ final class InferenceSeamTests: XCTestCase {
             process.waitUntilExit()
         }
 
-        let socketURL = root.appendingPathComponent("runtime/hazkey-server.\(getuid()).sock")
+        let socketURL = root.appendingPathComponent("runtime/hazkey-community-server.\(getuid()).sock")
         XCTAssertTrue(socketURL.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/"))
         try waitForSocket(at: socketURL.path)
         let client = try InferenceSeamClient(socketPath: socketURL.path)

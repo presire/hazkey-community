@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ibus-hazkey\n"
+"Project-Id-Version: ibus-hazkey-community\n"
 "Report-Msgid-Bugs-To: https://github.com/presire/hazkey-community/issues\n"
 "POT-Creation-Date: 2026-09-14 00:00+0900\n"
 "PO-Revision-Date: 2026-09-14 00:00+0900\n"
@@ -11,11 +11,11 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Hazkey Community"
-msgstr "Hazkey Community"
+msgid "Hazkey-Community"
+msgstr "Hazkey-Community"
 
-msgid "Hazkey AI Japanese input method (hazkey-community)"
-msgstr "Hazkey AI 日本語入力メソッド (hazkey-community)"
+msgid "Hazkey-Community AI Japanese input method"
+msgstr "Hazkey-Community AI 日本語入力メソッド"
 
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"

@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component type="addon">
-  <id>org.fcitx.Fcitx5.Addon.Hazkey</id>
+  <id>org.fcitx.Fcitx5.Addon.HazkeyCommunity</id>
   <extends>org.fcitx.Fcitx5</extends>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <name>fcitx5-hazkey</name>
-  <name xml:lang="ja">fcitx5-hazkey</name>
-  <summary>Hazkey Japanese Input Method</summary>
-  <summary xml:lang="ja">Hazkey日本語入力</summary>
+  <name>fcitx5-hazkey-community</name>
+  <name xml:lang="ja">fcitx5-hazkey-community</name>
+  <summary>Hazkey-Community Japanese Input Method</summary>
+  <summary xml:lang="ja">Hazkey-Community日本語入力</summary>
   <project_group>Fcitx</project_group>
   <developer id="dev.hiira">
     <name>Nanaka Hiira</name>
   </developer>
-  <url type="homepage">https://hazkey.hiira.dev</url>
-  <url type="bugtracker">https://github.com/7ka-Hiira/fcitx5-hazkey/issues</url>
-  <url type="vcs-browser">https://github.com/7ka-Hiira/fcitx5-hazkey</url>
+  <url type="homepage">https://github.com/presire/hazkey-community</url>
+  <url type="bugtracker">https://github.com/presire/hazkey-community/issues</url>
+  <url type="vcs-browser">https://github.com/presire/hazkey-community</url>
   <releases>
     <release version="0.2.29" date="2026-09-23"/>
     <release version="0.2.28" date="2026-09-21"/>

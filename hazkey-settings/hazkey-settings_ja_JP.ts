@@ -92,8 +92,8 @@
     </message>
     <message>
         <location filename="learninghistorydialog.cpp" line="149"/>
-        <source>入力履歴の削除に失敗しました。hazkeyサーバーへの接続を確認してください。</source>
-        <translation>入力履歴の削除に失敗しました。hazkeyサーバーへの接続を確認してください。</translation>
+        <source>入力履歴の削除に失敗しました。hazkey-community-serverへの接続を確認してください。</source>
+        <translation>入力履歴の削除に失敗しました。hazkey-community-serverへの接続を確認してください。</translation>
     </message>
     <message>
         <location filename="learninghistorydialog.cpp" line="154"/>
@@ -107,8 +107,8 @@
     </message>
     <message>
         <location filename="learninghistorydialog.cpp" line="164"/>
-        <source>入力履歴を取得できませんでした。hazkeyサーバーへの接続を確認してください。</source>
-        <translation>入力履歴を取得できませんでした。hazkeyサーバーへの接続を確認してください。</translation>
+        <source>入力履歴を取得できませんでした。hazkey-community-serverへの接続を確認してください。</source>
+        <translation>入力履歴を取得できませんでした。hazkey-community-serverへの接続を確認してください。</translation>
     </message>
     <message>
         <location filename="learninghistorydialog.cpp" line="221"/>
@@ -120,8 +120,8 @@
     <name>MainWindow</name>
     <message>
         <location filename="mainwindow.ui" line="26"/>
-        <source>Hazkey Settings</source>
-        <translation>Hazkey 設定</translation>
+        <source>Hazkey-Community Settings</source>
+        <translation>Hazkey-Community 設定</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="51"/>
@@ -298,8 +298,8 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="686"/>
-        <source>Hazkey version</source>
-        <translation>Hazkeyバージョン</translation>
+        <source>Hazkey-Community version</source>
+        <translation>Hazkey-Communityバージョン</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="693"/>
@@ -486,8 +486,8 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="1301"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;Note:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; You can use custom Keymaps in TSV format, located in &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt;. &lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;メモ:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; に配置されたTSV形式のキーマップを利用することができます。&lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;Note:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; You can use custom Keymaps in TSV format, located in &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt;. &lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;メモ:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; に配置されたTSV形式のキーマップを利用することができます。&lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="1318"/>
@@ -506,8 +506,8 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="1501"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;Note:&lt;/span&gt; You can use custom input tables in TSV format, located in &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey/table&lt;/span&gt;. &lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;メモ:&lt;/span&gt; &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey/table&lt;/span&gt; に配置されたTSV形式の入力テーブルを利用することができます。&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;Note:&lt;/span&gt; You can use custom input tables in TSV format, located in &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/table&lt;/span&gt;. &lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;メモ:&lt;/span&gt; &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/table&lt;/span&gt; に配置されたTSV形式の入力テーブルを利用することができます。&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="1518"/>
@@ -707,8 +707,8 @@
     </message>
     <message>
         <location filename="mainwindow.cpp" line="216"/>
-        <source>Failed to load configuration. Please check your connection to the hazkey server.</source>
-        <translation>設定の読み込みに失敗しました。hazkeyサーバーへの接続を確認してください。</translation>
+        <source>Failed to load configuration. Please check your connection to the hazkey-community-server.</source>
+        <translation>設定の読み込みに失敗しました。hazkey-community-serverへの接続を確認してください。</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="556"/>
@@ -797,8 +797,8 @@
     </message>
     <message>
         <location filename="mainwindow.cpp" line="635"/>
-        <source>&lt;b&gt;Warning:&lt;/b&gt; GPU acceleration was disabled because the Vulkan driver check crashed or timed out (often caused by mixed GPU vendors). Neural conversion runs on the CPU for this session. To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey/env to a single driver file and restart the input method.</source>
-        <translation>&lt;b&gt;警告:&lt;/b&gt; Vulkanドライバーの確認がクラッシュまたはタイムアウトしたため (GPUベンダーの混在が原因のことが多い)、GPUアクセラレーションを無効化しました。このセッションのニューラル変換はCPUで動作します。GPUアクセラレーションを復元するには、~/.config/hazkey/env の VK_DRIVER_FILES に単一のドライバーファイルを設定し、入力メソッドを再起動してください。</translation>
+        <source>&lt;b&gt;Warning:&lt;/b&gt; GPU acceleration was disabled because the Vulkan driver check crashed or timed out (often caused by mixed GPU vendors). Neural conversion runs on the CPU for this session. To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey-community/env to a single driver file and restart the input method.</source>
+        <translation>&lt;b&gt;警告:&lt;/b&gt; Vulkanドライバーの確認がクラッシュまたはタイムアウトしたため (GPUベンダーの混在が原因のことが多い)、GPUアクセラレーションを無効化しました。このセッションのニューラル変換はCPUで動作します。GPUアクセラレーションを復元するには、~/.config/hazkey-community/env の VK_DRIVER_FILES に単一のドライバーファイルを設定し、入力メソッドを再起動してください。</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="623"/>
@@ -903,7 +903,7 @@
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2044"/>
-        <source>Failed to clear input history. Please check your connection to the hazkey server.</source>
+        <source>Failed to clear input history. Please check your connection to the hazkey-community-server.</source>
         <translation>入力履歴の削除に失敗しました。hazkey-serverとの接続を確認してください。</translation>
     </message>
     <message>
@@ -1278,8 +1278,8 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
     </message>
     <message>
         <location filename="zenzai_family_row.cpp" line="115"/>
-        <source>Downloaded on demand from the source above. Model weights are not bundled with Hazkey.</source>
-        <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkeyに同梱されません。</translation>
+        <source>Downloaded on demand from the source above. Model weights are not bundled with Hazkey-Community.</source>
+        <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkey-Communityに同梱されません。</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2372"/>

@@ -402,7 +402,7 @@ QString ZenzaiModelManager::getZenzaiDir() {
     if (dataHome.isEmpty()) {
         dataHome = QDir::homePath() + "/.local/share";
     }
-    return dataHome + "/hazkey/zenzai";
+    return dataHome + "/hazkey-community/zenzai";
 }
 
 QString ZenzaiModelManager::getModelsDir() {

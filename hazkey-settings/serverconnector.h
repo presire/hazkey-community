@@ -168,7 +168,7 @@ class ServerConnector {
      * @brief サーバのUNIXドメインソケットパスを組み立てる
      *
      * @return 環境変数XDG_RUNTIME_DIRが設定されていればその配下、
-     *         そうでなければ、/tmp配下のhazkey-server.<uid>.sock
+     *         そうでなければ、/tmp配下のhazkey-community-server.<uid>.sock
      * @internal 通信実装専用で、接続やソケットの所有権は変更しない
      */
     std::string getSocketPath();

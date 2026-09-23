@@ -17,7 +17,7 @@ namespace {
 
 // gettext lookup in the engine's own domain, same as the state machine.
 const char* tr(const char* messageId) {
-    return g_dgettext("ibus-hazkey", messageId);
+    return g_dgettext("ibus-hazkey-community", messageId);
 }
 
 // Fcitx defaultSelectionKeys (1..9, 0) for IBus lookup-table slots; other

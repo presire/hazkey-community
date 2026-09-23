@@ -2,11 +2,11 @@
 
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)
 
-Hazkeyは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
+Hazkey-Communityは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
 オプションでニューラル変換 (Zenzai、llama.cppバックエンド、Vulkan GPU / CPU対応) を利用でき、標準のzenz系列に加えてQwen3ベースの**jinen-v2**モデルにも対応しています。  
 
-Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフロントエンド (ibus-hazkey) を同梱します。  
+Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的なIBusフロントエンド (ibus-hazkey-community) を同梱します。  
 
 > IBus版をソースコードからビルドする場合は、CMakeで `ENABLE_IBUS` オプションが必要です。(デフォルトはOFF)  
 > バイナリパッケージは両フロントエンド分を頒布します。  
@@ -51,7 +51,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
 | 複数のニューラル変換モデルに対応 (zenz / jinen-v2) | 標準の **zenz** 系列 (Apache-2.0 / CC-BY-SA-4.0) に加え、[togatogah](https://huggingface.co/togatogah) 氏が公開する Qwen3 ベースの **jinen-v2** (small / xsmall、量子化 `f16`/`Q8_0`/`Q5_K_M`/`Q4_K_M` を選択可、CC-BY-SA-4.0) に対応<br>設定UIの表記もモデルに依存しない「ニューラル変換」に統一<br>jinen系モデルはプロファイル・トピック・文体・好み (条件トークン) に対応しないため、有効化中は該当欄が自動的にグレーアウトされる |
 | ニューラル変換の事前ウォームアップ | サーバ起動時と設定の適用後にモデルを事前ロードし、初回入力時のモデルロード待ちを解消 |
 | プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
-| サーバ管理の安定化 | クライアント更新時のhazkey-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
+| サーバ管理の安定化 | クライアント更新時のhazkey-community-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
 | マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を、隔離子プロセスによる起動前のバックエンド安全確認とCPU専用への自動フォールバックで解消<br>(フォールバック発生時は設定UIの[AI]タブに警告を表示。下記トラブルシューティング参照) |
 
 <br>
@@ -64,13 +64,13 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
 2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
    パッケージは、Debian 13 / Ubuntu 26.04向けに `.deb`、Fedora 44 / openSUSE Leap 16 / Tumbleweed 向けに `.rpm` が頒布されます。  
    
-   フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey: Fcitx 5用、ibus-hazkey: IBus用)  
+   フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey-community: Fcitx 5用、ibus-hazkey-community: IBus用)  
    
    使用するフレームワークのパッケージを選んでください。  
    両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)  
    
    - Debian / Ubuntu (`.deb`):  
-     両パッケージは共有ファイル (`hazkey-server` / `hazkey-settings` / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
+     両パッケージは共有ファイル (`hazkey-community-server` / `hazkey-community-settings` / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
      どちらの順に入れても共存できます。  
    - RPM (`.rpm`):  
      追加の宣言なしに共存できます。  
@@ -78,29 +78,29 @@ Fcitx 5フロントエンド (fcitx5-hazkey) に加えて、実験的なIBusフ�
    両フロントエンドのパッケージは同じバージョンで揃えて使用してください。(異なるバージョンの混在は非サポートです)  
    
    > **共有ファイルの扱い (Debian / Ubuntu)**:  
-   > 両パッケージは `/usr/bin/hazkey-server` 等の共有ファイルを同じパスに含みます。  
+   > 両パッケージは `/usr/bin/hazkey-community-server` 等の共有ファイルを同じパスに含みます。  
    > dpkgは共有ファイルを「最後にインストールした側」の所有として扱うため、  
    > 後から入れた側を `apt remove` / `dpkg -r` すると、残した側の共有ファイルも一緒に削除されます。  
-   > 残す側のパッケージを再インストール (例: `sudo apt install --reinstall ./fcitx5-hazkey_*_amd64.deb`) すると復旧します。  
+   > 残す側のパッケージを再インストール (例: `sudo apt install --reinstall ./fcitx5-hazkey-community_*_amd64.deb`) すると復旧します。  
    > RPM (`.rpm`) では、片方を削除してももう片方が残っていれば共有ファイルは削除されません。  
 3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
    
    ```sh
    # Fedora (使用するフレームワークのパッケージを指定。例は両方)
-   sudo dnf install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
+   sudo dnf install ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
    
    # openSUSE (使用するフレームワークのパッケージを指定。例は両方)
-   sudo zypper install ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
+   sudo zypper install ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
    
    # Debian / Ubuntu系 (使用するフレームワークのパッケージを指定。例は両方)
-   sudo apt install ./fcitx5-hazkey_*_amd64.deb ./ibus-hazkey_*_amd64.deb
+   sudo apt install ./fcitx5-hazkey-community_*_amd64.deb ./ibus-hazkey-community_*_amd64.deb
    ```
    
 4. 使用しているフレームワークを再起動します。  
    (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` 等)  
 
-> インストール後、設定UI (hazkey-settings) と サーバ (hazkey-server) は同じバージョンで揃います。  
-> クライアントとサーバのバージョンが不一致になった場合は、hazkey-server が自動的に再起動されます。  
+> インストール後、設定UI (hazkey-community-settings) と サーバ (hazkey-community-server) は同じバージョンで揃います。  
+> クライアントとサーバのバージョンが不一致になった場合は、hazkey-community-server が自動的に再起動されます。  
 
 ### ダウンロードの検証 (SHA-256・GPG署名)
 
@@ -121,14 +121,14 @@ RPMパッケージはGPG署名付きで頒布されています。(DEBは署名�
 sudo rpm --import RPM-GPG-KEY-hazkey
 
 # 署名の確認 (任意)
-rpm -K ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm
+rpm -K ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
 ```
 
 ビルドの来歴証明 (Artifact Attestation) も付与されています。  
 ghコマンドがある環境では、次のコマンドで「このCIでビルドされた」ことを検証 (任意) できます。  
 
 ```sh
-gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
+gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm --owner presire
 ```
 
 <br>
@@ -144,12 +144,12 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
    # または fcitx5 を終了してから再度起動
    ```
    
-2. Fcitx 5の設定ツール (タスクトレイアイコンから[設定]、または `fcitx5-configtool`) を開き、入力メソッドの追加から **Hazkey** を登録します。  
-3. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、Fcitx 5側の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
-4. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-settings** を起動します。  
+2. Fcitx 5の設定ツール (タスクトレイアイコンから[設定]、または `fcitx5-configtool`) を開き、入力メソッドの追加から **Hazkey-Community** を登録します。  
+3. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、Fcitx 5側の設定に依存) でHazkey-Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
+4. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-community-settings** を起動します。  
    
    ```sh
-   hazkey-settings
+   hazkey-community-settings
    ```
 
 ### IBusに登録 (実験的)
@@ -161,26 +161,73 @@ gh attestation verify ./fcitx5-hazkey-*.rpm ./ibus-hazkey-*.rpm --owner presire
    # またはログアウト / ログイン
    ```
    
-2. ibus list-engineに**hazkey**が表示されることを確認します。  
+2. ibus list-engineに**hazkey-community**が表示されることを確認します。  
    
    ```sh
-   ibus list-engine | grep hazkey
+   ibus list-engine | grep hazkey-community
    ```
    
-3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から **Hazkey** を追加します。  
-4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkeyに切り替え、ローマ字入力してかなが変換できることを確認します。  
-5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-settings** を起動します。  
+3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から **Hazkey-Community** を追加します。  
+4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkey-Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
+5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-community-settings** を起動します。  
    
    ```sh
-   hazkey-settings
+   hazkey-community-settings
    ```
+
+<br>
+
+## 上流版Hazkeyとの併存・データ移行
+
+hazkey-communityは、インストール先・実行ファイル名・ユーザデータのディレクトリ・ソケット名を上流版Hazkeyと分けているため、  
+上流版Hazkey (`fcitx5-hazkey` / `ibus-hazkey`) と同時にインストールできます。  
+入力メソッド名も別 (Fcitx 5: **Hazkey-Community**、IBus: **hazkey-community**) で、互いのサーバや設定には干渉しません。  
+
+| 用途 | 上流版Hazkey | hazkey-community |
+|---|---|---|
+| サーバ / 設定UI | `/usr/bin/hazkey-server`<br>`/usr/bin/hazkey-settings` | `/usr/bin/hazkey-community-server`<br>`/usr/bin/hazkey-community-settings` |
+| プログラム / データ | `/usr/lib*/hazkey/`<br>`/usr/share/hazkey/` | `/usr/lib*/hazkey-community/`<br>`/usr/share/hazkey-community/` |
+| Fcitx 5アドオン | `fcitx5-hazkey.so`<br>`addon/hazkey.conf`・`inputmethod/hazkey.conf` | `fcitx5-hazkey-community.so`<br>`addon/hazkey-community.conf`・`inputmethod/hazkey-community.conf` |
+| IBusエンジン | `ibus-hazkey.xml`<br>`libexec/ibus-hazkey/ibus-engine-hazkey` | `ibus-hazkey-community.xml`<br>`libexec/ibus-hazkey-community/ibus-engine-hazkey-community` |
+| ユーザデータ | `~/.config/hazkey/`<br>`~/.local/share/hazkey/`<br>`~/.local/state/hazkey/` | `~/.config/hazkey-community/`<br>`~/.local/share/hazkey-community/`<br>`~/.local/state/hazkey-community/` |
+| サーバソケット | `$XDG_RUNTIME_DIR/hazkey-server.<uid>.sock` | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
+
+> 実行ファイル名 `hazkey-community-server` は15文字を超えるため、`pgrep -x` / `pkill -x` (プロセス名の完全一致) では一致しません。  
+> サーバを終了する場合は、次のようにコマンドライン照合 (`-f`) を使用してください。  
+>
+> ```sh
+> pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
+> ```
+
+### 既存データの移行 (手動)
+
+名称変更前のhazkey-community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、  
+自動では引き継がれません。  
+引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
+
+```sh
+# 実行内容の確認のみ (何も変更しない)。dry-runはサーバを終了しない。
+/usr/share/hazkey-community/hazkey-community-migrate.sh --dry-run
+
+# 移行を実行する
+/usr/share/hazkey-community/hazkey-community-migrate.sh
+```
+
+- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、hazkey-community側へ**コピー**します。  
+  旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
+- コピー後、Zenzaiモデルのシンボリックリンク (`zenzai.gguf`) と、`config.json` / `env` 内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
+- 起動中のhazkey-community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey-Communityで文字を入力しないでください。  
+- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。ファイルやシンボリックリンクを含むコピー先はスキップします。  
+  `--force` を指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
+- Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
+  移行後、Fcitx 5 / IBusを再起動し、入力メソッド **Hazkey-Community** を追加してください。  
 
 <br>
 
 ## IBusフロントエンド (実験的)
 
-Fcitx 5と同じhazkey-serverを利用する実験的なIBusフロントエンド (`ibus-hazkey`) です。  
-GitHub Releasesのibus-hazkeyパッケージ (`.deb` / `.rpm`) で導入するのが手軽です。(上記「クイックスタート」参照)  
+Fcitx 5と同じhazkey-community-serverを利用する実験的なIBusフロントエンド (`ibus-hazkey-community`) です。  
+GitHub Releasesのibus-hazkey-communityパッケージ (`.deb` / `.rpm`) で導入するのが手軽です。(上記「クイックスタート」参照)  
 
 ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションを指定します。  
 (既定は**OFF**、**pkg-config ibus-1.0**が必要)  
@@ -195,9 +242,9 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後はibus-daemonを再起動し、ibus list-engineに **hazkey** が表示されることを確認してください。  
-エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey/ibus-engine-hazkey`、  
-component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml` に配置されます。  
+インストール後はibus-daemonを再起動し、ibus list-engineに **hazkey-community** が表示されることを確認してください。  
+エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community/ibus-engine-hazkey-community`、  
+component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml` に配置されます。  
 
 トランスポートはFcitx 5版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です。  
 (`hazkey-frontend-common/candidate_refresh_coalescer.h - hazkey::frontend::CandidateRefreshCoalescer`、30[ms]の立ち上がりエッジ型デバウンス)  
@@ -214,10 +261,10 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 ### IBusフロントエンドの既知の制約
 
 - **Fcitx 5とIBusの同時有効化による入力に対応しています。**  
-  hazkey-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
+  hazkey-community-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
   変換エンジン・ユーザ辞書・学習メモリ・Zenzaiモデルは全接続で共有します。(`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
   接続を奪い合いません。  
-- **hazkey-settingsを起動しても、IME側の入力接続は切断されません。**  
+- **hazkey-community-settingsを起動しても、IME側の入力接続は切断されません。**  
 - **同時接続の上限は8です**  
   (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)  
   超過した新規接続は、accept直後にサーバが閉じ、既存セッションは保護されます。  
@@ -226,7 +273,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   (`hazkey-server/Sources/hazkey-server/socketUtils.swift - readData(from:count:timeoutMs:)` / `writeData(to:data:timeoutMs:)`)、  
   応答を返さない/読み取らないクライアントは `hazkey-server/Sources/hazkey-server/socketUtils.swift - SocketError.ioTimeout` で切断され、  
   他のクライアントの処理が再開します。  
-- **hazkey-settingsで設定を変更しても、他方の入力中テキストは失われません。**  
+- **hazkey-community-settingsで設定を変更しても、他方の入力中テキストは失われません。**  
   設定変更時の再初期化は要求元の接続だけが自分の組成をリセットし、他の接続は組成を保持します。  
   入力テーブルは名前ごとにレジストリへ追加登録されるため (`InputStyleManager.registerInputStyle`)、  
   変更前に挿入済みの要素は旧テーブル名のまま解決できます。  
@@ -315,7 +362,7 @@ jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する *
   本モデルは、togatogah氏の成果物です。(ライセンスは、CC-BY-SA-4.0)  
   設定画面の[ニューラル変換モデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
 - **重みは非同梱**:  
-  モデルの重みはHazkeyのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。  
+  モデルの重みはHazkey-Communityのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。  
   上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
 - **完全性検証**:  
   ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
@@ -338,7 +385,7 @@ jinen-v2は実験的な位置づけであり、新規利用の第一候補は**z
 
 ### 有効化の手順
 
-1. `hazkey-settings` を起動し、[AI]タブを開きます。  
+1. `hazkey-community-settings` を起動し、[AI]タブを開きます。  
 2. [ニューラル変換モデルの管理]から利用したいモデルをダウンロードします。  
 3. [ニューラル変換を有効化]にチェックを入れ、バックエンドデバイス (CPUまたはVulkan GPU) を選択して、[適用]または[OK]を押します。  
    有効化には数十秒かかる場合があり、進行中は待機ダイアログが表示されます。反映後はサーバが起動時 (設定リロード時) にモデルを事前ウォームアップするため、  
@@ -397,16 +444,16 @@ NVIDIAドライバは、GPU世代によって必要なパッケージや対応�
 
 ### GPU / iGPUの最低要件と性能の目安
 
-GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応し、システムとHazkeyから認識できることです。  
+GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応し、システムとHazkey-Communityから認識できることです。  
 
 #### 動作上の最低条件
 
 GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要があります。  
 
 - Vulkan 1.2以上に対応したGPUまたはiGPUと、対応するVulkanドライバがインストールされていること  
-- hazkey-serverが `GGML_VULKAN=ON` でビルドされていること  
+- hazkey-community-serverが `GGML_VULKAN=ON` でビルドされていること  
 - `vulkaninfo --summary` で対象デバイスが列挙されること  
-- フレームワーク再起動後、`hazkey-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
+- フレームワーク再起動後、`hazkey-community-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
 
 これらはVulkanバックエンドを利用できるかの確認条件であり、変換速度や安定性を保証するものではありません。  
 
@@ -427,7 +474,7 @@ Vulkan対応状況の確認には、[NVIDIA Vulkan Driver Support](https://devel
 同じ型番でも、OS、Vulkanドライバの種類とバージョン、デスクトップ版・モバイル版・OEM版によって結果が異なります。  
 llama.cppの実行時のデバイス機能検査により、Vulkan 1.2対応のデバイスでも利用できない場合があります。  
 
-上記はVulkan API対応の目安であり、Hazkeyでの変換速度や安定性を示すものではありません。  
+上記はVulkan API対応の目安であり、Hazkey-Communityでの変換速度や安定性を示すものではありません。  
 iGPUはシステムメモリを共有するため、専用VRAMのGPUとは利用可能なメモリ容量や帯域が異なります。  
 
 #### 性能について
@@ -444,9 +491,9 @@ GPU/iGPUが条件を満たさない場合や、GPU/iGPUよりCPUの方が適し�
 ### モデルの保存場所とアクティブモデル
 
 - ダウンロードしたモデル本体:  
-  `~/.local/share/hazkey/zenzai/models/<モデルキー名>.gguf`  
+  `~/.local/share/hazkey-community/zenzai/models/<モデルキー名>.gguf`  
 - アクティブなモデル:  
-  `~/.local/share/hazkey/zenzai/zenzai.gguf`  
+  `~/.local/share/hazkey-community/zenzai/zenzai.gguf`  
   (上記models配下へのシンボリックリンク。[ニューラル変換モデルの管理]のアクティブ化 / 無効化でこのリンクが切り替わります)  
 - サーバは、環境変数`HAZKEY_ZENZAI_MODEL` (任意) > ユーザディレクトリのzenzai.gguf > システム配備のモデルの順に探索します。  
 
@@ -460,23 +507,23 @@ hazkey-communityが使用するファイルの場所と、サーバ起動時に�
 
 | 用途 | パス |
 |---|---|
-| 設定本体 | `$XDG_CONFIG_HOME/hazkey/config.json`<br>(通常は `~/.config/hazkey/config.json`) |
-| 環境変数ファイル | `$XDG_CONFIG_HOME/hazkey/env`<br>(通常は `~/.config/hazkey/env`) |
-| ユーザ辞書 | `$XDG_CONFIG_HOME/hazkey/user_dictionary.tsv` |
-| Zenzaiモデル | `$XDG_DATA_HOME/hazkey/zenzai/`<br>(通常は `~/.local/share/hazkey/zenzai/`) |
-| 学習データ (入力履歴) | `$XDG_STATE_HOME/hazkey/` 配下<br>(通常は `~/.local/state/hazkey/`) |
-| サーバソケット | `$XDG_RUNTIME_DIR/hazkey-server.<uid>.sock` |
+| 設定本体 | `$XDG_CONFIG_HOME/hazkey-community/config.json`<br>(通常は `~/.config/hazkey-community/config.json`) |
+| 環境変数ファイル | `$XDG_CONFIG_HOME/hazkey-community/env`<br>(通常は `~/.config/hazkey-community/env`) |
+| ユーザ辞書 | `$XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv` |
+| Zenzaiモデル | `$XDG_DATA_HOME/hazkey-community/zenzai/`<br>(通常は `~/.local/share/hazkey-community/zenzai/`) |
+| 学習データ (入力履歴) | `$XDG_STATE_HOME/hazkey-community/` 配下<br>(通常は `~/.local/state/hazkey-community/`) |
+| サーバソケット | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
 
-### 環境変数ファイル `~/.config/hazkey/env`
+### 環境変数ファイル `~/.config/hazkey-community/env`
 
-`hazkey-server` の起動時、ラッパースクリプトがこのファイルを `source` してサーバプロセスに引き継ぎます。  
+`hazkey-community-server` の起動時、ラッパースクリプトがこのファイルを `source` してサーバプロセスに引き継ぎます。  
 1行1変数の `KEY=value` 形式 (`export` 不要、`#` 以降はコメント)  
 
 ファイルが存在しない場合は何も行われません。  
 
 | 変数名 | 用途 | 設定値 |
 |---|---|---|
-| `VK_DRIVER_FILES` | 使用するVulkan ICDの明示指定<br>(設定するとhazkey-serverはバックエンド安全確認プローブを省略してこの指定をそのまま使用する。マルチGPU環境のSIGILL回避にもなる) | ICDのJSONパス<br>(例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br><br>実在名は `ls /usr/share/vulkan/icd.d/` コマンドで確認 |
+| `VK_DRIVER_FILES` | 使用するVulkan ICDの明示指定<br>(設定するとhazkey-community-serverはバックエンド安全確認プローブを省略してこの指定をそのまま使用する。マルチGPU環境のSIGILL回避にもなる) | ICDのJSONパス<br>(例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br><br>実在名は `ls /usr/share/vulkan/icd.d/` コマンドで確認 |
 | `VK_ICD_FILENAMES` | 同上 (Vulkan loader向けの別名)<br>`VK_DRIVER_FILES` と同じ値を書く | 同上 |
 | `HAZKEY_ZENZAI_CPU_THREADS` | Zenzai CPU推論のスレッド数 | `1`〜`8`<br>未設定・無効値時は既定動作 |
 | `HAZKEY_ZENZAI_DEADLINE_MS` | Zenzai CPU推論1回の上限時間 (ミリ秒) | `0`〜`2000`<br>`0` は期限なし。<br>超過時はニューラル変換なしにフォールバック |
@@ -487,8 +534,8 @@ hazkey-communityが使用するファイルの場所と、サーバ起動時に�
 **設定例**:  
 
 ```sh
-mkdir -p ~/.config/hazkey
-cat > ~/.config/hazkey/env <<'EOF'
+mkdir -p ~/.config/hazkey-community
+cat > ~/.config/hazkey-community/env <<'EOF'
 # NVIDIA GPU のみに固定する例
 VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
@@ -497,11 +544,11 @@ HAZKEY_ZENZAI_DEADLINE_MS=0
 EOF
 
 # 次回サーバ起動時に反映 (即時反映したい場合はサーバを終了)
-pkill -u $USER -x hazkey-server
+pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 ```
 
 > Systemdのドロップイン (`fcitx5.service.d/*.conf` の `Environment=`) でも環境変数は設定できますが、  
-> ラッパースクリプトがenvファイルを `source` するため、両方に同じ変数を書いた場合は **`~/.config/hazkey/env` 側が優先**されます。  
+> ラッパースクリプトがenvファイルを `source` するため、両方に同じ変数を書いた場合は **`~/.config/hazkey-community/env` 側が優先**されます。  
 > 混在させずどちらか一方を使用してください。  
 
 <br>
@@ -526,7 +573,7 @@ Swiftのインストールから依存パッケージの導入までを個別に
 
 ### Swiftのインストール
 
-Hazkeyのビルドには Swift 6.1 以上が必要です。  
+Hazkey-Communityのビルドには Swift 6.1 以上が必要です。  
 公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
 
 > **2026年9月時点の注意**:  
@@ -728,9 +775,9 @@ cmake -G Ninja \
 
 ## トラブルシューティング
 
-### マルチGPU環境でhazkey-serverがSIGILLでクラッシュする
+### マルチGPU環境でhazkey-community-serverがSIGILLでクラッシュする
 
-NVIDIA GPUとAMD/Intel iGPUが同居する環境 (両方のVulkan ICDがインストール済み) で、`hazkey-server` が起動直後にSIGILL (signal 4)でクラッシュする現象があります。  
+NVIDIA GPUとAMD/Intel iGPUが同居する環境 (両方のVulkan ICDがインストール済み) で、`hazkey-community-server` が起動直後にSIGILL (signal 4)でクラッシュする現象があります。  
 ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29))  
 
 **原因**:  
@@ -739,12 +786,12 @@ SIGILLはtrap命令のため `do/catch` で捕捉できません。
 
 **コミュニティ版の自動回避 (隔離プローブ方式)**:  
 
-`hazkey-server` は起動のたびに、GPUバックエンド (Vulkan) のロードをまず**隔離した子プロセス** (自分自身を `--probe-backends` で再実行) で試します。  
+`hazkey-community-server` は起動のたびに、GPUバックエンド (Vulkan) のロードをまず**隔離した子プロセス** (自分自身を `--probe-backends` で再実行) で試します。  
 この子プロセスがクラッシュ・タイムアウト (既定5秒)・異常終了した場合、実サーバ本体を巻き込まずに危険なドライバ組み合わせを検出し、  
 そのセッションはVulkanを含まないバックエンドディレクトリから読み込み直して**CPU専用のニューラル変換に自動フォールバック**します。  
 
 GPUアクセラレーションが無言で無効化されないよう、フォールバックが発生した場合は設定UI ([AI]タブ) に警告バナーが表示され、  
-`~/.config/hazkey/env` で単一ICDを固定してから使用中のフレームワークを再起動するよう案内します。  
+`~/.config/hazkey-community/env` で単一ICDを固定してから使用中のフレームワークを再起動するよう案内します。  
 
 `VK_DRIVER_FILES` / `VK_ICD_FILENAMES` / `VK_ADD_DRIVER_FILES` / `VK_LOADER_DRIVERS_SELECT` / `VK_LOADER_DRIVERS_DISABLE` のいずれかが設定されている場合、  
 その明示指定を信頼してこの安全確認プローブ自体を省略します (ユーザの明示指定が常に最優先されます)。  
@@ -757,7 +804,7 @@ GPUアクセラレーションが無言で無効化されないよう、フォ�
 > (Vulkan Loader >= 1.3.219 とMesa >= 25.2.1 の組み合わせでは、loaderがアーキテクチャ不一致のマニフェストを自動的に除外)  
 > マルチベンダー構成のクラッシュ対策は、上記の隔離バックエンドプローブに一本化されています。  
 
-それでも症状が出る・特定のGPUに固定したい場合は、`~/.config/hazkey/env`ファイルで`VK_DRIVER_FILES` / `VK_ICD_FILENAMES`を設定してください。  
+それでも症状が出る・特定のGPUに固定したい場合は、`~/.config/hazkey-community/env`ファイルで`VK_DRIVER_FILES` / `VK_ICD_FILENAMES`を設定してください。  
 (書式・設定例は上記「設定・環境のリファレンス」参照)  
 
 Vulkanを完全に無効化したい場合は、`-DGGML_VULKAN=OFF` のCPU専用ビルドも可能です。  
@@ -771,11 +818,11 @@ ICDのファイル名はドライバにより異なります。
 
 ```sh
 fcitx5-remote -r                          # 設定リロード
-rm -rf ~/.cache/fcitx5/hazkey/            # キャッシュクリア
+rm -rf ~/.cache/fcitx5/hazkey-community/  # キャッシュクリア
 systemctl --user restart fcitx5.service   # 完全再起動
 ```
 
-学習データは、`~/.local/state/hazkey/`ディレクトリ内に保持されるため失われません。  
+学習データは、`~/.local/state/hazkey-community/`ディレクトリ内に保持されるため失われません。  
 
 ### XIMを使用するアプリケーションで読みと変換結果が重複表示される
 
@@ -810,25 +857,25 @@ X11環境でXIMを使うアプリに入力した時、入力中の読みと変�
 
 ```sh
 ibus restart                              # デーモン再起動
-ibus list-engine | grep hazkey            # Hazkey が出なければ component 登録を確認
+ibus list-engine | grep hazkey-community  # Hazkey-Community が出なければ component 登録を確認
 ```
 
-component XML (`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey.xml`) が配置されているかも確認してください。  
+component XML (`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml`) が配置されているかも確認してください。  
 
 ### サーバに接続できない
 
 ```sh
-pgrep -af hazkey-server                              # 起動確認
-ls -la "$XDG_RUNTIME_DIR"/hazkey-server.*.sock       # ソケット確認
+pgrep -af hazkey-community-server                    # 起動確認
+ls -la "$XDG_RUNTIME_DIR"/hazkey-community-server.*.sock  # ソケット確認
 ```
 
 サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBusデーモン) を再起動すると再度起動します。  
-手動起動での切り分けは、インストール先の `hazkey-server` (ラッパースクリプト) を実行して確認できます。  
+手動起動での切り分けは、インストール先の `hazkey-community-server` (ラッパースクリプト) を実行して確認できます。  
 
 ### ユーザ辞書が反映されない
 
-- `~/.config/hazkey/user_dictionary.tsv`の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
-- サーバはファイルの更新日時を監視して自動再読込しますが、反映されない場合は `pkill -u $USER -x hazkey-server` コマンドを実行してサーバを再起動してください。  
+- `~/.config/hazkey-community/user_dictionary.tsv`の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
+- サーバはファイルの更新日時を監視して自動再読込しますが、反映されない場合は `pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'` コマンドを実行してサーバを再起動してください。  
 
 ### ZenzaiのGPUデバイスが選択肢に出ない
 

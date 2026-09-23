@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component>
+  <name>org.freedesktop.IBus.HazkeyCommunity</name>
+  <description>Hazkey-Community AI Japanese input method</description>
+  <exec>@CMAKE_INSTALL_FULL_LIBEXECDIR@/ibus-hazkey-community/ibus-engine-hazkey-community --ibus</exec>
+  <version>@PROJECT_VERSION@</version>
+  <author>Hiira, Presire</author>
+  <license>MIT</license>
+  <homepage>https://github.com/presire/hazkey-community</homepage>
+  <textdomain>ibus-hazkey-community</textdomain>
+  <engines exec="@CMAKE_INSTALL_FULL_LIBEXECDIR@/ibus-hazkey-community/ibus-engine-hazkey-community --xml" />
+</component>

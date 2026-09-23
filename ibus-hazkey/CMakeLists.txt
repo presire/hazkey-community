@@ -24,13 +24,13 @@ if(NOT TARGET hazkey-frontend-common)
         "${CMAKE_CURRENT_BINARY_DIR}/hazkey-frontend-common")
 endif()
 
-configure_file(ibus-hazkey.xml.in
-    ${CMAKE_CURRENT_BINARY_DIR}/ibus-hazkey.xml
+configure_file(ibus-hazkey-community.xml.in
+    ${CMAKE_CURRENT_BINARY_DIR}/ibus-hazkey-community.xml
     @ONLY)
 
-# gettext catalogs for the "ibus-hazkey" domain (engine <longname>/<description>).
+# gettext catalogs for the "ibus-hazkey-community" domain (engine <longname>/<description>).
 add_subdirectory(po)
 add_subdirectory(src)
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ibus-hazkey.xml
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ibus-hazkey-community.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/ibus/component)

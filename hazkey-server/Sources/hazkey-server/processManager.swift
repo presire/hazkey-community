@@ -39,7 +39,7 @@ class ProcessManager {
             // ロック失敗
             if let (oldPid, versionMatch) = readLockFile() {
                 if !force, versionMatch {
-                    NSLog("Another hazkey-server is already running.")
+                    NSLog("Another hazkey-community-server is already running.")
                     NSLog("Use -r or --replace option to replace the existing server.")
                     throw ProcessManagerError.anotherInstanceRunning
                 }
@@ -106,7 +106,13 @@ class ProcessManager {
     private func getOtherServerPIDs() throws -> [Int32] {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["pgrep", "-u", String(uid), "-x", "hazkey-server"]
+        // 実行ファイル名 "hazkey-community-server" は15文字を超え、/proc/<pid>/comm では切り詰められるため、
+        // "pgrep -x" (comm照合) では一致しない
+        // そのため、コマンドライン全体 (-f) に対して、argv[0]のファイル名が完全一致するものだけを照合する
+        // (エディタで開いたファイルや "sh /usr/bin/hazkey-community-server" 等の誤一致を避ける)
+        task.arguments = [
+            "pgrep", "-u", String(uid), "-f", "^([^ ]*/)?hazkey-community-server( |$)",
+        ]
         let pipe = Pipe()
         task.standardOutput = pipe
 

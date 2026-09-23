@@ -36,7 +36,7 @@ func zenzaiGPUFallbackActive(_ outcome: BackendProbeOutcome?) -> Bool {
     }
 }
 
-/// ユーザがシェルの環境変数 / "$XDG_CONFIG_HOME/hazkey/env"ファイルでVulkanドライバを既に選択している場合にTrueを返す
+/// ユーザがシェルの環境変数 / "$XDG_CONFIG_HOME/hazkey-community/env"ファイルでVulkanドライバを既に選択している場合にTrueを返す
 /// その場合、選択を信頼して以降の安全性プローブを完全に省略し、ユーザ指定どおりに適用する
 func vulkanEnvOverridePresent(in environment: [String: String]) -> Bool {
     vulkanOverrideEnvironmentVariables.contains { environment[$0] != nil }
@@ -138,7 +138,7 @@ func cpuOnlyBackendDirectory(
     guard !keptEntries.isEmpty else { return nil }
 
     let stagingDirectory = fileManager.temporaryDirectory
-        .appendingPathComponent("hazkey-cpu-only-backends-\(ProcessInfo.processInfo.processIdentifier)")
+        .appendingPathComponent("hazkey-community-cpu-only-backends-\(ProcessInfo.processInfo.processIdentifier)")
     try? fileManager.removeItem(at: stagingDirectory)
     guard (try? fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)) != nil else {
         return nil

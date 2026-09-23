@@ -146,7 +146,7 @@ void LearningHistoryDialog::onDeleteSelected() {
         server_->deleteLearningEntries(target_.profileId, keys);
     if (!deletedCount) {
         QMessageBox::warning(this, tr("エラー"),
-                             tr("入力履歴の削除に失敗しました。hazkeyサーバーへの接続を確認してください。"));
+                             tr("入力履歴の削除に失敗しました。hazkey-community-serverへの接続を確認してください。"));
         return;
     }
 
@@ -161,7 +161,7 @@ void LearningHistoryDialog::reloadPage() {
         target_.profileId, searchEdit_->text().toStdString(), offset_, kPageLimit);
     if (!result) {
         QMessageBox::warning(this, tr("エラー"),
-                             tr("入力履歴を取得できませんでした。hazkeyサーバーへの接続を確認してください。"));
+                             tr("入力履歴を取得できませんでした。hazkey-community-serverへの接続を確認してください。"));
         return;
     }
 

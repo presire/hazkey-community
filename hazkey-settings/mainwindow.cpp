@@ -214,7 +214,7 @@ MainWindow::MainWindow(QWidget* parent)
         QMessageBox::critical(
             this, tr("Configuration Error"),
             tr("Failed to load configuration. Please check your "
-               "connection to the hazkey server."));
+               "connection to the hazkey-community-server."));
     }
 }
 
@@ -635,7 +635,7 @@ void MainWindow::updateZenzaiAvailabilityUi() {
             tr("<b>Warning:</b> GPU acceleration was disabled because the Vulkan driver check "
                "crashed or timed out (often caused by mixed GPU vendors). "
                "Neural conversion runs on the CPU for this session. "
-               "To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey/env "
+               "To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey-community/env "
                "to a single driver file and restart the input method."),
             "yellow");
         ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
@@ -867,11 +867,11 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         }
 
         QString keymapNoteText = ui_->keymapAdvancedNote->text();
-        keymapNoteText.replace("$XDG_CONFIG_HOME/hazkey", xdgConfigHome);
+        keymapNoteText.replace("$XDG_CONFIG_HOME/hazkey-community", xdgConfigHome);
         ui_->keymapAdvancedNote->setText(keymapNoteText);
 
         QString inputTableNoteText = ui_->inputTableAdvancedNote->text();
-        inputTableNoteText.replace("$XDG_CONFIG_HOME/hazkey", xdgConfigHome);
+        inputTableNoteText.replace("$XDG_CONFIG_HOME/hazkey-community", xdgConfigHome);
         ui_->inputTableAdvancedNote->setText(inputTableNoteText);
     }
 
@@ -2042,7 +2042,7 @@ void MainWindow::onClearLearningData() {
         }
         else {
             QMessageBox::critical(this, tr("Error"), tr("Failed to clear input history. Please check your "
-                                                        "connection to the hazkey server."));
+                                                        "connection to the hazkey-community-server."));
         }
     }
 }
@@ -2908,10 +2908,10 @@ QString MainWindow::userDictFilePath() {
     QString xdg = qEnvironmentVariable("XDG_CONFIG_HOME");
     QString base;
     if (!xdg.isEmpty()) {
-        base = xdg + "/hazkey";
+        base = xdg + "/hazkey-community";
     }
     else {
-        base = QDir::homePath() + "/.config/hazkey";
+        base = QDir::homePath() + "/.config/hazkey-community";
     }
 
     QDir().mkpath(base);

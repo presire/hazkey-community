@@ -1,11 +1,11 @@
-# Compiles the per-language .po files into the "ibus-hazkey" gettext domain.
+# Compiles the per-language .po files into the "ibus-hazkey-community" gettext domain.
 #
 # The IBus panel translates an engine's <longname> with
 # dgettext(engine_textdomain, longname); engine_textdomain is the <textdomain>
-# element that `ibus-engine-hazkey --xml` emits (see src/main.cpp). glibc/GLib
+# element that `ibus-engine-hazkey-community --xml` emits (see src/main.cpp). glibc/GLib
 # search the default locale directory for a domain that has no explicit
 # bindtextdomain(), so installing the .mo under
-# ${CMAKE_INSTALL_DATADIR}/locale/<lang>/LC_MESSAGES/ibus-hazkey.mo is enough.
+# ${CMAKE_INSTALL_DATADIR}/locale/<lang>/LC_MESSAGES/ibus-hazkey-community.mo is enough.
 #
 # Languages are listed in ./LINGUAS (one or more space-separated codes, '#' for
 # comments); the .po files live next to it.
@@ -31,18 +31,18 @@ foreach(_lang IN LISTS _ibus_hazkey_languages)
         message(FATAL_ERROR "Missing translation file: ${_po}")
     endif()
 
-    # The compiled .mo must be named after the textdomain ("ibus-hazkey"), not
+    # The compiled .mo must be named after the textdomain ("ibus-hazkey-community"), not
     # after the locale, so the msgfmt output is renamed at install time.
     set(_gmo "${CMAKE_CURRENT_BINARY_DIR}/${_lang}.gmo")
     add_custom_command(
         OUTPUT "${_gmo}"
         COMMAND "${GETTEXT_MSGFMT_EXECUTABLE}" -o "${_gmo}" "${_po}"
         DEPENDS "${_po}"
-        COMMENT "Compiling ${_lang}.po -> ibus-hazkey.mo"
+        COMMENT "Compiling ${_lang}.po -> ibus-hazkey-community.mo"
         VERBATIM)
     install(FILES "${_gmo}"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/locale/${_lang}/LC_MESSAGES"
-        RENAME "ibus-hazkey.mo")
+        RENAME "ibus-hazkey-community.mo")
     list(APPEND _ibus_hazkey_mo_files "${_gmo}")
 endforeach()
 

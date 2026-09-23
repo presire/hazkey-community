@@ -50,7 +50,7 @@ void installHazkeyFrontendHooks() {
     hazkey::frontend::setServerSpawner([](bool forceRestart) {
         std::vector<std::string> args;
         args.reserve(2);
-        args.push_back("hazkey-server");
+        args.push_back("hazkey-community-server");
         if (forceRestart) {
             args.push_back("-r");
         }

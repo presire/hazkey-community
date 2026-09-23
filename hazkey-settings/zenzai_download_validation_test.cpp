@@ -68,7 +68,7 @@ void ZenzaiDownloadValidationTest::init() {
 }
 
 QString ZenzaiDownloadValidationTest::modelDirectory() const {
-    return tempDir_.path() + "/hazkey/zenzai/models";
+    return tempDir_.path() + "/hazkey-community/zenzai/models";
 }
 
 QString ZenzaiDownloadValidationTest::modelPath(const QString& key) const {

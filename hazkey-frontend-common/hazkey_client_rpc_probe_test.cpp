@@ -230,7 +230,7 @@ int main() {
     char* directory = mkdtemp(directoryTemplate);
     assert(directory != nullptr);
     const std::string root(directory);
-    const std::string socketPath = root + "/hazkey-server." + std::to_string(getuid()) + ".sock";
+    const std::string socketPath = root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
     const std::string evidencePath = root + "/evidence.jsonl";
     assert(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
     assert(setenv("HAZKEY_PERF_EVIDENCE", evidencePath.c_str(), 1) == 0);

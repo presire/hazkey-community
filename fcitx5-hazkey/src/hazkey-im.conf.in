@@ -1,7 +1,7 @@
 [InputMethod]
-Name=Hazkey
+Name=Hazkey-Community
 Icon=hazkey-community
-Label=Hazkey
+Label=Hazkey-Community
 LangCode=ja
-Addon=hazkey
+Addon=hazkey-community
 Configurable=True

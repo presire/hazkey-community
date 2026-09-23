@@ -81,7 +81,7 @@ void installGlibFrontendHooks() {
         });
 
     hazkey::frontend::setServerSpawner([](bool forceRestart) {
-        std::vector<std::string> arguments{"hazkey-server"};
+        std::vector<std::string> arguments{"hazkey-community-server"};
         if (forceRestart) {
             arguments.emplace_back("-r");
         }
@@ -96,7 +96,7 @@ void installGlibFrontendHooks() {
         GError* error = nullptr;
         if (!g_spawn_async(nullptr, argv.data(), nullptr, G_SPAWN_SEARCH_PATH,
                            nullptr, nullptr, nullptr, &error)) {
-            g_warning("hazkey: failed to spawn hazkey-server: %s", error->message);
+            g_warning("hazkey: failed to spawn hazkey-community-server: %s", error->message);
             g_error_free(error);
         }
     });

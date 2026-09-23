@@ -118,7 +118,8 @@ HazkeyServerConnector::~HazkeyServerConnector() {
 std::string HazkeyServerConnector::getSocketPath() {
     const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
     uid_t uid = getuid();
-    std::string sockname = "hazkey-server." + std::to_string(uid) + ".sock";
+    std::string sockname =
+        "hazkey-community-server." + std::to_string(uid) + ".sock";
     if (xdg_runtime_dir && xdg_runtime_dir[0] != '\0') {
         return std::string(xdg_runtime_dir) + "/" + sockname;
     } else {
@@ -339,7 +340,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     if (!writeAll(sock_, &writeLen, 4)) {
         HAZKEY_LOG_INFO()
             << "Failed to communicate with server while writing data length. "
-               "reconnecting to hazkey-server...";
+               "reconnecting to hazkey-community-server...";
         close(sock_);
         sock_ = -1;
         connectServer();
@@ -351,7 +352,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     // write data
     if (!writeAll(sock_, msg.c_str(), msg.size())) {
         HAZKEY_LOG_INFO() << "Failed to communicate with server while writing data. "
-                        "reconnecting to hazkey-server...";
+                        "reconnecting to hazkey-community-server...";
         close(sock_);
         sock_ = -1;
         connectServer();

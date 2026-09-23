@@ -4,11 +4,11 @@
 # gettext catalogs.
 
 # Engine description (<icon>/<setup>) embedded into the engine binary and
-# emitted by `ibus-engine-hazkey --xml`. The setup command must be an absolute
+# emitted by `ibus-engine-hazkey-community --xml`. The setup command must be an absolute
 # path because ibus-setup launches it with os.spawnl(), which does not search
 # PATH (an absolute path would otherwise resolve via execv, not PATH lookup).
 set(HAZKEY_ENGINE_ICON "hazkey-community")
-set(HAZKEY_ENGINE_SETUP "${CMAKE_INSTALL_FULL_BINDIR}/hazkey-settings")
+set(HAZKEY_ENGINE_SETUP "${CMAKE_INSTALL_FULL_BINDIR}/hazkey-community-settings")
 configure_file(engine_description.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/engine_description.h
     @ONLY)
@@ -34,8 +34,12 @@ target_link_libraries(ibus-engine-hazkey PRIVATE
     hazkey-frontend-common
 )
 
+# Installed as ibus-engine-hazkey-community under libexec/ibus-hazkey-community
+# so it can coexist with an upstream ibus-hazkey package.
+set_target_properties(ibus-engine-hazkey PROPERTIES
+    OUTPUT_NAME ibus-engine-hazkey-community)
 install(TARGETS ibus-engine-hazkey
-    RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey)
+    RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community)
 
 # Frontend-logic test. Mirrors fcitx5-hazkey's hazkey_candidate_selection_test
 # for the IBus candidate index mapping. It links hazkey_state.cpp directly

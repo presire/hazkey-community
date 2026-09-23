@@ -1,14 +1,14 @@
-# Translation template for the ibus-hazkey engine component.
+# Translation template for the ibus-hazkey-community engine component.
 #
 # The msgids are the strings that IBus translates at runtime:
 #   * the <longname> and <description> emitted by
-#     `ibus-engine-hazkey --xml` (see src/main.cpp), translated by the panel
+#     `ibus-engine-hazkey-community --xml` (see src/main.cpp), translated by the panel
 #     via dgettext(engine_textdomain, longname);
-#   * the component <description> in ibus-hazkey.xml.in.
-# The domain is "ibus-hazkey" (the <textdomain> element in the engine XML).
+#   * the component <description> in ibus-hazkey-community.xml.in.
+# The domain is "ibus-hazkey-community" (the <textdomain> element in the engine XML).
 msgid ""
 msgstr ""
-"Project-Id-Version: ibus-hazkey\n"
+"Project-Id-Version: ibus-hazkey-community\n"
 "Report-Msgid-Bugs-To: https://github.com/presire/hazkey-community/issues\n"
 "POT-Creation-Date: 2026-09-14 00:00+0900\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
@@ -19,10 +19,10 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Hazkey Community"
+msgid "Hazkey-Community"
 msgstr ""
 
-msgid "Hazkey AI Japanese input method (hazkey-community)"
+msgid "Hazkey-Community AI Japanese input method"
 msgstr ""
 
 # Auxiliary text (fcitx AuxUp/AuxDown equivalent) shown while composing.

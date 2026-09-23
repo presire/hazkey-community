@@ -11,8 +11,8 @@
 
 namespace {
 
-constexpr const char* kEngineName = "hazkey";
-constexpr const char* kComponentBusName = "org.freedesktop.IBus.Hazkey";
+constexpr const char* kEngineName = "hazkey-community";
+constexpr const char* kComponentBusName = "org.freedesktop.IBus.HazkeyCommunity";
 
 
 typedef struct _IBusHazkeyFactory IBusHazkeyFactory;
@@ -53,7 +53,7 @@ static void onBusDisconnected([[maybe_unused]] IBusBus* bus,
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    // Required for g_dgettext("ibus-hazkey", ...) in hazkey_state.cpp (and
+    // Required for g_dgettext("ibus-hazkey-community", ...) in hazkey_state.cpp (and
     // the panel's dgettext of <longname>/<description>) to return Japanese:
     // without this, gettext always falls back to the English msgid.
     setlocale(LC_ALL, "");

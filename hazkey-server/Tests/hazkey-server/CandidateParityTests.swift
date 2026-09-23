@@ -121,7 +121,7 @@ final class CandidateParityTests: XCTestCase {
             throw ParityError.missingHome
         }
         let path = URL(fileURLWithPath: home)
-            .appendingPathComponent(".local/share/hazkey/zenzai/zenzai.gguf").path
+            .appendingPathComponent(".local/share/hazkey-community/zenzai/zenzai.gguf").path
         guard FileManager.default.fileExists(atPath: path) else {
             throw ParityError.modelMissing(path)
         }
@@ -158,7 +158,7 @@ final class CandidateParityTests: XCTestCase {
             process.waitUntilExit()
         }
 
-        let socketURL = root.appendingPathComponent("runtime/hazkey-server.\(getuid()).sock")
+        let socketURL = root.appendingPathComponent("runtime/hazkey-community-server.\(getuid()).sock")
         let socketIsIsolated = socketURL.standardizedFileURL.path.hasPrefix(
             root.standardizedFileURL.path + "/")
         XCTAssertTrue(socketIsIsolated, "Test socket must remain under its temporary XDG root.")
