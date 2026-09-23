@@ -68,6 +68,16 @@ class UserDictionary {
     private var entries: [UserDictionaryEntry] = []
     private var lastModified: Date? = nil
     private var lastLoadedPath: String = ""
+    /// 直近にファイルシステムを確認した単調時刻 (ナノ秒)。未確認ならnil。
+    /// wall clock (Date) は時刻変更の影響を受けるため使わない。
+    private var lastCheckUptime: UInt64? = nil
+
+    /// ホットパスでの `stat` を抑えるための再確認間隔 (秒)
+    static let reloadThrottleInterval: TimeInterval = 1.0
+
+    /// 上記の間隔をナノ秒へ変換したもの (比較のたびに変換しないためのヘルパ)
+    private static let reloadThrottleIntervalNanoseconds: UInt64 =
+        UInt64(reloadThrottleInterval * 1_000_000_000)
 
     /// 既定パス: $XDG_CONFIG_HOME/hazkey/user_dictionary.tsv
     static func defaultPath() -> URL {
@@ -98,10 +108,22 @@ class UserDictionary {
         return UserDictionaryEntry(reading: reading, word: word, comment: comment, pos: pos)
     }
 
-    /// ファイルのmtimeが変化していれば (または未ロードなら) ディスクから再読込する (頻繁に呼び出しても安全)
+    /// ファイルのmtimeが変化していれば (または未ロードなら) ディスクから再読込する
+    /// `force` がfalseのときは、直近のファイルシステム確認 (`lastCheckUptime`) から
+    /// `reloadThrottleInterval` 未満しか経過していなければ、statも再読込も行わずに
+    /// 即座にfalseを返す (毎打鍵のstatをホットパスから外すためのスロットル)。
+    /// 初回呼び出しは `lastCheckUptime` がnilなので必ず確認する。
+    /// `force` がtrueのときはスロットルを迂回して必ず確認する (設定適用時の強制再読込用)。
     /// エントリが (再) 読み込まれた場合、またはファイルが空 / 存在しなくなった場合にTrueを返す
     @discardableResult
-    func reloadIfNeeded() -> Bool {
+    func reloadIfNeeded(force: Bool = false) -> Bool {
+        if !force, let lastCheck = lastCheckUptime {
+            let elapsed = DispatchTime.now().uptimeNanoseconds - lastCheck
+            if elapsed < Self.reloadThrottleIntervalNanoseconds {
+                return false
+            }
+        }
+        lastCheckUptime = DispatchTime.now().uptimeNanoseconds
         let url = Self.defaultPath()
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else {

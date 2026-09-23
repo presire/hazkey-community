@@ -246,6 +246,11 @@ extension HazkeySharedResources {
         }
         syncConverterLearningConfig()
         syncConverterAddressDictionary()
+        // ホットパス側のユーザ辞書再読込はスロットルされるため、設定適用時は
+        // スロットルを迂回して強制再読込し、辞書編集を取りこぼさない。
+        // `userDictInjected` を倒して次回の候補生成で (変更後の) エントリを再注入させる。
+        userDictionary.reloadIfNeeded(force: true)
+        userDictInjected = false
     }
 
     /// [community] Applies the `[変換]` tab's address-dictionary toggle. The
