@@ -41,7 +41,8 @@ inline constexpr uint64_t kCandidateRefreshCoalesceUsec = 30000;  // 30ms
 //   1. On every display-only refresh trigger, call
 //      shouldRunImmediately(now, interval) first. If it returns true, drop
 //      any armed timer, call onRun(now) and execute the refresh
-//      synchronously -- no added latency.
+//      synchronously -- no added latency. After the refresh returns, call
+//      onRunFinished(now) (same for the trailing run in step 4).
 //   2. Otherwise call shouldSchedule(now, interval). If it returns true,
 //      (re)arm/replace the real timer so it fires at now + interval (latest
 //      request always wins and pushes the deadline out, which is what makes
@@ -112,6 +113,22 @@ class CandidateRefreshCoalescer {
         pending_ = false;
         hasRun_ = true;
         lastRunUsec_ = nowUsec;
+    }
+
+    // Rebases the quiet period on the time the refresh FINISHED. Callers must
+    // call this right after the refresh returns. A conversion can take far
+    // longer than the quiet period (a Zenzai retry chain on a slow backend
+    // takes hundreds of ms), and keystrokes typed meanwhile are queued behind
+    // it. Measured from the start of the run, those queued keystrokes would
+    // all be outside the quiet period and each would trigger its own full
+    // conversion, so latency would pile up the faster the user types.
+    // Measured from the end, they coalesce into one trailing refresh. No-op
+    // when the policy was reset during the run (a new composition epoch
+    // keeps its immediate first refresh).
+    void onRunFinished(uint64_t nowUsec) {
+        if (hasRun_ && nowUsec > lastRunUsec_) {
+            lastRunUsec_ = nowUsec;
+        }
     }
 
     // Marks the pending slot as cancelled without executing anything

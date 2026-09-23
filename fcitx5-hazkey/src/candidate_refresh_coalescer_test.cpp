@@ -150,6 +150,49 @@ int main() {
         std::cout << "[PASS] cancel after schedule prevents any later fire\n";
     }
 
+    // (j) a refresh slower than the quiet period: keystrokes queued behind it
+    // arrive right after it finishes and must coalesce into one trailing
+    // refresh instead of each running a full conversion.
+    {
+        CandidateRefreshCoalescer c;
+        c.onRun(0);
+        c.onRunFinished(250000);
+        assert(c.lastRunUsec() == 250000);
+        assert(!c.shouldRunImmediately(250001, 30000));
+        c.shouldSchedule(250001, 30000);
+        c.shouldSchedule(250002, 30000);
+        assert(c.pendingDeadlineUsec() == 280002);
+        assert(!c.shouldFire(280001));
+        assert(c.shouldFire(280002));
+        // A keystroke arriving a full quiet period after completion still
+        // runs immediately (slow typing pays no debounce delay).
+        CandidateRefreshCoalescer slow;
+        slow.onRun(0);
+        slow.onRunFinished(250000);
+        assert(slow.shouldRunImmediately(280000, 30000));
+        std::cout << "[PASS] slow refresh rebases the quiet period on "
+                     "completion\n";
+    }
+
+    // (k) onRunFinished is a no-op after resetPolicy (the refresh reset the
+    // composition) and never moves the run timestamp backwards.
+    {
+        CandidateRefreshCoalescer c;
+        c.onRun(0);
+        c.resetPolicy();
+        c.onRunFinished(250000);
+        assert(!c.hasRun());
+        assert(c.lastRunUsec() == 0);
+        assert(c.shouldRunImmediately(250001, 30000));
+
+        CandidateRefreshCoalescer d;
+        d.onRun(100000);
+        d.onRunFinished(50000);
+        assert(d.lastRunUsec() == 100000);
+        std::cout << "[PASS] onRunFinished is a no-op after reset and "
+                     "monotonic\n";
+    }
+
     std::cout << "\nAll candidate refresh coalescer policy tests passed.\n";
     return 0;
 }

@@ -1010,6 +1010,9 @@ void HazkeyState::runPendingCandidateRefresh() {
         showNonPredictCandidateList(/*preserveTarget=*/true);
     }
     executingPendingRefresh_ = false;
+    // Measure the next quiet period from completion, not from the start of
+    // this (possibly slow) conversion; see onRunFinished().
+    coalescer_.onRunFinished(now(CLOCK_MONOTONIC));
 }
 
 void HazkeyState::cancelPendingRefresh() {
