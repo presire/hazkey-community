@@ -7,7 +7,7 @@
 # emitted by `ibus-engine-hazkey --xml`. The setup command must be an absolute
 # path because ibus-setup launches it with os.spawnl(), which does not search
 # PATH (an absolute path would otherwise resolve via execv, not PATH lookup).
-set(HAZKEY_ENGINE_ICON "hazkey")
+set(HAZKEY_ENGINE_ICON "hazkey-community")
 set(HAZKEY_ENGINE_SETUP "${CMAKE_INSTALL_FULL_BINDIR}/hazkey-settings")
 configure_file(engine_description.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/engine_description.h

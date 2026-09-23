@@ -180,20 +180,18 @@ if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
 endif()
 
 # install icons
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey.svg
+# Community edition uses its own icon theme name (hazkey-community) instead of
+# upstream's "hazkey", so stale icon caches and an upstream package never
+# shadow it. Referenced by Icon= in fcitx5-hazkey/src/hazkey-im.conf.in,
+# fcitx5-hazkey/src/hazkey-addon.conf.in.in, hazkey-settings/hazkey-settings.desktop
+# and HAZKEY_ENGINE_ICON in ibus-hazkey/src/CMakeLists.txt.
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey-community.svg
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/scalable/apps)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey_256x256.png
-        RENAME hazkey.png
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/256x256/apps)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey_48x48.png
-        RENAME hazkey.png
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/48x48/apps)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey_32x32.png
-        RENAME hazkey.png
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/32x32/apps)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey_24x24.png
-        RENAME hazkey.png
-        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/24x24/apps)
+foreach(_icon_size 512 256 48 32 24)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey-community_${_icon_size}x${_icon_size}.png
+            RENAME hazkey-community.png
+            DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps)
+endforeach()
 
 # install dictionary
 if(HAZKEY_SERVER_INSTALL_DICTIONARY)

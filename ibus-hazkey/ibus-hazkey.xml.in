@@ -4,7 +4,7 @@
   <description>Hazkey AI Japanese input method (hazkey-community)</description>
   <exec>@CMAKE_INSTALL_FULL_LIBEXECDIR@/ibus-hazkey/ibus-engine-hazkey --ibus</exec>
   <version>@PROJECT_VERSION@</version>
-  <author>hazkey-community</author>
+  <author>Hiira, Presire</author>
   <license>MIT</license>
   <homepage>https://github.com/presire/hazkey-community</homepage>
   <textdomain>ibus-hazkey</textdomain>

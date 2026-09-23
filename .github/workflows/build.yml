@@ -221,6 +221,9 @@ jobs:
           test ! -e /work/workdir/usr/share/hazkey/AddressDictionary/data
           test -z "$(find /work/workdir/usr/share/hazkey -name 'address_entries.tsv' -print -quit)"
 
+          # アイコンステージングinstallアサーション: コミュニティ版のテーマ名 (hazkey-community) のSVGアイコンがステージングツリーに存在すること
+          test -f /work/workdir/usr/share/icons/hicolor/scalable/apps/hazkey-community.svg
+
           # libllamaステージングinstallアサーション: 主要な3ライブラリがステージングツリーに存在すること
           # (install (CODE) がDESTDIRを無視し、backends/だけがpackageに入ったLeap 16のRPM自己依存失敗に対する回帰ガード)
           # GNUInstallDirsはLinuxディストリビューションに応じて lib、lib64、lib/<triplet>配下に配置する

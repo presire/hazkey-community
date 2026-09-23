@@ -6,4 +6,4 @@ Library=fcitx5-hazkey
 Type=SharedLibrary
 OnDemand=True
 Configurable=True
-Icon=hazkey
+Icon=hazkey-community

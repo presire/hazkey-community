@@ -19,6 +19,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools Network)
 find_package(Protobuf REQUIRED)
 
+# Link protobuf-lite through pkg-config (same as hazkey-frontend-common): the
+# FindProtobuf imported target omits abseil, which protobuf >= 22 headers call
+# directly in Debug builds (ABSL_DCHECK -> absl_log_internal_check_op).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ProtobufLite REQUIRED IMPORTED_TARGET protobuf-lite)
+
 set(TS_FILES hazkey-settings_ja_JP.ts)
 
 configure_file(constants.h.in constants.h @ONLY)
@@ -123,7 +129,7 @@ target_include_directories(hazkey-settings PRIVATE
 target_link_libraries(hazkey-settings PRIVATE
     Qt6::Widgets
     Qt6::Network
-    protobuf::libprotobuf-lite
+    PkgConfig::ProtobufLite
 )
 
 include(GNUInstallDirs)
@@ -217,7 +223,7 @@ target_link_libraries(learninghistorydialog_test PRIVATE
     Qt6::Test
     Qt6::Widgets
     Qt6::Network
-    protobuf::libprotobuf-lite
+    PkgConfig::ProtobufLite
 )
 target_compile_definitions(learninghistorydialog_test PRIVATE
     HAZKEY_SERVER_BINARY="${CMAKE_BINARY_DIR}/hazkey-server/swift-build/release/hazkey-server"

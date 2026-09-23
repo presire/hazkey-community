@@ -11,8 +11,8 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Hazkey"
-msgstr "Hazkey"
+msgid "Hazkey Community"
+msgstr "Hazkey Community"
 
 msgid "Hazkey AI Japanese input method (hazkey-community)"
 msgstr "Hazkey AI 日本語入力メソッド (hazkey-community)"

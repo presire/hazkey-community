@@ -7,5 +7,5 @@ GenericName=Input Method Settings
 Comment[ja]=Hazkeyの設定を変更します
 Comment=Configure Hazkey settings
 Exec=hazkey-settings
-Icon=hazkey
+Icon=hazkey-community
 Categories=Settings;
