@@ -15,18 +15,18 @@
 #
 # コピー後、旧ディレクトリを指す絶対パスを新ディレクトリへ書き換える
 #   - シンボリックリンク (例: zenzai/zenzai.gguf -> .../hazkey/zenzai/models/*.gguf)
-#   - config.json (例: zenzaiWeightPath) と env ファイル内のパス
+#   - config.json (例: zenzaiWeightPath) と envファイル内のパス
 #
-# hazkey-community-serverが起動中の場合は、コピー前にこのスクリプトが終了させる (SIGTERM。サーバは終了時に学習データを保存する)
+# hazkey-community-serverが起動中の場合は、コピー前にこのスクリプトが終了させる (SIGTERM: サーバは終了時に学習データを保存する)
 # Fcitx 5 / IBusは、キー入力のたびにサーバが無ければ再起動するため、利用者が事前にpkillしても、
-# このスクリプトを実行するEnterキーの押下でサーバが再起動してしまう
+# このスクリプトを実行する[Enter]キーの押下でサーバが再起動してしまう
 # 移行後にもう1度終了させ、次のキー入力で再起動したサーバが移行済みのデータを読み込むようにする
 #
 # 起動済みのサーバは、コピー先に空のディレクトリ (keymap/、table/、memory/ 等) を自動作成する
 # ファイルを1つも含まないコピー先は未使用とみなし、--forceなしでコピーする
 #
 # Fcitx 5の入力メソッド一覧 (profile) やIBusのpreload-enginesは書き換えない
-# 移行後、入力メソッド "Hazkey-Community" を手動で追加すること
+# 移行後、入力メソッド"Hazkey-Community"を手動で追加すること
 
 set -eu
 
@@ -36,16 +36,16 @@ usage() {
     cat <<EOF
 Usage: ${PROGRAM_NAME} [--dry-run] [--force] [--help]
 
-上流版Hazkeyのユーザデータ (設定・ユーザ辞書・Zenzaiモデル・学習データ) を
-hazkey-communityのディレクトリへコピーします。旧ディレクトリは変更しません。
+上流版Hazkeyのユーザデータ (設定・ユーザ辞書・Zenzaiモデル・学習データ) をhazkey-communityのディレクトリへコピーします
+旧ディレクトリは変更しません
 
 Options:
   -n, --dry-run   実際にはコピーせず、実行内容のみを表示する
   -f, --force     コピー先にファイルが既に存在する場合、コピー先を <コピー先>.bak-<日時> へ退避してからコピーする
   -h, --help      このヘルプを表示する
 
-起動中の hazkey-community-server は、このスクリプトが自動的に終了させます。
-移行中は、Hazkey-Communityで文字を入力しないでください。
+起動中のhazkey-community-serverは、このスクリプトが自動的に終了させます
+移行中は、Hazkey-Communityで文字を入力しないでください
 EOF
 }
 
@@ -114,7 +114,7 @@ else
 fi
 
 # 実行中のサーバを確認する
-# hazkey-community-server は15文字を超えるため、comm照合 (-x) ではなく argv[0] 照合 (-f) を使う
+# hazkey-community-serverは15文字を超えるため、comm照合 (-x) ではなく、argv[0]照合 (-f) を使用する
 if false; then
     if pgrep -u "$UID_NUM" -f '^([^ ]*/)?hazkey-community-server( |$)' >/dev/null 2>&1; then
         die "hazkey-community-server is running. Stop it first:
