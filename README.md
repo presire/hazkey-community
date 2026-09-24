@@ -52,7 +52,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 | ニューラル変換の事前ウォームアップ | サーバ起動時と設定の適用後にモデルを事前ロードし、初回入力時のモデルロード待ちを解消 |
 | プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
 | サーバ管理の安定化 | クライアント更新時のhazkey-community-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
-| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を、隔離子プロセスによる起動前のバックエンド安全確認とCPU専用への自動フォールバックで解消<br>(フォールバック発生時は設定UIの[AI]タブに警告を表示。下記トラブルシューティング参照) |
+| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を、隔離子プロセスによる起動前のバックエンド安全確認とCPU専用への自動フォールバックで解消<br>(フォールバック発生時は設定UIの[AI]タブに警告を表示。下記[トラブルシューティング](./docs/troubleshooting.md)参照) |
 
 <br>
 
@@ -201,23 +201,27 @@ hazkey-communityは、インストール先・実行ファイル名・ユーザ�
 
 ### 既存データの移行 (手動)
 
-名称変更前のhazkey-community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、  
-自動では引き継がれません。  
+名称変更前のhazkey-community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
 引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
 
 ```sh
-# 実行内容の確認のみ (何も変更しない)。dry-runはサーバを終了しない。
+# 実行内容の確認のみ (何も変更しない)
+# dry-runはサーバを終了しない
 /usr/share/hazkey-community/hazkey-community-migrate.sh --dry-run
 
 # 移行を実行する
 /usr/share/hazkey-community/hazkey-community-migrate.sh
 ```
 
-- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、hazkey-community側へ**コピー**します。  
+- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
+  hazkey-community側へ**コピー**します。  
   旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
 - コピー後、Zenzaiモデルのシンボリックリンク (`zenzai.gguf`) と、`config.json` / `env` 内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
-- 起動中のhazkey-community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey-Communityで文字を入力しないでください。  
-- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。ファイルやシンボリックリンクを含むコピー先はスキップします。  
+- 起動中のhazkey-community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
+  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey-Communityで文字を入力しないでください。  
+- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
+  ファイルやシンボリックリンクを含むコピー先はスキップします。  
+  
   `--force` を指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
 - Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
   移行後、Fcitx 5 / IBusを再起動し、入力メソッド **Hazkey-Community** を追加してください。  
@@ -318,184 +322,8 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 ## ニューラル変換 (Zenzai / Jinen v2) のセットアップ
 
-Zenzaiは、llama.cppをバックエンドとするオプションのニューラル変換機能です。  
-**GPU (Vulkan) がなくてもCPUだけで使用できます**。  
-
-設定UI ([AI]タブ) では、zenz系・jinen系等モデルの種類に依存しない表記として**「ニューラル変換」**を使用しています。  
-
-> タブ見出し・有効化チェックボックス・カスタム重み・トグルホットキー・モデル管理ダイアログ等  
-> protobufのフィールド名やウィジェットのオブジェクト名、ファイル名・環境変数名は引き続き `zenzai` を使用します。  
-
-ローエンドGPUよりCPUの方が速い・安定な場合もあるため、必ずしもGPUが必要ではありません。  
-
-### モデルの選択
-
-Zenzaiモデルは、設定UIの[AI]タブにある[ニューラル変換モデルの管理]からダウンロード・有効化・削除できます。  
-ダウンロード時は、受信バイト数とSHA-256の両方が照合されます。転送が30秒間停止した場合はタイムアウトし、再試行またはキャンセルを選べます。  
-
-現在提供されているモデルは以下の通りです。  
-
-| モデル | サイズ | 特徴 | ライセンス |
-|---|---|---|---|
-| **zenz-v3.2-small** | 約 74 [MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
-| **zenz-v3.2-xsmall** | 約 21 [MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
-| zenz-v3.1-small | 約 74 [MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
-| jinen-v2-small | 約 69〜210 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
-| jinen-v2-xsmall | 約 25〜69 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
-
-新規利用は **zenz-v3.2-small** を推奨します。  
-CPU中心で使う・軽量重視の場合は **zenz-v3.2-xsmall** が適しています。  
-
-v3.1はv3.2の後継に置き換えられているため、既存環境の再現用途以外での新規利用は推奨しません。  
-
-#### karukan jinen-v2 (実験的: Qwen3ベース)
-
-jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する **Qwen3** ベースの日本語変換モデルで、[CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/) のもとで配布されています。  
-[ニューラル変換モデルの管理] では系列ごとに量子化 (`f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M`) を選択でき、選択したアーティファクトだけがダウンロードされます。  
-
-| 系列 | 配布リポジトリ | 量子化 | サイズ |
-|---|---|---|---|
-| jinen-v2-small | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 69〜210 [MB] |
-| jinen-v2-xsmall | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 25〜69 [MB] |
-
-- **帰属**:  
-  本モデルは、togatogah氏の成果物です。(ライセンスは、CC-BY-SA-4.0)  
-  設定画面の[ニューラル変換モデルの管理]にも、著作者・ライセンス・配布元へのリンクを表示します。  
-- **重みは非同梱**:  
-  モデルの重みはHazkey-Communityのソース、インストール先、DEB/RPMパッケージ、ソースアーカイブのいずれにも同梱されません。  
-  上記の配布元から、利用者が明示的にダウンロードした場合のみ取得されます。  
-- **完全性検証**:  
-  ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
-- **Qwen3 前提**:  
-  jinen-v2はQwen3アーキテクチャのため、  
-  コンバータ依存 (`presire/AzooKeyKanaKanjiConverter`の`hazkey`ブランチ) に Qwen3 対応が焼き込み済みである必要があります。(`Package.resolved`が指すリビジョン以降)  
-  この対応は、GGUFの`general.architecture == "qwen3"`を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、  
-  既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
-- **トークナイザ**:  
-  追加の`tokenizer.json`は不要です。(llama.cpp内蔵トークナイザのみを使用します)  
-- **zenzの既定は不変**:  
-  推奨モデルは従来通り、**zenz-v3.2-small**で、zenz側のラベル・推奨表示・既定の有効化状態・旧世代警告 (`zenz-v3.1-small`) は変更ありません。  
-  jinen-v2は推奨にも既定にもせず、旧世代扱いもしません。  
-- **条件付けフィールドは自動的に無効化**:  
-  jinen-v2はプロファイル・トピック・文体・好み (条件トークン: U+EE03〜EE06) に対応していません。  
-  jinen系モデルが有効な間は、設定UIの該当4項目とラベルが自動的にグレーアウトされ、ツールチップで理由 (「有効なモデルでは対応していません。」) を表示します。  
-  カスタム重み指定時はファイル名からjinenモデルかどうかを推定し、判別できない場合は既定で有効のままにします。  
-
-jinen-v2は実験的な位置づけであり、新規利用の第一候補は**zenz-v3.2-small**です。  
-
-### 有効化の手順
-
-1. `hazkey-community-settings` を起動し、[AI]タブを開きます。  
-2. [ニューラル変換モデルの管理]から利用したいモデルをダウンロードします。  
-3. [ニューラル変換を有効化]にチェックを入れ、バックエンドデバイス (CPUまたはVulkan GPU) を選択して、[適用]または[OK]を押します。  
-   有効化には数十秒かかる場合があり、進行中は待機ダイアログが表示されます。反映後はサーバが起動時 (設定リロード時) にモデルを事前ウォームアップするため、  
-   切替直後の初回変換が極端に遅くなることはありません。  
-4. GPUバックエンドの選択肢に表示されない場合は、Vulkanドライバの導入状態を確認した上で、使用中のフレームワークを再起動します。
-   (Fcitx 5: `systemctl --user restart fcitx5.service`、IBus: `ibus restart`)
-
-Vulkanを使ったGPU変換には、各ディストリビューションのVulkanドライバ (NVIDIA公式ドライバ、MesaのRADV/ANV等) が必要です。  
-`vulkaninfo --summary` (パッケージ `vulkan-tools`) でGPUが列挙されれば利用可能です。  
-
-#### Vulkanドライバのインストール例
-
-使用するGPUとディストリビューションに応じて、以下を参考にインストールしてください。  
-`vulkan-tools`は、デバイスの確認に使用する`vulkaninfo`コマンドを含みます。  
-
-**openSUSE Leap 16**  
-
-```sh
-# Intel GPU/iGPU
-sudo zypper install libvulkan_intel vulkan-tools
-
-# AMD GPU/iGPU
-sudo zypper install libvulkan_radeon vulkan-tools
-
-# NVIDIA GPU (NVIDIAリポジトリの登録と再起動が必要)
-sudo zypper addrepo https://download.nvidia.com/opensuse/leap/16.0/ nvidia
-sudo zypper --gpg-auto-import-keys refresh
-sudo zypper install nvidia-open-driver-G06-signed-kmp-default nvidia-video-G06 nvidia-gl-G06 vulkan-tools
-```
-
-**Fedora 44**  
-
-```sh
-# Intel GPU/iGPU / AMD GPU/iGPU (Mesa ANV / RADV)
-sudo dnf install mesa-vulkan-drivers vulkan-tools
-
-# NVIDIA GPU (RPM Fusionの登録と再起動が必要)
-sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
-                 https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
-sudo dnf install akmod-nvidia vulkan-tools
-```
-
-**Debian 13 (Trixie)**  
-
-```sh
-# Intel GPU/iGPU / AMD GPU/iGPU (Mesa ANV / RADV)
-sudo apt install mesa-vulkan-drivers vulkan-tools
-
-# NVIDIA GPU (non-freeコンポーネントの有効化と再起動が必要)
-sudo apt install nvidia-kernel-dkms nvidia-driver nvidia-vulkan-icd vulkan-tools
-```
-
-NVIDIAドライバは、GPU世代によって必要なパッケージや対応状況が異なります。  
-詳細は各ディストリビューションのドキュメントを参照してください。  
-([openSUSE](https://en.opensuse.org/SDB:NVIDIA_drivers)、[Fedora](https://rpmfusion.org/Howto/NVIDIA)、[Debian](https://wiki.debian.org/NvidiaGraphicsDrivers))  
-
-### GPU / iGPUの最低要件と性能の目安
-
-GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応し、システムとHazkey-Communityから認識できることです。  
-
-#### 動作上の最低条件
-
-GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要があります。  
-
-- Vulkan 1.2以上に対応したGPUまたはiGPUと、対応するVulkanドライバがインストールされていること  
-- hazkey-community-serverが `GGML_VULKAN=ON` でビルドされていること  
-- `vulkaninfo --summary` で対象デバイスが列挙されること  
-- フレームワーク再起動後、`hazkey-community-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
-
-これらはVulkanバックエンドを利用できるかの確認条件であり、変換速度や安定性を保証するものではありません。  
-
-#### 一般的なVulkan対応例
-
-以下は、Vulkan 1.2以上に対応する構成の代表例です。  
-***hazkey-communityでZenzaiの動作を確認・認定した機種一覧ではなく、最低要件や推奨機種を示すものでもありません。***  
-
-| 区分 | 型番・製品系列の例 |
-|---|---|
-| NVIDIA GeForce (dGPU) | GeForce GTX 1050<br>GTX 1650<br>GTX 1660 SUPER<br>RTX 3060<br>RTX 4060 |
-| AMD Radeon (dGPU) | Radeon RX 560<br>RX 6400<br>RX 6600<br>RX 7600 |
-| Intel iGPU | Intel UHD Graphics 630<br>UHD Graphics 730<br>UHD Graphics 770<br>Iris Xe Graphics |
-| AMD iGPU | Radeon Vega 8<br>Radeon 680M<br>Radeon 760M<br>Radeon 780M |
-
-Vulkan対応状況の確認には、[NVIDIA Vulkan Driver Support](https://developer.nvidia.com/vulkan-driver)、[Mesa RADV](https://docs.mesa3d.org/drivers/radv.html)、[Intel Supported APIs](https://www.intel.com/content/www/us/en/support/articles/000005524/graphics.html)、[Khronosの適合製品一覧](https://www.khronos.org/conformance/adopters/conformant-products)を参照してください。  
-
-同じ型番でも、OS、Vulkanドライバの種類とバージョン、デスクトップ版・モバイル版・OEM版によって結果が異なります。  
-llama.cppの実行時のデバイス機能検査により、Vulkan 1.2対応のデバイスでも利用できない場合があります。  
-
-上記はVulkan API対応の目安であり、Hazkey-Communityでの変換速度や安定性を示すものではありません。  
-iGPUはシステムメモリを共有するため、専用VRAMのGPUとは利用可能なメモリ容量や帯域が異なります。  
-
-#### 性能について
-
-本リポジトリでは、特定のGPU型番・世代、GPU/iGPUの最低性能、VRAM容量、最低処理速度を定めていません。  
-モデルファイルのサイズ（約 21 [MB] / 約 74 [MB]）は、実行時に必要なVRAM容量を示すものではありません。  
-
-GPU/iGPUの性能、専用メモリまたは共有メモリの空き容量、Vulkanドライバ、CPU、システムの負荷によって、変換速度や安定性は変わります。  
-ローエンドのGPU/iGPUではCPUより遅くなる場合もあるため、実際の環境でCPUバックエンドとVulkanバックエンドを比較し、  
-より速く安定して動作するバックエンドを選択してください。  
-
-GPU/iGPUが条件を満たさない場合や、GPU/iGPUよりCPUの方が適している場合でも、CPUバックエンドでZenzaiを使用できます。  
-
-### モデルの保存場所とアクティブモデル
-
-- ダウンロードしたモデル本体:  
-  `~/.local/share/hazkey-community/zenzai/models/<モデルキー名>.gguf`  
-- アクティブなモデル:  
-  `~/.local/share/hazkey-community/zenzai/zenzai.gguf`  
-  (上記models配下へのシンボリックリンク。[ニューラル変換モデルの管理]のアクティブ化 / 無効化でこのリンクが切り替わります)  
-- サーバは、環境変数`HAZKEY_ZENZAI_MODEL` (任意) > ユーザディレクトリのzenzai.gguf > システム配備のモデルの順に探索します。  
+Zenzai / jinen-v2 のモデル選択・有効化手順・Vulkanドライバの導入・GPU/iGPU要件・モデルの保存場所は、  
+[docs/neural-conversion.md](./docs/neural-conversion.md) を参照してください。  
 
 <br>
 
@@ -555,334 +383,14 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 
 ## ソースからのビルド
 
-### 依存関係
-
-- Swift >= 6.1  
-- Fcitx 5 >= 5.0.4 (開発ヘッダ含む。`ENABLE_FCITX5=ON` 時に必要)  
-- IBus (開発ヘッダ `libibus-1.0-dev` / `ibus-devel`。`ENABLE_IBUS=ON` 時に必要)  
-- Qt >= 6.7 (6.2 以降でもビルド可能ですが表示が崩れる場合があります)  
-- CMake >= 3.21 (4.x以降推奨)  
-- Protobuf >= 3.12  
-- Ninja  
-- Gettext  
-- Vulkan SDKヘッダ (`libvulkan-dev` / `vulkan-headers`)  
-  `GGML_VULKAN=ON` (デフォルト) のビルドで必要  
-
-以下では、CI (`.github/workflows/build.yml`) で実際にビルド確認済みの4ディストリビューション向けに、  
-Swiftのインストールから依存パッケージの導入までを個別に示します。  
-
-### Swiftのインストール
-
-Hazkey-Communityのビルドには Swift 6.1 以上が必要です。  
-公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
-
-> **2026年9月時点の注意**:  
-> Fedora 44 / openSUSE Leap 16 / Debian 13 (Trixie) / Ubuntu 26.04 は、  
-> いずれも [swift.orgの公式リリースtoolchain](https://www.swift.org/platform-support/) が未公開、  
-> または、swiftly (現行配布版 v1.1.3) の自動検出リストに未登録のため、`swiftly init` は「非公式プラットフォーム」と判定します。  
-> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのtoolchainを明示指定してください。  
-> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform` 指定は不要になります)  
-
-#### Fedora 44
-
-```sh
-sudo dnf install git curl
-
-curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
-tar zxf swiftly-$(uname -m).tar.gz
-./swiftly init --quiet-shell-followup --platform fedora39
-. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
-
-swiftly install latest
-swift --version
-```
-
-> Fedora 44は`fedora44`として自動検出されないため、公式リリースtoolchainが存在する`fedora39`を明示指定します。  
-> `fedora39` ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
-> (`fedora41` ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
-
-#### openSUSE Leap 16
-
-```sh
-sudo zypper install pkg-config binutils gcc gcc-c++ git gzip glibc-static \
-                    libbsd-devel libedit-devel libicu-devel libcurl-devel \
-                    ncurses-devel sqlite3-devel zlib-devel python3
-
-curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
-tar xf swiftly-$(uname -m).tar.gz
-```
-
-`./swiftly init` 実行時に以下のエラーが表示される場合、  
-openSUSEは証明書パスがDebian系と異なるため、シンボリックリンクの作成が必要です。  
-
-```sh
-# Error: The ca-certificates package is not installed. Swiftly won't be able to trust the sites ...
-sudo ln -s /var/lib/ca-certificates/ca-bundle.pem \
-           /etc/ssl/certs/ca-certificates.crt
-```
-
-```sh
-./swiftly init --quiet-shell-followup --platform ubi9
-. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
-
-swiftly install latest
-swift --version
-```
-
-> openSUSE / SLE系は、swift.orgで公式サポートされたことが1度もないため、  
-> **RHEL 9 (`ubi9`) のtoolchainを選択してください**。  
-> 
-> openSUSE Leap 16でのRHEL 9 toolchain選択は動作確認済みです。  
-> `swiftly`/`swift`実行時に `libxml2.so.2` が見つからないエラーが出た場合は、以下を試してください。  
-
-> ```sh
-> sudo zypper install libxml2-16
-> sudo ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
-> ```
-
-#### Debian 13 (Trixie) / Ubuntu 26.04
-
-```sh
-sudo apt update
-sudo apt install build-essential ca-certificates curl git
-
-curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
-tar zxf swiftly-$(uname -m).tar.gz
-```
-
-```sh
-# Debian 13 (Trixie): Debian 13向けの公式toolchainは未公開のため、Debian 12を指定
-./swiftly init --quiet-shell-followup --platform debian12
-
-# Ubuntu 26.04: Ubuntu 26.04向けの公式toolchainは未公開のため、Ubuntu 24.04を指定
-./swiftly init --quiet-shell-followup --platform ubuntu24.04
-```
-
-```sh
-. "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
-
-swiftly install latest
-swift --version
-```
-
-> **Ubuntu 26.04のみ追加対応が必要**:  
-> `ubuntu24.04`向けtoolchainは`libxml2.so.2`を要求しますが、  
-> Ubuntu 26.04は soname が上がった `libxml2.so.16` のみを同梱しているため、シンボリックリンクを作成してください。  
-
-> ```sh
-> sudo apt install libxml2-16
-> sudo ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
->             /usr/lib/x86_64-linux-gnu/libxml2.so.2
-> ```
-
-### 依存パッケージのインストール
-
-各ディストリビューションでの依存パッケージの導入コマンドは以下の通りです。  
-`-DGGML_VULKAN=OFF` のCPU専用ビルドでは、  
-Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` 等) のインストールを省略できます。  
-
-#### Fedora 44
-
-```sh
-sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
-                 protobuf-devel protobuf-compiler protobuf-lite-devel \
-                 fcitx5-devel fcitx5-qt-devel \
-                 ibus-devel \
-                 qt6-qtbase-devel qt6-qttools-devel \
-                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
-                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
-                 spirv-headers-devel
-```
-
-> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
-
-#### openSUSE Leap 16
-
-```sh
-sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
-                    ibus-devel \
-                    qt6-base-devel qt6-tools-devel qt6-linguist-devel \
-                    patterns-devel-vulkan-devel_vulkan \
-                    vulkan-headers shaderc glslang-devel spirv-headers
-```
-
-> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
-
-#### Debian 13 (Trixie) / Ubuntu 26.04
-
-```sh
-sudo apt install cmake ninja-build pkg-config gettext \
-                 protobuf-compiler libprotobuf-dev \
-                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
-                 libibus-1.0-dev \
-                 qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
-                 libvulkan-dev libglx-dev libgl1-mesa-dev libxkbcommon-dev glslc \
-                 spirv-headers
-```
-
-> `libibus-1.0-dev` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
-
-`spirv-headers` 系パッケージは、  
-内蔵のllama.cppがVulkanバックエンドのCMake configure時に `find_package(SPIRV-Headers)` を要求するため、  
-Vulkanビルドでは必須です。  
-
-パッケージ名の最新の定義は、CIの定義 (`.github/workflows/build.yml`) も参照してください。  
-
-### ビルド手順
-
-```sh
-git clone --recursive https://github.com/presire/hazkey-community
-cd hazkey-community
-
-mkdir build && cd build
-cmake -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr \
-      ..
-ninja -j $(nproc)
-sudo ninja install
-```
-
-インストール後は、使用中のフレームワークを再起動して入力メソッドに登録してください。(Fcitx 5・IBus とも上記「初回の有効化」参照)  
-既定のビルドは Fcitx 5 版のみで、IBus 版が必要な場合は `-DENABLE_IBUS=ON` を付けてください。  
-
-### ビルドオプション
-
-| オプション | デフォルト | 説明 |
-|---|---|---|
-| `ENABLE_FCITX5` | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
-| `ENABLE_IBUS` | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
-| `GGML_VULKAN` | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
-| `HAZKEY_SERVER_ENABLE_ZENZAI` | `ON` | Zenzaiニューラル変換機能の有効化 |
-| `SWIFT_LINK_PATH` | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |
-
-CPU専用ビルドの例:  
-
-```sh
-cmake -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr \
-      -DGGML_VULKAN=OFF \
-      ..
-```
-
-> **注意**:  
-> ソースの配置パスに角括弧 (`[` `]`) を含めないでください。  
-> パスに角括弧が含まれていると、CMakeの `file(GLOB)` が誤解釈し、llama.cppのVulkanビルドが失敗することがあります。  
-> 角括弧を含まないパスにクローンするか、角括弧を含まないシンボリックリンク経由でcmakeコマンドを実行してください。  
+ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md) にまとめています。  
 
 <br>
 
 ## トラブルシューティング
 
-### マルチGPU環境でhazkey-community-serverがSIGILLでクラッシュする
-
-NVIDIA GPUとAMD/Intel iGPUが同居する環境 (両方のVulkan ICDがインストール済み) で、`hazkey-community-server` が起動直後にSIGILL (signal 4)でクラッシュする現象があります。  
-([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29))  
-
-**原因**:  
-Zenzai初期化時にVulkan loaderがシステム内の全ICDをロードし、ベンダー混在の競合状態でSwiftランタイムのprecondition failure (`ud2` 命令、SIGILL) が発生します。  
-SIGILLはtrap命令のため `do/catch` で捕捉できません。  
-
-**コミュニティ版の自動回避 (隔離プローブ方式)**:  
-
-`hazkey-community-server` は起動のたびに、GPUバックエンド (Vulkan) のロードをまず**隔離した子プロセス** (自分自身を `--probe-backends` で再実行) で試します。  
-この子プロセスがクラッシュ・タイムアウト (既定5秒)・異常終了した場合、実サーバ本体を巻き込まずに危険なドライバ組み合わせを検出し、  
-そのセッションはVulkanを含まないバックエンドディレクトリから読み込み直して**CPU専用のニューラル変換に自動フォールバック**します。  
-
-GPUアクセラレーションが無言で無効化されないよう、フォールバックが発生した場合は設定UI ([AI]タブ) に警告バナーが表示され、  
-`~/.config/hazkey-community/env` で単一ICDを固定してから使用中のフレームワークを再起動するよう案内します。  
-
-`VK_DRIVER_FILES` / `VK_ICD_FILENAMES` / `VK_ADD_DRIVER_FILES` / `VK_LOADER_DRIVERS_SELECT` / `VK_LOADER_DRIVERS_DISABLE` のいずれかが設定されている場合、  
-その明示指定を信頼してこの安全確認プローブ自体を省略します (ユーザの明示指定が常に最優先されます)。  
-
-> **旧方式との違い**:  
-> 以前は、`hazkey-server.sh` (ラッパースクリプト) が、`VK_DRIVER_FILES` / `VK_ICD_FILENAMES` 未設定時に  
-> 「最初に検出したベンダーのICDへ固定する」ヒューリスティックを実装していましたが、  
-> 最初に列挙されたマニフェストが未認識ドライバやアーキテクチャ不一致のドライバだった場合、動作するGPUが無言で不可視になる問題がありました。([Issue #2](https://github.com/presire/hazkey-community/issues/2))  
-> 現在のラッパースクリプトはVulkan ICDの選択に一切関与せず、Vulkan Loaderの標準探索にそのまま委ねます。  
-> (Vulkan Loader >= 1.3.219 とMesa >= 25.2.1 の組み合わせでは、loaderがアーキテクチャ不一致のマニフェストを自動的に除外)  
-> マルチベンダー構成のクラッシュ対策は、上記の隔離バックエンドプローブに一本化されています。  
-
-それでも症状が出る・特定のGPUに固定したい場合は、`~/.config/hazkey-community/env`ファイルで`VK_DRIVER_FILES` / `VK_ICD_FILENAMES`を設定してください。  
-(書式・設定例は上記「設定・環境のリファレンス」参照)  
-
-Vulkanを完全に無効化したい場合は、`-DGGML_VULKAN=OFF` のCPU専用ビルドも可能です。  
-
-ICDのファイル名はドライバにより異なります。  
-(NVIDIA: `nvidia_icd.json`、AMD Mesa: `radeon_icd.json`、AMD 公式: `amd_icd.x86_64.json`、Intel Mesa: `intel_icd.x86_64.json` 等)  
-
-実際のファイル名は `ls /usr/share/vulkan/icd.d/` コマンドで確認してください。  
-
-### Fcitx 5が新しいバージョンを認識しない
-
-```sh
-fcitx5-remote -r                          # 設定リロード
-rm -rf ~/.cache/fcitx5/hazkey-community/  # キャッシュクリア
-systemctl --user restart fcitx5.service   # 完全再起動
-```
-
-学習データは、`~/.local/state/hazkey-community/`ディレクトリ内に保持されるため失われません。  
-
-### XIMを使用するアプリケーションで読みと変換結果が重複表示される
-
-X11環境でXIMを使うアプリに入力した時、入力中の読みと変換結果が同じ行に連結されて表示される場合があります。  
-これは、Fcitx 5のXIMフロントエンドでOn The Spotスタイルが無効になり、入力パネル側の表示にフォールバックしている時に発生します。  
-
-**対処方法**:  
-
-1. Fcitx 5の設定ツール (`fcitx5-configtool`) またはデスクトップ環境の入力メソッド設定を開きます。  
-2. [X Input Method フロントエンド]の設定で、[XIMでOn The Spotスタイルを使う]チェックボックスを有効にします。  
-3. 設定ファイルで指定する場合は、次のように記述します。  
-
-   ```ini
-   # ~/.config/fcitx5/conf/xim.conf
-   
-   UseOnTheSpot=True
-   ```
-
-   `XDG_CONFIG_HOME`を設定している場合は、`$XDG_CONFIG_HOME/fcitx5/conf/xim.conf`を使用します。  
-   `[General]`などのセクションを付けると、Fcitx 5では設定が読み込まれません。  
-4. Fcitx 5を完全に再起動し、対象アプリケーションも再起動します。  
-   
-   ```sh
-   fcitx5 -r
-   # または
-   systemctl --user restart fcitx5.service
-   ```
-   
-   `fcitx5-remote -r`だけでは、既存のXIMサーバに設定が反映されない場合があります。  
-
-### IBusが新しいバージョンを認識しない
-
-```sh
-ibus restart                              # デーモン再起動
-ibus list-engine | grep hazkey-community  # Hazkey-Community が出なければ component 登録を確認
-```
-
-component XML (`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml`) が配置されているかも確認してください。  
-
-### サーバに接続できない
-
-```sh
-pgrep -af hazkey-community-server                    # 起動確認
-ls -la "$XDG_RUNTIME_DIR"/hazkey-community-server.*.sock  # ソケット確認
-```
-
-サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBusデーモン) を再起動すると再度起動します。  
-手動起動での切り分けは、インストール先の `hazkey-community-server` (ラッパースクリプト) を実行して確認できます。  
-
-### ユーザ辞書が反映されない
-
-- `~/.config/hazkey-community/user_dictionary.tsv`の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
-- サーバはファイルの更新日時を監視して自動再読込しますが、反映されない場合は `pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'` コマンドを実行してサーバを再起動してください。  
-
-### ZenzaiのGPUデバイスが選択肢に出ない
-
-- `vulkaninfo --summary` コマンドでGPUが列挙されるか確認してください。  
-- Vulkan ドライバ導入後は、使用中のフレームワーク (およびサーバ) の再起動が必要です。  
-- CPUでもZenzaiは使用可能です。  
-  バックエンドデバイスに「CPU」を選択してください。  
+既知の問題と対処 (マルチGPU環境でのSIGILLクラッシュ、使用中のフレームワークが新しいバージョンを認識しない、サーバに接続できない等) は、  
+[docs/troubleshooting.md](./docs/troubleshooting.md) を参照してください。  
 
 <br>
 
