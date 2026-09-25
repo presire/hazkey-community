@@ -69,6 +69,8 @@ class HazkeyServerConfig {
     let dictionaryPath: URL
     /// [community] 住所辞書 (補助LOUDS辞書) のディレクトリ。未配備なら `nil`。
     let addressDictionaryPath: URL?
+    /// [community] 工学用語辞書 (補助LOUDS辞書) のディレクトリ。未配備なら `nil`。
+    let engineeringDictionaryPath: URL?
     var zenzaiAvailable: Bool
     var zenzaiModelPath: URL?
     var ggmlBackendDevices: [GGMLBackendDevice]
@@ -101,23 +103,28 @@ class HazkeyServerConfig {
         }()
 
         // 住所辞書は任意配備。存在しなければnilを渡し、通常変換のみで動作する
+        // 環境変数が指定されていればその値だけを根拠にし、実在しなくてもシステム配備へはフォールバックしない
         addressDictionaryPath = {
             let candidate: URL =
-                if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ADDRESS_DICTIONARY"],
-                    fileManager.fileExists(atPath: envPath)
-                {
+                if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ADDRESS_DICTIONARY"] {
                     URL(filePath: envPath)
                 } else {
                     URL(fileURLWithPath: systemResourcePath).appendingPathComponent(
                         "AddressDictionary", isDirectory: true)
                 }
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-                isDirectory.boolValue
-            else {
-                return nil
-            }
-            return candidate
+            return Self.existingDirectoryURL(candidate, fileManager: fileManager)
+        }()
+
+        // 工学用語辞書も住所辞書と同じ規則で決める
+        engineeringDictionaryPath = {
+            let candidate: URL =
+                if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ENGINEERING_DICTIONARY"] {
+                    URL(filePath: envPath)
+                } else {
+                    URL(fileURLWithPath: systemResourcePath).appendingPathComponent(
+                        "EngineeringDictionary", isDirectory: true)
+                }
+            return Self.existingDirectoryURL(candidate, fileManager: fileManager)
         }()
 
         self.zenzaiModelPath = nil
@@ -297,6 +304,16 @@ class HazkeyServerConfig {
         }
     }
 
+    static func existingDirectoryURL(_ url: URL, fileManager: FileManager) -> URL? {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        else {
+            return nil
+        }
+        return url
+    }
+
     static func genDefaultConfig() -> Hazkey_Config_Profile {
         var newConf = Hazkey_Config_Profile.init()
         newConf.profileName = "Default"
@@ -315,6 +332,7 @@ class HazkeyServerConfig {
         newConf.useRichCandidates = false
         newConf.useInputHistory = true
         newConf.useAddressDictionary = false
+        newConf.useEngineeringDictionary = false
         newConf.specialConversionMode = Hazkey_Config_Profile.SpecialConversionMode.with {
             $0.commaSeparatedNumber = true
             $0.mailDomain = true
@@ -527,6 +545,9 @@ class HazkeyServerConfig {
         }
         if !normalized.hasUseAddressDictionary {
             normalized.useAddressDictionary = defaults.useAddressDictionary
+        }
+        if !normalized.hasUseEngineeringDictionary {
+            normalized.useEngineeringDictionary = defaults.useEngineeringDictionary
         }
 
         try validateEnums(normalized)
@@ -892,6 +913,12 @@ extension Hazkey_Config_Profile {
     /// 旧設定または項目欠落時は既定OFF扱いとする
     var useAddressDictionaryEffective: Bool {
         hasUseAddressDictionary ? useAddressDictionary : false
+    }
+
+    /// 工学用語辞書設定の実効値
+    /// 旧設定または項目欠落時は既定OFF扱いとする
+    var useEngineeringDictionaryEffective: Bool {
+        hasUseEngineeringDictionary ? useEngineeringDictionary : false
     }
 }
 

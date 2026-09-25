@@ -138,6 +138,35 @@ class HazkeySharedResources {
     /// a deleted entry cannot resurface in another client's list.
     private var liveConversionSessionIDs: Set<KanaKanjiConverter.ConversionSessionID> = []
 
+    static let addressDictionarySourceID = "address"
+    static let engineeringDictionarySourceID = "engineering"
+
+    /// Declaration order is fixed: address first, engineering second.
+    static func supplementalDictionarySources(
+        for config: HazkeyServerConfig
+    ) -> [SupplementalDictionarySource] {
+        [
+            SupplementalDictionarySource(
+                id: addressDictionarySourceID, directoryURL: config.addressDictionaryPath),
+            SupplementalDictionarySource(
+                id: engineeringDictionarySourceID, directoryURL: config.engineeringDictionaryPath),
+        ]
+    }
+
+    /// A rejected source list must not take conversion down with it: fall back
+    /// to the system dictionary alone, where both toggles become no-ops.
+    static func makeConverter(
+        dictionaryURL: URL, supplementalDictionaries: [SupplementalDictionarySource]
+    ) -> KanaKanjiConverter {
+        do {
+            return try KanaKanjiConverter(
+                dictionaryURL: dictionaryURL, supplementalDictionaries: supplementalDictionaries)
+        } catch {
+            NSLog("Supplemental dictionaries rejected (\(error)); continuing without them")
+            return KanaKanjiConverter(dictionaryURL: dictionaryURL)
+        }
+    }
+
     convenience init() {
         self.init(emojiDictionaryURL: nil)
     }
@@ -149,9 +178,9 @@ class HazkeySharedResources {
         self.emojiProvider = EmojiCandidateProvider(
             dictionaryURL: emojiDictionaryURL ?? EmojiCandidateProvider.defaultDictionaryURL)
 
-        self.converter = KanaKanjiConverter.init(
+        self.converter = Self.makeConverter(
             dictionaryURL: serverConfig.dictionaryPath,
-            supplementalDictionaryURL: serverConfig.addressDictionaryPath)
+            supplementalDictionaries: Self.supplementalDictionarySources(for: serverConfig))
 
         // Initialize keymap and table
         self.keymap = serverConfig.loadKeymap()
@@ -253,12 +282,15 @@ extension HazkeySharedResources {
         userDictInjected = false
     }
 
-    /// [community] Applies the `[変換]` tab's address-dictionary toggle. The
-    /// supplemental source is wired at converter construction, so turning it
-    /// off only has to flip this flag; no rebuild and no asset reload.
+    /// [community] Applies the `[変換]` tab's address and engineering dictionary
+    /// toggles. Both supplemental sources are wired at converter construction,
+    /// so turning one off only has to flip its flag; no rebuild and no asset reload.
     func syncConverterAddressDictionary() {
+        let profile = serverConfig.currentProfile
         converter.setSupplementalDictionaryEnabled(
-            serverConfig.currentProfile.useAddressDictionaryEffective)
+            profile.useAddressDictionaryEffective, for: Self.addressDictionarySourceID)
+        converter.setSupplementalDictionaryEnabled(
+            profile.useEngineeringDictionaryEffective, for: Self.engineeringDictionarySourceID)
     }
 
     /// [community] The converter applies `memoryDirectoryURL` lazily inside

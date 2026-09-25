@@ -140,6 +140,16 @@ final class AddressDictionaryServerTests: XCTestCase {
         XCTAssertTrue(shared.converter.isSupplementalDictionaryAvailable)
     }
 
+    func testUnsetEnvironmentFallsBackToTheSystemResourcePath() {
+        unsetenv("HAZKEY_ADDRESS_DICTIONARY")
+        let shared = HazkeySharedResources(emojiDictionaryURL: nil)
+        let systemPath = URL(fileURLWithPath: systemResourcePath).appendingPathComponent(
+            "AddressDictionary", isDirectory: true)
+        XCTAssertEqual(
+            shared.serverConfig.addressDictionaryPath,
+            HazkeyServerConfig.existingDirectoryURL(systemPath, fileManager: FileManager()))
+    }
+
     func testHardPlaceNameIsOfferedWhenEnabled() {
         let shared = self.makeSharedResources(useAddressDictionary: true)
         XCTAssertTrue(
