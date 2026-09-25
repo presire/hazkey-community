@@ -11,3 +11,6 @@
 [submodule "hazkey-address-dictionary"]
 	path = hazkey-address-dictionary
 	url = https://github.com/presire/hazkey-address-dictionary.git
+[submodule "hazkey-engineering-dictionary"]
+	path = hazkey-engineering-dictionary
+	url = https://github.com/presire/hazkey-engineering-dictionary.git
