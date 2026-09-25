@@ -134,6 +134,8 @@ message Profile {
     optional string zenzai_toggle_hotkey = 126;
     // 住所辞書 (日本全国の難読地名) を変換候補に使用する
     optional bool use_address_dictionary = 127;
+    // 工学用語辞書 (機械・電気・電子・情報・建築・土木等の専門用語) を変換候補に使用する
+    optional bool use_engineering_dictionary = 128;
 }
 
 // Request messages
