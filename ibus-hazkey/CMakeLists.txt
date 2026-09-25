@@ -7,7 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         "To clean up, remove CMakeCache.txt and CMakeFiles/ directory.")
 endif()
 
-project(ibus-hazkey VERSION 0.2.30 LANGUAGES CXX)
+project(ibus-hazkey VERSION 0.2.31 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CTest)
 
