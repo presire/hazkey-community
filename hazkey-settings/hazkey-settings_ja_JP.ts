@@ -222,7 +222,7 @@
         <translation>1ページあたりの候補数</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="803"/>
+        <location filename="mainwindow.ui" line="862"/>
         <source>Use rich candidates</source>
         <translation>リッチな候補を使用</translation>
     </message>
@@ -333,375 +333,386 @@
         <translation>住所辞書</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="839"/>
+        <location filename="mainwindow.ui" line="794"/>
+        <location filename="mainwindow.ui" line="836"/>
+        <source>Engineering terms dictionary</source>
+        <translation>工学用語</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.ui" line="833"/>
+        <source>Adds technical terms (mechanical, electrical, electronic, information engineering, IT services, programming languages, databases, architecture, civil engineering) that the standard dictionary cannot convert.</source>
+        <translation>標準辞書では変換できない技術用語 (機械・電気・電子・情報工学・ITサービス・プログラミング言語・データベース・建築・土木) を追加します。</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.ui" line="898"/>
         <source>Uncheck All</source>
         <translation>すべて無効化</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="846"/>
+        <location filename="mainwindow.ui" line="905"/>
         <source>Check All</source>
         <translation>すべて有効化</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="873"/>
-        <location filename="mainwindow.ui" line="927"/>
+        <location filename="mainwindow.ui" line="932"/>
+        <location filename="mainwindow.ui" line="986"/>
         <source>Input Style</source>
         <translation>入力スタイル</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="886"/>
+        <location filename="mainwindow.ui" line="945"/>
         <source>Basic</source>
         <translation>基本設定</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="967"/>
+        <location filename="mainwindow.ui" line="1026"/>
         <source>Kuten+Toten: 。、</source>
         <translation>句点+読点: 。、</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="972"/>
+        <location filename="mainwindow.ui" line="1031"/>
         <source>Period+Comma: ．，</source>
         <translation>ピリオド+カンマ: ．，</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="977"/>
+        <location filename="mainwindow.ui" line="1036"/>
         <source>Kuten+Comma: 。，</source>
         <translation>句点+カンマ: 。，</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="982"/>
+        <location filename="mainwindow.ui" line="1041"/>
         <source>Period+Toten: ．、</source>
         <translation>ピリオド+読点: ．、</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="990"/>
+        <location filename="mainwindow.ui" line="1049"/>
         <source>Punctuation style</source>
         <translation>句読点</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="997"/>
+        <location filename="mainwindow.ui" line="1056"/>
         <source>Space style</source>
         <translation>スペース</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1005"/>
+        <location filename="mainwindow.ui" line="1064"/>
         <source>Fullwidth: １２３４５</source>
         <translation>全角: １２３４５</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1010"/>
+        <location filename="mainwindow.ui" line="1069"/>
         <source>Halfwidth: 12345</source>
         <translation>半角: 12345</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1019"/>
+        <location filename="mainwindow.ui" line="1078"/>
         <source>Fullwidth: &quot;&#x3000;&quot;</source>
         <translation>全角: &quot;&#x3000;&quot;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1024"/>
+        <location filename="mainwindow.ui" line="1083"/>
         <source>Halfwidth: &quot; &quot;</source>
         <translation>半角: &quot; &quot;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1033"/>
+        <location filename="mainwindow.ui" line="1092"/>
         <source>Fullwidth: ！＃＠（</source>
         <translation>全角: ！＃＠（</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1038"/>
+        <location filename="mainwindow.ui" line="1097"/>
         <source>Halfwidth: !#@(</source>
         <translation>半角: !#@(</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1046"/>
+        <location filename="mainwindow.ui" line="1105"/>
         <source>Number style</source>
         <translation>数字</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1053"/>
+        <location filename="mainwindow.ui" line="1112"/>
         <source>Symbol style</source>
         <translation>記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1061"/>
-        <location filename="mainwindow.cpp" line="2106"/>
+        <location filename="mainwindow.ui" line="1120"/>
+        <location filename="mainwindow.cpp" line="2118"/>
         <source>Romaji</source>
         <translation>ローマ字</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1066"/>
-        <location filename="mainwindow.cpp" line="2075"/>
+        <location filename="mainwindow.ui" line="1125"/>
+        <location filename="mainwindow.cpp" line="2087"/>
         <source>JIS Kana</source>
         <translation>JISかな</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1074"/>
+        <location filename="mainwindow.ui" line="1133"/>
         <source>Main input style</source>
         <translation>入力方式</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1101"/>
+        <location filename="mainwindow.ui" line="1160"/>
         <source>Advanced</source>
         <translation>詳細設定</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1123"/>
+        <location filename="mainwindow.ui" line="1182"/>
         <source>Keymap</source>
         <translation>キーマップ</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1170"/>
-        <location filename="mainwindow.ui" line="1395"/>
+        <location filename="mainwindow.ui" line="1229"/>
+        <location filename="mainwindow.ui" line="1454"/>
         <source>Move Up</source>
         <translation>上へ移動</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1189"/>
-        <location filename="mainwindow.ui" line="1414"/>
+        <location filename="mainwindow.ui" line="1248"/>
+        <location filename="mainwindow.ui" line="1473"/>
         <source>Move Down</source>
         <translation>下へ移動</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1215"/>
-        <location filename="mainwindow.ui" line="1440"/>
+        <location filename="mainwindow.ui" line="1274"/>
+        <location filename="mainwindow.ui" line="1499"/>
         <source>Enable</source>
         <translation>有効化</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1234"/>
-        <location filename="mainwindow.ui" line="1459"/>
+        <location filename="mainwindow.ui" line="1293"/>
+        <location filename="mainwindow.ui" line="1518"/>
         <source>Disable</source>
         <translation>無効化</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1269"/>
+        <location filename="mainwindow.ui" line="1328"/>
         <source>Available keymaps:</source>
         <translation>利用可能なキーマップ:</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1292"/>
+        <location filename="mainwindow.ui" line="1351"/>
         <source>Enabled keymaps:</source>
         <translation>有効なキーマップ:</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1301"/>
+        <location filename="mainwindow.ui" line="1360"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;Note:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; You can use custom Keymaps in TSV format, located in &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt;. &lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;メモ:&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; &lt;/span&gt;&lt;span style=&quot; font-weight:700; font-style:italic;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/keymap&lt;/span&gt;&lt;span style=&quot; font-style:italic;&quot;&gt; に配置されたTSV形式のキーマップを利用することができます。&lt;/span&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-keymap&quot;&gt;&lt;span style=&quot; font-style:italic; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1318"/>
+        <location filename="mainwindow.ui" line="1377"/>
         <source>Input Table</source>
         <translation>入力テーブル</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1341"/>
+        <location filename="mainwindow.ui" line="1400"/>
         <source>Enabled tables:</source>
         <translation>有効なテーブル:</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1348"/>
+        <location filename="mainwindow.ui" line="1407"/>
         <source>Available tables:</source>
         <translation>利用可能なテーブル:</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1501"/>
+        <location filename="mainwindow.ui" line="1560"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;Note:&lt;/span&gt; You can use custom input tables in TSV format, located in &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/table&lt;/span&gt;. &lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;More info...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;メモ:&lt;/span&gt; &lt;span style=&quot; font-weight:700;&quot;&gt;$XDG_CONFIG_HOME/hazkey-community/table&lt;/span&gt; に配置されたTSV形式の入力テーブルを利用することができます。&lt;a href=&quot;https://hazkey.hiira.dev/docs/settings/input-style-input-table&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;詳細...&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1518"/>
+        <location filename="mainwindow.ui" line="1577"/>
         <source>Options</source>
         <translation>オプション</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1541"/>
+        <location filename="mainwindow.ui" line="1600"/>
         <source>Direct mode entry point characters</source>
         <translation>直接入力モードの開始文字</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1582"/>
+        <location filename="mainwindow.ui" line="1641"/>
         <source>Dictionary</source>
         <translation>辞書</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1627"/>
+        <location filename="mainwindow.ui" line="1686"/>
         <source>Use user dictionary</source>
         <translation>ユーザー辞書を使用</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1639"/>
+        <location filename="mainwindow.ui" line="1698"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;Note:&lt;/span&gt; User dictionaries are shared across profiles.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;メモ:&lt;/span&gt; ユーザー辞書はプロファイル間で共有されます。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1669"/>
+        <location filename="mainwindow.ui" line="1728"/>
         <source>Import...</source>
         <translation>インポート...</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1679"/>
+        <location filename="mainwindow.ui" line="1738"/>
         <source>Export...</source>
         <translation>エクスポート...</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1689"/>
+        <location filename="mainwindow.ui" line="1748"/>
         <source>New</source>
         <translation>新規</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1702"/>
+        <location filename="mainwindow.ui" line="1761"/>
         <location filename="zenzai_family_row.cpp" line="78"/>
         <source>Delete</source>
         <translation>削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1721"/>
+        <location filename="mainwindow.ui" line="1780"/>
         <source>AI</source>
         <translation>AI</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1774"/>
+        <location filename="mainwindow.ui" line="1833"/>
         <source>Neural Conversion</source>
         <translation>ニューラル変換</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1839"/>
+        <location filename="mainwindow.ui" line="1898"/>
         <source>Inference limit</source>
         <translation>推論制限</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1934"/>
+        <location filename="mainwindow.ui" line="1993"/>
         <source>Backend</source>
         <translation>バックエンド</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1944"/>
+        <location filename="mainwindow.ui" line="2003"/>
         <source>Neural conversion toggle hotkey</source>
         <translation>ニューラル変換切替ホットキー</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1829"/>
+        <location filename="mainwindow.ui" line="1888"/>
         <source>Use contextual conversion</source>
         <translation>文脈変換を使用</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1866"/>
+        <location filename="mainwindow.ui" line="1925"/>
         <source>User profile</source>
         <translation>ユーザープロファイル</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1873"/>
+        <location filename="mainwindow.ui" line="1932"/>
         <source>Topic</source>
         <translation>話題</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1883"/>
+        <location filename="mainwindow.ui" line="1942"/>
         <source>Style</source>
         <translation>文体</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1893"/>
+        <location filename="mainwindow.ui" line="1952"/>
         <source>Preference</source>
         <translation>好み</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1903"/>
+        <location filename="mainwindow.ui" line="1962"/>
         <source>Use custom weight</source>
         <translation>カスタム重みを使用</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1913"/>
+        <location filename="mainwindow.ui" line="1972"/>
         <source>Custom weight file</source>
         <translation>カスタム重みファイル</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1925"/>
+        <location filename="mainwindow.ui" line="1984"/>
         <source>Browse...</source>
         <translation>参照...</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1822"/>
+        <location filename="mainwindow.ui" line="1881"/>
         <source>Enable neural conversion</source>
         <translation>ニューラル変換を有効化</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1954"/>
-        <location filename="mainwindow.cpp" line="2209"/>
+        <location filename="mainwindow.ui" line="2013"/>
+        <location filename="mainwindow.cpp" line="2221"/>
         <source>Manage neural conversion models</source>
         <translation>ニューラル変換モデルの管理</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="505"/>
+        <location filename="mainwindow.cpp" line="508"/>
         <source>Select custom weight</source>
         <translation>カスタム重みを選択</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="506"/>
+        <location filename="mainwindow.cpp" line="509"/>
         <source>GGUF files (*.gguf)</source>
         <translation>GGUFファイル (*.gguf)</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="1981"/>
+        <location filename="mainwindow.ui" line="2040"/>
         <source>About</source>
         <translation>情報</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2073"/>
+        <location filename="mainwindow.ui" line="2132"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt;&quot;&gt;Hazkey&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt;&quot;&gt;Hazkey&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2151"/>
+        <location filename="mainwindow.ui" line="2210"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;An unofficial community edition based on &lt;a href=&quot;https://github.com/7ka-Hiira/hazkey&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Hazkey&lt;/span&gt;&lt;/a&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/7ka-Hiira/hazkey&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Hazkey&lt;/span&gt;&lt;/a&gt; をベースにした非公式のコミュニティ版です&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2206"/>
+        <location filename="mainwindow.ui" line="2265"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Source code&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;ソースコード&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2219"/>
+        <location filename="mainwindow.ui" line="2278"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community/issues&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Issue report&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community/issues&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;不具合報告&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2232"/>
+        <location filename="mainwindow.ui" line="2291"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community/releases&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Releases&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/presire/hazkey-community/releases&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;リリース&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2275"/>
+        <location filename="mainwindow.ui" line="2334"/>
         <source>Base project (upstream)</source>
         <translation>ベースプロジェクト (上流版)</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2368"/>
+        <location filename="mainwindow.ui" line="2427"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://hazkey.hiira.dev/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Website&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://hazkey.hiira.dev/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;ウェブサイト&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2381"/>
+        <location filename="mainwindow.ui" line="2440"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Document&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://hazkey.hiira.dev/docs&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;ドキュメント&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2394"/>
+        <location filename="mainwindow.ui" line="2453"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/7ka-Hiira/hazkey&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;Source code&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;https://github.com/7ka-Hiira/hazkey&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;ソースコード&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="2460"/>
+        <location filename="mainwindow.ui" line="2519"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Conversion engine provided by &lt;a href=&quot;https://azookey.com/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;azooKey&lt;/span&gt;&lt;/a&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;変換エンジンは &lt;a href=&quot;https://azookey.com/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#2980b9;&quot;&gt;azooKey&lt;/span&gt;&lt;/a&gt; によって提供されています。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="215"/>
-        <location filename="mainwindow.cpp" line="2854"/>
-        <location filename="mainwindow.cpp" line="2859"/>
-        <location filename="mainwindow.cpp" line="2868"/>
-        <location filename="mainwindow.cpp" line="2875"/>
+        <location filename="mainwindow.cpp" line="2866"/>
+        <location filename="mainwindow.cpp" line="2871"/>
+        <location filename="mainwindow.cpp" line="2880"/>
+        <location filename="mainwindow.cpp" line="2887"/>
         <source>Configuration Error</source>
         <translation>設定エラー</translation>
     </message>
@@ -711,53 +722,53 @@
         <translation>設定の読み込みに失敗しました。hazkey-community-serverへの接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="556"/>
+        <location filename="mainwindow.cpp" line="559"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Neural conversion support not installed.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; ニューラル変換サポートがインストールされていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="896"/>
-        <location filename="mainwindow.cpp" line="2026"/>
-        <location filename="mainwindow.cpp" line="2044"/>
-        <location filename="mainwindow.cpp" line="2052"/>
-        <location filename="mainwindow.cpp" line="2314"/>
-        <location filename="mainwindow.cpp" line="2392"/>
-        <location filename="mainwindow.cpp" line="2454"/>
-        <location filename="mainwindow.cpp" line="2517"/>
+        <location filename="mainwindow.cpp" line="906"/>
+        <location filename="mainwindow.cpp" line="2038"/>
+        <location filename="mainwindow.cpp" line="2056"/>
+        <location filename="mainwindow.cpp" line="2064"/>
+        <location filename="mainwindow.cpp" line="2326"/>
+        <location filename="mainwindow.cpp" line="2404"/>
+        <location filename="mainwindow.cpp" line="2466"/>
+        <location filename="mainwindow.cpp" line="2529"/>
         <source>Error</source>
         <translation>エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="896"/>
-        <location filename="mainwindow.cpp" line="2026"/>
-        <location filename="mainwindow.cpp" line="2052"/>
+        <location filename="mainwindow.cpp" line="906"/>
+        <location filename="mainwindow.cpp" line="2038"/>
+        <location filename="mainwindow.cpp" line="2064"/>
         <source>No configuration profile loaded.</source>
         <translation>設定プロファイルが読み込まれていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1000"/>
-        <location filename="mainwindow.cpp" line="1004"/>
+        <location filename="mainwindow.cpp" line="1012"/>
+        <location filename="mainwindow.cpp" line="1016"/>
         <source>Save Error</source>
         <translation>保存エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1000"/>
+        <location filename="mainwindow.cpp" line="1012"/>
         <source>Failed to save configuration: %1</source>
         <translation>設定の保存に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1004"/>
+        <location filename="mainwindow.cpp" line="1016"/>
         <source>An unknown error occurred while saving configuration.</source>
         <translation>設定の保存中に不明なエラーが発生しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2109"/>
+        <location filename="mainwindow.cpp" line="2121"/>
         <source>Kana</source>
         <translation>かな</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1059"/>
-        <location filename="mainwindow.cpp" line="1303"/>
+        <location filename="mainwindow.cpp" line="1071"/>
+        <location filename="mainwindow.cpp" line="1315"/>
         <source>[not found]</source>
         <translation>[見つかりません]</translation>
     </message>
@@ -768,40 +779,40 @@
         <translation>リセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2971"/>
-        <location filename="mainwindow.cpp" line="3054"/>
-        <location filename="mainwindow.cpp" line="3061"/>
-        <location filename="mainwindow.cpp" line="3101"/>
-        <location filename="mainwindow.cpp" line="3124"/>
-        <location filename="mainwindow.cpp" line="3156"/>
-        <location filename="mainwindow.cpp" line="3189"/>
-        <location filename="mainwindow.cpp" line="3203"/>
-        <location filename="mainwindow.cpp" line="3207"/>
+        <location filename="mainwindow.cpp" line="2983"/>
+        <location filename="mainwindow.cpp" line="3066"/>
+        <location filename="mainwindow.cpp" line="3073"/>
+        <location filename="mainwindow.cpp" line="3113"/>
+        <location filename="mainwindow.cpp" line="3136"/>
+        <location filename="mainwindow.cpp" line="3168"/>
+        <location filename="mainwindow.cpp" line="3201"/>
+        <location filename="mainwindow.cpp" line="3215"/>
+        <location filename="mainwindow.cpp" line="3219"/>
         <source>User Dictionary</source>
         <translation>単語登録</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="579"/>
+        <location filename="mainwindow.cpp" line="582"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Neural conversion model not found.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; ニューラル変換モデルが見つかりません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="581"/>
+        <location filename="mainwindow.cpp" line="584"/>
         <source>Download Model</source>
         <translation>モデルをダウンロード</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="622"/>
+        <location filename="mainwindow.cpp" line="625"/>
         <source>The current model is not the latest version.</source>
         <translation>現在のモデルは最新バージョンではありません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="635"/>
+        <location filename="mainwindow.cpp" line="638"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; GPU acceleration was disabled because the Vulkan driver check crashed or timed out (often caused by mixed GPU vendors). Neural conversion runs on the CPU for this session. To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey-community/env to a single driver file and restart the input method.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; Vulkanドライバーの確認がクラッシュまたはタイムアウトしたため (GPUベンダーの混在が原因のことが多い)、GPUアクセラレーションを無効化しました。このセッションのニューラル変換はCPUで動作します。GPUアクセラレーションを復元するには、~/.config/hazkey-community/env の VK_DRIVER_FILES に単一のドライバーファイルを設定し、入力メソッドを再起動してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="623"/>
+        <location filename="mainwindow.cpp" line="626"/>
         <source>Download Update</source>
         <translation>更新をダウンロード</translation>
     </message>
@@ -811,7 +822,7 @@
         <translation>推奨: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2184"/>
+        <location filename="mainwindow.cpp" line="2196"/>
         <source>No neural conversion models are configured.</source>
         <translation>ニューラル変換モデルが設定されていません。</translation>
     </message>
@@ -852,134 +863,134 @@
         <translation>Jinen v2 xsmallモデル。量子化を選択してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1055"/>
-        <location filename="mainwindow.cpp" line="1085"/>
-        <location filename="mainwindow.cpp" line="1169"/>
-        <location filename="mainwindow.cpp" line="1299"/>
-        <location filename="mainwindow.cpp" line="1329"/>
-        <location filename="mainwindow.cpp" line="1413"/>
+        <location filename="mainwindow.cpp" line="1067"/>
+        <location filename="mainwindow.cpp" line="1097"/>
+        <location filename="mainwindow.cpp" line="1181"/>
+        <location filename="mainwindow.cpp" line="1311"/>
+        <location filename="mainwindow.cpp" line="1341"/>
+        <location filename="mainwindow.cpp" line="1425"/>
         <source>[built-in]</source>
         <translation>[内蔵]</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1526"/>
-        <location filename="mainwindow.cpp" line="1527"/>
-        <location filename="mainwindow.cpp" line="1528"/>
-        <location filename="mainwindow.cpp" line="1648"/>
-        <location filename="mainwindow.cpp" line="1649"/>
-        <location filename="mainwindow.cpp" line="1650"/>
+        <location filename="mainwindow.cpp" line="1538"/>
+        <location filename="mainwindow.cpp" line="1539"/>
+        <location filename="mainwindow.cpp" line="1540"/>
+        <location filename="mainwindow.cpp" line="1660"/>
+        <location filename="mainwindow.cpp" line="1661"/>
+        <location filename="mainwindow.cpp" line="1662"/>
         <source>Disabled in Kana mode</source>
         <translation>かなモードでは無効</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1821"/>
+        <location filename="mainwindow.cpp" line="1833"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Current settings can only be edited in Advanced mode.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; 現在の設定は詳細設定モードでのみ編集できます。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1824"/>
+        <location filename="mainwindow.cpp" line="1836"/>
         <source>Reset Input Style</source>
         <translation>入力スタイルをリセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2031"/>
+        <location filename="mainwindow.cpp" line="2043"/>
         <source>Clear Input History</source>
         <translation>入力履歴を削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2032"/>
+        <location filename="mainwindow.cpp" line="2044"/>
         <source>Are you sure you want to clear all input history data? This action cannot be undone.</source>
         <translation>この操作は取り消せません。本当に履歴を削除しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2041"/>
+        <location filename="mainwindow.cpp" line="2053"/>
         <source>Success</source>
         <translation>成功</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2041"/>
+        <location filename="mainwindow.cpp" line="2053"/>
         <source>Input history has been cleared successfully.</source>
         <translation>入力履歴が削除されました</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2044"/>
+        <location filename="mainwindow.cpp" line="2056"/>
         <source>Failed to clear input history. Please check your connection to the hazkey-community-server.</source>
         <translation>入力履歴の削除に失敗しました。hazkey-serverとの接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2078"/>
+        <location filename="mainwindow.cpp" line="2090"/>
         <source>Japanese Symbol</source>
         <translation>日本語用記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2081"/>
+        <location filename="mainwindow.cpp" line="2093"/>
         <source>Fullwidth Period</source>
         <translation>全角ピリオド</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2084"/>
+        <location filename="mainwindow.cpp" line="2096"/>
         <source>Fullwidth Comma</source>
         <translation>全角カンマ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2087"/>
+        <location filename="mainwindow.cpp" line="2099"/>
         <source>Fullwidth Number</source>
         <translation>全角数字</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2090"/>
+        <location filename="mainwindow.cpp" line="2102"/>
         <source>Fullwidth Symbol</source>
         <translation>全角記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2093"/>
+        <location filename="mainwindow.cpp" line="2105"/>
         <source>Fullwidth Space</source>
         <translation>全角スペース</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2184"/>
-        <location filename="mainwindow.cpp" line="2356"/>
-        <location filename="mainwindow.cpp" line="2653"/>
-        <location filename="mainwindow.cpp" line="2672"/>
-        <location filename="mainwindow.cpp" line="2686"/>
-        <location filename="mainwindow.cpp" line="2699"/>
-        <location filename="mainwindow.cpp" line="2710"/>
-        <location filename="mainwindow.cpp" line="2721"/>
-        <location filename="mainwindow.cpp" line="2807"/>
-        <location filename="mainwindow.cpp" line="2815"/>
-        <location filename="mainwindow.cpp" line="2828"/>
+        <location filename="mainwindow.cpp" line="2196"/>
+        <location filename="mainwindow.cpp" line="2368"/>
+        <location filename="mainwindow.cpp" line="2665"/>
+        <location filename="mainwindow.cpp" line="2684"/>
+        <location filename="mainwindow.cpp" line="2698"/>
+        <location filename="mainwindow.cpp" line="2711"/>
+        <location filename="mainwindow.cpp" line="2722"/>
+        <location filename="mainwindow.cpp" line="2733"/>
+        <location filename="mainwindow.cpp" line="2819"/>
+        <location filename="mainwindow.cpp" line="2827"/>
+        <location filename="mainwindow.cpp" line="2840"/>
         <source>Download Error</source>
         <translation>ダウンロードエラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2357"/>
-        <location filename="mainwindow.cpp" line="2454"/>
-        <location filename="mainwindow.cpp" line="2687"/>
+        <location filename="mainwindow.cpp" line="2369"/>
+        <location filename="mainwindow.cpp" line="2466"/>
+        <location filename="mainwindow.cpp" line="2699"/>
         <source>Selected neural conversion model is no longer available.</source>
         <translation>選択されたニューラル変換モデルは利用できなくなりました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2433"/>
+        <location filename="mainwindow.cpp" line="2445"/>
         <source>Downloading neural conversion model...</source>
         <translation>ニューラル変換モデルをダウンロード中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2433"/>
+        <location filename="mainwindow.cpp" line="2445"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2531"/>
+        <location filename="mainwindow.cpp" line="2543"/>
         <source>Downloading neural conversion model... %1 MB received</source>
         <translation>ニューラル変換モデルをダウンロード中... %1 MB 受信済み</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2545"/>
+        <location filename="mainwindow.cpp" line="2557"/>
         <source>Downloading neural conversion model... %1 MB / %2 MB</source>
         <translation>ニューラル変換モデルをダウンロード中... %1 MB / %2 MB</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2700"/>
+        <location filename="mainwindow.cpp" line="2712"/>
         <source>Downloaded file verification failed. Size mismatch.
 Expected: %1 bytes
 Got: %2 bytes</source>
@@ -988,7 +999,7 @@ Got: %2 bytes</source>
 取得値: %2 バイト</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2711"/>
+        <location filename="mainwindow.cpp" line="2723"/>
         <source>Downloaded file verification failed. Checksum mismatch.
 Expected: %1
 Got: %2</source>
@@ -997,33 +1008,21 @@ Got: %2</source>
 取得値: %2</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2653"/>
-        <location filename="mainwindow.cpp" line="2672"/>
-        <location filename="mainwindow.cpp" line="2721"/>
-        <location filename="mainwindow.cpp" line="2808"/>
+        <location filename="mainwindow.cpp" line="2665"/>
+        <location filename="mainwindow.cpp" line="2684"/>
+        <location filename="mainwindow.cpp" line="2733"/>
+        <location filename="mainwindow.cpp" line="2820"/>
         <source>Failed to save model file: %1</source>
         <translation>モデルファイルの保存に失敗しました: %1</translation>
     </message>
     <message>
-        <source>Failed to write model file: %1</source>
-        <translation type="vanished">モデルファイルの書き込みに失敗しました: %1</translation>
-    </message>
-    <message>
-        <source>Failed to remove old model file.</source>
-        <translation type="vanished">古いモデルファイルの削除に失敗しました。</translation>
-    </message>
-    <message>
-        <source>Failed to rename model file.</source>
-        <translation type="vanished">モデルファイルの名前変更に失敗しました。</translation>
-    </message>
-    <message>
-        <location filename="mainwindow.cpp" line="2764"/>
-        <location filename="mainwindow.cpp" line="2769"/>
+        <location filename="mainwindow.cpp" line="2776"/>
+        <location filename="mainwindow.cpp" line="2781"/>
         <source>Download Complete</source>
         <translation>ダウンロード完了</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2816"/>
+        <location filename="mainwindow.cpp" line="2828"/>
         <source>The download stalled and timed out.
 Do you want to retry the download?
 Details: %1</source>
@@ -1032,172 +1031,172 @@ Details: %1</source>
 詳細: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2834"/>
+        <location filename="mainwindow.cpp" line="2846"/>
         <source>Reset Configuration</source>
         <translation>設定をリセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2835"/>
+        <location filename="mainwindow.cpp" line="2847"/>
         <source>Resetting will discard any unsaved changes. Continue?</source>
         <translation>リセットすると、保存されていない変更は失われます。続行しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2844"/>
+        <location filename="mainwindow.cpp" line="2856"/>
         <source>Connection Error</source>
         <translation>接続エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2845"/>
+        <location filename="mainwindow.cpp" line="2857"/>
         <source>Failed to connect to server.</source>
         <translation>サーバーへの接続に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2854"/>
+        <location filename="mainwindow.cpp" line="2866"/>
         <source>Failed to load default configuration from server.</source>
         <translation>サーバーからデフォルト設定を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2869"/>
+        <location filename="mainwindow.cpp" line="2881"/>
         <source>Failed to access profile.</source>
         <translation>プロファイルへのアクセスに失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2876"/>
+        <location filename="mainwindow.cpp" line="2888"/>
         <source>Failed to update UI.</source>
         <translation>UIの更新に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2881"/>
+        <location filename="mainwindow.cpp" line="2893"/>
         <source>Reset Complete</source>
         <translation>リセット完了</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2881"/>
+        <location filename="mainwindow.cpp" line="2893"/>
         <source>Configuration has been reset to defaults. Apply or OK to save.</source>
         <translation>設定をデフォルトにリセットしました。保存するには「適用」または「OK」を押してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3117"/>
+        <location filename="mainwindow.cpp" line="3129"/>
         <source>Import User Dictionary</source>
         <translation>ユーザー辞書をインポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3118"/>
-        <location filename="mainwindow.cpp" line="3198"/>
+        <location filename="mainwindow.cpp" line="3130"/>
+        <location filename="mainwindow.cpp" line="3210"/>
         <source>Tab-separated files (*.tsv *.txt);;All files (*)</source>
         <translation>タブ区切りファイル (*.tsv *.txt);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3124"/>
+        <location filename="mainwindow.cpp" line="3136"/>
         <source>Failed to open user dictionary file: %1</source>
         <translation>ユーザー辞書ファイルを開けませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3156"/>
+        <location filename="mainwindow.cpp" line="3168"/>
         <source>No valid user dictionary entries were found.</source>
         <translation>有効なユーザー辞書エントリが見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3190"/>
+        <location filename="mainwindow.cpp" line="3202"/>
         <source>Imported %1 new and updated %2 entries; skipped %3 malformed rows.</source>
         <translation>%1 件を追加し、%2 件を更新しました。不正な行 %3 件をスキップしました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3197"/>
+        <location filename="mainwindow.cpp" line="3209"/>
         <source>Export User Dictionary</source>
         <translation>ユーザー辞書をエクスポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3203"/>
+        <location filename="mainwindow.cpp" line="3215"/>
         <source>Failed to export user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートできませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3207"/>
+        <location filename="mainwindow.cpp" line="3219"/>
         <source>Exported user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートしました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2829"/>
+        <location filename="mainwindow.cpp" line="2841"/>
         <source>Failed to download neural conversion model: %1</source>
         <translation>ニューラル変換モデルのダウンロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2517"/>
+        <location filename="mainwindow.cpp" line="2529"/>
         <source>Failed to delete model.</source>
         <translation>モデルの削除に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2279"/>
+        <location filename="mainwindow.cpp" line="2291"/>
         <source>OK</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2764"/>
+        <location filename="mainwindow.cpp" line="2776"/>
         <source>The downloaded model is now selected. Click OK to activate it.</source>
         <translation>ダウンロードされたモデルが選択されました。OKを押して有効化してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2770"/>
+        <location filename="mainwindow.cpp" line="2782"/>
         <source>Neural conversion model has been downloaded successfully.
 Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>ニューラル変換モデルが正常にダウンロードされました。
 「ニューラル変換モデルの管理」を開いて有効化してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2859"/>
+        <location filename="mainwindow.cpp" line="2871"/>
         <source>The default configuration must contain exactly one profile.</source>
         <translation>デフォルト設定にはプロファイルが1つだけ含まれている必要があります。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2924"/>
+        <location filename="mainwindow.cpp" line="2936"/>
         <source>Reading</source>
         <translation>よみ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2924"/>
-        <location filename="mainwindow.cpp" line="3013"/>
+        <location filename="mainwindow.cpp" line="2936"/>
+        <location filename="mainwindow.cpp" line="3025"/>
         <source>Word</source>
         <translation>単語</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2924"/>
-        <location filename="mainwindow.cpp" line="3014"/>
+        <location filename="mainwindow.cpp" line="2936"/>
+        <location filename="mainwindow.cpp" line="3026"/>
         <source>Comment</source>
         <translation>コメント</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2971"/>
+        <location filename="mainwindow.cpp" line="2983"/>
         <source>Failed to save user dictionary to %1</source>
         <translation>ユーザー辞書を %1 に保存できませんでした</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3012"/>
+        <location filename="mainwindow.cpp" line="3024"/>
         <source>Reading (hiragana)</source>
         <translation>よみ (ひらがな)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3055"/>
+        <location filename="mainwindow.cpp" line="3067"/>
         <source>Reading and Word must not be empty.</source>
         <translation>「よみ」と「単語」は空にできません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3062"/>
+        <location filename="mainwindow.cpp" line="3074"/>
         <source>Tab and newline characters are not allowed.</source>
         <translation>タブ文字と改行文字は使用できません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3074"/>
+        <location filename="mainwindow.cpp" line="3086"/>
         <source>Add Word</source>
         <translation>単語を追加</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3087"/>
+        <location filename="mainwindow.cpp" line="3099"/>
         <source>Edit Word</source>
         <translation>単語を編集</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3102"/>
+        <location filename="mainwindow.cpp" line="3114"/>
         <source>Delete &quot;%1&quot; → &quot;%2&quot;?</source>
         <translation>「%1」→「%2」を削除しますか?</translation>
     </message>
@@ -1222,22 +1221,22 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>固有名詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2924"/>
+        <location filename="mainwindow.cpp" line="2936"/>
         <source>品詞</source>
         <translation>品詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3011"/>
+        <location filename="mainwindow.cpp" line="3023"/>
         <source>動詞: 読みの末尾から活用形を自動生成します</source>
         <translation>動詞: 読みの末尾から活用形を自動生成します</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3027"/>
+        <location filename="mainwindow.cpp" line="3039"/>
         <source>活用形を自動生成します（読みの末尾から判定）</source>
         <translation>活用形を自動生成します（読みの末尾から判定）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3015"/>
+        <location filename="mainwindow.cpp" line="3027"/>
         <source>Part of Speech</source>
         <translation>品詞</translation>
     </message>
@@ -1247,12 +1246,12 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>（ダウンロード済み）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2460"/>
+        <location filename="mainwindow.cpp" line="2472"/>
         <source>Delete Model</source>
         <translation>モデルを削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2461"/>
+        <location filename="mainwindow.cpp" line="2473"/>
         <source>Are you sure you want to delete the model &quot;%1&quot;?</source>
         <translation>モデル「%1」を削除してもよろしいですか？</translation>
     </message>
@@ -1282,54 +1281,54 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkey-Communityに同梱されません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2372"/>
+        <location filename="mainwindow.cpp" line="2384"/>
         <source>Preserve Custom Model</source>
         <translation>カスタムモデルの保存</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2373"/>
+        <location filename="mainwindow.cpp" line="2385"/>
         <source>A custom neural conversion model &quot;zenzai.gguf&quot; already exists.
 Do you want to preserve it before downloading a new one?</source>
         <translation>カスタムニューラル変換モデル「zenzai.gguf」が既に存在します。
 新しいモデルをダウンロードする前に、これを保存しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2392"/>
+        <location filename="mainwindow.cpp" line="2404"/>
         <source>Failed to preserve custom model.</source>
         <translation>カスタムモデルの保存に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2314"/>
+        <location filename="mainwindow.cpp" line="2326"/>
         <source>Failed to activate model.</source>
         <translation>モデルの有効化に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2212"/>
+        <location filename="mainwindow.cpp" line="2224"/>
         <source>Select a downloaded model to use, or download a new one:</source>
         <translation>使用するダウンロード済みモデルを選択するか、新しいモデルをダウンロードしてください：</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2189"/>
+        <location filename="mainwindow.cpp" line="2201"/>
         <source>Checking downloaded neural conversion models...</source>
         <translation>ダウンロード済みのニューラル変換モデルを確認中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2293"/>
+        <location filename="mainwindow.cpp" line="2305"/>
         <source>Loading neural conversion model...</source>
         <translation>ニューラル変換モデルを読み込み中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2307"/>
+        <location filename="mainwindow.cpp" line="2319"/>
         <source>Neural Conversion Model Warning</source>
         <translation>ニューラル変換モデルの警告</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2308"/>
+        <location filename="mainwindow.cpp" line="2320"/>
         <source>The selected model is active, but neural conversion could not finish loading it.</source>
         <translation>選択したモデルは有効ですが、ニューラル変換は読み込みを完了できませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="672"/>
+        <location filename="mainwindow.cpp" line="675"/>
         <source>Not supported by the active model.</source>
         <translation>有効なモデルでは対応していません。</translation>
     </message>
