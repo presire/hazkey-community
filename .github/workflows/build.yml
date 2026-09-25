@@ -221,6 +221,12 @@ jobs:
           test ! -e /work/workdir/usr/share/hazkey-community/AddressDictionary/data
           test -z "$(find /work/workdir/usr/share/hazkey-community -name 'address_entries.tsv' -print -quit)"
 
+          # 工学用語辞書ステージングinstallアサーション: コンパイル済みLOUDSのみがステージングツリーに存在し、ソースTSVは含まれないこと
+          test -f /work/workdir/usr/share/hazkey-community/EngineeringDictionary/louds/charID.chid
+          test -n "$(find /work/workdir/usr/share/hazkey-community/EngineeringDictionary/louds -name '*.louds' -print -quit)"
+          test ! -e /work/workdir/usr/share/hazkey-community/EngineeringDictionary/data
+          test -z "$(find /work/workdir/usr/share/hazkey-community -name 'engineering_entries.tsv' -print -quit)"
+
           # アイコンステージングinstallアサーション: コミュニティ版のテーマ名 (hazkey-community) のSVGアイコンがステージングツリーに存在すること
           test -f /work/workdir/usr/share/icons/hicolor/scalable/apps/hazkey-community.svg
 
@@ -321,6 +327,14 @@ jobs:
             || { echo "ibus staging tree bundles address TSV source" >&2; exit 1; }
           test -z "$(cd workdir-ibus && find usr/share/hazkey-community -name 'address_entries.tsv' -print -quit)" \
             || { echo "ibus staging tree bundles address_entries.tsv" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey-community/EngineeringDictionary/louds/charID.chid \
+            || { echo "missing staged ibus engineering dict" >&2; exit 1; }
+          test -n "$(find workdir-ibus/usr/share/hazkey-community/EngineeringDictionary/louds -name '*.louds' -print -quit)" \
+            || { echo "missing staged ibus engineering louds" >&2; exit 1; }
+          test ! -e workdir-ibus/usr/share/hazkey-community/EngineeringDictionary/data \
+            || { echo "ibus staging tree bundles engineering TSV source" >&2; exit 1; }
+          test -z "$(cd workdir-ibus && find usr/share/hazkey-community -name 'engineering_entries.tsv' -print -quit)" \
+            || { echo "ibus staging tree bundles engineering_entries.tsv" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
             || { echo "missing staged ibus icons" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr -path '*hazkey-community/libllama/libllama.so*' -print -quit)" \
@@ -376,6 +390,7 @@ jobs:
             # そうでなければ、hazkey-community-serverは起動時にlibllama.so.0の欠落で失敗する
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey-community/libllama/libllama.so'
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid'
             # Debian 13 / Ubuntu 26.04は、protobuf liteランタイムをこのパッケージ名で提供する
             # コンパイラとヘッダはビルド依存関係のみであり、ランタイム依存関係にしてはならない
             dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
@@ -422,6 +437,7 @@ jobs:
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/applications/hazkey-community-settings.desktop'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/emoji_all_E17.0.txt'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
             # fcitx5アドオンペイロードがibus-hazkey-communityパッケージに混入してはならない
@@ -526,6 +542,9 @@ jobs:
             # 住所辞書LOUDSは、fcitx5-hazkey-communityパッケージ内に存在しなければならない
             rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid' \
               || { echo "fcitx5-hazkey-community RPM misses address dict" >&2; exit 1; }
+            # 工学用語辞書LOUDSは、fcitx5-hazkey-communityパッケージ内に存在しなければならない
+            rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid' \
+              || { echo "fcitx5-hazkey-community RPM misses engineering dict" >&2; exit 1; }
             # IBus component XMLとengineバイナリは、ibus-hazkey-communityパッケージ内に存在しなければならない
             # そうでなければ、IBusはengineを登録できない
             rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey-community.xml' \
@@ -539,7 +558,8 @@ jobs:
             # 共有server/settingsディレクトリ群は、fcitx5-hazkey-communityと同様にibus-hazkey-communityパッケージ内にも存在しなければならない
             for _ibus_shared in /usr/bin/hazkey-community-server /usr/bin/hazkey-community-settings \
                 share/applications/hazkey-community-settings.desktop \
-                share/hazkey-community/emoji_all_E17.0.txt share/hazkey-community/AddressDictionary/louds/charID.chid share/icons \
+                share/hazkey-community/emoji_all_E17.0.txt share/hazkey-community/AddressDictionary/louds/charID.chid \
+                share/hazkey-community/EngineeringDictionary/louds/charID.chid share/icons \
                 hazkey-community/hazkey-community-server hazkey-community/hazkey-community-settings \
                 hazkey-community/libllama/libllama.so; do
               rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \
