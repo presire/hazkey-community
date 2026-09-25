@@ -44,6 +44,9 @@ msgstr "ニューラル変換を有効化しました"
 msgid "Neural conversion disabled"
 msgstr "ニューラル変換を無効化しました"
 
+msgid "Live conversion"
+msgstr "ライブ変換"
+
 msgid "Live conversion enabled"
 msgstr "ライブ変換を有効化しました"
 

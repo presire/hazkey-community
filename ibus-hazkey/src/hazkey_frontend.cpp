@@ -416,6 +416,12 @@ bool HazkeyFrontend::activateProperty(const gchar* propName,
         });
         return true;
     }
+    if (g_strcmp0(propName, "LiveConvert") == 0) {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) {
+            s->activateProperty("LiveConvert", 0);
+        });
+        return true;
+    }
     (void)propState;
     return false;
 }

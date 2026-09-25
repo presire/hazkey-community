@@ -58,9 +58,11 @@ class HazkeyUi {
                                        glong underlineEnd,
                                        const std::string& auxDown);
 
-    void registerProperties(bool directInput, bool zenzaiEnabled);
+    void registerProperties(bool directInput, bool zenzaiEnabled,
+                            bool liveConvertEnabled);
     void updateInputModeProperty(bool directInput);
     void updateZenzaiProperty(bool enabled);
+    void updateLiveConvertProperty(bool enabled);
 
     void requestSurroundingText();
 
@@ -88,8 +90,17 @@ class HazkeyUi {
     IBusPropList* propertyList_ = nullptr;
     IBusProperty* inputModeProperty_ = nullptr;
     IBusProperty* zenzaiProperty_ = nullptr;
+    IBusProperty* liveConvertProperty_ = nullptr;
+    // Re-sends propertyList_ when a property changed after registration.
+    // ibus-ui-gtk3 in StatusNotifierItem mode (KDE) rebuilds its exported
+    // tray menu only on register_properties, not on update_property, so an
+    // update alone leaves the menu's labels/check marks stale.
+    void reregisterPropertiesIfChanged(bool changed);
+
     bool propertiesRegistered_ = false;
+    bool inputModeDirect_ = false;
     bool zenzaiChecked_ = false;
+    bool liveConvertChecked_ = false;
     bool retired_ = false;
     LookupSnapshot snapshot_{};
 };

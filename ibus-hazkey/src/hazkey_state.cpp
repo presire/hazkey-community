@@ -684,6 +684,7 @@ void HazkeyState::loadServerProfile() {
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     updateZenzaiProperty(profile.zenzai_enable());
+    updateLiveConvertProperty();
     using M = hazkey::config::Profile_AutoConvertMode;
     // Only update the remembered "ON" mode when the server's mode is not
     // DISABLED. When DISABLED (e.g. after a previous hotkey toggle-off), keep
@@ -705,10 +706,13 @@ void HazkeyState::handleLiveConvertToggle() {
     cachedAutoConvertMode_ =
         computeNextAutoConvertMode(cachedAutoConvertMode_, sharedRemembered);
 
+    // On failure the property is re-pushed too, so a panel that optimistically
+    // flipped the "Live conversion" checkbox is restored to the real state.
     const auto configOpt = server_.getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
         cachedAutoConvertMode_ = prevMode;
         sharedRemembered = prevRemembered;
+        updateLiveConvertProperty();
         return;
     }
 
@@ -717,8 +721,10 @@ void HazkeyState::handleLiveConvertToggle() {
     if (!server_.setServerConfig(config)) {
         cachedAutoConvertMode_ = prevMode;
         sharedRemembered = prevRemembered;
+        updateLiveConvertProperty();
         return;
     }
+    updateLiveConvertProperty();
 
     // Feedback for the toggle, mirroring the Zenzai hint. The new mode is
     // DISABLED on toggle-off, or the restored ON mode on toggle-on. Shown
@@ -1608,8 +1614,11 @@ void HazkeyState::registerProperties() {
     }
     const bool direct = server_.currentInputModeIsDirect();
     const bool zenzai = cachedZenzaiEnabled_;
-    postUi([direct, zenzai](HazkeyUi& ui) {
-        ui.registerProperties(direct, zenzai);
+    const bool liveConvert =
+        cachedAutoConvertMode_ !=
+        hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED;
+    postUi([direct, zenzai, liveConvert](HazkeyUi& ui) {
+        ui.registerProperties(direct, zenzai, liveConvert);
     });
 }
 
@@ -1621,6 +1630,13 @@ void HazkeyState::updateInputModeProperty() {
 void HazkeyState::updateZenzaiProperty(bool enabled) {
     cachedZenzaiEnabled_ = enabled;
     postUi([enabled](HazkeyUi& ui) { ui.updateZenzaiProperty(enabled); });
+}
+
+void HazkeyState::updateLiveConvertProperty() {
+    const bool enabled =
+        cachedAutoConvertMode_ !=
+        hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED;
+    postUi([enabled](HazkeyUi& ui) { ui.updateLiveConvertProperty(enabled); });
 }
 
 void HazkeyState::updateSurroundingText(const std::string& append) {
@@ -1702,6 +1718,16 @@ bool HazkeyState::activateProperty(const gchar* propName,
     }
     if (g_strcmp0(propName, "Zenzai") == 0) {
         handleZenzaiToggle();
+        return true;
+    }
+    if (g_strcmp0(propName, "LiveConvert") == 0) {
+        // Same path as the live-conversion hotkey: remembers the last ON mode
+        // and persists the new mode on the server. Reload a stale profile first
+        // (as keyEvent does) so the toggle starts from the current mode.
+        if (!serverProfileLoaded_ || server_.consumeConfigChanged()) {
+            loadServerProfile();
+        }
+        handleLiveConvertToggle();
         return true;
     }
     return false;

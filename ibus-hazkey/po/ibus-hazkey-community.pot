@@ -26,8 +26,7 @@ msgid "Hazkey Community AI Japanese input method"
 msgstr ""
 
 # Auxiliary text (fcitx AuxUp/AuxDown equivalent) shown while composing.
-# Ports fcitx5-hazkey's "[Press Tab to Select]", "[Direct Input]" and
-# "削除可" indicators to the single IBus auxiliary bar.
+# Ports fcitx5-hazkey's "[Press Tab to Select]", "[Direct Input]" and "削除可" indicators to the single IBus auxiliary bar.
 msgid "[Press Tab to Select]"
 msgstr ""
 
@@ -57,8 +56,12 @@ msgstr ""
 msgid "Neural conversion disabled"
 msgstr ""
 
-# Transient hint shown in the auxiliary text when the live-conversion toggle
-# hotkey is pressed (the same channel as the Neural conversion toggle hint).
+# Persistent Live conversion property label shown in the IBus panel.
+msgid "Live conversion"
+msgstr ""
+
+# Transient hint shown in the auxiliary text when the live-conversion toggle hotkey is pressed.
+# (the same channel as the Neural conversion toggle hint)
 msgid "Live conversion enabled"
 msgstr ""
 

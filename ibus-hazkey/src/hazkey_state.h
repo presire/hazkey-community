@@ -244,6 +244,9 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     void registerProperties();
     void updateInputModeProperty();
     void updateZenzaiProperty(bool enabled);
+    // Pushes the live-conversion toggle property from cachedAutoConvertMode_
+    // (checked unless the mode is AUTO_CONVERT_DISABLED).
+    void updateLiveConvertProperty();
 
     bool showCandidateList(bool isSuggest);
     bool applyCandidateResponse(

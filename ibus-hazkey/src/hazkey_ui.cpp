@@ -67,6 +67,7 @@ void HazkeyUi::retire() {
     g_clear_object(&lookupTable_);
     g_clear_object(&inputModeProperty_);
     g_clear_object(&zenzaiProperty_);
+    g_clear_object(&liveConvertProperty_);
     g_clear_object(&propertyList_);
 }
 
@@ -224,7 +225,8 @@ void HazkeyUi::updateAuxiliaryTextWithCursor(const std::string& auxUp,
     ibus_engine_update_auxiliary_text(engine_, aux, !text.empty());
 }
 
-void HazkeyUi::registerProperties(bool directInput, bool zenzaiEnabled) {
+void HazkeyUi::registerProperties(bool directInput, bool zenzaiEnabled,
+                                  bool liveConvertEnabled) {
     if (retired_) {
         return;
     }
@@ -240,21 +242,40 @@ void HazkeyUi::registerProperties(bool directInput, bool zenzaiEnabled) {
             ibus_text_new_from_string(tr("Neural conversion")), nullptr,
             ibus_text_new_from_string(tr("Neural conversion disabled")), TRUE, TRUE,
             PROP_STATE_UNCHECKED, nullptr);
+        liveConvertProperty_ = ibus_property_new(
+            "LiveConvert", PROP_TYPE_TOGGLE,
+            ibus_text_new_from_string(tr("Live conversion")), nullptr,
+            ibus_text_new_from_string(tr("Live conversion disabled")), TRUE,
+            TRUE, PROP_STATE_UNCHECKED, nullptr);
         g_object_ref_sink(inputModeProperty_);
         g_object_ref_sink(zenzaiProperty_);
+        g_object_ref_sink(liveConvertProperty_);
         ibus_prop_list_append(propertyList_, inputModeProperty_);
         ibus_prop_list_append(propertyList_, zenzaiProperty_);
+        ibus_prop_list_append(propertyList_, liveConvertProperty_);
     }
-    ibus_engine_register_properties(engine_, propertyList_);
-    propertiesRegistered_ = true;
+    // Apply the states first so the registered list already carries them;
+    // with propertiesRegistered_ cleared the updates only touch the objects.
+    propertiesRegistered_ = false;
     updateInputModeProperty(directInput);
     updateZenzaiProperty(zenzaiEnabled);
+    updateLiveConvertProperty(liveConvertEnabled);
+    ibus_engine_register_properties(engine_, propertyList_);
+    propertiesRegistered_ = true;
+}
+
+void HazkeyUi::reregisterPropertiesIfChanged(bool changed) {
+    if (changed) {
+        ibus_engine_register_properties(engine_, propertyList_);
+    }
 }
 
 void HazkeyUi::updateInputModeProperty(bool directInput) {
     if (retired_ || inputModeProperty_ == nullptr) {
         return;
     }
+    const bool changed = directInput != inputModeDirect_;
+    inputModeDirect_ = directInput;
     ibus_property_set_label(
         inputModeProperty_,
         ibus_text_new_from_string(tr(directInput ? "A" : "あ")));
@@ -262,14 +283,19 @@ void HazkeyUi::updateInputModeProperty(bool directInput) {
         inputModeProperty_,
         ibus_text_new_from_string(
             tr(directInput ? "[Direct Input]" : "Hiragana input")));
+    if (!propertiesRegistered_) {
+        return;
+    }
     ibus_engine_update_property(engine_, inputModeProperty_);
+    reregisterPropertiesIfChanged(changed);
 }
 
 void HazkeyUi::updateZenzaiProperty(bool enabled) {
-    zenzaiChecked_ = enabled;
     if (retired_ || zenzaiProperty_ == nullptr) {
         return;
     }
+    const bool changed = enabled != zenzaiChecked_;
+    zenzaiChecked_ = enabled;
     ibus_property_set_state(zenzaiProperty_,
                             enabled ? PROP_STATE_CHECKED
                                     : PROP_STATE_UNCHECKED);
@@ -277,7 +303,31 @@ void HazkeyUi::updateZenzaiProperty(bool enabled) {
         zenzaiProperty_,
         ibus_text_new_from_string(
             tr(enabled ? "Neural conversion enabled" : "Neural conversion disabled")));
+    if (!propertiesRegistered_) {
+        return;
+    }
     ibus_engine_update_property(engine_, zenzaiProperty_);
+    reregisterPropertiesIfChanged(changed);
+}
+
+void HazkeyUi::updateLiveConvertProperty(bool enabled) {
+    if (retired_ || liveConvertProperty_ == nullptr) {
+        return;
+    }
+    const bool changed = enabled != liveConvertChecked_;
+    liveConvertChecked_ = enabled;
+    ibus_property_set_state(liveConvertProperty_,
+                            enabled ? PROP_STATE_CHECKED
+                                    : PROP_STATE_UNCHECKED);
+    ibus_property_set_tooltip(
+        liveConvertProperty_,
+        ibus_text_new_from_string(tr(enabled ? "Live conversion enabled"
+                                             : "Live conversion disabled")));
+    if (!propertiesRegistered_) {
+        return;
+    }
+    ibus_engine_update_property(engine_, liveConvertProperty_);
+    reregisterPropertiesIfChanged(changed);
 }
 
 void HazkeyUi::requestSurroundingText() {
