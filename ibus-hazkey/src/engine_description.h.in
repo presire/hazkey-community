@@ -13,8 +13,8 @@ inline constexpr const char* kEngineDescriptionXml = R"xml(<?xml version="1.0" e
     <author>Hiira, Presire</author>
     <icon>@HAZKEY_ENGINE_ICON@</icon>
     <layout>default</layout>
-    <longname>Hazkey-Community</longname>
-    <description>Hazkey-Community AI Japanese input method</description>
+    <longname>Hazkey Community</longname>
+    <description>Hazkey Community AI Japanese input method</description>
     <textdomain>ibus-hazkey-community</textdomain>
     <rank>1</rank>
     <setup>@HAZKEY_ENGINE_SETUP@</setup>

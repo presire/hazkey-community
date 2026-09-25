@@ -20,7 +20,7 @@ FCITX_CONFIGURATION(HazkeyEngineConfig,
                         this, "showTabToSelect",
                         _("Show [Press Tab to Select] indicator"), true};
                     ExternalOption openHazkeySettings{
-                        this, "openHazkeySettings", _("Open Hazkey-Community Settings"),
+                        this, "openHazkeySettings", _("Open Hazkey Community Settings"),
                         stringutils::concat("hazkey-community-settings")};);
 }  // namespace fcitx
 #endif  // _FCITX5_HAZKEY_HAZKEY_CONFIG_H_

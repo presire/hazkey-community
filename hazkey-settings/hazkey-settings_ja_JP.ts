@@ -1276,8 +1276,8 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
     </message>
     <message>
         <location filename="zenzai_family_row.cpp" line="115"/>
-        <source>Downloaded on demand from the source above. Model weights are not bundled with Hazkey-Community.</source>
-        <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkey-Communityに同梱されません。</translation>
+        <source>Downloaded on demand from the source above. Model weights are not bundled with Hazkey Community.</source>
+        <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkey Communityに同梱されません。</translation>
     </message>
     <message>
         <location filename="mainwindow.cpp" line="2384"/>

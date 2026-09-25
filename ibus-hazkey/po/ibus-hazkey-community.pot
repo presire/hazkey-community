@@ -19,10 +19,10 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Hazkey-Community"
+msgid "Hazkey Community"
 msgstr ""
 
-msgid "Hazkey-Community AI Japanese input method"
+msgid "Hazkey Community AI Japanese input method"
 msgstr ""
 
 # Auxiliary text (fcitx AuxUp/AuxDown equivalent) shown while composing.

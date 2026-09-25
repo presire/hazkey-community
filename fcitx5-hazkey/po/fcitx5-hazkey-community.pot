@@ -26,6 +26,9 @@ msgstr ""
 msgid "Show [Press Tab to Select] indicator"
 msgstr ""
 
+msgid "Open Hazkey Community Settings"
+msgstr ""
+
 msgid "Live conversion enabled"
 msgstr ""
 

@@ -115,7 +115,7 @@ ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
         lines << QCoreApplication::translate(
             "MainWindow",
             "Downloaded on demand from the source above. Model weights are not bundled with "
-            "Hazkey-Community.");
+            "Hazkey Community.");
 
         attributionLabel_ = new QLabel(this);
         attributionLabel_->setObjectName(QStringLiteral("attribution_") +

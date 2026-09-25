@@ -37,3 +37,6 @@ msgstr "ライブ変換を無効化しました"
 
 msgid "Show [Press Tab to Select] indicator"
 msgstr "[Tabキーで選択] インジケーターを表示する"
+
+msgid "Open Hazkey Community Settings"
+msgstr "Hazkey Communityの設定を開く"

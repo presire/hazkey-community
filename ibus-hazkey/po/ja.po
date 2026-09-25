@@ -11,11 +11,11 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Hazkey-Community"
-msgstr "Hazkey-Community"
+msgid "Hazkey Community"
+msgstr "Hazkey Community"
 
-msgid "Hazkey-Community AI Japanese input method"
-msgstr "Hazkey-Community AI 日本語入力メソッド"
+msgid "Hazkey Community AI Japanese input method"
+msgstr "Hazkey Community AI 日本語入力メソッド"
 
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"
