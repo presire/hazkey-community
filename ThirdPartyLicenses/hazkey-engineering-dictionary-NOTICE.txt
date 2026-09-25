@@ -1,0 +1,46 @@
+hazkey-engineering-dictionary
+Copyright (c) hazkey-community contributors
+
+This repository contains a curated list of Japanese engineering terms
+(data/engineering_entries.tsv) and LOUDS dictionary shards compiled from it
+(EngineeringDictionary/louds/). The readings and surfaces were collected from
+the sources below. No share-alike licensed data (Wikipedia CC BY-SA,
+OpenStreetMap ODbL, JMdict / COMPDIC CC BY-SA 4.0) was used.
+
+--------------------------------------------------------------------------------
+SudachiDict (sudachidict-raw v1/20260723: core_lex, small_lex, notcore_lex)
+  Copyright (c) Works Applications Co., Ltd.
+  Licensed under the Apache License, Version 2.0
+  https://github.com/WorksApplications/SudachiDict
+  Used for: readings (ReadingForm) and surfaces (Headword / IndexForm)
+
+mecab-ipadic-NEologd seed (mecab-user-dict-seed.20200910)
+  Copyright (c) Toshinori Sato (@overlast)
+  Licensed under the Apache License, Version 2.0
+  https://github.com/neologd/mecab-ipadic-neologd
+  Used for: readings and surfaces of noun entries
+
+Mozc OSS dictionary (src/data/dictionary_oss)
+  Copyright (c) Google Inc.
+  BSD 3-Clause License, with the NAIST / ICOT Free Software / public domain
+  terms bundled in the Mozc repository
+  https://github.com/google/mozc
+  Used for: corroborating readings only (no entries are copied verbatim)
+
+Wikidata (property P1814, "name in kana")
+  CC0 1.0 Universal (public domain dedication)
+  https://www.wikidata.org/
+  Used for: readings of Latin-script product and language names
+
+IPA (Information-technology Promotion Agency, Japan) syllabus glossary
+  Used for: headword seeding only (no readings or definitions are included)
+
+--------------------------------------------------------------------------------
+EngineeringDictionary/louds/charID.chid is an unmodified copy of
+Dictionary/louds/charID.chid from azooKey_dictionary_storage
+  Copyright (c) azooKey project
+  Licensed under the Apache License, Version 2.0
+  https://github.com/azooKey/azooKey_dictionary_storage
+
+A copy of the Apache License, Version 2.0 is available at
+https://www.apache.org/licenses/LICENSE-2.0

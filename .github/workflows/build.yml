@@ -230,6 +230,13 @@ jobs:
           # アイコンステージングinstallアサーション: コミュニティ版のテーマ名 (hazkey-community) のSVGアイコンがステージングツリーに存在すること
           test -f /work/workdir/usr/share/icons/hicolor/scalable/apps/hazkey-community.svg
 
+          # ライセンス表示ステージングinstallアサーション: 本体LICENSEと第三者ライセンスが同梱されること
+          # 静的リンク/同梱データ (MIT / Apache-2.0 / BSD / CC BY-SA 4.0) の表示義務を満たすための回帰ガード
+          test -f /work/workdir/usr/share/hazkey-community/LICENSE
+          test -f /work/workdir/usr/share/hazkey-community/ThirdPartyLicenses/README.md
+          test -f /work/workdir/usr/share/hazkey-community/ThirdPartyLicenses/AzooKeyKanaKanjiConverter-LICENSE.txt
+          test -f /work/workdir/usr/share/hazkey-community/ThirdPartyLicenses/llama.cpp-LICENSE.txt
+
           # libllamaステージングinstallアサーション: 主要な3ライブラリがステージングツリーに存在すること
           # (install (CODE) がDESTDIRを無視し、backends/だけがpackageに入ったLeap 16のRPM自己依存失敗に対する回帰ガード)
           # GNUInstallDirsはLinuxディストリビューションに応じて lib、lib64、lib/<triplet>配下に配置する
@@ -337,6 +344,10 @@ jobs:
             || { echo "ibus staging tree bundles engineering_entries.tsv" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
             || { echo "missing staged ibus icons" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey-community/LICENSE \
+            || { echo "missing staged ibus LICENSE" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey-community/ThirdPartyLicenses/README.md \
+            || { echo "missing staged ibus ThirdPartyLicenses" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr -path '*hazkey-community/libllama/libllama.so*' -print -quit)" \
             || { echo "missing staged ibus libllama" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr -path '*hazkey-community/hazkey-community-server' -print -quit)" \

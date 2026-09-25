@@ -1,0 +1,25 @@
+hazkey-address-dictionary
+=========================
+
+The address dictionary (AddressDictionary/, installed as
+/usr/share/hazkey-community/AddressDictionary) and its source data
+(data/address_entries.tsv) are provided by:
+
+  https://github.com/presire/hazkey-address-dictionary
+  Copyright (c) hazkey-community contributors
+
+Data source:
+  Japan Post (日本郵便) postal code data (utf_ken_all.zip, UTF-8 edition)
+  https://www.post.japanpost.jp/service/search/zipcode/download/utf/utf_ken_all.zip
+  Japan Post does not claim copyright in the postal code data and permits
+  free redistribution.
+
+The compiled AddressDictionary/louds/charID.chid is an unmodified copy of
+Dictionary/louds/charID.chid from azooKey_dictionary_storage:
+
+  Copyright 2024 Miwa / ensan
+  Licensed under the Apache License, Version 2.0
+  (see azooKey_dictionary_storage-LICENSE.txt)
+
+The build scripts and documentation of hazkey-address-dictionary are licensed
+under the MIT License, the same as hazkey-community.

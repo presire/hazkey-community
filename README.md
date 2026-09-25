@@ -435,3 +435,9 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 
 本プロジェクトは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) (MIT License) をベースにしています。  
 Zenzaiモデルのライセンスは上記のモデル一覧を参照してください。  
+
+パッケージには、静的にリンクされるSwiftパッケージや同梱のllama.cppランタイム、各種辞書データ等、  
+サードパーティ製コンポーネントのライセンス表示を[ThirdPartyLicenses/](./ThirdPartyLicenses/)にまとめて同梱します。  
+
+インストール後は、`/usr/share/hazkey-community/ThirdPartyLicenses/`に配置されます。  
+(動的にリンクされるQt 6 / Fcitx 5 / IBus / libprotobuf-lite / Vulkan等はパッケージ依存として供給されるため、同梱しません)  

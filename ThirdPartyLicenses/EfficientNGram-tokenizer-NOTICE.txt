@@ -1,0 +1,28 @@
+EfficientNGram tokenizer data
+=============================
+
+NOTE: This file documents a build-time resource that is NOT included in the
+distributed .deb / .rpm packages.
+
+The tokenizer resources of the EfficientNGram target of
+AzooKeyKanaKanjiConverter (tokenizer.json, vocab.json, merges.txt,
+tokenizer_config.json, special_tokens_map.json, config.json) are taken from:
+
+  ku-nlp/gpt2-small-japanese-char
+  https://huggingface.co/ku-nlp/gpt2-small-japanese-char
+
+  "This tokenizer data is from ku-nlp/gpt2-small-japanese-char,
+   following CC BY-SA 4.0 License."
+
+They are compiled into the SwiftPM resource bundle
+"AzooKeyKanaKanjiConverter_EfficientNGram.resources". The hazkey-community
+packaging installs only the hazkey-community-server executable and does not
+install any ".resources" directory, so this data is not redistributed in the
+current packages.
+
+If the resource bundle is ever shipped, it is licensed under the Creative
+Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0):
+
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+Attribution: ku-nlp (Kyoto University, Natural Language Processing group).
