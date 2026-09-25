@@ -232,3 +232,16 @@ else()
         "the address dictionary will not be installed. "
         "Run: git submodule update --init hazkey-address-dictionary")
 endif()
+
+# install engineering terms dictionary (supplemental LOUDS, community extension)
+set(HAZKEY_ENGINEERING_DICTIONARY_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-engineering-dictionary/EngineeringDictionary)
+if(EXISTS ${HAZKEY_ENGINEERING_DICTIONARY_DIR}/louds/charID.chid)
+    install(DIRECTORY ${HAZKEY_ENGINEERING_DICTIONARY_DIR}
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
+else()
+    message(WARNING
+        "hazkey-engineering-dictionary submodule is not checked out; "
+        "the engineering terms dictionary will not be installed. "
+        "Run: git submodule update --init hazkey-engineering-dictionary")
+endif()
