@@ -1,9 +1,11 @@
-# hazkey-community
+# Hazkey Community
 
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)
+[![Fcitx 5](https://img.shields.io/badge/Fcitx%205-support-blue)](https://fcitx-im.org/)
+[![IBus](https://img.shields.io/badge/IBus-experimental-orange)](https://github.com/ibus/ibus)
 
-Hazkey-Communityは、Linux向けデスクトップ環境のインプットメソッドフレームワーク [Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus) で動作する日本語インプットメソッドです。  
-[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) を変換エンジンに採用し、  
+Hazkey Communityは、Linux向けデスクトップ環境のインプットメソッドフレームワーク[Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus)で動作する日本語インプットメソッドです。  
+[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を変換エンジンに採用し、  
 オプションでニューラル変換 (Zenzai、llama.cppバックエンド、Vulkan GPU / CPU対応) を利用でき、標準のzenz系列に加えてQwen3ベースの**jinen-v2**モデルにも対応しています。  
 
 Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的なIBusフロントエンド (ibus-hazkey-community) を同梱します。  
@@ -134,6 +136,21 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
 
 <br>
 
+## 以前のバージョンからのアップグレード
+
+v0.2.30-community で、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
+名称が **Hazkey Community** に統一されました。  
+v0.2.30-communityより前のバージョンからアップグレードする場合は、パッケージの入れ替えと設定の移行が必要です。  
+
+- パッケージ名が変更されたため、旧パッケージからの上書き更新はできません。  
+  旧パッケージを削除してから、新しいパッケージをインストールしてください。  
+- 既存の設定・ユーザ辞書・ニューラル変換モデル・学習データは自動では引き継がれません。  
+  引き継ぐ場合は、[docs/migration.md](./docs/migration.md) の手順で1回だけ手動移行してください。  
+- 入力メソッドの登録名も変更されるため、インストール後にFcitx 5 / IBusを再起動し、  
+  あらためて **Hazkey Community** を追加し直してください。(下記「初回の有効化」参照)  
+
+<br>
+
 ## 初回の有効化
 
 ### Fcitx 5に登録
@@ -145,9 +162,9 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
    # または fcitx5 を終了してから再度起動
    ```
    
-2. Fcitx 5の設定ツール (タスクトレイアイコンから[設定]、または `fcitx5-configtool`) を開き、入力メソッドの追加から **Hazkey-Community** を登録します。  
-3. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、Fcitx 5側の設定に依存) でHazkey-Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
-4. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-community-settings** を起動します。  
+2. Fcitx 5の設定ツール (タスクトレイアイコンから[設定]、または `fcitx5-configtool`) を開き、入力メソッドの追加から**Hazkey Community**を登録します。  
+3. 入力メソッドの切替 (デフォルトでは、`[Super] + [Space]` 等、Fcitx 5側の設定に依存) でHazkey Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
+4. 設定を変更する場合は、アプリケーションメニューまたはターミナルから **hazkey-community-settings** を起動します。  
    
    ```sh
    hazkey-community-settings
@@ -162,14 +179,14 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
    # またはログアウト / ログイン
    ```
    
-2. ibus list-engineに**hazkey-community**が表示されることを確認します。  
+2. ibus list-engineに**Hazkey Community**が表示されることを確認します。  
    
    ```sh
    ibus list-engine | grep hazkey-community
    ```
    
-3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から **Hazkey-Community** を追加します。  
-4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkey-Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
+3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から**Hazkey Community**を追加します。  
+4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkey Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
 5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-community-settings** を起動します。  
    
    ```sh
@@ -180,11 +197,11 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
 
 ## 上流版Hazkeyとの併存・データ移行
 
-hazkey-communityは、インストール先・実行ファイル名・ユーザデータのディレクトリ・ソケット名を上流版Hazkeyと分けているため、  
+Hazkey Communityは、インストール先・実行ファイル名・ユーザデータのディレクトリ・ソケット名を上流版Hazkeyと分けているため、  
 上流版Hazkey (`fcitx5-hazkey` / `ibus-hazkey`) と同時にインストールできます。  
-入力メソッド名も別 (Fcitx 5: **Hazkey-Community**、IBus: **hazkey-community**) で、互いのサーバや設定には干渉しません。  
+入力メソッド名も別 (Fcitx 5: **Hazkey Community**、IBus: **Hazkey Community**) で、互いのサーバや設定には干渉しません。  
 
-| 用途 | 上流版Hazkey | hazkey-community |
+| 用途 | 上流版Hazkey | Hazkey Community |
 |---|---|---|
 | サーバ / 設定UI | `/usr/bin/hazkey-server`<br>`/usr/bin/hazkey-settings` | `/usr/bin/hazkey-community-server`<br>`/usr/bin/hazkey-community-settings` |
 | プログラム / データ | `/usr/lib*/hazkey/`<br>`/usr/share/hazkey/` | `/usr/lib*/hazkey-community/`<br>`/usr/share/hazkey-community/` |
@@ -202,7 +219,7 @@ hazkey-communityは、インストール先・実行ファイル名・ユーザ�
 
 ### 既存データの移行 (手動)
 
-名称変更前のhazkey-community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
+名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
 引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
 
 ```sh
@@ -215,17 +232,17 @@ hazkey-communityは、インストール先・実行ファイル名・ユーザ�
 ```
 
 - 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
-  hazkey-community側へ**コピー**します。  
+  Hazkey Community側へ**コピー**します。  
   旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
 - コピー後、Zenzaiモデルのシンボリックリンク (`zenzai.gguf`) と、`config.json` / `env` 内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
-- 起動中のhazkey-community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
-  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey-Communityで文字を入力しないでください。  
+- 起動中のHazkey Community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
+  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey Communityで文字を入力しないでください。  
 - 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
   ファイルやシンボリックリンクを含むコピー先はスキップします。  
   
   `--force` を指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
 - Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
-  移行後、Fcitx 5 / IBusを再起動し、入力メソッド **Hazkey-Community** を追加してください。  
+  移行後、Fcitx 5 / IBusを再起動し、入力メソッド **Hazkey Community** を追加してください。  
 
 <br>
 
@@ -247,7 +264,7 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後はibus-daemonを再起動し、ibus list-engineに **hazkey-community** が表示されることを確認してください。  
+インストール後はibus-daemonを再起動し、ibus list-engineに **Hazkey Community** が表示されることを確認してください。  
 エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community/ibus-engine-hazkey-community`、  
 component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml` に配置されます。  
 
@@ -267,7 +284,9 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 - **Fcitx 5とIBusの同時有効化による入力に対応しています。**  
   hazkey-community-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
-  変換エンジン・ユーザ辞書・学習メモリ・Zenzaiモデルは全接続で共有します。(`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
+  変換エンジン・ユーザ辞書・学習メモリ・Zenzaiモデルは全接続で共有します。  
+  (`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
+  
   接続を奪い合いません。  
 - **hazkey-community-settingsを起動しても、IME側の入力接続は切断されません。**  
 - **同時接続の上限は8です**  
@@ -290,8 +309,8 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   (クライアントのread timeoutは最大10秒以内、機能的な破綻はありません)  
 - **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
   ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
-  `F6`〜`F10` と `Ctrl+U` / `Ctrl+I` / `Ctrl+O` / `Ctrl+P` / `Ctrl+T` の直接変換、  
-  `Alt` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp/AuxDown) を含みます。  
+  `[F6]`〜`[F10]` と `[Ctrl] + [U]` / `[Ctrl] + [I]` / `[Ctrl] + [O]` / `[Ctrl] + [P]` / `[Ctrl] + [T]` の直接変換、  
+  `[Alt]` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp / AuxDown) を含みます。  
   無変換キーはFcitx 5版と同様に、組成中に消費されるNOPです。(直接変換は行いません)  
 - **パネルの入力モード表示 (IBusProperty) に対応しています。**  
   パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
@@ -313,7 +332,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   preedit・候補リスト・IBusProperty・補助テキストの更新はGLibメインループへ配送されて適用されます。  
   
   サーバが遅い間もキー入力処理は即座に戻り、応答到着後に表示へ反映されます。  
-  既存のread timeout (最大10秒)・response 上限 2[MB]・再接続・read-throughキャッシュ無効化・RPC 順序は維持しています。  
+  既存のread timeout (最大10秒)・response 上限2[MB]・再接続・read-throughキャッシュ無効化・RPC 順序は維持しています。  
   
   応答到着前に次のキーが入力された場合、consume / forwardの判定は直前の確定済み状態に基づくため、稀にサーバレイテンシ分だけ順序がずれることがあります。  
   (未処理と判明したキーは `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)  
@@ -323,14 +342,14 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
 
 ## ニューラル変換 (Zenzai / Jinen v2) のセットアップ
 
-Zenzai / jinen-v2 のモデル選択・有効化手順・Vulkanドライバの導入・GPU/iGPU要件・モデルの保存場所は、  
-[docs/neural-conversion.md](./docs/neural-conversion.md) を参照してください。  
+Zenzai / jinen-v2のモデル選択・有効化手順・Vulkanドライバの導入・GPU/iGPU要件・モデルの保存場所は、  
+[docs/neural-conversion.md](./docs/neural-conversion.md)を参照してください。  
 
 <br>
 
 ## 設定・環境のリファレンス
 
-hazkey-communityが使用するファイルの場所と、サーバ起動時に効く環境変数をここにまとめます。  
+Hazkey Communityが使用するファイルの場所と、サーバ起動時に効く環境変数をここにまとめます。  
 
 ### ファイルの場所 (XDGベースディレクトリ準拠)
 
@@ -367,7 +386,7 @@ hazkey-communityが使用するファイルの場所と、サーバ起動時に�
 ```sh
 mkdir -p ~/.config/hazkey-community
 cat > ~/.config/hazkey-community/env <<'EOF'
-# NVIDIA GPU のみに固定する例
+# NVIDIA GPUのみに固定する例
 VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
 HAZKEY_ZENZAI_CPU_THREADS=4
@@ -379,14 +398,14 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 ```
 
 > Systemdのドロップイン (`fcitx5.service.d/*.conf` の `Environment=`) でも環境変数は設定できますが、  
-> ラッパースクリプトがenvファイルを `source` するため、両方に同じ変数を書いた場合は **`~/.config/hazkey-community/env` 側が優先**されます。  
+> ラッパースクリプトがenvファイルを`source`するため、両方に同じ変数を書いた場合は**`~/.config/hazkey-community/env`側が優先**されます。  
 > 混在させずどちらか一方を使用してください。  
 
 <br>
 
 ## ソースからのビルド
 
-ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md) にまとめています。  
+ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md)にまとめています。  
 
 <br>
 
@@ -407,8 +426,8 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 | [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) / [zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) / [zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | ニューラル変換モデル (GGUF、zenz系) |
 | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) / [jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | ニューラル変換モデル (GGUF、Qwen3ベース、CC-BY-SA-4.0) |
 | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Zenzaiの推論バックエンド |
-| [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | インプットメソッドフレームワーク (Fcitx 5 フロントエンド) |
-| [ibus/ibus](https://github.com/ibus/ibus) | インプットメソッドフレームワーク (実験的 IBus フロントエンド) |
+| [fcitx/fcitx5](https://github.com/fcitx/fcitx5) | インプットメソッドフレームワーク (Fcitx 5フロントエンド) |
+| [ibus/ibus](https://github.com/ibus/ibus) | インプットメソッドフレームワーク (IBusフロントエンド) |
 
 ## ライセンス
 
