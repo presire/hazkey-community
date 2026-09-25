@@ -33,4 +33,16 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertTrue(profile.hasUseAddressDictionary)
         XCTAssertEqual(profile.useAddressDictionary, false)
     }
+
+    func testDefaultProfileDisablesEngineeringDictionary() throws {
+        // Given: the server's default-profile response factory.
+        let response = HazkeyServerConfig.getDefaultProfile()
+
+        // When: the factory builds the reset-preview response.
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        // Then: the engineering dictionary is explicitly disabled by default.
+        XCTAssertTrue(profile.hasUseEngineeringDictionary)
+        XCTAssertEqual(profile.useEngineeringDictionary, false)
+    }
 }

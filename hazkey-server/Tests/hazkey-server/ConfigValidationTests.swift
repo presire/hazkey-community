@@ -529,4 +529,25 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertFalse(normalizedDisabled.useAddressDictionary)
         XCTAssertFalse(normalizedDisabled.useAddressDictionaryEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingEngineeringDictionaryAndPreservesExplicitTrue() throws {
+        // Given: a legacy profile missing the engineering-dictionary field and one opting in.
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearUseEngineeringDictionary()
+        XCTAssertFalse(missing.hasUseEngineeringDictionary)
+        XCTAssertFalse(missing.useEngineeringDictionaryEffective)
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.useEngineeringDictionary = true
+
+        // When: each crosses the configuration boundary.
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        // Then: the missing field defaults to disabled while the explicit opt-in survives.
+        XCTAssertTrue(normalizedMissing.hasUseEngineeringDictionary)
+        XCTAssertFalse(normalizedMissing.useEngineeringDictionary)
+        XCTAssertFalse(normalizedMissing.useEngineeringDictionaryEffective)
+        XCTAssertTrue(normalizedEnabled.useEngineeringDictionary)
+        XCTAssertTrue(normalizedEnabled.useEngineeringDictionaryEffective)
+    }
 }
