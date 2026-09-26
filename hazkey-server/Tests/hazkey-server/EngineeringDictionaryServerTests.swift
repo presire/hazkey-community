@@ -71,8 +71,7 @@ final class EngineeringDictionaryServerTests: XCTestCase {
                 throw XCTSkip("\(asset.deletingLastPathComponent().lastPathComponent) is not checked out")
             }
         }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-engineering-dictionary-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         for directory in ["data", "config", "cache", "runtime", "state"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)

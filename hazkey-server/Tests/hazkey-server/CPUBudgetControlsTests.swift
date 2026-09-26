@@ -59,8 +59,7 @@ final class CPUBudgetControlsTests: XCTestCase {
 
     private func runFixture(label: String, extraEnvironment: [String: String]) throws {
         let modelPath = try resolveZenzaiModelPath()
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-cpu-budget-qa-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         defer { try? FileManager.default.removeItem(at: root) }
         for directory in ["runtime", "data", "config", "cache", "state"] {
             try FileManager.default.createDirectory(
@@ -77,6 +76,7 @@ final class CPUBudgetControlsTests: XCTestCase {
         }
 
         let socketURL = root.appendingPathComponent("runtime/hazkey-community-server.\(getuid()).sock")
+        TestTempRoot.requireFitsInSunPath(socketURL.path)
         try waitForSocket(at: socketURL.path)
 
         let client = try QARPCClient(socketPath: socketURL.path)
@@ -137,19 +137,11 @@ final class CPUBudgetControlsTests: XCTestCase {
     }
 
     private func serverExecutable() throws -> URL {
-        if let override = ProcessInfo.processInfo.environment["HAZKEY_SERVER_TEST_BIN"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
+        guard let executable = TestServerBinary.resolve(packageRoot: packageRoot) else {
+            throw QAError.serverExecutableMissing(
+                TestServerBinary.candidatePaths(packageRoot: packageRoot).joined(separator: ", "))
         }
-        let cmakeExecutable = packageRoot.deletingLastPathComponent().appendingPathComponent(
-            "build/hazkey-server/swift-build/x86_64-unknown-linux-gnu/release/hazkey-server")
-        if FileManager.default.isExecutableFile(atPath: cmakeExecutable.path) {
-            return cmakeExecutable
-        }
-        let swiftExecutable = packageRoot.appendingPathComponent(".build/debug/hazkey-server")
-        guard FileManager.default.isExecutableFile(atPath: swiftExecutable.path) else {
-            throw QAError.serverExecutableMissing(cmakeExecutable.path)
-        }
-        return swiftExecutable
+        return executable
     }
 
     private func startServer(

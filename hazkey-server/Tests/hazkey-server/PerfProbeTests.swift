@@ -49,8 +49,7 @@ final class PerfProbeTests: XCTestCase {
     }
 
     private func runCorpus(zenzaiEnabled: Bool) throws -> ProbeRun {
-        let temporaryRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-perf-probe-\(UUID().uuidString)", isDirectory: true)
+        let temporaryRoot = try TestTempRoot.make()
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
         for name in ["runtime", "data", "config", "cache"] {
             try FileManager.default.createDirectory(
@@ -66,6 +65,7 @@ final class PerfProbeTests: XCTestCase {
 
         let socketPath = temporaryRoot.appendingPathComponent(
             "runtime/hazkey-community-server.\(getuid()).sock").path
+        TestTempRoot.requireFitsInSunPath(socketPath)
         try waitForSocket(at: socketPath)
         let client = try EnvelopeClient(socketPath: socketPath)
         defer { client.close() }
@@ -99,11 +99,7 @@ final class PerfProbeTests: XCTestCase {
     }
 
     private func serverExecutable() throws -> URL {
-        if let override = ProcessInfo.processInfo.environment["HAZKEY_SERVER_TEST_BIN"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
-        }
-        let executable = packageRoot.appendingPathComponent(".build/debug/hazkey-server")
-        if FileManager.default.isExecutableFile(atPath: executable.path) {
+        if let executable = TestServerBinary.resolve(packageRoot: packageRoot) {
             return executable
         }
         let build = Process()
@@ -113,9 +109,9 @@ final class PerfProbeTests: XCTestCase {
         try build.run()
         build.waitUntilExit()
         guard build.terminationStatus == 0,
-              FileManager.default.isExecutableFile(atPath: executable.path)
+              let rebuilt = TestServerBinary.resolve(packageRoot: packageRoot)
         else { throw ProbeError.serverBuildFailed }
-        return executable
+        return rebuilt
     }
 
     private func waitForSocket(at path: String) throws {

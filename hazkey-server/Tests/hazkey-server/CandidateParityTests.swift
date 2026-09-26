@@ -143,8 +143,7 @@ final class CandidateParityTests: XCTestCase {
         modelPath: String,
         probeDeterminism: Bool
     ) throws -> (snapshot: [String: [String]], probeFailures: [String]) {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-candidate-parity-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         defer { try? FileManager.default.removeItem(at: root) }
         for directory in ["runtime", "data", "config", "cache", "state"] {
             try FileManager.default.createDirectory(
@@ -163,6 +162,7 @@ final class CandidateParityTests: XCTestCase {
             root.standardizedFileURL.path + "/")
         XCTAssertTrue(socketIsIsolated, "Test socket must remain under its temporary XDG root.")
         guard socketIsIsolated else { throw ParityError.socketEscapesSandbox(socketURL.path) }
+        TestTempRoot.requireFitsInSunPath(socketURL.path)
         try waitForSocket(at: socketURL.path)
 
         let client = try ParityRPCClient(socketPath: socketURL.path)
@@ -216,19 +216,11 @@ final class CandidateParityTests: XCTestCase {
     }
 
     private func serverExecutable() throws -> URL {
-        if let override = ProcessInfo.processInfo.environment["HAZKEY_SERVER_TEST_BIN"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
+        guard let executable = TestServerBinary.resolve(packageRoot: packageRoot) else {
+            throw ParityError.serverExecutableMissing(
+                TestServerBinary.candidatePaths(packageRoot: packageRoot).joined(separator: ", "))
         }
-        let cmakeExecutable = packageRoot.deletingLastPathComponent().appendingPathComponent(
-            "build/hazkey-server/swift-build/x86_64-unknown-linux-gnu/release/hazkey-server")
-        if FileManager.default.isExecutableFile(atPath: cmakeExecutable.path) {
-            return cmakeExecutable
-        }
-        let swiftExecutable = packageRoot.appendingPathComponent(".build/debug/hazkey-server")
-        guard FileManager.default.isExecutableFile(atPath: swiftExecutable.path) else {
-            throw ParityError.serverExecutableMissing(cmakeExecutable.path)
-        }
-        return swiftExecutable
+        return executable
     }
 
     private func waitForSocket(at path: String) throws {

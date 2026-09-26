@@ -30,8 +30,7 @@ final class CandidateDeduplicationTests: XCTestCase {
     }
 
     override func setUpWithError() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-candidate-dedup-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         for directory in ["data", "config", "cache", "runtime", "state"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)

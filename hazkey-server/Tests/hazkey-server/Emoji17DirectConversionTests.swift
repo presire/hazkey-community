@@ -41,8 +41,7 @@ final class Emoji17DirectConversionTests: XCTestCase {
     private static let vs16Emoji = "☺️"
 
     override func setUpWithError() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-emoji17-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         for directory in ["data", "config", "cache", "runtime", "state"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)

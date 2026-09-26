@@ -244,4 +244,5 @@ jobs:
            fi
            # user-dictionaryのリトライ保持修正 (旧patches/0006-zenzai-preserve-user-dictionary.patch) は、
            # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない
-           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}"
+           # Swift Buildではテストランナーの推移的なllama/ggml共有ライブラリが既定の探索範囲外に置かれるため、-rpath-linkで推移パスを指定する
+           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}" -Xlinker "-rpath-link" -Xlinker "${LLAMA_LIB_DIR}"

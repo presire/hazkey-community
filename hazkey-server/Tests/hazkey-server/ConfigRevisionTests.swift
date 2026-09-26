@@ -22,8 +22,7 @@ final class ConfigRevisionTests: XCTestCase {
     }
 
     override func setUpWithError() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-config-revision-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         for directory in ["data", "config", "cache", "runtime", "state"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)

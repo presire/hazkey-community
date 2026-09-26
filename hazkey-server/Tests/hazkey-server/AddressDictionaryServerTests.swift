@@ -47,8 +47,7 @@ final class AddressDictionaryServerTests: XCTestCase {
         else {
             throw XCTSkip("hazkey-address-dictionary submodule is not checked out")
         }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-address-dictionary-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         for directory in ["data", "config", "cache", "runtime", "state"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)

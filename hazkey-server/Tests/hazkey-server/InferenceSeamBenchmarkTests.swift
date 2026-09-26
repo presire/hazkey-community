@@ -6,6 +6,7 @@ import XCTest
 @testable import hazkey_server
 
 // allow: SIZE_OK — this one staged test file intentionally owns its isolated server and socket harness.
+// SELF-CONTAINED except for the sole shared dependency `TestTempRoot` (short temp root for sun_path).
 final class InferenceSeamBenchmarkTests: XCTestCase {
     private let corpus = [
         "かな", "にほんご", "きょう", "あした", "とうきょう", "へんかん",
@@ -101,8 +102,7 @@ final class InferenceSeamBenchmarkTests: XCTestCase {
         loadDriver: CPULoadDriver? = nil,
         cpuSampler: CPUSampler? = nil
     ) throws -> BenchmarkRun {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "hazkey-inference-benchmark-\(UUID().uuidString)", isDirectory: true)
+        let root = try TestTempRoot.make()
         defer { try? FileManager.default.removeItem(at: root) }
         for directory in ["runtime", "data", "config", "cache"] {
             try FileManager.default.createDirectory(
@@ -122,6 +122,7 @@ final class InferenceSeamBenchmarkTests: XCTestCase {
             root.standardizedFileURL.path + "/")
         XCTAssertTrue(socketIsIsolated, "Test socket must remain under its temporary XDG root.")
         guard socketIsIsolated else { throw BenchmarkError.socketEscapesSandbox(socketURL.path) }
+        TestTempRoot.requireFitsInSunPath(socketURL.path)
         try waitForSocket(at: socketURL.path)
 
         let client = try BenchmarkClient(socketPath: socketURL.path)
@@ -164,19 +165,11 @@ final class InferenceSeamBenchmarkTests: XCTestCase {
     }
 
     private func serverExecutable() throws -> URL {
-        if let override = ProcessInfo.processInfo.environment["HAZKEY_SERVER_TEST_BIN"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
+        guard let executable = TestServerBinary.resolve(packageRoot: packageRoot) else {
+            throw BenchmarkError.serverExecutableMissing(
+                TestServerBinary.candidatePaths(packageRoot: packageRoot).joined(separator: ", "))
         }
-        let cmakeExecutable = packageRoot.deletingLastPathComponent().appendingPathComponent(
-            "build/hazkey-server/swift-build/x86_64-unknown-linux-gnu/release/hazkey-server")
-        if FileManager.default.isExecutableFile(atPath: cmakeExecutable.path) {
-            return cmakeExecutable
-        }
-        let swiftExecutable = packageRoot.appendingPathComponent(".build/debug/hazkey-server")
-        guard FileManager.default.isExecutableFile(atPath: swiftExecutable.path) else {
-            throw BenchmarkError.serverExecutableMissing(cmakeExecutable.path)
-        }
-        return swiftExecutable
+        return executable
     }
 
     private func waitForSocket(at path: String) throws {
