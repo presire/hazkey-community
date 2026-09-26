@@ -1,35 +1,37 @@
+/**
+ * @file hazkey_frontend_glib.cpp
+ * @brief GLib向けフロントエンドフックの実装
+ *
+ * 公開APIの仕様はヘッダ (hazkey_frontend_glib.h) を参照のこと
+ * メインループ配送、ログ出力、サーバ起動のGLib結線を実装する
+ */
 #include "hazkey_frontend_glib.h"
-
 #include "hazkey_frontend_hooks.h"
-
 #include <glib.h>
-
 #include <atomic>
 #include <functional>
 #include <string>
 #include <utility>
 #include <vector>
 
+/** @brief IBusフロントエンドの名前空間 */
 namespace hazkey::ibus {
 
 void installGlibFrontendHooks() {
-    // Install once, before any worker task can read these hooks (the engine
-    // constructs its frontend right after this call). Re-installing from a
-    // second engine instance would race with a running worker.
+    // ワーカータスクがフックを読むより前に1回だけ導入する (本呼出しの直後にエンジンがフロントエンドを構築する)
+    // 2つ目のエンジン実体から再導入すると実行中ワーカーと競合する
     static std::atomic<bool> installed{false};
     bool expected = false;
     if (!installed.compare_exchange_strong(expected, true)) {
         return;
     }
 
-    // Main-loop delivery for the worker-thread IME logic.
+    // ワーカースレッド側IMEロジック向けのメインループ配送
     //
-    // g_idle_add_full() attaches an idle source to the global default main
-    // context, which is the context ibus_main() runs. Unlike
-    // g_main_context_invoke(), it NEVER runs the callback inline on the
-    // calling (worker) thread, and G_PRIORITY_DEFAULT keeps it from being
-    // starved by lower-priority idle work. Sources at equal priority are
-    // dispatched in attach order, so UI updates keep FIFO order.
+    // g_idle_add_full()は、全体既定メインコンテキスト (ibus_main()が回すコンテキスト) へアイドルソースを結び付ける
+    // g_main_context_invoke()とは異なり、呼出し側 (ワーカー) スレッド上でコールバックを直実行することは決してなく、
+    // G_PRIORITY_DEFAULT指定で低優先アイドル処理に枯渇させられない
+    // 等優先ソースは結付順に配送されるため、UI更新はFIFO順を保つ
     hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
         auto* heapTask = new std::function<void()>(std::move(task));
         g_idle_add_full(
@@ -49,14 +51,11 @@ void installGlibFrontendHooks() {
         switch (level) {
             case hazkey::frontend::LogLevel::Debug:
             case hazkey::frontend::LogLevel::Info:
-                // The sink logs both levels through g_debug() on
-                // G_LOG_DOMAIN. Mirror the default log writer's own drop
-                // decision for that domain: it covers both G_MESSAGES_DEBUG
-                // and g_log_set_debug_enabled(), which g_log_get_debug_enabled()
-                // alone does not.
+                // シンクは両水準ともG_LOG_DOMAIN上のg_debug()経由で記録する
+                // その領域に対する既定ログ書出し側自身の破棄判断を写す:
+                // G_MESSAGES_DEBUGとg_log_set_debug_enabled()の双方を対象とし、g_log_get_debug_enabled()単体では足りない
 #if GLIB_CHECK_VERSION(2, 68, 0)
-                return !g_log_writer_default_would_drop(G_LOG_LEVEL_DEBUG,
-                                                        G_LOG_DOMAIN);
+                return !g_log_writer_default_would_drop(G_LOG_LEVEL_DEBUG, G_LOG_DOMAIN);
 #else
                 return true;
 #endif

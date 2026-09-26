@@ -17,8 +17,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
 
-# When configured standalone (cmake -S ibus-hazkey), pull in the shared
-# transport library. When configured from the repo root it is already there.
+# 単体でCMake Configureした場合 (cmake -S ibus-hazkeyコマンド) は共有トランスポートライブラリを取り込む
+# リポジトリルートからCMake Configureした場合は既に存在する
 if(NOT TARGET hazkey-frontend-common)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-frontend-common"
         "${CMAKE_CURRENT_BINARY_DIR}/hazkey-frontend-common")
@@ -28,7 +28,7 @@ configure_file(ibus-hazkey-community.xml.in
     ${CMAKE_CURRENT_BINARY_DIR}/ibus-hazkey-community.xml
     @ONLY)
 
-# gettext catalogs for the "ibus-hazkey-community" domain (engine <longname>/<description>).
+# "ibus-hazkey-community"ドメインのGetTextカタログ (エンジンの <longname>/<description>向け)
 add_subdirectory(po)
 add_subdirectory(src)
 

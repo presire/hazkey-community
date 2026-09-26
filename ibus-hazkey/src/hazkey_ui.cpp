@@ -1,29 +1,47 @@
-#include "hazkey_ui.h"
+/**
+ * @file hazkey_ui.cpp
+ * @brief hazkey_ui.hの実装
+ *
+ * 公開APIの仕様はヘッダ (hazkey_ui.h) を参照のこと
+ * 本ファイルには描画処理と匿名名前空間内の内部ヘルパのみを実装する
+ */
 
+#include "hazkey_ui.h"
 #include <algorithm>
 
-// See hazkey_state.cpp for the rationale: IBUS_ATTR_TYPE_HINT exists only
-// since IBus 1.5.33 and is applied opportunistically next to the
-// unconditional underline.
+// 理由は、hazkey_state.cppを参照:
+// IBUS_ATTR_TYPE_HINTマクロは IBus 1.5.33以降にのみ存在するため、無条件の下線に加えて利用可能な場合にだけ付与する
 #if IBUS_CHECK_VERSION(1, 5, 33)
 #define HAZKEY_IBUS_HAS_ATTR_TYPE_HINT 1
 #else
 #define HAZKEY_IBUS_HAS_ATTR_TYPE_HINT 0
 #endif
 
+/** @brief IBusフロントエンドの描画と入力状態を担う名前空間 */
 namespace hazkey::ibus {
 
 namespace {
 
-// gettext lookup in the engine's own domain, same as the state machine.
+/**
+ * @brief エンジン自身のドメインでメッセージを翻訳する
+ *
+ * @param messageId 翻訳対象のメッセージID
+ * @return 翻訳済み文字列
+ * @note 状態機械と同じドメイン (ibus-hazkey-community) でgettext検索する
+ */
 const char* tr(const char* messageId) {
     return g_dgettext("ibus-hazkey-community", messageId);
 }
 
-// Fcitx defaultSelectionKeys (1..9, 0) for IBus lookup-table slots; other
-// slots deliberately have no label. Mirrors
-// HazkeyState::selectionLabelForIndex() (kept local so this rendering layer
-// does not depend on the logic class).
+/**
+ * @brief IBus候補テーブルのスロット用選択ラベルを返す
+ *
+ * FcitxのdefaultSelectionKeys (1..9, 0) を再現し、それ以外のスロットには意図的にラベルを付けない
+ *
+ * @param localIndex ページ内でのローカル番号
+ * @return 対応する選択ラベル (範囲外は空文字列)
+ * @note HazkeyState::selectionLabelForIndex()と同じ内容だが、この描画層がロジック側クラスに依存しないようローカルに保持している
+ */
 std::string selectionLabelForIndex(int localIndex) {
     if (localIndex >= 0 && localIndex <= 8) {
         return std::to_string(localIndex + 1);
@@ -34,8 +52,15 @@ std::string selectionLabelForIndex(int localIndex) {
     return "";
 }
 
-// Mirrors HazkeyState::joinAuxiliaryText(): one space only when both parts
-// are non-empty.
+/**
+ * @brief 上下の補助テキストを空白区切りで連結する
+ *
+ * HazkeyState::joinAuxiliaryText()と同じ内容であり、両方が非空の場合のみ空白1つで連結する
+ *
+ * @param auxUp    上段の補助テキスト
+ * @param auxDown  下段の補助テキスト
+ * @return 連結後の補助テキスト (片方が空ならもう片方をそのまま返す)
+ */
 std::string joinAuxiliaryText(const std::string& auxUp,
                               const std::string& auxDown) {
     if (auxUp.empty()) {
@@ -53,9 +78,9 @@ HazkeyUi::HazkeyUi(IBusEngine* engine) : engine_(engine) {}
 
 
 HazkeyUi::~HazkeyUi() {
-    // Deliberately does NOT unref the IBus/GObject members: this object may be
-    // destroyed on the worker thread when the last shared_ptr is dropped.
-    // retire() (main loop) is responsible for releasing them.
+    // ここで保持するIBus/GObjectメンバは、意図的にunrefしない:
+    // 最後のshared_ptrが解放された時にワーカースレッド上で破棄される可能性があるため
+    // 解放は、retire() (メインループ) が担当する
     if (!retired_) {
         g_warning("hazkey: HazkeyUi destroyed without retire(); IBus objects leaked");
     }
@@ -254,8 +279,8 @@ void HazkeyUi::registerProperties(bool directInput, bool zenzaiEnabled,
         ibus_prop_list_append(propertyList_, zenzaiProperty_);
         ibus_prop_list_append(propertyList_, liveConvertProperty_);
     }
-    // Apply the states first so the registered list already carries them;
-    // with propertiesRegistered_ cleared the updates only touch the objects.
+    // 先に状態を適用しておくことで、登録するリスト自体に反映済みの状態が載る
+    // propertiesRegistered_を落としておけば、更新はオブジェクトへの反映だけになる
     propertiesRegistered_ = false;
     updateInputModeProperty(directInput);
     updateZenzaiProperty(zenzaiEnabled);

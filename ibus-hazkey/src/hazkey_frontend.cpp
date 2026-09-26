@@ -1,32 +1,58 @@
+/**
+ * @file hazkey_frontend.cpp
+ * @brief IBus入力コンテキストごとのメインループ側ファサードの実装
+ *
+ * 公開APIの仕様はヘッダ (hazkey_frontend.h) を参照のこと
+ * 同期消費判定とワーカーへの投入、投機状態の整合を実装する
+ */
 #include "hazkey_frontend.h"
-
 #include <string>
 #include <utility>
-
 #include "hazkey_frontend_hooks.h"
 
+/** @brief IBusフロントエンドの名前空間 */
 namespace hazkey::ibus {
 
 namespace {
 
-// One executor per IBus process. HazkeyState instances share the single
-// HazkeyServerConnector singleton, so serializing every state's work on one
-// thread keeps the transport single-threaded and RPCs strictly FIFO.
-//
-// Intentionally leaked: the executor's worker may reference HazkeyState
-// objects whose teardown is driven by the engine, and static destruction order
-// at process exit is not controllable. Leaking one thread at exit is harmless.
+/**
+ * @brief プロセス共通のSerialTaskExecutorを返す
+ *
+ * IBusプロセスごとに実行器を1つ持ち、全HazkeyStateが単一のHazkeyServerConnector単体を共有するため、
+ * 全状態の処理を1スレッドに直列化して搬送を単一スレッド化し、RPCを厳密なFIFOにする
+ * 意図的なリーク: 実行器のワーカーが参照するHazkeyStateの破棄はエンジン駆動であり、
+ *               プロセス終了時のstatic破棄順序を制御できない
+ *               終了時のスレッド1つのリークは無害である
+ *
+ * @return プロセス共通の実行器への参照
+ * @internal 翻訳単位内の実装詳細
+ */
 hazkey::frontend::SerialTaskExecutor& sharedExecutor() {
     static hazkey::frontend::SerialTaskExecutor* executor =
         new hazkey::frontend::SerialTaskExecutor();
     return *executor;
 }
 
+/**
+ * @brief アプリ側へ素通しさせる修飾子マスク
+ *
+ * Control / Mod1 / Super / Hyper / Meta / Mod4 のいずれかが含まれる
+ *
+ * @internal 翻訳単位内の実装詳細
+ */
 constexpr guint kModifierPassthroughMask =
     IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK | IBUS_HYPER_MASK |
     IBUS_META_MASK | IBUS_MOD4_MASK;
 
-// Keys the IME handles in preedit mode (mirrors HazkeyState::preeditKeyEvent).
+/**
+ * @brief 組成中にIMEが処理するキーかを判定する
+ *
+ * HazkeyState::preeditKeyEventを写した判定である
+ *
+ * @param keyval 判定対象のキー値
+ * @return IMEが処理する場合はtrue
+ * @internal 匿名名前空間内の実装専用ヘルパ
+ */
 bool isPreeditHandledKey(guint keyval) {
     switch (keyval) {
         case IBUS_KEY_Return:
@@ -49,9 +75,8 @@ bool isPreeditHandledKey(guint keyval) {
         case IBUS_KEY_ISO_Left_Tab:
         case IBUS_KEY_Left:
         case IBUS_KEY_Right:
-        // [community] Home/End move the COMPOSITION cursor while composing, so
-        // they must be consumed here too. Without a composition they fall
-        // through to the idle branch and stay with the application.
+        // 組成中は、[Home] / [End]キーが組成カーソルを移動させるため、ここでも消費する必要がある
+        // 組成がなければアイドル分岐へ抜けてアプリケーション側に残る
         case IBUS_KEY_Home:
         case IBUS_KEY_KP_Home:
         case IBUS_KEY_End:
@@ -62,8 +87,15 @@ bool isPreeditHandledKey(guint keyval) {
     }
 }
 
-// Keys the IME handles in candidate mode (mirrors
-// HazkeyState::candidateKeyEvent before the digit/inputable fallbacks).
+/**
+ * @brief 候補表示中にIMEが処理するキーかを判定する
+ *
+ * 数字・入力可能キーへのフォールバックより前のHazkeyState::candidateKeyEventを写した判定である
+ *
+ * @param keyval 判定対象のキー値
+ * @return IMEが処理する場合はtrue
+ * @internal 匿名名前空間内の実装専用ヘルパ
+ */
 bool isCandidateHandledKey(guint keyval) {
     switch (keyval) {
         case IBUS_KEY_Right:
@@ -94,8 +126,7 @@ bool isCandidateHandledKey(guint keyval) {
 HazkeyFrontend::HazkeyFrontend(IBusEngine* engine)
     : ui_(std::make_shared<HazkeyUi>(engine)),
       state_(std::make_shared<HazkeyState>(ui_, &sharedExecutor())) {
-    // Seed the ingress hotkeys with the same defaults the state seeds, so the
-    // very first key event can already recognize the built-in hotkeys.
+    // 取込用ホットキーへstateと同じ既定値を入れておき、最初のキーイベントから組込ホットキーを認識できるようにする
     liveConvert_ = HazkeyState::parseHotkey("", "Control+Shift+L");
     zenzaiToggle_ = HazkeyState::parseHotkey("", "Control+Alt+Z");
     acceptPrediction_ = HazkeyState::parseHotkey("", "F5");
@@ -108,12 +139,9 @@ void HazkeyFrontend::retire() {
     if (retired_) {
         return;
     }
-    // Stop accepting new work first (every vfunc checks retired_), then give
-    // already-submitted worker tasks a bounded chance to finish and run the UI
-    // commands they posted (notably a focus-out commit) while the engine and
-    // renderer are still valid. The drain waits only for tasks already
-    // submitted; the bounded iteration below dispatches only sources that are
-    // already ready.
+    // まず新規受付を止め (全vfuncがretired_を見る)、
+    // 投入済みワーカータスクが終了して投稿済みUI命令 (特にフォーカスアウト時の確定) をエンジンと描画器が有効なうちに実行できるよう、区切られた機会を与える
+    // 排出待ちは投入済みタスクのみを待ち、下の区切られた反復は既に準備済みのソースだけを配送する
     retired_ = true;
     forwardedPressKeyvals_.clear();
     constexpr auto kRetireDrainTimeout = std::chrono::milliseconds(200);
@@ -145,16 +173,14 @@ void HazkeyFrontend::enqueue(
             });
         });
     if (token == hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
-        // The executor rejected the task (stopping): undo the bookkeeping so
-        // pendingOps_ cannot stick above zero forever.
+        // 実行器がタスクを拒否した (停止中): 帳尻を戻し、pendingOps_が0より上で固まらないようにする
         if (pendingOps_ > 0) {
             --pendingOps_;
         }
     }
 }
 
-void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
-                                  gboolean consume) {
+void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state, gboolean consume) {
     auto self = shared_from_this();
     auto logic = state_;
     auto ui = ui_;
@@ -172,12 +198,10 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
                         if (self->pendingOps_ > 0) {
                             --self->pendingOps_;
                         }
-                        // A provisional consume the worker did not handle is
-                        // forwarded, in FIFO order, so no key is lost and the
-                        // release cannot overtake its press. A release is only
-                        // forwarded when its own press was forwarded: the worker
-                        // never handles releases, and clients that cannot see
-                        // the release flag would receive a phantom key press.
+                        // ワーカーが処理しなかった投機的消費はFIFO順で転送し、キーを欠落させず、解放が対応する押下を追い越さないようにする
+                        //
+                        // 解放は対応する押下も転送済みの場合にのみ転送する:
+                        // ワーカーは解放を処理せず、解放フラグを見られないクライアントは幻のキー押下を受け取ってしまう
                         if (consume && !handled && !self->retired_ &&
                             shouldForwardUnhandledKey(
                                 (state & IBUS_RELEASE_MASK) != 0, keyval,
@@ -209,8 +233,7 @@ void HazkeyFrontend::applyIngress(
 
 gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
                                           const DecisionInput& in) {
-    // Release events and the Shift key itself are never consumed by the IME
-    // (the worker handles Shift state, but the key is not swallowed).
+    // 解放イベントとShiftキー自体はIMEで消費しない (ワーカーがShift状態を扱うが、キーは取り込まない)。
     if ((state & IBUS_RELEASE_MASK) != 0) {
         return FALSE;
     }
@@ -218,8 +241,8 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
         return FALSE;
     }
 
-    // Global hotkeys are matched before anything else, exactly like
-    // HazkeyState::processKeyEvent().
+    // 全体ホットキーは他より先に照合する
+    // HazkeyState::processKeyEvent()と全く同じである
     if (HazkeyState::hotkeyMatches(keyval, state, in.liveConvert) ||
         HazkeyState::hotkeyMatches(keyval, state, in.zenzaiToggle)) {
         return TRUE;
@@ -227,10 +250,8 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
 
     const bool hasModifierPassthrough =
         (state & kModifierPassthroughMask) != 0;
-    // Before the server profile is loaded the configured hotkeys are unknown,
-    // so any modifier combo is provisionally consumed (and forwarded later if
-    // the worker does not handle it). Returning FALSE here could let the app
-    // act on a configured hazkey hotkey.
+    // サーバプロファイル読込前は設定済みホットキーが不明なため、修飾子組合せは全て投機的に消費する (ワーカーが処理しなければ後で転送する)
+    // ここでFALSEを返すと、設定済みのhazkeyホットキーにアプリが反応してしまう
     if (!in.profileLoaded && hasModifierPassthrough) {
         return TRUE;
     }
@@ -244,19 +265,18 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
             HazkeyState::isAltShiftSpaceOrTab(keyval, state)) {
             return TRUE;
         }
-        // Non-hotkey Alt/Super/Meta/Hyper combos belong to the application.
+        // ホットキーでないAlt/Super/Meta/Hyper組合せはアプリ側のものである。
         if ((state & (IBUS_MOD1_MASK | IBUS_SUPER_MASK | IBUS_MOD4_MASK |
                       IBUS_META_MASK | IBUS_HYPER_MASK)) != 0) {
             return FALSE;
         }
-        // The worker's candidateKeyEvent handles these keys BEFORE its Control
-        // branch, so e.g. Ctrl+Return / Ctrl+BackSpace / Ctrl+F6 are handled
-        // while Ctrl+<letter> is not. Keep the same order here.
+        // ワーカーのcandidateKeyEventはControl分岐より先にこれらのキーを処理するため、
+        // [Ctrl] + [Enter] / [Ctrl] + [BackSpace] / [Ctrl] + [F6]等は処理され、[Ctrl] + [文字]キーは処理されない
+        // ここでも同じ順序を保つ
         if (isCandidateHandledKey(keyval)) {
             return TRUE;
         }
-        // An exact Ctrl combo consumes the direct-conversion shortcuts and
-        // forwards every other Ctrl key.
+        // 厳密な[Ctrl]組合せは直接変換ショートカットだけを消費し、他の[Ctrl]キーは全て転送する
         if ((state & IBUS_CONTROL_MASK) != 0) {
             return HazkeyState::isDirectConversionShortcut(keyval, state) ? TRUE
                                                                           : FALSE;
@@ -281,8 +301,7 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
         return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;
     }
 
-    // Idle: only Space / printable keys (and modifier combos already handled
-    // above) are IME keys; everything else belongs to the application.
+    // アイドル時: Spaceと印字可能キー (および上で処理済みの修飾子組合せ) だけがIMEのキーであり、それ以外は全てアプリケーション側のものである
     if (hasModifierPassthrough) {
         return FALSE;
     }
@@ -296,14 +315,14 @@ bool HazkeyFrontend::shouldForwardUnhandledKey(
     bool isRelease, guint keyval,
     std::unordered_set<guint>& pendingPressKeyvals) {
     if (!isRelease) {
-        // Remember the press so its own release can be paired with it.
+        // 押下を記憶し、対応する解放と対にできるようにする。
         pendingPressKeyvals.insert(keyval);
         return true;
     }
-    // A release only means something to the application when the press it
-    // belongs to was forwarded too. Every other release is dropped: the worker
-    // never handles releases, so forwarding them blindly would deliver a
-    // phantom key press for a key the IME already consumed.
+    // 解放は、対応する押下も転送済みの場合にのみアプリ側にとって意味を持つ
+    //
+    // それ以外の解放は全て捨てる:
+    // ワーカーは解放を処理しないため、無闇に転送するとIMEが消費したキーに対する幻のキー押下を届けてしまう
     return pendingPressKeyvals.erase(keyval) > 0;
 }
 
@@ -313,17 +332,12 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
         return FALSE;
     }
     const bool isRelease = (state & IBUS_RELEASE_MASK) != 0;
-    const bool shiftKey =
-        keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R;
+    const bool shiftKey = keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R;
 
-    // While any operation is still outstanding, or before the server profile
-    // (and therefore the configured hotkeys) is known, the synchronous
-    // decision cannot be trusted to be a superset of the worker's handled set
-    // (e.g. a custom unmodified hotkey, or a candidate that a queued key is
-    // about to focus). In that window every event -- releases included, so a
-    // later-forwarded press cannot overtake its own release -- is consumed
-    // provisionally; enqueueKeyOp() forwards whatever the worker does not
-    // handle, preserving order.
+    // 未処理操作の残存中やサーバプロファイル (ひいては設定済みホットキー) 未読込中は、
+    // 同期判定がワーカーの処理集合の上位集合である保証がないため (未修飾の独自ホットキーや、待機中キーがこれから焦点を当てる候補等)、
+    // その間は全イベント (後から転送される押下が対応する解放を追い越さないよう、解放も含む) を投機的に消費する
+    // enqueueKeyOp()がワーカーの未処理分を順序どおりに転送する
     const bool barrier = pendingOps_ > 0 || !profileLoaded_;
     if (barrier) {
         enqueueKeyOp(keyval, keycode, state, TRUE);
@@ -337,9 +351,9 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
         return FALSE;
     }
 
-    // Optimistically assume an inputable key opens a composition, so an
-    // immediately following Return/Escape/arrow is still recognized as
-    // IME-owned. Corrected by applyIngress() and the forward fallback.
+    // 入力可能キーは組成を開くと楽観的にみなす
+    // 直後の[Return] / [Esc] / [矢印]キーもIME所有として認識し続ける
+    // applyIngress()と転送フォールバックで修正される
     if (HazkeyState::isInputableKey(keyval)) {
         specComposing_ = true;
     }
@@ -404,7 +418,7 @@ bool HazkeyFrontend::activateProperty(const gchar* propName,
         return false;
     }
     if (g_strcmp0(propName, "InputMode") == 0) {
-        // Static storage: safe to capture across the worker hop.
+        // static領域: ワーカー跨ぎの捕獲でも安全である。
         enqueue([](const std::shared_ptr<HazkeyState>& s) {
             s->activateProperty("InputMode", 0);
         });
@@ -436,7 +450,8 @@ void HazkeyFrontend::setCursorLocation(gint x, gint y, gint w, gint h) {
 void HazkeyFrontend::setSurroundingText(IBusText* text, guint cursorIndex,
                                         guint anchorPos) {
     if (retired_) return;
-    // Copy to a plain string on the main loop; the IBusText is not retained.
+    // メインループ上でプレーンな文字列へ複写する
+    // IBusTextは保持しない
     const std::string surrounding =
         (text != nullptr && ibus_text_get_text(text) != nullptr)
             ? ibus_text_get_text(text)
@@ -470,8 +485,8 @@ void HazkeyFrontend::cursorDown() {
 void HazkeyFrontend::candidateClicked(guint index, guint button, guint state) {    (void)button;
     (void)state;
     if (retired_) return;
-    // Resolve the page-local index against exactly the render the user saw,
-    // on the main loop where that snapshot lives.
+    // ページ内番号は、ユーザーが見た描画そのもののスナップショットに対して解決する
+    // そのスナップショットが在るメインループ上で行う
     const HazkeyUi::LookupSnapshot snapshot = ui_->lookupSnapshot();
     if (!snapshot.visible || snapshot.pageSize <= 0) {
         return;

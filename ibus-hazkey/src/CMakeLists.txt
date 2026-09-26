@@ -1,12 +1,9 @@
-# IBus engine binary and its frontend-logic test. Mirrors
-# fcitx5-hazkey/src/CMakeLists.txt: this directory owns its targets while the
-# parent owns project setup, the shared transport, the component XML and the
-# gettext catalogs.
+# IBusエンジンバイナリとフロントエンドロジックのテスト
+# fcitx5-hazkey/src/CMakeLists.txtと対応する構成で、このディレクトリが自ターゲットを持ち、
+# 親がプロジェクト設定・共有トランスポート・component XML・GetTextカタログを持つ
 
-# Engine description (<icon>/<setup>) embedded into the engine binary and
-# emitted by `ibus-engine-hazkey-community --xml`. The setup command must be an absolute
-# path because ibus-setup launches it with os.spawnl(), which does not search
-# PATH (an absolute path would otherwise resolve via execv, not PATH lookup).
+# エンジン記述 (<icon>/<setup>)。設定コマンドは絶対パスにすること
+# ibus-setupがos.spawnl()で起動し、PATH探索を行わないためである (絶対パスは、PATH探索ではなく、execv経由で直接解決される)
 set(HAZKEY_ENGINE_ICON "hazkey-community")
 set(HAZKEY_ENGINE_SETUP "${CMAKE_INSTALL_FULL_BINDIR}/hazkey-community-settings")
 configure_file(engine_description.h.in
@@ -34,18 +31,16 @@ target_link_libraries(ibus-engine-hazkey PRIVATE
     hazkey-frontend-common
 )
 
-# Installed as ibus-engine-hazkey-community under libexec/ibus-hazkey-community
-# so it can coexist with an upstream ibus-hazkey package.
+# libexec/ibus-hazkey-community配下にibus-engine-hazkey-communityとしてインストール
 set_target_properties(ibus-engine-hazkey PROPERTIES
     OUTPUT_NAME ibus-engine-hazkey-community)
 install(TARGETS ibus-engine-hazkey
     RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community)
 
-# Frontend-logic test. Mirrors fcitx5-hazkey's hazkey_candidate_selection_test
-# for the IBus candidate index mapping. It links hazkey_state.cpp directly
-# (the pure static mapper is exercised without constructing an engine or
-# contacting hazkey-server) and uses an ibus_-prefixed CTest name so it does
-# not collide with the fcitx5-hazkey tests in a combined build.
+# フロントエンドロジックのテスト
+# IBusの候補インデックス対応付けについて、fcitx5-hazkey側のhazkey_candidate_selection_testと対応する
+# hazkey_state.cppを直接リンクし (純粋なstaticマッパーのみを検証するため、エンジン生成もhazkey-serverへの接続も行わない)、
+# 結合ビルドでfcitx5-hazkey-community側テストと衝突しないよう、ibus_接頭辞のCTest名を使用する
 if(BUILD_TESTING)
     add_executable(ibus_hazkey_state_test
         hazkey_state_test.cpp
@@ -62,9 +57,9 @@ if(BUILD_TESTING)
         PkgConfig::IBUS
         hazkey-frontend-common
     )
-    # The test asserts with the standard assert() macro, so NDEBUG (Release)
-    # must be disabled for this target or every check would be compiled out.
-    # Mirrors the fcitx5-hazkey test targets.
+
+    # テストは標準のassert()マクロで検証するため、このターゲットではNDEBUG (Release)を無効化しないと、全チェックがコンパイル時に除去されてしまう
+    # fcitx5-hazkey側のテストターゲットと同様の措置
     target_compile_options(ibus_hazkey_state_test PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
         $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)

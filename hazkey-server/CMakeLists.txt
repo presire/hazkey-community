@@ -12,7 +12,7 @@ include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# Swift の権限問題を避けるため、インストール時にALLターゲットをスキップする
+# Swiftの権限問題を避けるため、インストール時にALLターゲットをスキップする
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
 
 find_program(SWIFT_EXECUTABLE swift REQUIRED)

@@ -1,5 +1,12 @@
+/**
+ * @file live_convert_mode.cpp
+ * @brief ライブ変換トグル時の次回自動変換モード決定ロジックの実装
+ *
+ * 公開APIの仕様はヘッダ (live_convert_mode.h) を参照のこと
+ */
 #include "live_convert_mode.h"
 
+/** @brief IBusフロントエンドのライブ変換トグルロジックの名前空間 */
 namespace hazkey::ibus {
 
 hazkey::config::Profile_AutoConvertMode computeNextAutoConvertMode(
