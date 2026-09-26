@@ -2,6 +2,7 @@
 
 namespace fcitx {
 
+/// 無効化と最後に使った有効モードへの復帰を交互に計算する
 hazkey::config::Profile_AutoConvertMode computeNextAutoConvertMode(
     hazkey::config::Profile_AutoConvertMode current,
     hazkey::config::Profile_AutoConvertMode& remembered) {

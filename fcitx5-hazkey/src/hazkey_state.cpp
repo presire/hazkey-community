@@ -1,17 +1,14 @@
 #include "hazkey_state.h"
-
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/utf8.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/instance.h>
-
 #include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
-
 #include "candidate_refresh_coalescer.h"
 #include "commands.pb.h"
 #include "composing_cursor_view.h"
@@ -23,34 +20,36 @@
 
 namespace fcitx {
 
+/** @brief 入力状態を初期化して、サーバ側の組成を開始する */
 HazkeyState::HazkeyState(HazkeyEngine* engine, InputContext* ic)
     : engine_(engine), ic_(ic), preedit_(HazkeyPreedit(ic)) {
     engine_->server().newComposingText();
 }
 
+/** @brief キーイベントが文字入力として扱えるか判定する */
 bool HazkeyState::isInputableEvent(const KeyEvent& event) {
     auto key = event.key();
     if (key.check(FcitxKey_space) || key.isSimple() ||
         Key::keySymToUTF8(key.sym()).size() > 1 ||
         (key.sym() >= 0x04a1 && key.sym() <= 0x04df)) {
-        // 0x04a1 - 0x04dd is the range of kana keys
+        // 0x04a1から0x04ddはかなキーの範囲
         return true;
     }
     return false;
 }
 
+/** @brief 保留中の候補更新を反映してからpreeditを確定する */
 void HazkeyState::commitPreedit() {
-    // Resolve a deferred display refresh first: focus-out/deactivate commits
-    // the panel preedit, which would otherwise be stale.
+    // フォーカス解除時に古いpreeditを確定しないよう、保留中の表示更新を先に反映する
     flushPendingRefresh();
     preedit_.commitPreedit();
 }
 
+/** @brief 入力モードに応じて、キーイベントを振り分ける */
 void HazkeyState::keyEvent(KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState keyEvent";
 
-    if (!event.isRelease() && event.key().sym() != FcitxKey_Shift_L &&
-        event.key().sym() != FcitxKey_Shift_R) {
+    if (!event.isRelease() && event.key().sym() != FcitxKey_Shift_L && event.key().sym() != FcitxKey_Shift_R) {
         shiftPressedAlone_ = false;
     }
 
@@ -77,10 +76,8 @@ void HazkeyState::keyEvent(KeyEvent& event) {
     if (event.key().sym() == FcitxKey_Shift_L ||
         event.key().sym() == FcitxKey_Shift_R) {
         if (!event.isRelease()) {
-            // "Lone Shift" = no modifier other than Shift is active. Do NOT
-            // require the Shift bit itself: a modifier key's own KeyPress may
-            // be reported with the state sampled before it is applied, so the
-            // held set can legitimately be empty for a lone Shift.
+            // [Shift]以外の修飾キーが押下されてない場合を単独押下として扱う
+            // キー押下イベントでは[Shift]状態が反映前の値となり、押下状態が空の場合もある
             const KeyStates held =
                 event.key().states() &
                 (KeyStates(KeyState::SimpleMask) | KeyState::Mod5);
@@ -129,6 +126,7 @@ void HazkeyState::keyEvent(KeyEvent& event) {
     }
 }
 
+/** @brief preeditがない状態のキーイベントを処理する */
 void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState noPredictKeyEvent";
 
@@ -141,7 +139,7 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
                 ic_->commitString(" ");
                 reset();
             } else {
-                // Keep Zenzai leftContext fresh.
+                // Zenzaiの左文脈を最新に保つ
                 updateSurroundingText();
                 engine_->server().inputChar(" ");
                 ic_->commitString(engine_->server().getComposingText(
@@ -155,11 +153,8 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
             if (isInputableEvent(event)) {
                 updateSurroundingText();
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
-                // Display-only refresh: coalesce rapid successive keystrokes
-                // (see scheduleCandidateRefresh() for rationale). inputChar
-                // itself, above, is the state-mutating RPC and remains
-                // synchronous/ordered -- only the candidate LIST display is
-                // deferred/coalesced.
+                // 表示専用の更新を間引き、連続入力時の候補再描画をまとめる
+                // 状態を変更するinputCharは同期実行し、遅延させない
                 scheduleCandidateRefresh(/*isSuggest=*/true);
                 setHiraganaAUX();
             } else {
@@ -172,6 +167,7 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
     return event.filterAndAccept();
 }
 
+/** @brief 組成中のキーイベントを処理する */
 void HazkeyState::preeditKeyEvent(
     KeyEvent& event,
     std::shared_ptr<HazkeyCandidateList> PredictCandidateList) {
@@ -182,9 +178,7 @@ void HazkeyState::preeditKeyEvent(
 
     switch (keysym) {
         case FcitxKey_Return:
-            // Resolve a deferred display refresh so the committed text is the
-            // latest composition, not the stale last-synchronously-refreshed
-            // preedit.
+            // 古いpreeditではなく最新の組成を確定できるよう、保留中の更新を反映する
             flushPendingRefresh();
             preedit_.commitPreedit();
             if (livePreeditIndex_ >= 0) {
@@ -214,7 +208,7 @@ void HazkeyState::preeditKeyEvent(
         case FcitxKey_space:
             if (!isDirectConversionMode_ &&
                 event.key().states() == KeyState::Shift) {
-                // Keep Zenzai leftContext fresh.
+                // Zenzaiの左文脈を最新に保つ
                 updateSurroundingText();
                 engine_->server().inputChar(" ");
                 refreshAfterComposingEdit();
@@ -231,10 +225,7 @@ void HazkeyState::preeditKeyEvent(
             if (PredictCandidateList == nullptr) {
                 showNonPredictCandidateList();
             } else {
-                // Resolve a deferred display refresh first: the list about to
-                // be focused must reflect every committed keystroke, or a
-                // following selection would commit a stale candidate and drop
-                // the trailing input.
+                // フォーカスする候補リストへ全入力を反映して、古い候補の確定による入力欠落を防ぐ
                 flushPendingRefresh();
                 auto freshList =
                     std::dynamic_pointer_cast<HazkeyCandidateList>(
@@ -243,8 +234,7 @@ void HazkeyState::preeditKeyEvent(
                     freshList->focus();
                     updateCandidateCursor(freshList);
                 } else {
-                    // The refresh cleared the suggest list; fall back to a
-                    // non-predict conversion instead of swallowing the key.
+                    // 予測候補が消えた場合は、キーを捨てず非予測変換へ切り替える
                     showNonPredictCandidateList();
                 }
             }
@@ -265,9 +255,8 @@ void HazkeyState::preeditKeyEvent(
                 moveComposingCursor(1);
             }
             break;
-        // [community] Home/End are always consumed while composing, so they
-        // move the composition cursor instead of the application's. The server
-        // clamps the offset. ibus-hazkey consumes them identically.
+        // 組成中の[Home]と[End]は常に消費して、アプリケーションではなく組成カーソルを移動する
+        // 移動量はサーバ側で制限され、IBus版も同じキーを処理する
         case FcitxKey_Home:
         case FcitxKey_KP_Home:
             moveComposingCursor(-1024);
@@ -281,8 +270,7 @@ void HazkeyState::preeditKeyEvent(
                 ctrlShortcutHandler(event);
             } else if (isAltDigitKeyEvent(event)) {
                 if (PredictCandidateList != nullptr) {
-                    // Resolve a deferred refresh so Alt+digit selects from the
-                    // current list, not a stale one.
+                    // 古い候補ではなく、最新のリストから[Alt+数字]で選択する
                     flushPendingRefresh();
                     auto freshList =
                         std::dynamic_pointer_cast<HazkeyCandidateList>(
@@ -290,11 +278,8 @@ void HazkeyState::preeditKeyEvent(
                     if (freshList != nullptr) {
                         const int localIndex =
                             static_cast<int>(keysym - FcitxKey_1);
-                        // Bound by the candidates that exist on the current
-                        // page, not by pageSize(): on the final partial page
-                        // the trailing slots are empty. Without this the
-                        // selection silently fails but candidateCompleteHandler
-                        // would still run against the stale cursor.
+                        // 最終ページは、候補数がページサイズに満たないため、実在する候補の範囲で選択する
+                        // 範囲外を許すと、選択が失敗しても古いカーソル位置の候補を確定してしまう
                         if (HazkeyCandidateList::pageLocalIndexInRange(
                                 freshList->pageSize(), freshList->totalSize(),
                                 freshList->currentPage(), localIndex)) {
@@ -309,7 +294,7 @@ void HazkeyState::preeditKeyEvent(
                     preedit_.commitPreedit();
                     reset();
                 }
-                // Zenzai leftContext更新のため。
+                // Zenzaiの左文脈を更新する
                 updateSurroundingText();
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
                 refreshAfterComposingEdit();
@@ -319,6 +304,7 @@ void HazkeyState::preeditKeyEvent(
     return event.filterAndAccept();
 }
 
+/** @brief [Alt] + [数字]による候補選択キーか判定する */
 bool HazkeyState::isAltDigitKeyEvent(const KeyEvent& event) {
     auto key = event.key();
     if (key.states() == KeyState::Alt && key.sym() >= FcitxKey_1 &&
@@ -328,6 +314,7 @@ bool HazkeyState::isAltDigitKeyEvent(const KeyEvent& event) {
     return false;
 }
 
+/** @brief 候補リストにフォーカスがある状態のキーイベントを処理する */
 void HazkeyState::candidateKeyEvent(
     KeyEvent& event, std::shared_ptr<HazkeyCandidateList> candidateList) {
     FCITX_DEBUG() << "HazkeyState candidateKeyEvent";
@@ -335,16 +322,14 @@ void HazkeyState::candidateKeyEvent(
     auto key = event.key();
     auto keysym = key.sym();
 
-    // [community] Delete the focused candidate's learning data. Must be
-    // checked before the switch: a Ctrl combo falls into the default
-    // clause's ctrlShortcutHandler, which would consume the event first.
+    // [Ctrl] + [D]等の学習データ削除キーを先に判定する
+    // [Ctrl]系キーはswitchのdefault節で処理されるため、この判定を先に行う
     if (key.check(deleteLearningHotkey_)) {
         handleDeleteCandidateLearningData(candidateList);
         return event.filterAndAccept();
     }
 
-    // [community] Accept only focused suggest-mode candidates. Unlike Return,
-    // this preserves the composition and refreshes it from the server.
+    // 予測候補のフォーカス中のみ候補を受け入れ、組成を維持してサーバから候補を再取得する
     if (currentListIsSuggest_ && key.check(acceptPredictionHotkey_)) {
         engine_->server().acceptPrediction(candidateList->globalCursorIndex());
         showPreeditCandidateList();
@@ -386,7 +371,7 @@ void HazkeyState::candidateKeyEvent(
             if (key.states() == KeyState::Shift) {
                 backCandidateCursor(candidateList);
             } else if (key.states() == KeyState::Alt_Shift) {
-                // do nothing
+                // 何もしない
             } else {
                 advanceCandidateCursor(candidateList);
             }
@@ -418,11 +403,8 @@ void HazkeyState::candidateKeyEvent(
                     isAltDigitKeyEvent(event)
                         ? static_cast<int>(keysym - FcitxKey_1)
                         : key.keyListIndex(defaultSelectionKeys);
-                // Bound by the candidates that exist on the current page
-                // (covering both the Alt+digit and number-key paths) so the
-                // final partial page never completes an empty slot. size() is
-                // page-local on current Fcitx, but this states the rule
-                // explicitly and stays correct across Fcitx versions.
+                // [Alt] + [数字]と数字キーのどちらも、現在のページに存在する候補だけを選択する
+                // 最終ページの空き枠を選択して誤った候補を確定しない
                 if (HazkeyCandidateList::pageLocalIndexInRange(
                         candidateList->pageSize(), candidateList->totalSize(),
                         candidateList->currentPage(), localIndex)) {
@@ -430,13 +412,12 @@ void HazkeyState::candidateKeyEvent(
                     candidateCompleteHandler(candidateList);
                 }
             } else if (isInputableEvent(event)) {
-                // Resolve a deferred refresh before capturing/committing, or
-                // the committed text and surrounding-text update would lag.
+                // 確定文字列と周辺テキストが遅れないよう保留中の更新を反映する
                 flushPendingRefresh();
                 auto committedText = preedit_.text();
                 preedit_.commitPreedit();
                 reset();
-                // Keep Zenzai leftContext fresh after committing.
+                // 確定後もZenzaiの左文脈を最新に保つ
                 updateSurroundingText(committedText);
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
                 showPreeditCandidateList();
@@ -448,12 +429,12 @@ void HazkeyState::candidateKeyEvent(
     return event.filterAndAccept();
 }
 
+/** @brief 選択候補の先頭文節を確定して、残りの組成を更新する */
 void HazkeyState::candidateCompleteHandler(
     std::shared_ptr<HazkeyCandidateList> candidateList) {
     auto preedit =
         candidateList->getCandidate(candidateList->cursorIndex()).getPreedit();
-    // hazkey cannot get surroundingText correctly immediately after
-    // committing so call it with appendText before committing.
+    // 確定直後は周辺テキストを正しく取得できないため、確定前に文字列を追加して反映する
     updateSurroundingText(preedit[0]);
     engine_->server().completePrefix(candidateList->globalCursorIndex());
     ic_->commitString(preedit[0]);
@@ -465,11 +446,12 @@ void HazkeyState::candidateCompleteHandler(
     }
 }
 
+/** @brief 入力先の周辺テキストをサーバへ反映する */
 void HazkeyState::updateSurroundingText(std::string appendText) {
     if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
         ic_->surroundingText().isValid()) {
         auto& surroundingText = ic_->surroundingText();
-        // anchor() is in characters; count appendText in characters too.
+        // anchor()は文字数単位のためappendTextも文字数で加算する
         engine_->server().setContext(
             surroundingText.text() + appendText,
             surroundingText.anchor() + utf8::lengthValidated(appendText));
@@ -478,10 +460,11 @@ void HazkeyState::updateSurroundingText(std::string appendText) {
     }
 }
 
+/** @brief サーバプロファイルからホットキーと表示設定を読み込む */
 void HazkeyState::loadServerProfile() {
     auto configOpt = engine_->server().getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
-        return;  // server not ready; keep defaults
+        return;  // サーバ未準備のため既定値を維持
     }
     const auto& profile = configOpt->profiles(0);
     const std::string& hotkey = profile.auto_convert_hotkey();
@@ -493,20 +476,16 @@ void HazkeyState::loadServerProfile() {
     const std::string& zenzaiToggleHotkey = profile.zenzai_toggle_hotkey();
     zenzaiToggleHotkey_ =
         Key(zenzaiToggleHotkey.empty() ? "Control+Alt+Z" : zenzaiToggleHotkey);
-    // [community] Learning-data delete hotkey. Read once per input context
-    // like liveConvertHotkey_, so GUI changes take effect from the next
-    // input context (fcitx5 restart applies it reliably).
+    // 学習データ削除キーは入力コンテキストごとに読み込み、設定変更後のコンテキストから反映する
     const std::string& deleteHotkey = profile.delete_learning_hotkey();
     deleteLearningHotkey_ =
         Key(deleteHotkey.empty() ? "Control+D" : deleteHotkey);
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     using M = hazkey::config::Profile_AutoConvertMode;
-    // Only update the remembered "ON" mode when the server's mode is not
-    // DISABLED. When DISABLED (e.g. after a previous hotkey toggle-off), keep
-    // the previous remembered value so toggle-on restores the right mode.
-    // rememberedOnMode_ lives on the connector (shared across input contexts)
-    // so it survives focus changes between applications.
+    // サーバのモードが無効以外の場合だけ、復帰用の有効モードを更新する
+    // 無効時は直前の値を保持して、再度有効にした時に元のモードへ戻す
+    // rememberedOnMode_はコネクタ側で共有され、アプリケーション間のフォーカス移動後も維持される
     if (cachedAutoConvertMode_ !=
         M::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED) {
         engine_->server().rememberedOnMode() = cachedAutoConvertMode_;
@@ -514,6 +493,7 @@ void HazkeyState::loadServerProfile() {
     serverProfileLoaded_ = true;
 }
 
+/** @brief ホットキーでライブ変換モードを切り替える */
 void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     FCITX_DEBUG() << "HazkeyState handleLiveConvertToggle";
 
@@ -521,8 +501,7 @@ void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     auto& sharedRemembered = engine_->server().rememberedOnMode();
     auto prevRemembered = sharedRemembered;
 
-    cachedAutoConvertMode_ =
-        computeNextAutoConvertMode(cachedAutoConvertMode_, sharedRemembered);
+    cachedAutoConvertMode_ = computeNextAutoConvertMode(cachedAutoConvertMode_, sharedRemembered);
 
     auto configOpt = engine_->server().getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
@@ -543,23 +522,17 @@ void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     }
 
 #if defined(HAZKEY_HAS_SHOW_CUSTOM_IM_INFO)
-    // Mirror handleZenzaiToggle(): the transient information popup needs
-    // fcitx5 >= 5.1.11; older releases only get the toggle itself.
-    engine_->instance()->showCustomInputMethodInformation(
-        ic_,
+    // 一時通知APIは、Fcitx 5.1.11以降で利用できる
+    engine_->instance()->showCustomInputMethodInformation(ic_,
         cachedAutoConvertMode_ ==
                 hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED
             ? _("Live conversion disabled")
             : _("Live conversion enabled"));
 #else
-    // fcitx5 < 5.1.11 has no showCustomInputMethodInformation() (e.g. Ubuntu
-    // 24.04 ships 5.1.7). The toggle itself works; only the transient status
-    // notification is unavailable on those releases.
+    // Fcitx 5.1.11未満では切り替えは動作するが一時通知は表示できない
 #endif
 
-    auto composingText = engine_->server().getComposingText(
-        hazkey::commands::GetComposingString_CharType_HIRAGANA,
-        preedit_.text());
+    auto composingText = engine_->server().getComposingText(hazkey::commands::GetComposingString_CharType_HIRAGANA, preedit_.text());
     if (composingText.empty()) {
         ic_->updateUserInterface(
             fcitx::UserInterfaceComponent::InputPanel);
@@ -569,6 +542,7 @@ void HazkeyState::handleLiveConvertToggle([[maybe_unused]] KeyEvent& event) {
     ic_->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
 
+/** @brief サーバのニューラル変換設定を切り替える */
 void HazkeyState::handleZenzaiToggle() {
     FCITX_DEBUG() << "HazkeyState handleZenzaiToggle";
 
@@ -577,15 +551,13 @@ void HazkeyState::handleZenzaiToggle() {
         return;
     }
 #if defined(HAZKEY_HAS_SHOW_CUSTOM_IM_INFO)
-    engine_->instance()->showCustomInputMethodInformation(
-        ic_, enabled.value() ? _("Neural conversion enabled") : _("Neural conversion disabled"));
+    engine_->instance()->showCustomInputMethodInformation(ic_, enabled.value() ? _("Neural conversion enabled") : _("Neural conversion disabled"));
 #else
-    // fcitx5 < 5.1.11 has no showCustomInputMethodInformation() (e.g. Ubuntu
-    // 24.04 ships 5.1.7). The toggle itself works; only the transient status
-    // notification is unavailable on those releases.
+    // Fcitx 5.1.11未満では切り替えは動作するが一時通知は表示できない
 #endif
 }
 
+/** @brief [Ctrl]系ショートカットを処理する */
 bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
     auto keysym = event.key().sym();
     switch (keysym) {
@@ -621,6 +593,7 @@ bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
     return true;
 }
 
+/** @brief ファンクションキーによる直接変換を処理する */
 void HazkeyState::functionKeyHandler(KeyEvent& event) {
     auto keysym = event.key().sym();
     switch (keysym) {
@@ -647,12 +620,12 @@ void HazkeyState::functionKeyHandler(KeyEvent& event) {
     isDirectConversionMode_ = true;
 }
 
+/** @brief 組成文字列を指定した文字種へ直接変換する */
 void HazkeyState::directCharactorConversion(ConversionMode mode) {
-    // Resolve a deferred refresh: the conversion below reads preedit_.text(),
-    // which would otherwise be stale.
+    // 変換元のpreeditが古くならないよう保留中の更新を先に反映する
     flushPendingRefresh();
     std::string converted;
-    // TODO: use protobuf type for all program
+    // TODO: プログラム全体でprotobuf型を使用する
     switch (mode) {
         case ConversionMode::Hiragana:
             converted = engine_->server().getComposingText(
@@ -689,14 +662,11 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
     }
 }
 
-/// Show Candidate List
-
+/** @brief サーバから候補を取得して入力パネルへ設定する */
 bool HazkeyState::showCandidateList(bool isSuggest) {
     currentListIsSuggest_ = isSuggest;
-    // [community] The live-conversion display is the only one that pauses.
-    // Non-predict conversion either snapped the cursor to the end already
-    // (showNonPredictCandidateList) or is a focused clause-boundary
-    // adjustment, which legitimately keeps the cursor inside.
+    // キャレット位置で一時停止するのはライブ変換表示のみ
+    // 非予測変換ではカーソルを末尾へ移動済み、または、文節境界調整中のため現在位置を維持する
     if (isSuggest && showPausedPreeditIfCursorInside()) {
         return false;
     }
@@ -704,20 +674,19 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
     return showCandidateList(response);
 }
 
+/** @brief 変換を一時停止して、生かなとキャレットを表示する */
 void HazkeyState::showPausedRawPreedit(
     const hazkey::frontend::ComposingTextWithCursor& parts) {
     ic_->inputPanel().reset();
-    preedit_.setRawPreeditWithCaret(
-        hazkey::frontend::composingTextOf(parts),
-        static_cast<int>(hazkey::frontend::caretByteOffset(parts)));
-    // No live_text is on screen, so Return must commit the raw kana instead of
-    // completing a candidate the user cannot see.
+    preedit_.setRawPreeditWithCaret(hazkey::frontend::composingTextOf(parts), static_cast<int>(hazkey::frontend::caretByteOffset(parts)));
+    // ライブ変換結果を表示していないため、[Return]では見えていない候補ではなく、生かなを確定する
     livePreeditIndex_ = -1;
-    // inputPanel().reset() cleared AuxDown; restore the "[Direct Input]"
-    // indicator. There is no candidate list, so no "Press Tab" hint.
+    // inputPanel().reset()で消えた直接入力表示を復元する
+    // 候補リストがないため[Tab]選択の案内は表示しない
     setAuxDownText(std::nullopt);
 }
 
+/** @brief キャレットが末尾以外なら、一時停止表示へ切り替える */
 bool HazkeyState::showPausedPreeditIfCursorInside() {
     const auto parts = engine_->server().getComposingHiraganaWithCursor();
     if (hazkey::frontend::cursorAtEnd(parts)) {
@@ -727,18 +696,19 @@ bool HazkeyState::showPausedPreeditIfCursorInside() {
     return true;
 }
 
+/** @brief 組成カーソルを移動して、位置に応じた表示へ更新する */
 void HazkeyState::moveComposingCursor(int offset) {
     if (offset > 0 && hazkey::frontend::cursorAtEnd(
                           engine_->server().getComposingHiraganaWithCursor())) {
-        // Right/End at the end of the composition: nothing to move to. The key
-        // is still consumed by the caller, but no RPC and no redraw happen.
+        // 組成末尾で[Right]または[End]を押下しても移動先がない
+        // 呼び出し元でキーは消費するが、RPCと再描画は行わない
         return;
     }
-    // Any deferred refresh is superseded by the synchronous render below.
+    // 以下の同期描画で置き換えるため、保留中の更新を取り消す
     cancelPendingRefresh();
     engine_->server().moveCursor(offset);
-    // moveCursor() invalidates the connector cache, so this re-read sees the
-    // new position. The server clamps the offset, so +-1024 is safe.
+    // moveCursor()でコネクタのキャッシュが無効になるため、再取得で新しい位置を得る
+    // オフセットはサーバ側で制限されるため±1024を指定できる
     const auto parts = engine_->server().getComposingHiraganaWithCursor();
     if (hazkey::frontend::cursorAtEnd(parts)) {
         showPreeditCandidateList();
@@ -747,6 +717,7 @@ void HazkeyState::moveComposingCursor(int offset) {
     showPausedRawPreedit(parts);
 }
 
+/** @brief 組成編集後にライブ変換または一時停止表示を更新する */
 void HazkeyState::refreshAfterComposingEdit() {
     const auto parts = engine_->server().getComposingHiraganaWithCursor();
     if (!hazkey::frontend::cursorAtEnd(parts)) {
@@ -754,11 +725,11 @@ void HazkeyState::refreshAfterComposingEdit() {
         showPausedRawPreedit(parts);
         return;
     }
-    // Display-only refresh: coalesce rapid successive keystrokes (see
-    // scheduleCandidateRefresh() for the rationale).
+    // 表示専用の更新を間引き、連続入力時の候補再描画をまとめる
     scheduleCandidateRefresh(/*isSuggest=*/true);
 }
 
+/** @brief 応答済み候補を入力パネルへ設定する */
 bool HazkeyState::showCandidateList(
     const hazkey::commands::CandidatesResult& response,
     std::optional<std::string> fallbackPreedit) {
@@ -768,24 +739,18 @@ bool HazkeyState::showCandidateList(
         std::make_unique<HazkeyCandidateList>(response.candidates());
 
     candidateResult->setSelectionHandler([this](int globalIndex) {
-        // A click on a list rendered before a still-pending display refresh
-        // would commit a stale candidate and drop the trailing input. Resolve
-        // the pending refresh and drop this stale click: the refreshed list is
-        // then shown for the user to click again.
+        // 更新前の候補クリックで古い候補を確定すると、後続入力が失われる
+        // 更新を反映してクリックを無効にして、新しい候補リストを表示して選び直せるようにする
         if (coalescer_.hasPending()) {
-            // This handler runs outside HazkeyEngine::keyEvent(), so the
-            // refreshed preedit/input panel must be published explicitly --
-            // otherwise the screen keeps showing the stale list and a second
-            // click could map to the wrong candidate.
+            // この処理は、HazkeyEngine::keyEvent()の外で実行されるため、更新後の表示を明示的に通知する
+            // 通知しないと古いリストが残り、次のクリックが誤った候補を指す可能性がある
             flushPendingRefresh();
             ic_->updatePreedit();
             ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
             return;
         }
-        auto candidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
-            ic_->inputPanel().candidateList());
-        if (candidateList != nullptr &&
-            candidateList->globalCursorIndex() == globalIndex) {
+        auto candidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(ic_->inputPanel().candidateList());
+        if (candidateList != nullptr && candidateList->globalCursorIndex() == globalIndex) {
             candidateCompleteHandler(candidateList);
         }
     });
@@ -794,22 +759,17 @@ bool HazkeyState::showCandidateList(
 
     ic_->inputPanel().reset();
 
-    if (cachedAutoConvertMode_ !=
-            hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED &&
-        !response.live_text().empty()) {
-        // preedit conversion is enabled and conversion result is found
-        // show preedit conversion result
+    if (cachedAutoConvertMode_ != hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED && !response.live_text().empty()) {
+        // ライブ変換が有効で結果がある場合は、変換結果を表示する
         preedit_.setSimplePreedit(response.live_text());
-        // livePreeditIndex_ means "this live_text is what the user sees", not
-        // "the response carried an index": Return completes that candidate, so
-        // it must only be set on the branch that actually displays live_text.
+        // livePreeditIndex_は応答に番号があるかではなく、表示中のlive_textの候補番号を表す
+        // [Return]でその候補を確定するため、変換結果を表示する場合だけ設定する
         livePreeditIndex_ = response.live_text_index();
     } else if (fallbackPreedit != std::nullopt) {
         preedit_.setSimplePreedit(*fallbackPreedit);
         livePreeditIndex_ = -1;
     } else {
-        // preedit conversion is disabled or conversion result is not
-        // available show hiragana preedit
+        // ライブ変換が無効、または、結果がない場合はひらがなのpreeditを表示する
         auto hiragana = engine_->server().getComposingText(
             hazkey::commands::GetComposingString_CharType_HIRAGANA,
             preedit_.text());
@@ -824,25 +784,20 @@ bool HazkeyState::showCandidateList(
         auto newFcitxCandidateList =
             std::dynamic_pointer_cast<HazkeyCandidateList>(
                 ic_->inputPanel().candidateList());
-        // No lower clamp is needed: hasCandidates above already guarantees
-        // page_size() > 0, so this only caps the upper bound at the 10
-        // selection keys. (The server also normalizes numCandidatesPerPage to
-        // 1..10 via HazkeyServerConfig.normalizeProfile(_:), but the > 0 gate
-        // is what makes the clamp safe. The IBus frontend's
-        // std::clamp(rawPageSize, 1, 16) has the same redundant lower bound.)
-        int pageSize = std::min(static_cast<size_t>(response.page_size()),
-                                defaultSelectionKeys.size());
+        // 候補がある場合はpage_size()が正のため、選択キー数を上限として制限する
+        // サーバ側でも候補数は1〜10に正規化される
+        int pageSize = std::min(static_cast<size_t>(response.page_size()), defaultSelectionKeys.size());
         newFcitxCandidateList->setPageSize(pageSize);
     }
 
-    // true if the list is displayed
+    // 候補リストを表示した場合はtrue
     return hasCandidates;
 }
 
+/** @brief 非予測変換候補を取得して表示する */
 void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
-    // A pending deferred suggest refresh must not fire after this and overwrite
-    // the non-predict list (exempted while the coalescer executes its own
-    // pending refresh, which may legitimately be a non-predict one).
+    // 保留中の予測更新が後から実行されて、非予測候補を上書きしないようにする
+    // 間引き器自身が更新を実行中の場合は、その更新を許可する
     if (!executingPendingRefresh_) {
         cancelPendingRefresh();
     }
@@ -856,19 +811,17 @@ void HazkeyState::showNonPredictCandidateList(bool preserveTarget) {
 
     livePreeditIndex_ = -1;
 
-    // highlight all preedit text
-    // because the first candidate is the result of all preedit text.
+    // 先頭候補はpreedit全体の変換結果であるため、preedit全体を強調表示する
     auto currentPreedit = preedit_.text();
     preedit_.setSimplePreeditHighlighted(currentPreedit);
 
-    auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
-        ic_->inputPanel().candidateList());
+    auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(ic_->inputPanel().candidateList());
     newCandidateList->focus();
     updateCandidateCursor(newCandidateList);
-    setCandidateCursorAUX(
-        std::static_pointer_cast<HazkeyCandidateList>(newCandidateList));
+    setCandidateCursorAUX(std::static_pointer_cast<HazkeyCandidateList>(newCandidateList));
 }
 
+/** @brief 応答済みの非予測候補を表示する */
 void HazkeyState::showNonPredictCandidateList(
     const hazkey::commands::CandidatesResult& response,
     const std::string& hiragana) {
@@ -884,23 +837,19 @@ void HazkeyState::showNonPredictCandidateList(
 
     preedit_.setSimplePreeditHighlighted(hiragana);
 
-    auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(
-        ic_->inputPanel().candidateList());
+    auto newCandidateList = std::dynamic_pointer_cast<HazkeyCandidateList>(ic_->inputPanel().candidateList());
     newCandidateList->focus();
     updateCandidateCursor(newCandidateList);
-    setCandidateCursorAUX(
-        std::static_pointer_cast<HazkeyCandidateList>(newCandidateList));
+    setCandidateCursorAUX(std::static_pointer_cast<HazkeyCandidateList>(newCandidateList));
 }
 
+/** @brief 予測候補リストを取得して表示する */
 void HazkeyState::showPreeditCandidateList() {
-    if (engine_->server()
-            .getComposingText(
-                hazkey::commands::GetComposingString_CharType_HIRAGANA,
-                preedit_.text())
-            .size() <= 0) {
+    if (engine_->server().getComposingText(hazkey::commands::GetComposingString_CharType_HIRAGANA, preedit_.text()).size() <= 0) {
         reset();
         return;
     }
+
     if (showCandidateList(true) && engine_->config().showTabToSelect.value()) {
         setAuxDownText(std::string(_("[Press Tab to Select]")));
     } else {
@@ -908,58 +857,29 @@ void HazkeyState::showPreeditCandidateList() {
     }
 }
 
-/// Candidate refresh coalescing
+/** @brief 表示専用候補更新を間引いて、実行または予約する
+ *  @param isSuggest 予測候補の更新ならtrue
+ */
+// 表示更新の間引きは、同一の読み取りをまとめるクライアント側RPCキャッシュより上位で動作する
+// RPCキャッシュは、組成中の同一読み取りを再利用して、状態変更RPCで無効化される
+// 間引き器は、候補取得を呼び出す頻度を抑え、短時間に発生した表示更新をまとめる
 //
-// Composition with the existing client-side read-through RPC cache
-// (hazkey_server_connector.h): that cache deduplicates *identical* repeated
-// reads within one composition epoch and is invalidated by state-mutating
-// RPCs (inputChar, deleteLeft/Right, moveCursor, setContext,
-// newComposingText, etc. -- see HazkeyServerConnector::invalidateCache()
-// callers). The coalescer here sits ABOVE that cache, at the call-site
-// level: it does not know or care whether the eventual getCandidates() read
-// would hit the cache or not, it only reduces HOW OFTEN that call happens
-// by collapsing several rapid keystrokes' worth of display-only refresh
-// requests into a single deferred execution.
+// 間引きは先行エッジ方式で、入力連続の最初の更新は同期実行する
+// 前回の更新から静穏期間内に続いた入力だけを遅延し、後続の1度の更新へまとめる
+// 遅延更新も通常と同じ候補取得経路を通るため、RPCキャッシュと併用できる
+// 入力や削除等の状態変更処理は、間引き器を通さず同期実行する
 //
-// Latency: coalescing is LEADING-EDGE (see candidate_refresh_coalescer.h).
-// The first refresh of a typing burst runs synchronously inside the key
-// event, exactly like the uncoalesced call sites did, because at ordinary
-// typing speed keystrokes are far more than one quiet period apart and a
-// purely trailing debounce would add kCandidateRefreshCoalesceUsec to the
-// visible feedback of every keystroke while never merging anything. Only
-// keystrokes that arrive while the previous refresh is still within the
-// quiet period are deferred and merged into one trailing execution.
-//
-// When a deferred refresh finally runs, it goes through showCandidateList(true) ->
-// engine_->server().getCandidates(true) exactly as an uncoalesced call
-// would, so it still benefits from (and does not fight with) the
-// connector's cache. Scheduling never invalidates the cache -- only state
-// mutations do that, and state-mutating operations (inputChar's RPC itself,
-// commit, delete/cursor, clause-boundary adjustment, live-convert toggle,
-// direct conversion) bypass the coalescer entirely and stay synchronous.
-//
-// Thread-safety: fcitx5 key events and this addon's event-loop timer
-// callbacks both run on fcitx5's single event-loop thread (there is no
-// separate worker thread involved anywhere in this addon), so coalescer_,
-// refreshTimer_, and pendingRefreshIsSuggest_ need no locking.
-
+// キーイベントとタイマコールバックは、Fcitx 5のイベントループ上で実行される
+// そのため、ここで管理する状態にロックは不要
 void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     pendingRefreshIsSuggest_ = isSuggest;
     const uint64_t nowUsec = now(CLOCK_MONOTONIC);
 
-    // Leading edge: nothing pending and the previous refresh is older than
-    // one quiet period, so there is nothing to coalesce with -- run now and
-    // keep keystroke feedback latency at zero added milliseconds.
-    // scheduleCandidateRefresh() is only reached from noPreeditKeyEvent()
-    // and preeditKeyEvent(), both of which filterAndAccept() the event, so
-    // HazkeyEngine::keyEvent() calls updatePreedit()/updateUserInterface()
-    // right after this dispatch returns -- unlike the timer path below, no
-    // explicit push is needed (or wanted: it would be a redundant second
-    // update of identical content).
+    // 保留更新がなく、前回の更新から静穏期間が過ぎていれば、遅延を加えず直ちに実行する
+    // この経路は、キーイベント処理から呼ばれるため、復帰後にエンジンが表示を通知する
     if (coalescer_.shouldRunImmediately(nowUsec,
                                         hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
-        // An armed timer must not survive an immediate run: onRun() consumes
-        // the pending slot, so the old callback would be a stale duplicate.
+        // 即時実行で保留枠を消費するため、古いタイマも取り消す
         refreshTimer_.reset();
         coalescer_.onRun(nowUsec);
         runPendingCandidateRefresh();
@@ -967,11 +887,8 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     }
 
     if (coalescer_.shouldSchedule(nowUsec, hazkey::frontend::kCandidateRefreshCoalesceUsec)) {
-        // Assigning to refreshTimer_ destroys any previously-owned
-        // EventSourceTime first (std::unique_ptr::operator= semantics),
-        // which cancels the old pending callback before the new one is
-        // armed -- this is what makes "latest-wins" actually true at the
-        // real-timer level, not just in the policy's bookkeeping.
+        // タイマの代入により、以前のイベントを破棄してから新しいタイマを設定する
+        // これにより、実際のタイマでも最新の要求だけが有効になる
         refreshTimer_ = engine_->instance()->eventLoop().addTimeEvent(
             CLOCK_MONOTONIC, nowUsec + hazkey::frontend::kCandidateRefreshCoalesceUsec, 0,
             [this](EventSourceTime*, uint64_t) {
@@ -981,99 +898,77 @@ void HazkeyState::scheduleCandidateRefresh(bool isSuggest) {
     }
 }
 
+/** @brief タイマから期限到来した候補更新を実行する */
 void HazkeyState::firePendingCandidateRefresh() {
     const uint64_t nowUsec = now(CLOCK_MONOTONIC);
     if (!coalescer_.shouldFire(nowUsec)) {
-        // Stale/duplicate callback (should not normally happen given the
-        // replace-on-schedule behavior above, but the policy is defensive).
+        // 古い、または、重複したコールバックは実行しない
         return;
     }
     coalescer_.onRun(nowUsec);
     runPendingCandidateRefresh();
-    // Unlike a synchronous keyEvent() dispatch (where HazkeyEngine::keyEvent
-    // calls updatePreedit()/updateUserInterface() after propertyFor(...)
-    // returns), this refresh runs from the event-loop timer callback with
-    // no enclosing keyEvent dispatch, so both calls must be made explicitly
-    // here to push the updated preedit/candidate list to the client.
+    // タイマ経由ではキーイベント処理後の自動通知がないため、更新後の表示を明示的に通知する
     ic_->updatePreedit();
     ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 
-// Executes the latest requested refresh kind. Shared by both execution
-// paths so the leading-edge (synchronous) and trailing (timer) runs cannot
-// drift apart; the UI push differs between them and stays at the call site.
+/** @brief 最新の予約候補更新を実行する */
 void HazkeyState::runPendingCandidateRefresh() {
     executingPendingRefresh_ = true;
     if (pendingRefreshIsSuggest_) {
         showPreeditCandidateList();
     } else {
-        showNonPredictCandidateList(/*preserveTarget=*/true);
+        showNonPredictCandidateList(/*preserveTarget=*/ true);
     }
     executingPendingRefresh_ = false;
-    // Measure the next quiet period from completion, not from the start of
-    // this (possibly slow) conversion; see onRunFinished().
+    // 次の静穏期間は変換開始時ではなく、完了時から計測する
     coalescer_.onRunFinished(now(CLOCK_MONOTONIC));
 }
 
+/** @brief タイマと間引き器の保留状態を破棄する */
 void HazkeyState::cancelPendingRefresh() {
-    // Dropping the unique_ptr destroys the underlying EventSourceTime
-    // (fcitx-utils/event.h: EventSource's destructor
-    // disarms/removes it from the event loop), so the callback captured in
-    // scheduleCandidateRefresh() can never run afterwards -- there is no
-    // path back into firePendingCandidateRefresh() once refreshTimer_ is
-    // reset. This, together with clearing the policy state, is why reset()
-    // calling cancelPendingRefresh() satisfies the invariant that no
-    // pending callback may mutate the input panel after reset/deactivate.
+    // タイマを破棄するとイベントループから解除されて、登録済みコールバックは実行されない
+    // 間引き状態も消去して、リセット後に保留コールバックが入力パネルを変更しないようにする
     refreshTimer_.reset();
-    // resetPolicy() rather than onCancel(): reset() begins a NEW composition
-    // epoch, whose first refresh must never be deferred. onCancel() alone
-    // would leave the previous epoch's run timestamp behind, and the
-    // leading-edge predicate would read it as "a refresh just ran" and defer
-    // the first keystroke of the new composition by a full quiet period.
+    // リセット後は新しい組成となるため、前の実行時刻を残さず間引きポリシー全体を初期化する
+    // 以前の時刻が残ると、新しい組成の最初の更新まで遅延する
     coalescer_.resetPolicy();
 }
 
-// Runs a pending coalesced refresh immediately instead of discarding it, so a
-// caller that is about to CONSUME the client-side preedit (Return commit,
-// focus-out commit, direct conversion) acts on the latest server state rather
-// than the stale last-synchronously-refreshed value. Without this, a keystroke
-// deferred within the coalesce window is dropped from the committed text
-// (e.g. a i u e o followed by an immediate Return previously committed only
-// the leading edge's first character).
+/** @brief 保留中の候補更新を破棄せず直ちに実行する */
 void HazkeyState::flushPendingRefresh() {
     if (!coalescer_.hasPending()) {
         return;
     }
-    // Drop the armed timer first so the policy's onRun() below owns the slot
-    // and no stale callback can fire afterwards.
+    // 間引き状態を実行へ移す前にタイマを解除して、古いコールバックを防ぐ
     refreshTimer_.reset();
     const uint64_t nowUsec = now(CLOCK_MONOTONIC);
     coalescer_.onRun(nowUsec);
     runPendingCandidateRefresh();
 }
 
-/// Candidate Cursor
-
-void HazkeyState::updateCandidateCursor(
-    std::shared_ptr<HazkeyCandidateList> candidateList) {
+/** @brief カーソル候補に合わせて、補助表示とpreeditを更新する */
+void HazkeyState::updateCandidateCursor(std::shared_ptr<HazkeyCandidateList> candidateList) {
     setCandidateCursorAUX(candidateList);
-    auto text =
-        candidateList->getCandidate(candidateList->cursorIndex()).getPreedit();
+    auto text = candidateList->getCandidate(candidateList->cursorIndex()).getPreedit();
     preedit_.setMultiSegmentPreedit(text, 0);
 }
 
+/** @brief 候補カーソルを次へ進めて、表示を更新する */
 void HazkeyState::advanceCandidateCursor(
     std::shared_ptr<HazkeyCandidateList> candidateList) {
     candidateList->nextCandidate();
     updateCandidateCursor(candidateList);
 }
 
+/** @brief 候補カーソルを前へ戻して、表示を更新する */
 void HazkeyState::backCandidateCursor(
     std::shared_ptr<HazkeyCandidateList> candidateList) {
     candidateList->prevCandidate();
     updateCandidateCursor(candidateList);
 }
 
+/** @brief 変換文節の境界を移動する */
 void HazkeyState::moveSegmentBoundary(bool expand) {
     auto result = engine_->server().adjustClauseBoundary(expand ? 1 : -1);
     if (result == std::nullopt) {
@@ -1084,13 +979,9 @@ void HazkeyState::moveSegmentBoundary(bool expand) {
     showNonPredictCandidateList(result->candidates, result->hiragana);
 }
 
-/// [community] Delete the focused candidate's AzooKey learning memory
-/// entries and rebuild the candidate list from the server response. The
-/// server rebuilds its list in the mode it was created in (suggest vs
-/// non-predict conversion) and this side mirrors that mode so the
-/// live-conversion preedit state survives the rebuild. Nothing changes
-/// visually when nothing was deleted (candidate not backed by learning
-/// data).
+/** @brief フォーカス候補の学習データを削除して、同じ表示種別で再構築する
+ *  @param candidateList フォーカス中の候補リスト
+ */
 void HazkeyState::handleDeleteCandidateLearningData(
     std::shared_ptr<HazkeyCandidateList> candidateList) {
     FCITX_DEBUG() << "HazkeyState handleDeleteCandidateLearningData";
@@ -1101,9 +992,7 @@ void HazkeyState::handleDeleteCandidateLearningData(
         return;
     }
     if (currentListIsSuggest_) {
-        // Suggest-mode list: showCandidateList restores the preedit from
-        // live_text (same as the pre-delete display), then re-focus the
-        // rebuilt list exactly like the Tab-focus path does.
+        // 予測候補では削除前と同じlive_textを表示して、再構築した候補リストへフォーカスする
         if (!showCandidateList(result->candidates)) {
             return;
         }
@@ -1112,13 +1001,12 @@ void HazkeyState::handleDeleteCandidateLearningData(
         newCandidateList->focus();
         updateCandidateCursor(newCandidateList);
     } else {
-        // Non-predict conversion list: the standard rebuild path (same as
-        // moveSegmentBoundary).
+        // 非予測候補は、文節境界調整と同じ経路で再構築する
         showNonPredictCandidateList(result->candidates, result->hiragana);
     }
 }
 
-/// AUX
+/** @brief 候補位置と学習データ削除可否を、補助表示へ反映する */
 
 void HazkeyState::setCandidateCursorAUX(
     std::shared_ptr<HazkeyCandidateList> candidateList) {
@@ -1131,10 +1019,11 @@ void HazkeyState::setCandidateCursorAUX(
                        : std::nullopt);
 }
 
+/** @brief AuxDownへ状態に応じた文字列を設定する */
 void HazkeyState::setAuxDownText(std::optional<std::string> optText) {
     auto aux = Text();
     if (engine_->server().currentInputModeIsDirect()) {
-        // appending fcitx::Text is supported only >= 5.1.9
+        // fcitx::Textへの追加は、Fcitx 5.1.9以降で利用できる
         aux.append(std::string(_("[Direct Input]")));
     } else if (optText != std::nullopt) {
         aux.append(optText.value());
@@ -1142,32 +1031,29 @@ void HazkeyState::setAuxDownText(std::optional<std::string> optText) {
     ic_->inputPanel().setAuxDown(aux);
 }
 
+/** @brief 未変換ひらがなをAuxUpへ表示する */
 void HazkeyState::setHiraganaAUX() {
-    // The shared transport returns a neutral ComposingTextWithCursor; the
-    // fcitx adapter applies the cursor underline (was done inside the
-    // connector before the extraction).
+    // 共通トランスポートは、中立なカーソル付き組成データを返す
+    // カーソルの下線表示は、Fcitxアダプタ側で適用する
     const auto parts = engine_->server().getComposingHiraganaWithCursor();
-    if (!hazkey::frontend::shouldShowAuxText(
-            cachedAuxTextMode_, hazkey::frontend::cursorAtEnd(parts))) {
+    if (!hazkey::frontend::shouldShowAuxText(cachedAuxTextMode_, hazkey::frontend::cursorAtEnd(parts))) {
         ic_->inputPanel().setAuxUp(Text());
         return;
     }
     ic_->inputPanel().setAuxUp(composingTextWithCursorToFcitxText(parts));
 }
 
-/// Reset
-
+/** @brief 組成・候補表示・保留中の表示更新を初期状態へ戻す */
 void HazkeyState::reset() {
     FCITX_DEBUG() << "HazkeyState reset";
+
     isDirectConversionMode_ = false;
     livePreeditIndex_ = -1;
     isClauseBoundaryAdjusting_ = false;
     currentListIsSuggest_ = false;
-    // Explicit cancellation (do not rely on RAII alone): reset() is called
-    // from many keyEvent branches and from both HazkeyEngine::activate()
-    // and HazkeyEngine::deactivate() (the latter is the focus-out-equivalent
-    // for an IME) without the HazkeyState object itself being destroyed, so
-    // a pending coalesced refresh must be cancelled here explicitly.
+
+    // reset()は、オブジェクト破棄なしに多数のキー処理やactivate() / deactivate()から呼ばれる
+    // RAIIだけに頼らず保留中の更新を明示的に取り消す
     cancelPendingRefresh();
     engine_->server().newComposingText();
     ic_->inputPanel().reset();

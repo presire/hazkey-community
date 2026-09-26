@@ -1,8 +1,6 @@
 #include "hazkey_frontend_adapter.h"
-
 #include <fcitx-utils/log.h>
 #include <fcitx-utils/misc.h>
-
 #include <string>
 #include <vector>
 
@@ -10,6 +8,7 @@ namespace fcitx {
 
 namespace {
 
+/// 共通transportのログレベルをFcitxログレベルへ対応付ける
 fcitx::LogLevel toFcitxLogLevel(hazkey::frontend::LogLevel level) {
     switch (level) {
         case hazkey::frontend::LogLevel::Debug:
@@ -26,6 +25,7 @@ fcitx::LogLevel toFcitxLogLevel(hazkey::frontend::LogLevel level) {
 
 }  // namespace
 
+/// Fcitxロガーとプロセス起動関数を共通transportへ登録する
 void installHazkeyFrontendHooks() {
     hazkey::frontend::setLogLevelEnabled([](hazkey::frontend::LogLevel level) {
         return fcitx::Log::defaultCategory().checkLogLevel(toFcitxLogLevel(level));
@@ -58,13 +58,12 @@ void installHazkeyFrontendHooks() {
     });
 }
 
+/// カーソル上文字を下線表示するfcitxテキストを構築する
 Text composingTextWithCursorToFcitxText(
     const hazkey::frontend::ComposingTextWithCursor& parts) {
-    // Preserve the pre-extraction behavior of the error/empty path: the old
-    // connector returned a default-constructed fcitx::Text (zero segments).
-    // fcitx::Text::append("") still appends an empty segment (Text::empty()
-    // tests the segment count), so an all-empty result must not be
-    // materialized into a non-empty Text.
+    // エラー時または空の結果では、従来通りセグメント数0のfcitx::Textを返す
+    // fcitx::Text::append("")は空文字列でもセグメントを追加して、Text::empty()はセグメント数を判定する
+    // そのため、全要素が空の場合は、セグメントを持つテキストとして構築しない
     if (parts.before.empty() && parts.onCursor.empty() && parts.after.empty()) {
         return Text();
     }

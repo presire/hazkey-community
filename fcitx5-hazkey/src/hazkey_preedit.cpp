@@ -2,6 +2,7 @@
 
 namespace fcitx {
 
+/// 表示能力に応じたpreedit領域から文字列を取得する
 std::string HazkeyPreedit::text() const {
     if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
         return ic_->inputPanel().clientPreedit().toString();
@@ -10,6 +11,7 @@ std::string HazkeyPreedit::text() const {
     }
 }
 
+/// クライアントpreedit対応状況に合わせてテキストを設定する
 void HazkeyPreedit::setPreedit(Text text) {
     if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
         ic_->inputPanel().setClientPreedit(text);
@@ -18,27 +20,31 @@ void HazkeyPreedit::setPreedit(Text text) {
     }
 }
 
+/// 単一セグメントを強調表示する
 void HazkeyPreedit::setSimplePreeditHighlighted(const std::string &text) {
     std::vector<std::string> texts = {text};
     setMultiSegmentPreedit(texts, 0);
 }
 
+/// 単一セグメントを下線表示する
 void HazkeyPreedit::setSimplePreedit(const std::string &text) {
     std::vector<std::string> texts = {text};
     setMultiSegmentPreedit(texts, -1);
 }
 
+/// 生かなを下線表示し、指定バイト位置にカーソルを置く
 void HazkeyPreedit::setRawPreeditWithCaret(const std::string &text,
                                            int caretByteOffset) {
     auto preedit = Text();
-    // Same Underline styling setSimplePreedit() produces (cursorSegment = -1
-    // falls into setMultiSegmentPreedit()'s Underline branch), so pausing live
-    // conversion only ADDS the caret instead of restyling the preedit.
+    // setSimplePreedit()と同じ下線表示にする
+    // cursorSegment = -1はsetMultiSegmentPreedit()の下線表示分岐に入るため、
+    // ライブ変換の一時停止時は表示形式を変えずカーソルだけを加える
     preedit.append(text, TextFormatFlag::Underline);
     preedit.setCursor(caretByteOffset);
     setPreedit(preedit);
 }
 
+/// セグメント位置に応じて通常・強調・下線表示を設定する
 void HazkeyPreedit::setMultiSegmentPreedit(std::vector<std::string> &texts,
                                            int cursorSegment = 0) {
     auto preedit = Text();
@@ -56,6 +62,7 @@ void HazkeyPreedit::setMultiSegmentPreedit(std::vector<std::string> &texts,
     setPreedit(preedit);
 }
 
+/// 表示中のpreeditを入力コンテキストへ確定する
 void HazkeyPreedit::commitPreedit() {
     if (ic_->capabilityFlags().test(CapabilityFlag::Preedit)) {
         ic_->commitString(

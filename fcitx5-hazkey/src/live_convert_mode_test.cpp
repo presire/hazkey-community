@@ -1,13 +1,13 @@
 #include <cassert>
 #include <iostream>
-
 #include "config.pb.h"
 #include "live_convert_mode.h"
 
 using M = hazkey::config::Profile_AutoConvertMode;
 
+/** ライブ変換モードの切替と記憶状態の遷移を確認する */
 int main() {
-    // 1. DISABLED + remembered=ALWAYS -> returns ALWAYS, remembered unchanged
+    /** [DISABLED]から記憶済みの[ALWAYS]へ復帰する動作を確認する */
     {
         M remembered = M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
         M result = fcitx::computeNextAutoConvertMode(
@@ -18,8 +18,7 @@ int main() {
                      "remembered unchanged\n";
     }
 
-    // 2. ALWAYS + remembered=ALWAYS -> returns DISABLED, remembered becomes
-    // ALWAYS
+    /** [ALWAYS]から無効化した際に復帰先を記憶する動作を確認する */
     {
         M remembered = M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
         M result = fcitx::computeNextAutoConvertMode(
@@ -30,8 +29,7 @@ int main() {
                      "remembered=ALWAYS\n";
     }
 
-    // 3. FOR_MULTIPLE_CHARS + remembered=ALWAYS -> returns DISABLED,
-    // remembered becomes FOR_MULTIPLE_CHARS
+    /** [FOR_MULTIPLE_CHARS]から無効化した際に現在モードを記憶する動作を確認する */
     {
         M remembered = M::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS;
         M result = fcitx::computeNextAutoConvertMode(
@@ -44,8 +42,7 @@ int main() {
                      "remembered=FOR_MULTIPLE_CHARS\n";
     }
 
-    // 4. DISABLED + remembered=FOR_MULTIPLE_CHARS -> returns
-    // FOR_MULTIPLE_CHARS, remembered unchanged
+    /** 記憶済みの[FOR_MULTIPLE_CHARS]へ復帰する動作を確認する */
     {
         M remembered =
             M::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;

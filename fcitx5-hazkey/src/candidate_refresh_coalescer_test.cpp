@@ -1,17 +1,15 @@
 #include <cassert>
 #include <iostream>
-
 #include "candidate_refresh_coalescer.h"
 
 using hazkey::frontend::CandidateRefreshCoalescer;
 
+/** 候補更新の即時実行とデバウンス状態遷移を確認する */
 int main() {
-    // (a) the very first request runs immediately (leading edge): nothing is
-    // pending and no refresh has ever run, so there is nothing to coalesce
-    // with and deferring would only add latency.
+    /** 初回要求を遅延させず即時実行する動作を確認する */
     {
         CandidateRefreshCoalescer c;
-        assert(c.shouldRunImmediately(/*nowUsec=*/0, /*minIntervalUsec=*/30000));
+        assert(c.shouldRunImmediately(/*nowUsec=*/ 0, /*minIntervalUsec=*/ 30000));
         c.onRun(0);
         assert(!c.hasPending());
         assert(c.hasRun());
@@ -19,8 +17,7 @@ int main() {
         std::cout << "[PASS] first request runs immediately (leading edge)\n";
     }
 
-    // (b) a request arriving within the quiet period after a run must NOT
-    // run immediately -- that is the burst case the coalescer exists for.
+    /** 前回実行後の待機期間内の要求を保留する動作を確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -33,9 +30,7 @@ int main() {
                      "trailing timer\n";
     }
 
-    // (c) once the quiet period has fully elapsed since the last run, the
-    // next request runs immediately again (ordinary typing speed never pays
-    // the debounce delay).
+    /** 待機期間経過後の要求を再び即時実行する動作を確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -45,21 +40,18 @@ int main() {
                      "again\n";
     }
 
-    // (d) while a refresh is pending, no request may run immediately -- the
-    // armed trailing timer owns the next execution.
+    /** 保留中は期限付きタイマーが次の実行を担うことを確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
         c.shouldSchedule(10000, 30000);
         assert(c.hasPending());
-        // Even far beyond the quiet period: pending wins, so the pending
-        // slot cannot be executed twice.
+        /** 待機期間経過後も保留状態を優先し二重実行を防ぐ */
         assert(!c.shouldRunImmediately(999999, 30000));
         std::cout << "[PASS] pending refresh blocks an immediate run\n";
     }
 
-    // (e) rapid successive requests before fire re-arm / keep latest-wins
-    // (pending deadline pushed out to the newest request).
+    /** 連続要求で期限を最新要求に合わせて更新する動作を確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -68,30 +60,25 @@ int main() {
         bool shouldArmAgain = c.shouldSchedule(/*nowUsec=*/5000, 30000);
         assert(shouldArmAgain);
         assert(c.hasPending());
-        // Latest-wins: deadline is now relative to the SECOND request, not
-        // the first -- proves rapid successive requests coalesce into one
-        // later execution instead of firing once per request.
+        /** 連続要求が個別実行でなく最新期限の一度の実行にまとまることを確認する */
         assert(c.pendingDeadlineUsec() == 35000);
         assert(c.lastRequestUsec() == 5000);
         std::cout << "[PASS] rapid second request re-arms, latest-wins "
                      "deadline update\n";
     }
 
-    // (f) shouldFire true only after interval elapsed (synthetic
-    // timestamps).
+    /** 合成時刻を用いて、期限到達後に実行可能となることを確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
         c.shouldSchedule(0, 30000);
         assert(!c.shouldFire(29999));
         assert(c.shouldFire(30000));
-        assert(c.shouldFire(30001));  // still true after the deadline
+        assert(c.shouldFire(30001));  // 期限経過後も実行可能な状態を保つ
         std::cout << "[PASS] shouldFire only true once interval elapsed\n";
     }
 
-    // (g) onRun consumes the pending slot and records the execution time, so
-    // the quiet period for the NEXT leading-edge decision is measured from
-    // the trailing run too (one budget shared by both execution paths).
+    /** 保留実行後の時刻を、次の待機期間の基準にする動作を確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -108,9 +95,7 @@ int main() {
                      "quiet period\n";
     }
 
-    // (h) onCancel/resetPolicy clears pending state; resetPolicy also clears
-    // the run history so a new composition epoch starts with an immediate
-    // refresh.
+    /** キャンセルとポリシー初期化の状態消去および初回即時実行を確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -118,8 +103,7 @@ int main() {
         assert(c.hasPending());
         c.onCancel();
         assert(!c.hasPending());
-        // onCancel keeps the run history (only the pending execution was
-        // abandoned).
+        /** キャンセルでは実行履歴を保持することを確認する */
         assert(c.hasRun());
 
         c.shouldSchedule(0, 30000);
@@ -130,16 +114,13 @@ int main() {
         assert(c.lastRequestUsec() == 0);
         assert(!c.hasRun());
         assert(c.lastRunUsec() == 0);
-        // New composition epoch: the first refresh must not be deferred even
-        // though the previous epoch ran one at the same synthetic timestamp.
+        /** 新しい入力期間では前期間の履歴にかかわらず初回更新を即時実行する */
         assert(c.shouldRunImmediately(0, 30000));
         std::cout << "[PASS] onCancel/resetPolicy clear pending state; "
                      "resetPolicy re-enables the leading edge\n";
     }
 
-    // (i) a cancel after schedule prevents any later fire (models
-    // reset/focus-out: no callback may execute after cancellation, even if
-    // the deadline would otherwise have been reached).
+    /** スケジュール後のキャンセルで期限後の実行も抑止することを確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -150,9 +131,7 @@ int main() {
         std::cout << "[PASS] cancel after schedule prevents any later fire\n";
     }
 
-    // (j) a refresh slower than the quiet period: keystrokes queued behind it
-    // arrive right after it finishes and must coalesce into one trailing
-    // refresh instead of each running a full conversion.
+    /** 更新処理が待機期間より長い場合、完了時刻基準で後続要求をまとめる */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);
@@ -164,8 +143,7 @@ int main() {
         assert(c.pendingDeadlineUsec() == 280002);
         assert(!c.shouldFire(280001));
         assert(c.shouldFire(280002));
-        // A keystroke arriving a full quiet period after completion still
-        // runs immediately (slow typing pays no debounce delay).
+        /** 完了から待機期間経過後の入力は遅延しないことを確認する */
         CandidateRefreshCoalescer slow;
         slow.onRun(0);
         slow.onRunFinished(250000);
@@ -174,8 +152,7 @@ int main() {
                      "completion\n";
     }
 
-    // (k) onRunFinished is a no-op after resetPolicy (the refresh reset the
-    // composition) and never moves the run timestamp backwards.
+    /** 初期化後の完了通知が無効であり実行時刻が逆行しないことを確認する */
     {
         CandidateRefreshCoalescer c;
         c.onRun(0);

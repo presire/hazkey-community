@@ -17,8 +17,8 @@ add_definitions(-DFCITX_GETTEXT_DOMAIN=\"fcitx5-hazkey-community\")
 
 find_package(Protobuf REQUIRED)
 
-# When configured standalone (cmake -S fcitx5-hazkey), pull in the shared
-# transport library. When configured from the repo root it is already there.
+# fcitx5-hazkey単独で設定した場合は、共通transportライブラリを追加する
+# (リポジトリのルートから設定した場合は、既に追加されている)
 if(NOT TARGET hazkey-frontend-common)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-frontend-common"
                      "${CMAKE_CURRENT_BINARY_DIR}/hazkey-frontend-common")

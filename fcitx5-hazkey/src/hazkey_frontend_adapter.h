@@ -7,23 +7,20 @@
 
 namespace fcitx {
 
-// Installs the fcitx5 log sink (FCITX_DEBUG/INFO/WARN/ERROR) and the
-// fcitx::startProcess-based server spawner into the shared transport. Must run
-// before the first HazkeyServerConnector is constructed: the connector may
-// spawn hazkey-server while connecting.
+/// 共通transportへFcitxログ出力とサーバ起動処理を登録する
+/// 最初のサーバ接続生成より前に呼び出す
 void installHazkeyFrontendHooks();
 
-// Guard member: default-construction installs the hooks. Declare an instance
-// BEFORE any HazkeyServerConnector member so member-initialization order (not
-// the initializer list) guarantees the hooks are in place first.
+/// 生成時にFcitx向け共通transportフックを登録するガード
 class HazkeyFrontendHooksGuard {
    public:
+    /// フックを登録する
     HazkeyFrontendHooksGuard() { installHazkeyFrontendHooks(); }
 };
 
-// Converts the neutral transport result into an underlined fcitx::Text, where
-// the underline marks the cursor character. The transport carries no fcitx
-// dependency; this is the fcitx-side presentation adapter.
+/// transportのカーソル位置情報を下線付きfcitxテキストへ変換する
+/// @param parts カーソル前・カーソル上・カーソル後の文字列
+/// @return カーソル上の部分に下線を付けたテキスト
 Text composingTextWithCursorToFcitxText(
     const hazkey::frontend::ComposingTextWithCursor& parts);
 

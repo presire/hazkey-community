@@ -5,13 +5,11 @@
 
 namespace fcitx {
 
-// Returns the next auto-convert mode when toggling live conversion via hotkey.
-// - If current is DISABLED: returns `remembered` (the last non-DISABLED mode,
-//   default ALWAYS).
-// - Otherwise: sets `remembered = current` and returns DISABLED.
-// The hotkey never switches ALWAYS<->FOR_MULTIPLE_CHARS directly; both are
-// reachable from settings UI, and whichever was active is restored on
-// toggle-on.
+/// ライブ変換ホットキーによる次の自動変換モードを計算する
+/// @param current 現在の自動変換モード
+/// @param remembered 無効化前のモードを保持する参照
+/// @return 現在が無効なら記憶済みモード、それ以外なら無効モード
+/// 有効モード同士を直接切り替えず、無効化前のモードを再有効化する
 hazkey::config::Profile_AutoConvertMode computeNextAutoConvertMode(
     hazkey::config::Profile_AutoConvertMode current,
     hazkey::config::Profile_AutoConvertMode& remembered);

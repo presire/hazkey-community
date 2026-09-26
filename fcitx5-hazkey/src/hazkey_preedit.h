@@ -5,30 +5,29 @@
 #include <fcitx/inputpanel.h>
 
 namespace fcitx {
+/// Fcitx入力パネルのpreedit表示と確定を扱う
 class HazkeyPreedit {
    public:
+    /// 入力コンテキストを参照して表示操作を行う
     HazkeyPreedit(InputContext *ic) : ic_(ic) {}
 
+    /// 現在のpreedit文字列を返す
     std::string text() const;
-    // set the preedit text; prediction mode (highlighted)
+    /// 予測表示用のpreeditを強調表示する
     void setSimplePreeditHighlighted(const std::string &text);
-    // set the preedit text; prediction mode (not highlighted)
+    /// 単一セグメントのpreeditを下線表示する
     void setSimplePreedit(const std::string &text);
-    // [community] set the raw-kana preedit with a REAL caret inside it.
-    // caretByteOffset is a UTF-8 byte offset (fcitx::Text::setCursor() is
-    // documented "by byte" in fcitx5's text.h). Used while live conversion is
-    // paused, i.e. while the composition cursor is not at the end.
+    /// 生かなpreeditを表示し、UTF-8バイト位置にカーソルを置く
     void setRawPreeditWithCaret(const std::string &text, int caretByteOffset);
-    // set the preedit text; multi-segment mode
+    /// 複数セグメントのpreeditを指定位置の強調付きで表示する
     void setMultiSegmentPreedit(std::vector<std::string> &texts, int cursor);
-    // set the preedit text
+    /// 指定テキストを入力パネルへ設定する
     void setPreedit(Text text);
-    // commit the preedit text
+    /// 現在のpreeditを確定文字列として送る
     void commitPreedit();
 
    private:
-    // fcitx input context pointer
-    InputContext *ic_;
+    InputContext *ic_;  ///< 非所有の入力コンテキスト参照
 };
 
 }  // namespace fcitx

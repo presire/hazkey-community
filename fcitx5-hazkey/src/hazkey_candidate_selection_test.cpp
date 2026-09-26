@@ -1,11 +1,11 @@
 #include <cassert>
 #include <limits>
 #include <string>
-
 #include "hazkey_candidate.h"
 
 namespace {
 
+/** 指定数の候補を連番テキストで生成する */
 google::protobuf::RepeatedPtrField<
     hazkey::commands::CandidatesResult_Candidate>
 makeCandidates(int count) {
@@ -18,6 +18,7 @@ makeCandidates(int count) {
     return candidates;
 }
 
+/** 学習情報の有無が異なる候補を生成する */
 google::protobuf::RepeatedPtrField<
     hazkey::commands::CandidatesResult_Candidate>
 makeCandidatesWithLearningMetadata() {
@@ -31,9 +32,7 @@ makeCandidatesWithLearningMetadata() {
     return candidates;
 }
 
-// Mirrors the IBus frontend's testMultiPageResolution(): a page-local slot is
-// valid only when a candidate actually exists in it. The final partial page
-// (13 candidates at 5 per page -> pages of 5 / 5 / 3) must reject slots 3/4.
+/** 複数ページと末尾の不完全ページで、有効なページ内位置を判定する */
 void testPageLocalIndexInRangeMultiPage() {
     using fcitx::HazkeyCandidateList;
     assert(HazkeyCandidateList::pageLocalIndexInRange(5, 13, 0, 0));
@@ -45,34 +44,31 @@ void testPageLocalIndexInRangeMultiPage() {
     assert(HazkeyCandidateList::pageLocalIndexInRange(5, 13, 1, 4));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 13, 1, 5));
 
-    // Final partial page: 3 real slots; slots 3/4 name absent candidates and
-    // must not fall through to a later page.
+    /** 末尾ページに存在しない位置を拒否する */
     assert(HazkeyCandidateList::pageLocalIndexInRange(5, 13, 2, 0));
     assert(HazkeyCandidateList::pageLocalIndexInRange(5, 13, 2, 2));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 13, 2, 3));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 13, 2, 4));
 
-    // A page past the end exposes nothing rather than wrapping.
+    /** 範囲外ページが折り返さず、候補を持たないことを確認する */
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 13, 3, 0));
 }
 
-// Mirrors the IBus frontend's testServerPageShapes(): the server's non-suggest
-// (page_size 9) and suggest (page_size 3) page shapes.
+/** 通常変換とサジェストのページサイズで位置判定する */
 void testPageLocalIndexInRangeServerShapes() {
     using fcitx::HazkeyCandidateList;
-    // Non-suggest conversion with 10 candidates: key "0" (local 9) is absent
-    // from page 0, and page 1 holds a single candidate.
+    /** 通常変換の最終ページが単一候補となる形を確認する */
     assert(HazkeyCandidateList::pageLocalIndexInRange(9, 10, 0, 8));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(9, 10, 0, 9));
     assert(HazkeyCandidateList::pageLocalIndexInRange(9, 10, 1, 0));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(9, 10, 1, 1));
 
-    // Suggest list that exactly fills a single page.
+    /** サジェスト候補がページをちょうど満たす形を確認する */
     assert(HazkeyCandidateList::pageLocalIndexInRange(3, 3, 0, 2));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(3, 3, 0, 3));
 }
 
-// Mirrors the IBus frontend's testInvalidInput().
+/** 不正なページ寸法や位置および極端なページ番号を拒否する */
 void testPageLocalIndexInRangeInvalidInput() {
     using fcitx::HazkeyCandidateList;
     assert(!HazkeyCandidateList::pageLocalIndexInRange(0, 5, 0, 0));
@@ -82,15 +78,13 @@ void testPageLocalIndexInRangeInvalidInput() {
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 5, -1, 0));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 5, 0, -1));
 
-    // An extreme page must be rejected without overflowing `pageSize * page`.
+    /** 極端なページ番号を安全に拒否する */
     const int hugePage = std::numeric_limits<int>::max();
     assert(!HazkeyCandidateList::pageLocalIndexInRange(5, 13, hugePage, 0));
     assert(!HazkeyCandidateList::pageLocalIndexInRange(10, 13, hugePage, 0));
 }
 
-// The list-level guarantee that backs the digit-selection gate: a digit naming
-// an empty final-page slot is a no-op (no cursor move, no throw), while a real
-// slot still selects.
+/** 末尾ページの空き位置では選択せず、実在位置は選択する */
 void testFinalPageEmptySlotIsNoOp() {
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
     candidates.setPageSize(5);
@@ -108,11 +102,7 @@ void testFinalPageEmptySlotIsNoOp() {
     assert(candidates.globalCursorIndex() == 12);
 }
 
-// Fcitx's candidate UI (mouse wheel / page arrows) pages through
-// PageableCandidateList::next()/prev() directly, bypassing
-// HazkeyCandidateList::nextPage()/prevPage(). The list itself must therefore
-// move the cursor onto the newly displayed page; otherwise focused() stays true
-// while cursorIndex() is -1, and the next key event reads getCandidate(-1).
+/** フォーカス中のページ移動後も候補カーソルを選択可能に保つ */
 void testFocusedListStaysSelectableAfterPaging() {
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
     candidates.setPageSize(5);
@@ -124,7 +114,7 @@ void testFocusedListStaysSelectableAfterPaging() {
     assert(candidates.currentPage() == 1);
     assert(candidates.cursorIndex() == 0);
     assert(candidates.globalCursorIndex() == 5);
-    // The cursor read performed after every key event is safe.
+    /** ページ移動後にカーソル位置の候補を安全に取得できる */
     (void)candidates.getCandidate(candidates.cursorIndex());
 
     candidates.toPageable()->next();
@@ -134,8 +124,7 @@ void testFocusedListStaysSelectableAfterPaging() {
     (void)candidates.getCandidate(candidates.cursorIndex());
 }
 
-// An unfocused list (the suggest list before Tab/Down) has no cursor, and a
-// UI page change must not invent one: ResetToFirst keeps it unselected.
+/** 非フォーカスのページ移動でカーソルを新たに設定しない */
 void testUnfocusedListHasNoCursorAcrossPaging() {
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
     candidates.setPageSize(5);
@@ -150,6 +139,7 @@ void testUnfocusedListHasNoCursorAcrossPaging() {
 
 }  // namespace
 
+/** 候補ページ位置、カーソル状態、選択操作の振る舞いを確認する */
 int main() {
     testPageLocalIndexInRangeMultiPage();
     testPageLocalIndexInRangeServerShapes();
@@ -158,52 +148,40 @@ int main() {
     testFocusedListStaysSelectableAfterPaging();
     testUnfocusedListHasNoCursorAcrossPaging();
 
-    // Given: learned and ordinary candidates.
+    /** 学習情報の読み取り専用アクセスが候補メタデータを反映する */
     fcitx::HazkeyCandidateList candidatesWithLearningMetadata(
         makeCandidatesWithLearningMetadata());
 
-    // When: their learning metadata is inspected for focused-candidate UI.
     const auto& learnedCandidate = candidatesWithLearningMetadata.getCandidate(0);
     const auto& ordinaryCandidate = candidatesWithLearningMetadata.getCandidate(1);
 
-    // Then: the read-only accessor matches server metadata. AuxDown owns the
-    // focused-candidate affordance.
     assert(learnedCandidate.hasLearningEntry());
     assert(!ordinaryCandidate.hasLearningEntry());
 
-    // Given: thirteen candidates displayed five at a time.
+    /** ポインタ選択時にページ内位置を全体位置へ変換する */
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
     candidates.setPageSize(5);
 
-    // When: the first displayed candidate is selected by pointer.
     candidates.candidate(0).select(nullptr);
 
-    // Then: its global index is selected.
     assert(candidates.globalCursorIndex() == 0);
 
-    // Given: the second page is displayed.
     candidates.setPage(1);
 
-    // When: its third displayed candidate is selected by pointer.
     candidates.candidate(2).select(nullptr);
 
-    // Then: the cursor uses the global, rather than page-local, index.
     assert(candidates.globalCursorIndex() == 7);
 
-    // Given: the final partial page is displayed.
+    /** 末尾の不完全ページでもポインタ選択を全体位置に反映する */
     candidates.setPage(2);
 
-    // When: its final displayed candidate is selected by pointer.
     candidates.candidate(2).select(nullptr);
 
-    // Then: the final global index is selected.
     assert(candidates.globalCursorIndex() == 12);
 
-    // Given: the cursor is on the final valid candidate.
-    // When: an out-of-range global index is offered for selection.
+    /** 範囲外の全体位置を拒否し現在の選択を維持する */
     const bool selected = candidates.selectCandidate(13);
 
-    // Then: selection is rejected and the cursor is unchanged.
     assert(!selected);
     assert(candidates.globalCursorIndex() == 12);
 
