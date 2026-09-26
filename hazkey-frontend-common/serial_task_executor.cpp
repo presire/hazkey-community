@@ -1,5 +1,12 @@
-#include "serial_task_executor.h"
+/**
+ * @file serial_task_executor.cpp
+ * @brief 単一のワーカースレッドでタスクを順番に実行するクラスを実装する
+ *
+ * 公開関数の意味は、ヘッダ側の文書を正として、ここでは定義側への重複文書を置かない
+ * ワーカーループと完了通知タスクの実装を含む
+ */
 
+#include "serial_task_executor.h"
 #include <algorithm>
 #include <future>
 #include <memory>
@@ -81,9 +88,7 @@ void SerialTaskExecutor::workerLoop() {
         {
             std::unique_lock<std::mutex> lock(mutex_);
             while (!takeNextReadyLocked(&next)) {
-                // Shutdown drops any remaining (not-yet-due) tasks: callers
-                // own their state's lifetime through the tasks' shared_ptr
-                // captures, so nothing here needs to run to completion.
+                // 停止時は期限前のタスクを破棄する
                 if (stopping_) {
                     return;
                 }
@@ -96,8 +101,7 @@ void SerialTaskExecutor::workerLoop() {
                         return stopping_ || !queue_.empty();
                     });
                 } else {
-                    // Wakes early on a new submit/cancel, which re-evaluates
-                    // whether a task became the earliest.
+                    // 投入または取消の通知後に最も早い期限を再評価する
                     cv_.wait_until(lock, earliest);
                 }
             }
@@ -111,13 +115,13 @@ std::future<void> SerialTaskExecutor::submitDrainSentinel() {
     std::future<void> finished = done->get_future();
     const Token token = submit([done] { done->set_value(); });
     if (token == kInvalidToken) {
-        done->set_value();  // already stopping: nothing left to drain
+        done->set_value();  // 停止済みのため待機対象はない
     }
     return finished;
 }
 
 void SerialTaskExecutor::drainAndWait() {
-    // A worker cannot wait for its own sentinel without deadlocking.
+    // ワーカースレッド自身が待機するとデッドロックする
     if (onWorkerThread()) {
         return;
     }
@@ -125,7 +129,7 @@ void SerialTaskExecutor::drainAndWait() {
 }
 
 bool SerialTaskExecutor::drainAndWaitFor(std::chrono::microseconds timeout) {
-    // A worker cannot wait for its own sentinel without deadlocking.
+    // ワーカースレッド自身が待機するとデッドロックする
     if (onWorkerThread()) {
         return true;
     }
@@ -135,7 +139,7 @@ bool SerialTaskExecutor::drainAndWaitFor(std::chrono::microseconds timeout) {
 
 void SerialTaskExecutor::shutdown() {
     if (onWorkerThread()) {
-        // Never join ourselves; a worker-initiated shutdown is a caller bug.
+        // ワーカースレッド自身の終了待ちは行わない
         return;
     }
     {

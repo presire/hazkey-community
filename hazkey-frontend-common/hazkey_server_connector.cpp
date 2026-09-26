@@ -1,5 +1,12 @@
-#include "hazkey_server_connector.h"
+/**
+ * @file hazkey_server_connector.cpp
+ * @brief 共有サーバ接続クラスの実装をまとめる
+ *
+ * 宣言側の仕様はhazkey_server_connector.hに置き、このファイルでは無名名前空間補助と送受信補助だけに文書を付ける
+ * 定義済み方式の再掲は行わない
+ */
 
+#include "hazkey_server_connector.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -7,7 +14,6 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -18,13 +24,12 @@
 #include <string>
 #include <thread>
 #include <vector>
-
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
 
-// Transport-level logging goes through the injected frontend sink (default
-// no-op). The stream syntax mirrors the previous FCITX_* macros.
+// 通信層のログは注入されたフロントエンドのログ出力先へ送る
+// 既定の出力先は何も行わず、ストリーム形式は従来のFCITXマクロと同じ
 #define HAZKEY_LOG_DEBUG() \
     ::hazkey::frontend::LogStream(::hazkey::frontend::LogLevel::Debug)
 #define HAZKEY_LOG_INFO() \
@@ -32,10 +37,22 @@
 #define HAZKEY_LOG_ERROR() \
     ::hazkey::frontend::LogStream(::hazkey::frontend::LogLevel::Error)
 
+/**
+ * @brief transact呼出しを全インスタンスで直列化する静的ミューテックス
+ *
+ * サーバ単一スレッドとの対応を保つため、送受信全体を直列化する
+ */
 static std::mutex transact_mutex;
 
+/** @brief この実装ファイルだけで使用する補助要素を隠す無名名前空間 */
 namespace {
 
+/**
+ * @brief 要求封筒から計測用種別名を返す
+ *
+ * @param request 種別判定対象の要求封筒
+ * @return payloadに対応する種別名で未設定時はnone
+ */
 const char* requestType(const hazkey::RequestEnvelope& request) {
     switch (request.payload_case()) {
         case hazkey::RequestEnvelope::kSetContext: return "set_context";
@@ -67,8 +84,20 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
     return "none";
 }
 
+/**
+ * @class ClientPerfMeasurement
+ * @brief transact1回分の処理時間を計測する無名名前空間補助
+ *
+ * 環境変数HAZKEY_PERF_EVIDENCEが空なら何も記録しない
+ * 設定済みなら種別名と処理時間をJSON1行で追記する
+ */
 class ClientPerfMeasurement {
    public:
+    /**
+     * @brief 計測対象の要求種別と開始時刻を記録する
+     *
+     * @param request 計測対象の要求封筒
+     */
     explicit ClientPerfMeasurement(const hazkey::RequestEnvelope& request) {
         const char* path = std::getenv("HAZKEY_PERF_EVIDENCE");
         if (path == nullptr || path[0] == '\0') {
@@ -79,6 +108,11 @@ class ClientPerfMeasurement {
         startedAt_ = std::chrono::steady_clock::now();
     }
 
+    /**
+     * @brief 経過時間を証跡ファイルへ1行追記して計測を終える
+     *
+     * 未設定時は追記しない
+     */
     ~ClientPerfMeasurement() {
         if (path_.empty()) {
             return;
@@ -90,14 +124,21 @@ class ClientPerfMeasurement {
                << elapsed.count() << "}\n";
     }
 
-   private:
-    std::chrono::steady_clock::time_point startedAt_;
-    std::string path_;
-    std::string type_;
+    private:
+    // 計測時刻
+    std::chrono::steady_clock::time_point startedAt_;  ///< 計測開始時刻
+
+    // 証跡の出力先
+    std::string path_;                                 ///< 証跡ファイルパスで未設定時は空
+    std::string type_;                                 ///< 要求種別名
 };
 
 }  // namespace
 
+/**
+ * @brief 必要に応じてサーバへ接続するコネクターを構築する
+ * @param autoConnect trueなら構築時に接続する
+ */
 HazkeyServerConnector::HazkeyServerConnector(bool autoConnect) {
     if (autoConnect) {
         connectServer();
@@ -105,16 +146,20 @@ HazkeyServerConnector::HazkeyServerConnector(bool autoConnect) {
     HAZKEY_LOG_DEBUG() << "Connector initialized";
 }
 
+/** @brief 所有するソケット記述子を閉じる */
 HazkeyServerConnector::~HazkeyServerConnector() {
-    // Owns sock_; close it so a destroyed connector never leaks the fd. Every
-    // failure path already sets sock_ back to -1 after closing, so a valid
-    // sock_ here is closed exactly once.
+    // sock_を所有し、破棄時に閉じて記述子のリークを防ぐ
+    // 失敗経路は、クローズ後にsock_を-1へ戻すため、有効な記述子は1度だけ閉じる
     if (sock_ >= 0) {
         close(sock_);
         sock_ = -1;
     }
 }
 
+/**
+ * @brief サーバのUNIXドメインソケットパスを返す
+ * @return XDG_RUNTIME_DIR または /tmp配下のソケットパス
+ */
 std::string HazkeyServerConnector::getSocketPath() {
     const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
     uid_t uid = getuid();
@@ -127,12 +172,13 @@ std::string HazkeyServerConnector::getSocketPath() {
     }
 }
 
+/**
+ * @brief 注入済みの処理でhazkey-community-serverの起動を要求する
+ * @param force_restart trueなら強制再起動を要求する
+ */
 void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
-    // Test-only hook (see setTestStartServerHook() in the header): lets
-    // tests observe/intercept spawn decisions without launching a real
-    // hazkey-server process. Unset (the production default) falls through
-    // to the injected frontend spawner (fcitx::startProcess for fcitx5,
-    // g_spawn_async for IBus).
+    // 試験用フックがあれば実プロセスを起動せず、起動判断だけを観測する
+    // 未設定時は注入済みフロントエンドの起動処理を使う
     if (testStartServerHook_) {
         testStartServerHook_(force_restart);
         return;
@@ -140,6 +186,16 @@ void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
     hazkey::frontend::spawnServer(force_restart);
 }
 
+/**
+ * @brief 指定記述子へ全バイトを書き込む
+ *
+ * @param fd 書き込み先の接続記述子
+ * @param data 送信する先頭位置
+ * @param len 送信するバイト数
+ * @return 全バイト送信できた場合はtrue
+ * @details 書込待ちは2秒で切り上げる
+ *          失敗時は呼び出し側が再接続を担う
+ */
 bool writeAll(int fd, const void* data, size_t len) {
     size_t sent = 0;
     while (sent < len) {
@@ -149,7 +205,7 @@ bool writeAll(int fd, const void* data, size_t len) {
                 fd_set wfds;
                 FD_ZERO(&wfds);
                 FD_SET(fd, &wfds);
-                timeval tv = {2, 0};  // 2sec write timeout ceiling
+                timeval tv = {2, 0};  // 書き込み待機の上限は2秒
                 int r = select(fd + 1, NULL, &wfds, NULL, &tv);
                 if (r <= 0) {
                     HAZKEY_LOG_ERROR() << "write timeout";
@@ -164,18 +220,17 @@ bool writeAll(int fd, const void* data, size_t len) {
     return true;
 }
 
-// Client-side read ceiling for a single server response. `timeoutSeconds`
-// is the production 10-second value in every real code path (see
-// HazkeyServerConnector::transact()'s kProductionReadTimeoutSeconds); the
-// comment here used to (incorrectly) say "2sec" even though the value was
-// always 10. Decision (hazkey-ime-cpu-latency plan todo 2): keep the
-// 10-second ceiling itself unchanged -- it is the value every prior session
-// documented, and it is the hard limit any future server-side processing
-// deadline (e.g. HAZKEY_ZENZAI_DEADLINE_MS) must stay below, since a
-// response arriving after this point is indistinguishable from a
-// stalled/dead server. `timeoutSeconds` is overridable ONLY through
-// HazkeyServerConnector::setTestReadTimeoutSeconds(), used exclusively by
-// hazkey_client_transact_safety_test; production code always passes 10.
+/**
+ * @brief 指定記述子から指定バイト数を読み込む
+ *
+ * @param fd 読み込み元の接続記述子
+ * @param data 受信内容の格納先
+ * @param len 読み込むバイト数
+ * @param timeoutSeconds 読取待ち上限の秒数で製品経路は常に10秒
+ * @return 指定数を読み切った場合はtrue
+ * @details 試験用フック設定時だけ短縮値で待機路を検証する
+ *          応答遅延上限を超えた到着は停止と区別しない
+ */
 bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
     size_t recved = 0;
     while (recved < len) {
@@ -185,7 +240,7 @@ bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
                 fd_set rfds;
                 FD_ZERO(&rfds);
                 FD_SET(fd, &rfds);
-                timeval tv = {timeoutSeconds, 0};  // 10sec read timeout ceiling
+                timeval tv = {timeoutSeconds, 0};  // 読み取り待機の上限
                 int r = select(fd + 1, &rfds, NULL, NULL, &tv);
                 if (r <= 0) {
                     HAZKEY_LOG_ERROR() << "read timeout";
@@ -195,19 +250,23 @@ bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
             }
             return false;
         }
-        if (n == 0) return false;  // closed
+        if (n == 0) return false;  // 接続先が閉じた
         recved += n;
     }
     return true;
 }
 
+/**
+ * @brief サーバへの非ブロッキング接続を確立する
+ * @details 接続失敗時は、通常起動または必要に応じた強制再起動を試みる
+ */
 void HazkeyServerConnector::connectServer() {
     std::string socket_path = getSocketPath();
 
-    // try restarting server only 1 time
-    // on 1st attempt (minus 1)
+    // 通常起動は最初の失敗後に1回だけ試す
     constexpr int ATTEMPT_TRY_START = 0;
-    // on 4th attempt (minus 1)
+
+    // 強制再起動は4回目の失敗後に検討する
     constexpr int ATTEMPT_TRY_START_FORCE = 3;
 
     constexpr int MAX_RETRIES = 8;
@@ -239,7 +298,7 @@ void HazkeyServerConnector::connectServer() {
 
         int ret = connect(sock_, (sockaddr*)&addr, sizeof(addr));
         if (ret == 0) {
-            // Connected
+            // 接続成功
             return;
         }
         if (errno == EINPROGRESS) {
@@ -253,7 +312,7 @@ void HazkeyServerConnector::connectServer() {
                 socklen_t len = sizeof(so_error);
                 getsockopt(sock_, SOL_SOCKET, SO_ERROR, &so_error, &len);
                 if (so_error == 0) {
-                    // Connected
+                    // 接続成功
                     return;
                 }
             }
@@ -263,15 +322,11 @@ void HazkeyServerConnector::connectServer() {
         close(sock_);
         sock_ = -1;
         if (attempt == ATTEMPT_TRY_START) {
-            // A dead server still needs exactly one non-forced spawn
-            // attempt; unchanged by the hardening below.
+            // 停止したサーバには通常起動を1回だけ要求する
             startHazkeyServer(false);
         } else if (attempt == ATTEMPT_TRY_START_FORCE) {
-            // Hardening (hazkey-ime-cpu-latency plan todo 2): ordinary
-            // CPU-load-induced slow accepts on a server that answered us
-            // moments ago must not be mistaken for a wedged server. Only
-            // force-restart if the server has never responded, or hasn't
-            // responded in a while.
+            // 直近に応答したサーバはCPU負荷で受理が遅いだけの可能性がある
+            // 1度も応答していないか、しばらく応答がなければ強制再起動する
             constexpr long kForceRestartContentionWindowMs = 5000;
             const long contentionWindowMs =
                 testForceRestartWindowMs_ >= 0
@@ -302,6 +357,7 @@ void HazkeyServerConnector::connectServer() {
                  << " attempts";
 }
 
+/** @brief 全ての読み取りキャッシュを無効化する */
 void HazkeyServerConnector::invalidateCache() {
     cachedHiraganaWithCursor_.reset();
     cachedComposingText_.clear();
@@ -310,6 +366,11 @@ void HazkeyServerConnector::invalidateCache() {
     cachedInputModeDirect_.reset();
 }
 
+/**
+ * @brief 1回のRPCを送受信する
+ * @param send_data 送信するリクエスト
+ * @return パース済みの応答、通信またはパース失敗時はstd::nullopt
+ */
 std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     const hazkey::RequestEnvelope& send_data) {
     ClientPerfMeasurement perfMeasurement(send_data);
@@ -322,8 +383,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
             HAZKEY_LOG_ERROR() << "Failed to establish connection to hazkey-server";
             return std::nullopt;
         }
-        // The server may have been (re)started while we were disconnected:
-        // its composition state is gone, so cached reads must not be served.
+        // 未接続中にサーバが再起動した可能性があるためキャッシュを破棄する
         invalidateCache();
     }
 
@@ -335,7 +395,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
 
     HAZKEY_LOG_DEBUG() << "Sending message of size: " << msg.size();
 
-    // write length
+    // フレーム長を書き込む
     uint32_t writeLen = htonl(msg.size());
     if (!writeAll(sock_, &writeLen, 4)) {
         HAZKEY_LOG_INFO()
@@ -344,34 +404,33 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         close(sock_);
         sock_ = -1;
         connectServer();
-        // Reconnected (possibly to a restarted server): drop cached reads.
+        // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
         invalidateCache();
         return std::nullopt;
     }
 
-    // write data
+    // protobuf本体を書き込む
     if (!writeAll(sock_, msg.c_str(), msg.size())) {
         HAZKEY_LOG_INFO() << "Failed to communicate with server while writing data. "
                         "reconnecting to hazkey-community-server...";
         close(sock_);
         sock_ = -1;
         connectServer();
-        // Reconnected (possibly to a restarted server): drop cached reads.
+        // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
         invalidateCache();
         return std::nullopt;
     }
 
     HAZKEY_LOG_DEBUG() << "Successfully wrote data to server";
 
-    // Production read-timeout ceiling is 10 seconds; only
-    // hazkey_client_transact_safety_test overrides it, via
-    // setTestReadTimeoutSeconds(), to exercise this path quickly.
+    // 製品の読み取りタイムアウトは10秒
+    // 試験時だけsetTestReadTimeoutSecondsで短縮する
     constexpr int kProductionReadTimeoutSeconds = 10;
     const int readTimeoutSeconds = testReadTimeoutSeconds_ > 0
                                         ? testReadTimeoutSeconds_
                                         : kProductionReadTimeoutSeconds;
 
-    // read response length
+    // 応答フレーム長を読み込む
     uint32_t readLenBuf;
     if (!readAll(sock_, &readLenBuf, 4, readTimeoutSeconds)) {
         HAZKEY_LOG_ERROR() << "Failed to read buffer length.";
@@ -383,7 +442,7 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     uint32_t readLen = ntohl(readLenBuf);
     HAZKEY_LOG_DEBUG() << "Server response size: " << readLen;
 
-    if (readLen > 2 * 1024 * 1024) {  // 2MB limit
+    if (readLen > 2 * 1024 * 1024) {  // 応答本体は2MBまで
         HAZKEY_LOG_ERROR() << "Response size too large: " << readLen;
         close(sock_);
         sock_ = -1;
@@ -404,11 +463,8 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
         return std::nullopt;
     }
 
-    // A full request/response round trip completed and parsed: the
-    // transport and server are demonstrably alive right now, regardless of
-    // this particular RPC's application-level status. connectServer() uses
-    // this timestamp to avoid mistaking an ordinary CPU-contention slow
-    // accept on a recently-responsive server for a wedged one.
+    // リクエストと応答の送受信が完了した時刻を記録する
+    // サーバ処理の成否にかかわらず通信経路は正常と判断する
     lastSuccessfulTransaction_ = std::chrono::steady_clock::now();
 
     HAZKEY_LOG_DEBUG() << "Successfully received and parsed response";
@@ -416,6 +472,10 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     return resp;
 }
 
+/**
+ * @brief 受信した設定リビジョンを記録する
+ * @param revision 応答に含まれる設定リビジョン
+ */
 void HazkeyServerConnector::recordConfigRevision(uint64_t revision) {
     const uint64_t previous = lastConfigRevision_.load(std::memory_order_relaxed);
     if (configRevisionKnown_.exchange(true, std::memory_order_relaxed)) {
@@ -428,10 +488,20 @@ void HazkeyServerConnector::recordConfigRevision(uint64_t revision) {
     }
 }
 
+/**
+ * @brief 未消費の設定変更通知を取り出す
+ * @return 設定変更通知があればtrue
+ */
 bool HazkeyServerConnector::consumeConfigChanged() {
     return configChanged_.exchange(false, std::memory_order_relaxed);
 }
 
+/**
+ * @brief 指定種別の編集中文字列を取得する
+ * @param type 取得する文字種
+ * @param currentPreedit 現在のpreedit文字列
+ * @return 編集中文字列、失敗時は空文字列
+ */
 std::string HazkeyServerConnector::getComposingText(
     hazkey::commands::GetComposingString::CharType type,
     std::string currentPreedit) {
@@ -456,16 +526,22 @@ std::string HazkeyServerConnector::getComposingText(
                       << responseVal.error_message();
         return "";
     }
-    // old protobuf doesn't have has_text() method.
+
+    // 古いprotobufにはhas_textメソッドがない
     // if (!responseVal.has_text()) {
     //     HAZKEY_LOG_ERROR() << "getComposingText: "
-    //                   << "Server returned unexpected response";
+    //                        << "Server returned unexpected response";
     //     return "";
     // }
+
     cachedComposingText_[cacheKey] = responseVal.text();
     return responseVal.text();
 }
 
+/**
+ * @brief カーソル位置を含む生かな文字列を取得する
+ * @return カーソル位置を含む文字列、失敗時は空の構造体
+ */
 hazkey::frontend::ComposingTextWithCursor
 HazkeyServerConnector::getComposingHiraganaWithCursor() {
     if (cachedHiraganaWithCursor_.has_value()) {
@@ -498,8 +574,12 @@ HazkeyServerConnector::getComposingHiraganaWithCursor() {
     return cachedHiraganaWithCursor_.value();
 }
 
+/**
+ * @brief 文字列を入力として送信する
+ * @param text 入力する文字列
+ */
 void HazkeyServerConnector::inputChar(std::string text) {
-    // State-mutating RPC: any cached read is stale from here on.
+    // 状態を変更するRPCなので既存の読み取りキャッシュは無効になる
     invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_input_char();
@@ -518,6 +598,11 @@ void HazkeyServerConnector::inputChar(std::string text) {
     return;
 }
 
+/**
+ * @brief [Shift]キーの押下または解放を送信する
+ * @param isRelease trueなら解放イベント
+ * @param alone 解放が単独打鍵ならtrue
+ */
 void HazkeyServerConnector::shiftKeyEvent(bool isRelease, bool alone) {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -536,12 +621,16 @@ void HazkeyServerConnector::shiftKeyEvent(bool isRelease, bool alone) {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "shiftKeyEvent: " << "Server returned an error: "
-                      << responseVal.error_message();
+                           << responseVal.error_message();
         return;
     }
     return;
 }
 
+/**
+ * @brief 現在の入力モードが直接入力か調べる
+ * @return 直接入力ならtrue
+ */
 bool HazkeyServerConnector::currentInputModeIsDirect() {
     if (cachedInputModeDirect_.has_value()) {
         return cachedInputModeDirect_.value();
@@ -567,6 +656,7 @@ bool HazkeyServerConnector::currentInputModeIsDirect() {
     return cachedInputModeDirect_.value();
 }
 
+/** @brief カーソル左の1文字を削除する */
 void HazkeyServerConnector::deleteLeft() {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -585,6 +675,7 @@ void HazkeyServerConnector::deleteLeft() {
     return;
 }
 
+/** @brief カーソル右の1文字を削除する */
 void HazkeyServerConnector::deleteRight() {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -603,6 +694,10 @@ void HazkeyServerConnector::deleteRight() {
     return;
 }
 
+/**
+ * @brief 組成中のカーソルを移動する
+ * @param offset 正値なら右へ移動する量
+ */
 void HazkeyServerConnector::moveCursor(int offset) {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -622,6 +717,11 @@ void HazkeyServerConnector::moveCursor(int offset) {
     return;
 }
 
+/**
+ * @brief 文節境界を調整し候補を取得する
+ * @param offset 正値なら右へ移動する量
+ * @return 更新後の候補と読み、失敗時はstd::nullopt
+ */
 std::optional<HazkeyServerConnector::ClauseBoundaryResult>
 HazkeyServerConnector::adjustClauseBoundary(int offset) {
     invalidateCache();
@@ -652,6 +752,11 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
     return result;
 }
 
+/**
+ * @brief 候補の学習データを削除して、候補を取得する
+ * @param index 削除対象の候補位置
+ * @return 削除結果と更新後の候補、失敗時はstd::nullopt
+ */
 std::optional<HazkeyServerConnector::DeleteCandidateLearningDataResult>
 HazkeyServerConnector::deleteCandidateLearningData(int index) {
     invalidateCache();
@@ -667,26 +772,28 @@ HazkeyServerConnector::deleteCandidateLearningData(int index) {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "deleteCandidateLearningData: "
-                      << "Server returned an error: "
-                      << responseVal.error_message();
+                           << "Server returned an error: "
+                           << responseVal.error_message();
         return std::nullopt;
     }
     if (!responseVal.has_delete_candidate_learning_data_result()) {
         HAZKEY_LOG_ERROR() << "deleteCandidateLearningData: "
-                      << "Server returned unexpected response";
+                           << "Server returned unexpected response";
         return std::nullopt;
     }
 
     DeleteCandidateLearningDataResult result;
-    result.deleted_count =
-        responseVal.delete_candidate_learning_data_result().deleted_count();
-    result.candidates =
-        responseVal.delete_candidate_learning_data_result().candidates();
-    result.hiragana =
-        responseVal.delete_candidate_learning_data_result().hiragana();
+    result.deleted_count = responseVal.delete_candidate_learning_data_result().deleted_count();
+    result.candidates = responseVal.delete_candidate_learning_data_result().candidates();
+    result.hiragana = responseVal.delete_candidate_learning_data_result().hiragana();
     return result;
 }
 
+/**
+ * @brief 周辺文脈をサーバへ設定する
+ * @param context 周辺文脈の文字列
+ * @param anchor 文脈内の基準位置
+ */
 void HazkeyServerConnector::setContext(std::string context, int anchor) {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -701,12 +808,13 @@ void HazkeyServerConnector::setContext(std::string context, int anchor) {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "setContext:" << "Server returned an error: "
-                      << responseVal.error_message();
+                           << responseVal.error_message();
         return;
     }
     return;
 }
 
+/** @brief 現在の組成を破棄して新しい組成を始める */
 void HazkeyServerConnector::newComposingText() {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -720,13 +828,17 @@ void HazkeyServerConnector::newComposingText() {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "createComposingTextInstance:"
-                      << "Server returned an error: "
-                      << responseVal.error_message();
+                           << "Server returned an error: "
+                           << responseVal.error_message();
         return;
     }
     return;
 }
 
+/**
+ * @brief 指定した候補で接頭辞を確定する
+ * @param index 確定する候補位置
+ */
 void HazkeyServerConnector::completePrefix(int index) {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -740,16 +852,19 @@ void HazkeyServerConnector::completePrefix(int index) {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "completePrefix: " << "Server returned an error: "
-                      << responseVal.error_message();
+                           << responseVal.error_message();
         return;
     }
     return;
 }
 
+/**
+ * @brief 予測候補を先頭表記として受理する
+ * @param index 受理する候補位置
+ * @return 受理できた場合はtrue
+ */
 bool HazkeyServerConnector::acceptPrediction(int index) {
-    // [community] Accept a prediction candidate as a fixed leading notation.
-    // Unlike completePrefix() this keeps the composition open; the client
-    // must refresh the preedit and the candidate list afterwards.
+    // completePrefixと異なり組成を維持するため、呼び出し側は表示を更新する
     invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_accept_prediction();
@@ -768,6 +883,10 @@ bool HazkeyServerConnector::acceptPrediction(int index) {
     return true;
 }
 
+/**
+ * @brief Zenzaiの有効状態を切り替える
+ * @return 切替後の有効状態、失敗時はstd::nullopt
+ */
 std::optional<bool> HazkeyServerConnector::toggleZenzai() {
     hazkey::RequestEnvelope request;
     request.mutable_toggle_zenzai();
@@ -789,6 +908,7 @@ std::optional<bool> HazkeyServerConnector::toggleZenzai() {
     return responseVal.toggle_zenzai_result().enabled();
 }
 
+/** @brief 保留中の学習データを保存する */
 void HazkeyServerConnector::saveLearningData() {
     invalidateCache();
     hazkey::RequestEnvelope request;
@@ -808,6 +928,10 @@ void HazkeyServerConnector::saveLearningData() {
     return;
 }
 
+/**
+ * @brief サーバの現在設定を取得する
+ * @return 現在設定、失敗時はstd::nullopt
+ */
 std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerConfig() {
     hazkey::RequestEnvelope request;
     request.mutable_get_config();
@@ -825,6 +949,11 @@ std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerCon
     return responseVal.current_config();
 }
 
+/**
+ * @brief サーバの現在設定を保存する
+ * @param config 保存する設定
+ * @return 保存に成功した場合はtrue
+ */
 bool HazkeyServerConnector::setServerConfig(
     const hazkey::config::CurrentConfig& config) {
     invalidateCache();
@@ -840,17 +969,20 @@ bool HazkeyServerConnector::setServerConfig(
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "setServerConfig: " << "Server returned an error: "
-                      << responseVal.error_message();
+                          << responseVal.error_message();
         return false;
     }
     return true;
 }
 
+/**
+ * @brief 候補一覧を取得する
+ * @param isSuggestMode サジェスト候補ならtrue
+ * @return 候補一覧、失敗時は空の候補一覧
+ */
 hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     bool isSuggestMode) {
-    // The non-suggest request makes the server insert a composition
-    // separator, which mutates the state all other reads depend on, so it
-    // must invalidate cached reads before it executes.
+    // 通常候補の要求は、組成区切りを挿入して、状態を変更するため事前にキャッシュを破棄する
     if (!isSuggestMode) {
         invalidateCache();
     }
@@ -875,13 +1007,15 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
         std::vector<CandidateData> empty_vec;
         return hazkey::commands::CandidatesResult();
     }
-    // TODO: Error handling when response has no candidate
+
+    // 応答に候補がない場合の検査はprotobufのhasメソッドに依存する
     // if (responseVal..has_candidates()) {
     //     HAZKEY_LOG_ERROR() << "getCandidates: "
-    //                   << "Server returned unexpected response";
+    //                        << "Server returned unexpected response";
     //     std::vector<CandidateData> empty_vec;
     //     return hazkey::commands::CandidatesResult();
     // }
+
     cacheSlot = responseVal.candidates();
     return responseVal.candidates();
 }

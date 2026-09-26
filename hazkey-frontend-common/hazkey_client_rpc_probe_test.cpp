@@ -1,9 +1,15 @@
+/**
+ * @file hazkey_client_rpc_probe_test.cpp
+ * @brief 要求種別別実行回数の基準検証をまとめる
+ *
+ * 固定入力シナリオの再現で状態変更要求が通過することと、読取重複が保存で吸収され実行回数が基準以下に収まることを確認する
+ * 実接続器とプロセス内模擬ソケットだけを使い実サーバは起動しない
+ */
 #include <arpa/inet.h>
 #include <assert.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
@@ -21,6 +27,11 @@
 
 namespace {
 
+/**
+ * @brief 要求封筒の種類名を検査用に変換する
+ *
+ * ペイロード種別から短い英字名を返して、種類別の到達回数を数える集計に使用する
+ */
 const char* requestType(const hazkey::RequestEnvelope& request) {
     switch (request.payload_case()) {
         case hazkey::RequestEnvelope::kSetContext: return "set_context";
@@ -52,6 +63,11 @@ const char* requestType(const hazkey::RequestEnvelope& request) {
     return "none";
 }
 
+/**
+ * @brief 指定長を受信し切るまで読取を繰り返す
+ *
+ * 要求長と要求本体の受信に使用して、途中で切断や失敗があれば偽を返す
+ */
 bool readAll(int fd, void* data, size_t size) {
     auto* bytes = static_cast<char*>(data);
     size_t offset = 0;
@@ -65,6 +81,11 @@ bool readAll(int fd, void* data, size_t size) {
     return true;
 }
 
+/**
+ * @brief 指定長を送信し切るまで書込を繰り返す
+ *
+ * 応答長と応答本体の送信に使用して、途中で切断や失敗があれば偽を返す
+ */
 bool writeAll(int fd, const void* data, size_t size) {
     const auto* bytes = static_cast<const char*>(data);
     size_t offset = 0;
@@ -78,8 +99,18 @@ bool writeAll(int fd, const void* data, size_t size) {
     return true;
 }
 
+/**
+ * @brief 要求回数を数えるプロセス内模擬サーバ
+ *
+ * 一接続分の要求を種類別に数えて成功応答を返して、固定入力シナリオの再現による実行回数の基準検証を支える
+ */
 class FakeServer {
    public:
+    /**
+     * @brief 模擬ソケットを開設して応答循環を起動する
+     *
+     * 指定パスのUNIXソケットを作成して待ち受けを開始して、応答循環を別スレッドで動かす
+     */
     explicit FakeServer(const std::string& path) : path_(path) {
         listenFd_ = socket(AF_UNIX, SOCK_STREAM, 0);
         assert(listenFd_ >= 0);
@@ -91,6 +122,11 @@ class FakeServer {
         thread_ = std::thread([this] { serve(); });
     }
 
+    /**
+     * @brief 待受けを閉じて資源を破棄する
+     *
+     * 受付スレッドの合流を待ち、ソケット表示を取り除く
+     */
     ~FakeServer() {
         if (listenFd_ >= 0) {
             close(listenFd_);
@@ -101,12 +137,22 @@ class FakeServer {
         unlink(path_.c_str());
     }
 
+    /**
+     * @brief 種類別到達回数の写しを返す
+     *
+     * 記録証跡との一致確認と基準照合のために、現在の集計を複写して返す
+     */
     std::map<std::string, int> counts() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return counts_;
     }
 
    private:
+    /**
+     * @brief 一接続分の要求応答循環を処理する
+     *
+     * 到達回数を数えて成功応答を返して、切断まで繰り返す
+     */
     void serve() {
         const int clientFd = accept(listenFd_, nullptr, nullptr);
         if (clientFd < 0) {
@@ -144,13 +190,20 @@ class FakeServer {
         close(clientFd);
     }
 
-    int listenFd_ = -1;
-    std::string path_;
-    std::thread thread_;
-    mutable std::mutex mutex_;
-    std::map<std::string, int> counts_;
+    int listenFd_ = -1;                  ///< 待受けソケット記述子
+    std::string path_;                   ///< 模擬ソケットの配置パス
+    std::thread thread_;                 ///< 応答循環の実行スレッド
+
+    // 集計状態
+    mutable std::mutex mutex_;           ///< 到達回数を保護するミューテックス
+    std::map<std::string, int> counts_;  ///< 種類別の到達回数集計
 };
 
+/**
+ * @brief 記録証跡から種別別実行回数を復元する
+ *
+ * 証跡行の種類表記を数え上げて、模擬サーバの集計と照合できる形へ戻す
+ */
 std::map<std::string, int> countsFromEvidence(const std::string& path) {
     std::ifstream input(path);
     std::map<std::string, int> counts;
@@ -165,6 +218,11 @@ std::map<std::string, int> countsFromEvidence(const std::string& path) {
     return counts;
 }
 
+/**
+ * @brief 基準ファイルから種別別回数を読み込む
+ *
+ * 不変基準の内容を連想配列へ復元して、状態変更の通過と読取の上限検証に使用する
+ */
 std::map<std::string, int> baselineFromFile(const std::string& path) {
     std::ifstream input(path);
     std::map<std::string, int> counts;
@@ -176,6 +234,11 @@ std::map<std::string, int> baselineFromFile(const std::string& path) {
     return counts;
 }
 
+/**
+ * @brief 種別別回数を基準形式で書き出す
+ *
+ * 初回は基準として保存し以降は今回分として保存して、種類別の比較に使用する
+ */
 void writeBaseline(const std::string& path, const std::map<std::string, int>& counts) {
     std::ofstream output(path);
     output << "{\n";
@@ -186,9 +249,14 @@ void writeBaseline(const std::string& path, const std::map<std::string, int>& co
     output << "}\n";
 }
 
+/**
+ * @brief 固定入力シナリオの入力と読取手順を再現する
+ *
+ * 全変換・予測・接頭辞・仮名数字・相対日付・学習なし確定の読列を入力して、表示前読取・予備読取・補助読取の重複を含む実利用順序を再現する
+ * 重複が保存で吸収されることが基準検証の要点である
+ */
 void replayCorpus(HazkeyServerConnector& connector) {
-    // Matches CorpusFixtures.swift: full, suggestion, prefix, kana-number,
-    // relative-date, and non-learnable-kana-number-commit readings.
+    // CorpusFixtures.swiftに合わせて通常変換、予測、接頭辞、かな数字、相対日付、学習しないかな数字確定の読みを使用する
     const std::vector<std::vector<std::string>> readings = {
         {"に", "ほ", "ん"}, {"に", "ほ", "ん"}, {"に", "ほ", "ん", "ご"},
         {"に", "じ", "ゅ", "う"}, {"き", "ょ", "う"}, {"に", "じ", "ゅ", "う"}};
@@ -200,24 +268,15 @@ void replayCorpus(HazkeyServerConnector& connector) {
         if (index == 2) {
             connector.moveCursor(-1);
         }
-        // Models the per-key-event read pattern of HazkeyState: the
-        // pre-display composing-text read (showPreeditCandidateList) and the
-        // fallback read inside showCandidateList are issued back to back
-        // with identical arguments within one key event, and the auxiliary
-        // hiragana read (setHiraganaAUX) is re-issued whenever the displayed
-        // value is unchanged. The connector read cache must absorb the
-        // duplicates so the executed counts stay at the baseline floor.
-        connector.getComposingText(
-            hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
+        // HazkeyStateのキーイベントごとの読取順を再現する
+        // 同じ引数の組成文字列読取と補助ひらがな読取を重複させて、接続器の読取キャッシュが重複を吸収することを確認する
+        connector.getComposingText(hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
         connector.getCandidates(true);
-        connector.getComposingText(
-            hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
+        connector.getComposingText(hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
         connector.getComposingHiraganaWithCursor();
         connector.getComposingHiraganaWithCursor();
         if (index == 5) {
-            // The commit reading enters full-conversion mode before
-            // selecting a candidate; the non-suggest request is issued
-            // without a cursor move (Escape-from-clause-boundary path).
+            // 確定用の読みは候補選択前に通常変換へ入り、カーソル移動なしで通常候補を取得する
             connector.getCandidates(false);
         }
     }
@@ -225,6 +284,11 @@ void replayCorpus(HazkeyServerConnector& connector) {
 
 }  // namespace
 
+/**
+ * @brief 要求回数の基準検証を一括して実行する
+ *
+ * 固定入力シナリオの再現と証跡一致と不変基準との照合を行い、状態変更の通過と読取上限を検証して成功を報告する
+ */
 int main() {
     char directoryTemplate[] = "/tmp/hazkey-client-rpc-probe-XXXXXX";
     char* directory = mkdtemp(directoryTemplate);
@@ -252,28 +316,25 @@ int main() {
     if (!std::filesystem::exists(baselinePath)) {
         writeBaseline(baselinePath, observed);
     }
-    // The committed baseline (rpc_baseline_cpp.json) is immutable. Post-change
-    // counts go to a NEW file and are compared per type: state-mutating RPCs
-    // must pass through unchanged, read RPCs must be at or below the baseline
-    // with same-epoch duplicates absorbed by the connector read cache.
-    const std::string afterPath =
-        (std::filesystem::path(__FILE__).parent_path() / "rpc_after_cache.json").string();
+    // コミット済み基準ファイルは変更せず、今回の回数を別ファイルへ保存して種別ごとに比較する
+    // 状態変更RPCは不変、読取RPCは同一期間の重複をキャッシュで吸収して基準以下とする
+    const std::string afterPath = (std::filesystem::path(__FILE__).parent_path() / "rpc_after_cache.json").string();
     writeBaseline(afterPath, observed);
     const auto baseline = baselineFromFile(baselinePath);
-    // State-mutating RPCs pass through unchanged (ordering preserved):
+
+    // 状態変更RPCは順序を保ってそのまま通過する
     assert(observed.at("input_char") == baseline.at("input_char"));
     assert(observed.at("move_cursor") == baseline.at("move_cursor"));
     assert(observed.at("new_composing_text") == baseline.at("new_composing_text"));
-    // Deterministic corpus + deterministic read cache => exact executed
-    // counts: 12 composing-text reads and 12 auxiliary hiragana reads are
-    // issued, 6 of each execute (same-epoch duplicates served from cache);
-    // 7 candidate reads execute (6 suggest + 1 non-suggest, which is
-    // invalidate-first by design).
+
+    // 固定入力シナリオと固定キャッシュにより、実行回数を確定できる
+    // 組成文字列と補助ひらがなは各12回要求して、同一期間の重複を吸収して各6回実行する
+    // 候補読取は、予測6回と先に無効化する通常候補1回の計7回実行する
     assert(observed.at("get_composing_string") == 6);
     assert(observed.at("get_hiragana_with_cursor") == 6);
     assert(observed.at("get_candidates") == 7);
-    // Read types never exceed the immutable baseline; get_candidates is
-    // strictly fewer (baseline fetched both list flavors for every reading):
+
+    // 読取種別は不変基準を超えず、候補読取は基準より少ない
     assert(observed.at("get_candidates") < baseline.at("get_candidates"));
     assert(observed.at("get_hiragana_with_cursor") <=
            baseline.at("get_hiragana_with_cursor"));

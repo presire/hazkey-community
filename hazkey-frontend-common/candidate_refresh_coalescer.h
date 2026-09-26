@@ -1,3 +1,16 @@
+/**
+ * @file candidate_refresh_coalescer.h
+ * @brief 表示専用の候補更新要求をまとめる判定を提供する
+ *
+ * 先頭の要求はすぐに実行する
+ * 連続入力中の後続要求は、最新の要求を1回だけ実行するようにまとめる
+ *
+ * 本方針はタイマも時計も持たない
+ *
+ * 呼び出し側が渡す時刻だけを見て判定する
+ * 実際のタイマはフロントエンドの状態側が所有し駆動する
+ */
+
 #ifndef _HAZKEY_FRONTEND_COMMON_CANDIDATE_REFRESH_COALESCER_H_
 #define _HAZKEY_FRONTEND_COMMON_CANDIDATE_REFRESH_COALESCER_H_
 
@@ -5,70 +18,54 @@
 
 namespace hazkey::frontend {
 
-// Default minimum quiet period (microseconds) a display-only candidate
-// refresh request must go unanswered by a newer request before it is
-// actually executed. Exposed as a named constant so production call sites
-// have one obvious default, while tests can pass tiny synthetic values to
-// `shouldSchedule`/`shouldFire` directly (the policy itself never reads this
-// constant; it is only a suggested default for callers).
-inline constexpr uint64_t kCandidateRefreshCoalesceUsec = 30000;  // 30ms
+/**
+ * @brief 表示専用更新を遅延させる最小間隔を示す定数[us]
+ *
+ * フロントエンドで使う既定値を1箇所にまとめる
+ * テストでは、shouldScheduleやshouldFireへ小さい値を直接渡せる
+ *
+ * @note 方針自体はこの定数を参照しない
+ * @note 呼び出し側が既定値として使うための提案値である
+ */
+inline constexpr uint64_t kCandidateRefreshCoalesceUsec = 30000;  ///< 30ms相当
 
-// Pure, dependency-free decision policy for coalescing rapid successive
-// display-only candidate-refresh requests ("leading-edge execution with a
-// latest-wins trailing debounce").
-//
-// LEADING EDGE (why it exists): a purely trailing debounce delays EVERY
-// refresh by the full quiet period, which at ordinary typing speed (well
-// over one interval between keystrokes) adds that delay to the visible
-// feedback of every single keystroke without ever coalescing anything --
-// there is nothing to merge when keystrokes are already far apart. The
-// first request of a burst therefore executes immediately, exactly as the
-// uncoalesced call site did, and only requests that arrive while the
-// previous refresh is still "fresh" are deferred and merged.
-//
-// This class holds NO timer, NO clock, and NO fcitx/IBus/protobuf types -- it
-// only tracks timestamps supplied by the caller so it is fully unit
-// testable with synthetic values. The actual event-loop timer is owned and
-// driven by the frontend's state object (fcitx5: an EventSourceTime on the
-// fcitx event loop; IBus: a GLib g_timeout_add source); this class only
-// answers "can I run this right now?", "should I (re)arm?" and "should I fire
-// now?" questions.
-//
-// Typical caller usage (see fcitx5-hazkey/src/hazkey_state.cpp
-// HazkeyState::scheduleCandidateRefresh / firePendingCandidateRefresh and
-// ibus-hazkey/src/hazkey_state.cpp HazkeyState::scheduleCandidateRefresh /
-// firePendingCandidateRefresh):
-//   1. On every display-only refresh trigger, call
-//      shouldRunImmediately(now, interval) first. If it returns true, drop
-//      any armed timer, call onRun(now) and execute the refresh
-//      synchronously -- no added latency. After the refresh returns, call
-//      onRunFinished(now) (same for the trailing run in step 4).
-//   2. Otherwise call shouldSchedule(now, interval). If it returns true,
-//      (re)arm/replace the real timer so it fires at now + interval (latest
-//      request always wins and pushes the deadline out, which is what makes
-//      rapid keystrokes coalesce into one execution instead of firing once
-//      per keystroke).
-//   3. When the timer callback actually runs, call shouldFire(now) first.
-//      If false, do nothing (defends against a stale callback that
-//      shouldn't have run -- in practice this shouldn't happen because a
-//      fresh schedule() replaces the owning timer before the old one could
-//      fire, but the check keeps the policy correct even if that invariant
-//      is ever relaxed).
-//   4. If shouldFire() was true, call onRun(now) to consume the pending slot
-//      and record the execution, then execute the latest pending refresh
-//      kind.
-//   5. On reset/focus-out/state-teardown-adjacent paths, call onCancel() (or
-//      resetPolicy(), which also clears the leading-edge bookkeeping) so no
-//      stale timer, once explicitly disarmed by the caller, is considered
-//      pending anymore.
+/**
+ * @class CandidateRefreshCoalescer
+ * @brief 連続する表示専用候補更新要求をまとめる純粋な判定クラス
+ *
+ * @details 先頭の要求はすぐに実行する
+ *          後続の要求は期限を更新し、最新の要求だけを遅延実行する
+ *          最初の更新を遅らせず、連続入力中の描画負荷だけを抑える
+ *
+ *          タイマも時計も持たない
+ *          呼び出し側が渡す時刻だけを記録する
+ *          実際のタイマはフロントエンドの状態側が所有し駆動する
+ *          本クラスは即時実行、再スケジュール、実行時刻到達だけを判定する
+ *
+ *          呼び出し側の典型手順は次のとおりである
+ *          - 要求時は、shouldRunImmediatelyで即時可否を判定する
+ *          - 実行可能ならタイマを取り消し、onRun後に同期実行する
+ *          - 実行できなければ、shouldScheduleで期限を更新する
+ *          - タイマイベント開始時は、shouldFireを確認してからonRun後に最新要求を実行する
+ *          - 破棄時は、onCancelまたはresetPolicyで保留状態を消す
+ *
+ * @note 表示専用更新だけを対象とし確定処理には使用しない
+ * @note 時刻は呼び出し側が単調増加する値[us]で渡すこと
+ */
 class CandidateRefreshCoalescer {
    public:
-    // Leading-edge predicate: true when the caller may execute the refresh
-    // right now instead of arming a timer. That is the case when nothing is
-    // already pending (a pending request means we are mid-burst and the
-    // trailing timer owns the next execution) AND no refresh has run within
-    // the last `minIntervalUsec` (so executing now cannot exceed the
-    // configured one-refresh-per-quiet-period budget).
+    /**
+     * @brief 先頭の要求をすぐに実行できるか判定する
+     *
+     * 保留要求がなく、前回実行から最小間隔以上が経過した場合だけtrueを返す
+     * 保留中はタイマが次の実行を管理する
+     *
+     * @param nowUsec 現在時刻[us]
+     * @param minIntervalUsec 最小間隔[us]
+     * @return 即時実行できる場合は真
+     *
+     * @note 実行の前後でonRunとonRunFinishedを呼ぶこと
+     */
     bool shouldRunImmediately(uint64_t nowUsec, uint64_t minIntervalUsec) const {
         if (pending_) {
             return false;
@@ -79,15 +76,20 @@ class CandidateRefreshCoalescer {
         return nowUsec - lastRunUsec_ >= minIntervalUsec;
     }
 
-    // Called every time a display-only refresh is requested. Always
-    // (re)arms: the pending deadline is set to `nowUsec + minIntervalUsec`,
-    // discarding any earlier deadline -- this is the "latest-wins" part of
-    // the debounce. Returns true to signal the caller should (re)arm the
-    // real timer to that new deadline. The return value is always true by
-    // design (every request is eligible to push the deadline out); it is
-    // still returned as `bool`, rather than being `void`, so the decision is
-    // explicit at each call site and the semantics can change in the future
-    // without touching callers.
+    /**
+     * @brief 要求を受けて保留中の実行期限を更新する
+     *
+     * 期限を現在時刻と最小間隔から計算し直す
+     * 最新の要求だけを残すことで、連続入力を1回の更新にまとめる
+     *
+     * @param nowUsec 現在時刻[us]
+     * @param minIntervalUsec 最小間隔[us]
+     * @return 常に真
+     *
+     * @note 呼び出し側は、実際のタイマを新しい期限へ設定し直す
+     * @note 戻り値は、将来の意味変更に備えて明示するものである
+     * @note 即時実行可否の判定には使用しないこと
+     */
     bool shouldSchedule(uint64_t nowUsec, uint64_t minIntervalUsec) {
         lastRequestUsec_ = nowUsec;
         pendingDeadlineUsec_ = nowUsec + minIntervalUsec;
@@ -95,52 +97,71 @@ class CandidateRefreshCoalescer {
         return true;
     }
 
-    // Pure predicate for the timer callback: whether the pending refresh
-    // should execute right now. False both when nothing is pending (already
-    // fired/cancelled/never scheduled) and when the deadline has not been
-    // reached yet (guards against a stale/early callback).
+    /**
+     * @brief 保留中の更新を今実行すべきか判定する
+     *
+     * 保留がなく発火済みまたは取消済みまたは未設定の場合は偽を返す
+     * 期限未到達の早すぎる呼び出しにも偽を返す
+     *
+     * @param nowUsec 現在時刻[us]
+     * @return 今実行すべき場合は真
+     *
+     * @note 古いタイマ呼び出しに対する防御であり、通常は到達しない経路である
+     */
     bool shouldFire(uint64_t nowUsec) const {
         return pending_ && nowUsec >= pendingDeadlineUsec_;
     }
 
-    // Marks the pending slot as consumed AND records that a refresh actually
-    // executed at `nowUsec`. Both execution paths (the leading-edge
-    // synchronous one and the trailing timer one) must call this, because
-    // shouldRunImmediately() measures the next quiet period from the last
-    // recorded run -- that is what keeps the "at most one refresh per quiet
-    // period" budget intact across both paths.
+    /**
+     * @brief 保留状態を消費して実行開始時刻を記録する
+     *
+     * 先頭同期実行と後方タイマ実行の双方で呼ぶこと
+     * 次の最小間隔は、この実行時刻から測る
+     *
+     * @param nowUsec 実行開始時刻[us]
+     */
     void onRun(uint64_t nowUsec) {
         pending_ = false;
         hasRun_ = true;
         lastRunUsec_ = nowUsec;
     }
 
-    // Rebases the quiet period on the time the refresh FINISHED. Callers must
-    // call this right after the refresh returns. A conversion can take far
-    // longer than the quiet period (a Zenzai retry chain on a slow backend
-    // takes hundreds of ms), and keystrokes typed meanwhile are queued behind
-    // it. Measured from the start of the run, those queued keystrokes would
-    // all be outside the quiet period and each would trigger its own full
-    // conversion, so latency would pile up the faster the user types.
-    // Measured from the end, they coalesce into one trailing refresh. No-op
-    // when the policy was reset during the run (a new composition epoch
-    // keeps its immediate first refresh).
+    /**
+     * @brief 最小間隔の基準を実行終了時刻へ更新する
+     *
+     * 変換完了直後に呼ぶこと
+     * 変換が最小間隔より長くなる場合でも、待機中の要求を1回の遅延更新にまとめる
+     *
+     * @param nowUsec 実行終了時刻[us]
+     *
+     * @note 実行中にresetPolicyされた場合は何もしない
+     * @note 新しい合成の先頭即時実行を保つためである
+     */
     void onRunFinished(uint64_t nowUsec) {
         if (hasRun_ && nowUsec > lastRunUsec_) {
             lastRunUsec_ = nowUsec;
         }
     }
 
-    // Marks the pending slot as cancelled without executing anything
-    // (reset/focus-out path). Idempotent. Equivalent to resetPolicy() for
-    // the pending flag, kept as a separate name for call-site clarity.
+    /**
+     * @brief 保留中の更新を実行せずに取り消す
+     *
+     * 再スケジュール時やフォーカスを失った時に使用する
+     * 何度呼んでも同じ結果になる
+     *
+     * @note resetPolicyと保留消去の効果は同じである
+     * @note 呼び出し箇所の意図を明確にする別名として残す
+     */
     void onCancel() { pending_ = false; }
 
-    // Clears all policy state, including both the pending bookkeeping and
-    // the leading-edge run history. Use on reset/focus-out so no stale
-    // timestamp influences a later shouldRunImmediately()/shouldSchedule()
-    // call in a new composition epoch -- the first refresh of a fresh
-    // composition must never be deferred.
+    /**
+     * @brief 判定に使う全状態を初期化する
+     *
+     * 保留状態と実行履歴を消す
+     * 新しい入力では最初の更新を遅延させない
+     *
+     * @note 古い時刻が次回判定に影響しないようにする
+     */
     void resetPolicy() {
         pending_ = false;
         pendingDeadlineUsec_ = 0;
@@ -149,19 +170,33 @@ class CandidateRefreshCoalescer {
         lastRunUsec_ = 0;
     }
 
-    // Introspection helpers, primarily for unit tests.
+    /**
+     * @brief 主に単体テスト向けの内部状態参照を提供する
+     *
+     * 以下5件は、判定結果の確認用である
+     * 製品側の通常経路では使用しない
+     */
+
+    /** @brief 保留要求があるかどうかを返す */
     bool hasPending() const { return pending_; }
+    /** @brief 保留期限を返す (マイクロ秒単位) */
     uint64_t pendingDeadlineUsec() const { return pendingDeadlineUsec_; }
+    /** @brief 最終要求時刻を返す (マイクロ秒単位) */
     uint64_t lastRequestUsec() const { return lastRequestUsec_; }
+    /** @brief 実行履歴があるかどうかを返す */
     bool hasRun() const { return hasRun_; }
+    /** @brief 最終実行時刻を返す (マイクロ秒単位) */
     uint64_t lastRunUsec() const { return lastRunUsec_; }
 
    private:
-    bool pending_ = false;
-    uint64_t pendingDeadlineUsec_ = 0;
-    uint64_t lastRequestUsec_ = 0;
-    bool hasRun_ = false;
-    uint64_t lastRunUsec_ = 0;
+    // 保留中の更新
+    bool pending_ = false;              ///< 保留中の要求がある場合はtrue
+    uint64_t pendingDeadlineUsec_ = 0;  ///< 保留中の実行期限[us]
+    uint64_t lastRequestUsec_ = 0;      ///< 最終要求時刻[us]
+
+    // 実行履歴
+    bool hasRun_ = false;               ///< 実行履歴がある場合はtrue
+    uint64_t lastRunUsec_ = 0;          ///< 最終実行時刻[us]
 };
 
 }  // namespace hazkey::frontend

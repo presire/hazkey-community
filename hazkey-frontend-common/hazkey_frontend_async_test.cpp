@@ -1,12 +1,15 @@
-// Tests for the asynchronous-transport foundation added for the IBus
-// process_key_event unblocking work:
-//   - hazkey::frontend::SerialTaskExecutor (single-worker FIFO, timed tasks,
-//     cancellation, drain, shutdown)
-//   - hazkey::frontend::setMainLoopPoster / postToMainLoop (main-loop
-//     delivery hook; default inline, installed poster never runs inline)
-//
-// No frontend, IBus daemon or hazkey-server is involved: both units are
-// framework-independent.
+/**
+ * @file hazkey_frontend_async_test.cpp
+ * @brief 非同期転送基盤の単体検証をまとめる
+ *
+ * 単一ワーカースレッドの先入先出順序と遅延処理と取消と排出と停止と
+ * 主循環配送子の即時実行と遅延配送を検証する
+ * フレームワーク非依存の部品だけを使い実サーバは起動しない
+ */
+// IBusのprocess_key_eventを非ブロッキング化するための非同期転送基盤を検証する
+// SerialTaskExecutorの単一ワーカーFIFO、遅延処理、取消、排出、停止を対象とする
+// setMainLoopPosterとpostToMainLoopの主循環配送も対象とし、既定は呼出元で実行する
+// フロントエンド、IBusデーモン、hazkey-serverを使わないフレームワーク非依存の検査である
 #include <atomic>
 #include <chrono>
 #include <iostream>
@@ -30,6 +33,12 @@ namespace {
 
 using hazkey::frontend::SerialTaskExecutor;
 
+/**
+ * @brief 単一ワーカースレッドで先入先出順序が守られることを検証する
+ *
+ * 多数の処理を投入して同一ワーカースレッドで順序どおりに実行されることと
+ * ワーカースレッド外ではその状態にならないことを確認する
+ */
 void testFifoOnSingleThread() {
     SerialTaskExecutor executor;
     std::mutex orderMutex;
@@ -55,12 +64,18 @@ void testFifoOnSingleThread() {
     CHECK(!sawOtherThread);
     CHECK(order.size() == static_cast<size_t>(kCount));
     for (int i = 0; i < kCount; ++i) {
-        CHECK(order[static_cast<size_t>(i)] == i);  // strict FIFO
+        CHECK(order[static_cast<size_t>(i)] == i);  // 厳密なFIFO順序
     }
     CHECK(!executor.onWorkerThread());
     std::cout << "[PASS] FIFO order on a single worker thread\n";
 }
 
+/**
+ * @brief 遅延処理が即時処理を阻まないことを検証する
+ *
+ * 遅延期限前に即時処理が先に実行されることと
+ * 期限後に遅延処理が実行されることを確認する
+ */
 void testDelayedTasksDoNotBlockReadyOnes() {
     SerialTaskExecutor executor;
     std::mutex mutex;
@@ -72,12 +87,12 @@ void testDelayedTasksDoNotBlockReadyOnes() {
             std::lock_guard<std::mutex> lock(mutex);
             order.push_back("delayed");
         },
-        120'000);  // 120ms
+    120'000);  // 120[ms]
     executor.submit([&] {
         std::lock_guard<std::mutex> lock(mutex);
         order.push_back("immediate");
     });
-    // The immediate task must run long before the delayed deadline.
+    // 即時処理は遅延期限より十分前に実行されなければならない
     while (true) {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -93,8 +108,7 @@ void testDelayedTasksDoNotBlockReadyOnes() {
         std::lock_guard<std::mutex> lock(mutex);
         CHECK(order[0] == "immediate");
     }
-    // drainAndWait() deliberately does NOT wait for a not-yet-due delayed
-    // task, so wait for the delayed deadline explicitly.
+    // drainAndWait()は期限前の遅延処理を待たないため、期限到達は明示的に待つ
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
     while (std::chrono::steady_clock::now() < deadline) {
@@ -112,6 +126,12 @@ void testDelayedTasksDoNotBlockReadyOnes() {
     std::cout << "[PASS] delayed task does not block an earlier-ready task\n";
 }
 
+/**
+ * @brief 取消済み遅延処理が実行されないことを検証する
+ *
+ * 取消後に排出待ちを行っても処理が走らず
+ * 予約が破棄されることを確認する
+ */
 void testCancelPreventsRun() {
     SerialTaskExecutor executor;
     std::atomic<bool> ran{false};
@@ -122,6 +142,11 @@ void testCancelPreventsRun() {
     std::cout << "[PASS] cancelled delayed task never runs\n";
 }
 
+/**
+ * @brief 有限排出が時間切れと静止成功を返すことを検証する
+ *
+ * 作業中の排出待ちは時間切れで偽を返し解放後の排出待ちは真を返すことを確認する
+ */
 void testBoundedDrainTimesOutAndSucceedsWhenIdle() {
     SerialTaskExecutor executor;
     std::atomic<bool> started{false};
@@ -144,6 +169,12 @@ void testBoundedDrainTimesOutAndSucceedsWhenIdle() {
     std::cout << "[PASS] bounded drain times out and succeeds when idle\n";
 }
 
+/**
+ * @brief 時間切れ後の排出待ちが後で完了できることを検証する
+ *
+ * 有限排出が時間切れで偽を返した後に解放すれば
+ * 処理が完了することを確認する
+ */
 void testTimedOutDrainCanFinishLater() {
     SerialTaskExecutor executor;
     std::atomic<bool> started{false};
@@ -167,6 +198,12 @@ void testTimedOutDrainCanFinishLater() {
     std::cout << "[PASS] timed-out drain sentinel can finish later\n";
 }
 
+/**
+ * @brief ワーカースレッド内からの排出待ちが即時復帰することを検証する
+ *
+ * ワーカースレッド自身の停止を招かずに復帰することと
+ * 投入した排出待ちが実行されることを確認する
+ */
 void testWorkerDrainReturnsPromptly() {
     SerialTaskExecutor executor;
     std::atomic<bool> returned{false};
@@ -185,6 +222,12 @@ void testWorkerDrainReturnsPromptly() {
     std::cout << "[PASS] worker drain returns without self-deadlock\n";
 }
 
+/**
+ * @brief 停止が保留処理を破棄することを検証する
+ *
+ * 停止後の遅延処理が実行されず
+ * 新規投入が拒否されることを確認する
+ */
 void testShutdownDropsPending() {
     SerialTaskExecutor executor;
     std::atomic<bool> ran{false};
@@ -192,13 +235,18 @@ void testShutdownDropsPending() {
     executor.shutdown();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     CHECK(!ran);
-    // submit after shutdown is rejected rather than queued.
+    // 停止後の投入はキューに追加せず拒否する
     CHECK(executor.submit([] {}) == SerialTaskExecutor::kInvalidToken);
     std::cout << "[PASS] shutdown drops pending and rejects new tasks\n";
 }
 
+/**
+ * @brief 既定配送子が即時実行することを検証する
+ *
+ * 配送子未設定では主循環配送が呼び出し元で直接実行されることを確認する
+ */
 void testDefaultPosterRunsInline() {
-    // With no poster installed (fcitx5 / tests), postToMainLoop runs inline.
+    // 配送子未設定のfcitx5とテストではpostToMainLoopが呼出元で実行する
     hazkey::frontend::setMainLoopPoster(nullptr);
     bool ranHere = false;
     hazkey::frontend::postToMainLoop([&] { ranHere = true; });
@@ -206,6 +254,13 @@ void testDefaultPosterRunsInline() {
     std::cout << "[PASS] default postToMainLoop runs inline\n";
 }
 
+/**
+ * @brief 設定済み配送子が主処理へ遅延配送することを検証する
+ *
+ * ワーカースレッドからの配送が即時実行されず配送子に保持され
+ * 主循環相当の取出しで実行されることを確認する
+ * 最後に既定へ戻す
+ */
 void testInstalledPosterDefersToMainThread() {
     std::mutex mutex;
     std::vector<std::function<void()>> queued;
@@ -217,30 +272,34 @@ void testInstalledPosterDefersToMainThread() {
     });
 
     std::atomic<bool> ranInline{false};
-    // Post from a worker thread: the poster must receive the task, not run it
-    // on the posting thread.
+    // ワーカースレッドから配送し、配送子が処理を受け取って呼出元で実行しないことを確認する
     SerialTaskExecutor executor;
     executor.submit([&] {
         hazkey::frontend::postToMainLoop([&] { ranInline = true; });
     });
     executor.drainAndWait();
-    CHECK(!ranInline);  // held by the poster, not executed inline
+    CHECK(!ranInline);  // 配送子が保持し呼出元では実行しない
     {
         std::lock_guard<std::mutex> lock(mutex);
         CHECK(queued.size() == 1);
     }
-    // "Main loop" drains it.
+    // 主循環相当の処理で配送済みタスクを実行する
     {
         std::lock_guard<std::mutex> lock(mutex);
         queued[0]();
     }
     CHECK(ranInline);
 
-    // Restore the inline default (setMainLoopPoster(nullptr) clears the hook).
+    // setMainLoopPoster(nullptr)で配送子を消去して既定の即時実行へ戻す
     hazkey::frontend::setMainLoopPoster(nullptr);
     std::cout << "[PASS] installed poster defers to the main-loop drain\n";
 }
 
+/**
+ * @brief 保留数とワーカースレッド状態が正しいことを検証する
+ *
+ * 作業停留中は保留数が一以上となり排出後は零となることを確認する
+ */
 void testPendingCountAndWorkerIdentity() {
     SerialTaskExecutor executor;
     std::atomic<bool> gate{false};
@@ -249,7 +308,7 @@ void testPendingCountAndWorkerIdentity() {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
-    // Second task waits behind the first.
+    // 2番目の処理は先頭の処理の後ろで待機する
     executor.submit([] {});
     CHECK(executor.pendingCount() >= 1);
     gate = true;
@@ -260,6 +319,12 @@ void testPendingCountAndWorkerIdentity() {
 
 }  // namespace
 
+/**
+ * @brief 非同期基盤の全検証を順に実行する
+ *
+ * 先入先出と遅延非阻止と取消と有限排出と時間切れ後完了と
+ * ワーカースレッド内排出と停止破棄と配送子即時実行と遅延配送と保留数を呼び出して成功を報告する
+ */
 int main() {
     testFifoOnSingleThread();
     testDelayedTasksDoNotBlockReadyOnes();

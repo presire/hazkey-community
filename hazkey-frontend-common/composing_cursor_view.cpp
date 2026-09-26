@@ -1,13 +1,26 @@
+/**
+ * @file composing_cursor_view.cpp
+ * @brief 組成中カーソルの表示判定とキャレット位置計算を実装する
+ *
+ * 公開関数の意味は、ヘッダ側の文書を正として、ここでは内部補助だけを文書化する
+ * 定義側への重複文書は置かない
+ */
+
 #include "composing_cursor_view.h"
 
 namespace hazkey::frontend {
 
 namespace {
 
-// UTF-8 character count without GLib: every byte that is not a continuation
-// byte (0b10xxxxxx) starts a character. Malformed input degrades gracefully
-// (a stray continuation byte is simply not counted) instead of throwing,
-// which is the right trade-off for a display-only caret offset.
+/**
+ * @brief UTF-8の継続バイト以外を1文字として数える
+ *
+ * GLibを使わずに数えるための内部補助である
+ * 不正な入力も例外にせず、表示用のキャレット位置を返す
+ *
+ * @param text 数える対象の文字列
+ * @return 文字数
+ */
 std::size_t utf8CharCount(const std::string& text) {
     std::size_t count = 0;
     for (unsigned char byte : text) {
@@ -47,13 +60,10 @@ bool shouldShowAuxText(hazkey::config::Profile_AuxTextMode mode,
             Profile_AuxTextMode_AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END:
             return !cursorIsAtEnd;
         case hazkey::config::Profile_AuxTextMode_AUX_TEXT_MODE_UNSPECIFIED:
-            // Unset profiles fall back to the server default
-            // (HazkeyServerConfig.genDefaultConfig() writes
-            // auxTextShowWhenCursorNotAtEnd).
+             // 未設定のプロファイルはサーバの既定値と同じ扱いにする
             return !cursorIsAtEnd;
         default:
-            // A value from a newer server than this frontend: behave like the
-            // default rather than silently hiding the cursor feedback.
+             // 新しいサーバの値は既定値と同じ扱いにする
             return !cursorIsAtEnd;
     }
 }

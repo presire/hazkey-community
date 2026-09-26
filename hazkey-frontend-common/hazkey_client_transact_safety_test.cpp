@@ -1,30 +1,24 @@
-// Regression coverage for hazkey-ime-cpu-latency plan todo 2: transaction
-// timeout/reconnect/force-restart safety under CPU contention.
+/**
+ * @file hazkey_client_transact_safety_test.cpp
+ * @brief 通信の時間切れと再開と強制再起動の検証をまとめる
+ *
+ * 遅延応答が破棄され次回は新規接続で新鮮な応答だけを見ることと、成功直後は強制再起動を抑え窓を過ぎれば再び行うことを確認する
+ * 実接続器とプロセス内模擬ソケットと検査用接続子だけを使い実サーバは起動しない
+ */
+
+// CPU競合時の通信タイムアウト、再接続、強制再起動の安全性を検証する
 //
-// Test A (lateResponseNeverParsedAfterTimeout): proves a client read
-// timeout discards the socket before the next request is issued, and that a
-// response the (simulated wedged) server writes late, onto the now-discarded
-// connection, is never parsed by a later transact() on a fresh connection.
+// 検証Aは読取タイムアウト後にソケットを破棄して、遅れて届いた応答を次の新規接続で解釈しないことを確認する
+// 検証Bは1度も成功していない接続では、4回目の接続試行で強制再起動して、成功直後は競合待機時間内で抑止し、時間経過後に再開することを確認する
 //
-// Test B (forceRestartHardening): proves connectServer()'s force-restart
-// branch (ATTEMPT_TRY_START_FORCE, the 4th connect attempt) still fires for
-// a server that has never responded (unchanged, a dead server needs it),
-// is suppressed for a contention window after a genuine successful
-// transaction (ordinary CPU-contention slow accept), and fires again once
-// that window has elapsed.
-//
-// Both tests drive the REAL HazkeyServerConnector against in-process fake
-// AF_UNIX servers, in an isolated XDG_RUNTIME_DIR, using the connector's
-// test-only hooks (setTestReadTimeoutSeconds / setTestForceRestartWindowMs /
-// setTestStartServerHook) so nothing here spawns a real hazkey-server
-// process or waits on the real 10-second read ceiling.
+// 隔離したXDG_RUNTIME_DIRにプロセス内AF_UNIX模擬サーバを作り、テスト専用フックを使用する
+// 実際のhazkey-community-serverを起動せず、既定の10秒読取待機も使用しない
 
 #include <arpa/inet.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -37,7 +31,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
@@ -54,6 +47,11 @@
 
 namespace {
 
+/**
+ * @brief 指定長を受信し切るまで読取を繰り返す
+ *
+ * 要求長と要求本体の受信に使用して、途中で切断や失敗があれば偽を返す
+ */
 bool readAll(int fd, void* data, size_t size) {
     auto* bytes = static_cast<char*>(data);
     size_t offset = 0;
@@ -67,6 +65,11 @@ bool readAll(int fd, void* data, size_t size) {
     return true;
 }
 
+/**
+ * @brief 指定長を送信し切るまで書込を繰り返す
+ *
+ * 応答長と応答本体の送信に使用して、途中で切断や失敗があれば偽を返す
+ */
 bool writeAll(int fd, const void* data, size_t size) {
     const auto* bytes = static_cast<const char*>(data);
     size_t offset = 0;
@@ -80,18 +83,30 @@ bool writeAll(int fd, const void* data, size_t size) {
     return true;
 }
 
+/**
+ * @brief 候補取得の検証用要求を組み立てる
+ *
+ * 予測種別の要求封筒を生成して、時間切れ検証と再起動窓検証の共通入力に使う
+ */
 hazkey::RequestEnvelope makeCandidatesRequest() {
     hazkey::RequestEnvelope request;
     request.mutable_get_candidates()->set_is_suggest(true);
     return request;
 }
 
-// Fake in-process server for Test A. Accepts sequential connections (each
-// on its own thread, so a delayed response on one connection never blocks
-// another), and stamps each connection's response with its 1-indexed accept
-// order so a stale cross-connection parse is detectable by value.
+/**
+ * @brief 応答遅延を設定できるプロセス内模擬サーバ
+ *
+ * 接続ごとに別スレッドで応答し受付順番号を応答へ付与して、古い接続の遅延応答の混入を値で検出可能にする
+ * 時間切れ検証のために接続別の遅延設定へ対応する
+ */
 class DelayableFakeServer {
    public:
+    /**
+     * @brief 模擬ソケットを開設して受付循環を起動する
+     *
+     * 指定パスのUNIXソケットを作成して待受けを開始して、受付循環を別スレッドで動かす
+     */
     explicit DelayableFakeServer(const std::string& path) : path_(path) {
         listenFd_ = socket(AF_UNIX, SOCK_STREAM, 0);
         CHECK(listenFd_ >= 0);
@@ -104,6 +119,11 @@ class DelayableFakeServer {
         acceptThread_ = std::thread([this] { acceptLoop(); });
     }
 
+    /**
+     * @brief 受付と作業スレッドを停止して資源を破棄する
+     *
+     * 待受けと接続中記述子を閉じて全作業の合流を待ち、ソケット表示を取り除く
+     */
     ~DelayableFakeServer() {
         stop_ = true;
         shutdown(listenFd_, SHUT_RDWR);
@@ -128,15 +148,25 @@ class DelayableFakeServer {
         unlink(path_.c_str());
     }
 
-    // Delay (ms) before responding to the request received on connection
-    // number `connIndex` (1-indexed, in accept order). Unset = respond
-    // immediately.
+    /**
+     * @brief 指定接続の応答遅延を設定する
+     *
+     * 受付順の接続番号ごとに遅延時間を持たせて、未設定の接続は即時応答のままにする
+     */
+
+    // 受付順の接続番号ごとに応答前の遅延時間を設定する
+    // 未設定の接続には直ちに応答する
     void setResponseDelayMs(int connIndex, int delayMs) {
         std::lock_guard<std::mutex> lock(mutex_);
         delaysMs_[connIndex] = delayMs;
     }
 
    private:
+    /**
+     * @brief 待受け循環で順次接続を受け付ける
+     *
+     * 接続ごとに作業スレッドを起こして受信処理へ渡して、停止合図まで繰り返す
+     */
     void acceptLoop() {
         while (!stop_) {
             const int clientFd = accept(listenFd_, nullptr, nullptr);
@@ -157,6 +187,11 @@ class DelayableFakeServer {
         }
     }
 
+    /**
+     * @brief 1接続分の要求応答を処理する
+     *
+     * 設定済みの遅延を挟んで受付順番号を付与した応答を返して、相手が既に閉じていれば書込失敗を静かに終える
+     */
     void serveClient(int fd, int connIndex) {
         uint32_t networkLength = 0;
         if (!readAll(fd, &networkLength, sizeof(networkLength))) return;
@@ -187,27 +222,31 @@ class DelayableFakeServer {
         std::string responseWire;
         CHECK(response.SerializeToString(&responseWire));
         const uint32_t responseLength = htonl(responseWire.size());
-        // Best-effort: the peer may already be gone (timed-out client
-        // closed its socket) -- SIGPIPE is ignored in main(), so a failed
-        // write here just returns quietly.
+
+        // タイムアウトしたクライアントは、ソケットを閉じている場合がある
+        // main()でSIGPIPEを無視するため、書込失敗はそのまま終了する
         writeAll(fd, &responseLength, sizeof(responseLength));
         writeAll(fd, responseWire.data(), responseWire.size());
     }
 
-    int listenFd_ = -1;
-    std::string path_;
-    std::thread acceptThread_;
-    std::mutex mutex_;
-    std::vector<int> clientFds_;
-    std::vector<std::thread> workers_;
-    std::map<int, int> delaysMs_;
-    int connCount_ = 0;
-    std::atomic<bool> stop_{false};
+    int listenFd_ = -1;                 ///< 待受けソケット記述子
+    std::string path_;                  ///< 模擬ソケットの配置パス
+    std::thread acceptThread_;          ///< 受付循環の実行スレッド
+
+    // 受付と接続状態
+    std::mutex mutex_;                  ///< 接続状態と遅延設定を保護するミューテックス
+    std::vector<int> clientFds_;        ///< 接続中記述子の一覧
+    std::vector<std::thread> workers_;  ///< 接続別作業スレッドの一覧
+    std::map<int, int> delaysMs_;       ///< 接続番号別の応答遅延設定
+    int connCount_ = 0;                 ///< 受付順の接続番号
+    std::atomic<bool> stop_{false};     ///< 受付停止フラグ
 };
 
-// Test A: a response that arrives after the client's read timeout must
-// never be parsed. The client must discard (close) that socket before its
-// next request, so the next request always lands on a fresh connection.
+/**
+ * @brief 時間切れ後の遅延応答が解釈されないことを検証する
+ *
+ * 初回要求を時間切れさせて破棄し遅延書込の到着を待った後、次回要求が新規接続で新鮮な応答だけを見ることを確認する
+ */
 void lateResponseNeverParsedAfterTimeout() {
     char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-A-XXXXXX";
     char* directory = mkdtemp(directoryTemplate);
@@ -217,34 +256,28 @@ void lateResponseNeverParsedAfterTimeout() {
         root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
     CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
 
-    // 1 second instead of the production 10 seconds, purely so this test
-    // runs quickly; the mechanism under test is identical either way.
+    // テストを短時間で終えるため読取待機を1秒にするが、検証対象の仕組みは既定値と同じである
     HazkeyServerConnector::setTestReadTimeoutSeconds(1);
 
     {
         DelayableFakeServer server(socketPath);
-        // Connection 1 (established by the connector's constructor) will
-        // respond far later than the 1s client read timeout.
+
+        // 接続器の構築時に確立する1番目の接続は、1秒の読取待機より遅く応答する
         server.setResponseDelayMs(1, 2000);
 
         HazkeyServerConnector connector;
 
         const auto firstResponse = connector.transact(makeCandidatesRequest());
-        CHECK(!firstResponse.has_value());  // timed out: discarded, not parsed
+        CHECK(!firstResponse.has_value());  // タイムアウトしたソケットは破棄して解釈しない
 
-        // Let connection 1's delayed write land on the now-closed client fd
-        // (harmless EPIPE; SIGPIPE is ignored in main()) well before this
-        // test process exits, so it cannot race with anything below.
+        // 1番目の遅延書込を閉じたソケットへ到達させ、以後の検証と競合しないよう待機する
         std::this_thread::sleep_for(std::chrono::milliseconds(2200));
 
-        // The next request must go out on a brand-new connection (index 2)
-        // and must see only that connection's fresh, immediate response.
-        const auto secondResponse =
-            connector.transact(makeCandidatesRequest());
+        // 次の要求は新しい2番目の接続だけを使用して、その即時応答だけを受け取る
+        const auto secondResponse = connector.transact(makeCandidatesRequest());
         CHECK(secondResponse.has_value());
         CHECK(secondResponse->status() == hazkey::SUCCESS);
-        CHECK(secondResponse->candidates().candidates(0).text() ==
-              "STAMP-2");
+        CHECK(secondResponse->candidates().candidates(0).text() == "STAMP-2");
     }
 
     HazkeyServerConnector::clearTestHooks();
@@ -254,28 +287,34 @@ void lateResponseNeverParsedAfterTimeout() {
               << std::endl;
 }
 
+/**
+ * @brief 検査用起動子の呼び出し記録を表す
+ *
+ * 強制再起動の有無だけを保持して、接続試行列の挙動検証に使用する
+ */
 struct SpawnCall {
-    bool force;
+    bool force;  ///< 強制再起動付きの起動要求であるか
 };
 
-// Test B, case 1: a connector that has never completed a successful
-// transact() must still force-restart at ATTEMPT_TRY_START_FORCE -- a
-// genuinely dead server still needs the forced restart, unchanged by this
-// hardening.
+/**
+ * @brief 成功歴なしでは強制再起動が残ることを検証する
+ *
+ * 応答歴のない接続器が全試行で失敗した時に、非強制の初回起動と強制再起動の両方が記録されることを確認する
+ * 完全停止した実サーバ相当でも再起動が行われる前提を保証する
+ */
 void forceRestartStillFiresForNeverSuccessfulConnector() {
     std::vector<SpawnCall> calls;
-    HazkeyServerConnector::setTestStartServerHook(
-        [&calls](bool force) { calls.push_back({force}); });
+    HazkeyServerConnector::setTestStartServerHook([&calls](bool force) { calls.push_back({force}); });
 
     char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-B1-XXXXXX";
     char* directory = mkdtemp(directoryTemplate);
     CHECK(directory != nullptr);
     const std::string root(directory);
-    // Intentionally never create a listener at this path: every connect()
-    // attempt fails for the whole retry loop.
+
+    // 待受けソケットを作らず、再試行中の全接続試行を失敗させる
     CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
 
-    { HazkeyServerConnector connector; }  // blocks through all MAX_RETRIES
+    { HazkeyServerConnector connector; }  // 全再試行が終わるまで待機する
 
     bool sawNonForced = false;
     bool sawForced = false;
@@ -286,8 +325,8 @@ void forceRestartStillFiresForNeverSuccessfulConnector() {
             sawNonForced = true;
         }
     }
-    CHECK(sawNonForced);  // attempt 1 still spawns non-forced
-    CHECK(sawForced);     // never succeeded => force restart still fires
+    CHECK(sawNonForced);  // 初回は通常起動を試す
+    CHECK(sawForced);     // 成功歴がないため強制再起動も試す
 
     HazkeyServerConnector::setTestStartServerHook(nullptr);
     std::filesystem::remove_all(root);
@@ -296,54 +335,46 @@ void forceRestartStillFiresForNeverSuccessfulConnector() {
               << std::endl;
 }
 
-// Test B, cases 2 & 3: a connector with one genuine success, then a lost
-// server. Case 2 uses the production contention window (5s), which
-// comfortably covers the brief gap since the last success, so the forced
-// restart must be suppressed (ordinary CPU-contention slow accept). Case 3
-// shrinks the window via the test hook so the same gap now exceeds it, and
-// the forced restart must fire again.
+/**
+ * @brief 成功直後の強制再起動の抑止と再開を検証する
+ *
+ * 1度成功した接続器が相手喪失後に再接続を試みた時に、実運用窓では強制再起動が抑えられ短縮窓では再び行われることを確認する
+ * 混雑時の低速受付と実停止の区別が要点である
+ */
 void forceRestartWindowGatesRecentSuccess() {
     char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-B23-XXXXXX";
     char* directory = mkdtemp(directoryTemplate);
     CHECK(directory != nullptr);
     const std::string root(directory);
-    const std::string socketPath =
-        root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+    const std::string socketPath = root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
     CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
     HazkeyServerConnector::setTestReadTimeoutSeconds(1);
 
     std::vector<SpawnCall> calls;
-    HazkeyServerConnector::setTestStartServerHook(
-        [&calls](bool force) { calls.push_back({force}); });
+    HazkeyServerConnector::setTestStartServerHook([&calls](bool force) { calls.push_back({force}); });
 
     std::unique_ptr<HazkeyServerConnector> connector;
     {
-        // The fake server must exist before the connector is constructed,
-        // or the constructor would exhaust its retries against a socket
-        // path that does not exist yet.
+        // 接続器の構築前に模擬サーバを待受状態にして、実在しないパスへの再試行消費を防ぐ
         DelayableFakeServer server(socketPath);
         connector = std::make_unique<HazkeyServerConnector>();
         const auto response = connector->transact(makeCandidatesRequest());
         CHECK(response.has_value());
         CHECK(response->status() == hazkey::SUCCESS);
-        // `server` is destroyed at the end of this block: its listening
-        // socket is closed and unlinked, and the accepted client fd is
-        // shut down -- connector's sock_ is now stale.
+
+        // ブロック終了で模擬サーバを破棄して、待受けと接続済みソケットを閉じる
+        // この時点で接続器のソケットは古くなる
     }
 
-    // Case 2: production window (5s) comfortably covers the retry loop's
-    // ~1.2s span since the transact() above, so the forced restart must be
-    // suppressed.
+    // ケース2では、既定の5秒競合待機時間が直前の成功からの再試行時間を覆うため、強制再起動を抑止する
     calls.clear();
     HazkeyServerConnector::setTestForceRestartWindowMs(-1);
-    // Two calls guarantee connectServer() runs to completion at least once:
-    // the first may fail via a write EPIPE (which calls connectServer()
-    // inline) or via a read timeout (which does not); either way sock_ is
-    // left disconnected, so the second call's entry path is guaranteed to
-    // invoke connectServer().
+
+    // 2回呼び出し、接続経路を少なくとも1回は最後まで実行する
+    // 書込失敗と読取タイムアウトのどちらでも接続解除後の2回目で再接続を試みる
     connector->transact(makeCandidatesRequest());
     const auto caseTwoResponse = connector->transact(makeCandidatesRequest());
-    CHECK(!caseTwoResponse.has_value());  // no listener: every retry fails
+    CHECK(!caseTwoResponse.has_value());  // 待受けが無いため全再試行が失敗する
     bool caseTwoForced = false;
     for (const auto& call : calls) {
         if (call.force) caseTwoForced = true;
@@ -353,14 +384,11 @@ void forceRestartWindowGatesRecentSuccess() {
                  "answered within the contention window"
               << std::endl;
 
-    // Case 3: shrink the window well below the retry loop's ~450ms
-    // time-to-attempt-4, so the same "no listener" condition now exceeds
-    // the window and the forced restart fires again.
+    // ケース3では、待機時間を4回目の接続試行までの時間より短くして、同じ待受けなし状態で強制再起動を再開する
     calls.clear();
     HazkeyServerConnector::setTestForceRestartWindowMs(50);
     connector->transact(makeCandidatesRequest());
-    const auto caseThreeResponse =
-        connector->transact(makeCandidatesRequest());
+    const auto caseThreeResponse = connector->transact(makeCandidatesRequest());
     CHECK(!caseThreeResponse.has_value());
     bool caseThreeForced = false;
     for (const auto& call : calls) {
@@ -377,10 +405,13 @@ void forceRestartWindowGatesRecentSuccess() {
 
 }  // namespace
 
+/**
+ * @brief 通信安全の全検証を順に実行する
+ *
+ * 遅延応答破棄と成功歴なしの強制再起動と成功直後の抑止再開を呼び出して、成功を報告する
+ */
 int main() {
-    // Test A deliberately writes to a socket the client has already
-    // closed; keep the process alive so write() surfaces EPIPE instead of
-    // raising SIGPIPE.
+    // 検証Aではクライアントが閉じたソケットへ書き込むため、SIGPIPEを無視してEPIPEとして扱う
     signal(SIGPIPE, SIG_IGN);
 
     lateResponseNeverParsedAfterTimeout();
