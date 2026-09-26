@@ -2,14 +2,13 @@ import XCTest
 
 @testable import hazkey_server
 
-/// The default profile enables the Fullwidth Symbol keymap so ASCII symbols
-/// typed in romaji mode compose as full-width characters instead of passing
-/// through half-width.
+/// 既定プロファイルはFullwidth Symbolキーマップを有効にするため、
+/// ローマ字モードで入力したASCII記号は半角のまま通過せず、全角文字として組成される
 final class KeymapTests: XCTestCase {
     func testFullwidthSymbolMapCoversBracesAndQuotes() {
-        // Given: the built-in full-width symbol table.
+        // 前提: 組み込みの全角記号テーブル
 
-        // When / Then: braces and quotes map to their full-width forms.
+        // 実行・確認: 波括弧と引用符が全角形式に対応付けられる
         XCTAssertEqual(fullwidthSymbolMap["{"]?.0, "｛")
         XCTAssertEqual(fullwidthSymbolMap["}"]?.0, "｝")
         XCTAssertEqual(fullwidthSymbolMap["\""]?.0, "＂")
@@ -17,16 +16,16 @@ final class KeymapTests: XCTestCase {
     }
 
     func testBraceAndQuoteInputComposesFullwidth() {
-        // Given: a fresh composition.
+        // 前提: 新しい組成
         let state = HazkeyServerState()
         XCTAssertEqual(state.createComposingTextInstanse().status, .success)
 
-        // When: brace/quote keys are typed (as both frontends deliver them).
+        // 実行: 両フロントエンドから渡される形式で、波括弧と引用符のキーを入力する
         for character in ["{", "}", "\"", "'"] {
             XCTAssertEqual(state.inputChar(inputString: character).status, .success)
         }
 
-        // Then: the composition holds full-width symbols, not half-width passthrough.
+        // 期待: 組成には半角のまま通過した文字ではなく、全角記号が含まれる
         XCTAssertEqual(state.composingText.value.convertTarget, "｛｝＂＇")
     }
 }

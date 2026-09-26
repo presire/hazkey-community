@@ -4,13 +4,11 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Multi-client session isolation tests.
+/// 複数クライアント間のセッション分離テスト
 ///
-/// One `HazkeySharedResources` (converter, config, user dictionary) backs two
-/// `HazkeyServerState` connections. Each connection must keep its own
-/// composing text and converter session: converting in one session must never
-/// observe the other's uncommitted input, and closing one session must leave
-/// the other fully functional.
+/// 1つの"HazkeySharedResources"がconverter、設定、ユーザ辞書を共有しつつ、2つの"HazkeyServerState"接続を支える
+/// 各接続はそれぞれのcomposing textとconverterセッションを維持しなければならない
+/// 一方のセッションで変換しても、もう一方の未確定入力を観測してはならず、片方を閉じてももう片方は完全に動作し続けなければならない
 final class ClientSessionIsolationTests: XCTestCase {
     private let environmentVariables = [
         "XDG_DATA_HOME",
@@ -81,8 +79,8 @@ final class ClientSessionIsolationTests: XCTestCase {
         temporaryDirectory = nil
     }
 
-    /// Two states from one shared object hold distinct converter sessions
-    /// while sharing the heavy converter and config instances.
+    /// 1つの共有オブジェクトから作った2つのstateは、重いconverterと設定インスタンスを共有しながら、
+    /// それぞれ別のconverterセッションを保持する
     func testSessionsShareConverterButHoldDistinctSessionIDs() {
         let shared = HazkeySharedResources(emojiDictionaryURL: nil)
         let first = HazkeyServerState(shared: shared)
@@ -97,9 +95,8 @@ final class ClientSessionIsolationTests: XCTestCase {
         XCTAssertTrue(first.serverConfig === second.serverConfig)
     }
 
-    /// Composing "あい" in session A and "かき" in session B keeps each
-    /// composing text local, and each session's candidates reflect its own
-    /// input (distinct live texts).
+    /// セッションAで「あい」、セッションBで「かき」を組成しても、各composing textはローカルに保たれ、各セッションの候補は自身の入力を反映する
+    /// live textも異なる
     func testSessionsKeepIndependentComposingTextAndCandidates() throws {
         let shared = HazkeySharedResources(emojiDictionaryURL: nil)
         shared.serverConfig.currentProfile.zenzaiEnable = false
@@ -132,16 +129,15 @@ final class ClientSessionIsolationTests: XCTestCase {
             XCTFail("Expected candidates responses")
             return
         }
-        // Each session converted its own input: the live texts are non-empty
-        // and differ (あい vs かき convert differently). Crossed sessions
-        // would produce identical live texts.
+        // 各セッションは自身の入力を変換するため、live textは空でなく異なる
+        // 「あい」と「かき」は異なる変換結果になる
+        // セッションが混線すれば、live textは一致する
         XCTAssertFalse(firstResult.liveText.isEmpty)
         XCTAssertFalse(secondResult.liveText.isEmpty)
         XCTAssertNotEqual(firstResult.liveText, secondResult.liveText)
     }
 
-    /// Closing one session leaves the other able to compose and convert with
-    /// its own composing text intact.
+    /// 一方のセッションを閉じても、もう一方は自身のcomposing textを保ったまま、組成と変換を続けられる
     func testClosingOneSessionLeavesTheOtherFunctional() throws {
         let shared = HazkeySharedResources(emojiDictionaryURL: nil)
         shared.serverConfig.currentProfile.zenzaiEnable = false
@@ -163,8 +159,8 @@ final class ClientSessionIsolationTests: XCTestCase {
 
         drop.close()
 
-        // The surviving session keeps its own composing text and still
-        // converts (the closed session's removal must not disturb it).
+        // 残ったセッションは自身のcomposing textを保ったまま変換を続ける
+        // 閉じたセッションの削除は、残ったセッションに影響してはならない
         XCTAssertEqual(first.composingText.value.toHiragana(), "あい")
         let response = first.getCandidates(is_suggest: true)
         XCTAssertEqual(response.status, .success)

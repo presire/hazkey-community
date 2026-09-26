@@ -9,17 +9,17 @@ class BaseHazkeyServerTestCase: XCTestCase {
   override func setUpWithError() throws {
     try super.setUpWithError()
 
-    // Ensure server is running
+    // サーバが起動していることを確認する
     XCTAssertTrue(
       TestUtilities.waitForServer(),
       "Server socket did not appear within timeout. Make sure the hazkey-server is running."
     )
 
-    // Create and connect client
+    // クライアントを作成して接続する
     client = HazkeyServerClient()
     try client.connect()
 
-    // Initialize server state
+    // サーバ状態を初期化する
     try initializeServerState()
   }
 
@@ -30,18 +30,18 @@ class BaseHazkeyServerTestCase: XCTestCase {
   }
 
   private func initializeServerState() throws {
-    // Set default configuration
+    // 既定の設定を適用する
     let configQuery = QueryDataBuilder.setConfig()
     let configResponse = try client.sendQuery(configQuery)
     XCTAssertEqual(configResponse.status, .success, "Failed to set initial configuration")
 
-    // Create composing text instance
+    // 組成テキストのインスタンスを作成する
     let instanceQuery = QueryDataBuilder.createComposingTextInstance()
     let instanceResponse = try client.sendQuery(instanceQuery)
     XCTAssertEqual(instanceResponse.status, .success, "Failed to create composing text instance")
   }
 
-  // Helper method for sending queries with better error reporting
+  // エラー報告を改善してクエリを送信するヘルパーメソッド
   func sendQuery(
     _ query: Hazkey_Commands_QueryData,
     file: StaticString = #file,

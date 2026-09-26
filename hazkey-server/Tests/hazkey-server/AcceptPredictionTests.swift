@@ -3,13 +3,11 @@ import KanaKanjiConverterModule
 
 @testable import hazkey_server
 
-/// Integration tests for the [community] AcceptPrediction RPC
-/// (prediction candidate accepted as a fixed leading notation,
-/// upstream ad714fe / #357).
+/// AcceptPrediction RPCの統合テスト
+/// 予測候補を先頭表記として固定受入する (upstream ad714fe / #357)
 ///
-/// The prediction candidate is injected into `currentCandidateList`
-/// synthetically so the test does not depend on the environment's
-/// dictionary producing live prediction results.
+/// 環境の辞書がライブ予測結果を生成するかどうかに依存しないよう、
+/// 予測候補は`currentCandidateList`へ合成的に注入する
 final class AcceptPredictionTests: XCTestCase {
     private func makePredictionCandidate(text: String, ruby: String) -> Candidate {
         Candidate(
@@ -36,8 +34,8 @@ final class AcceptPredictionTests: XCTestCase {
     func testAcceptPredictionGrowsComposingTextWithoutCommitting() throws {
         let state = try makeStateWithInput("よろし")
 
-        // Inject a synthetic prediction candidate whose ruby extends the
-        // typed input ("よろし" + "くおねがいします").
+        // 入力済みのruby（"よろし" + "くおねがいします") を拡張する
+        // 合成予測候補を注入する
         state.currentCandidateList?.append(
             .fromConverter(
                 makePredictionCandidate(text: "よろしくお願いします", ruby: "ヨロシクオネガイシマス")))
@@ -45,8 +43,8 @@ final class AcceptPredictionTests: XCTestCase {
 
         XCTAssertEqual(state.acceptPrediction(candidateIndex: predictionIndex).status, .success)
 
-        // The composition grew to cover the accepted candidate's ruby and
-        // the candidate list was invalidated (indices are stale now).
+        // 組成を受入候補のruby全体まで拡張し、候補リストを無効化する
+        // この時点で候補インデックスは古くなっている
         XCTAssertEqual(
             state.composingText.value.convertTarget.toHiragana(), "よろしくおねがいします")
         XCTAssertNil(state.currentCandidateList)
@@ -56,7 +54,7 @@ final class AcceptPredictionTests: XCTestCase {
         let state = try makeStateWithInput("よろし")
         let candidates = try XCTUnwrap(state.currentCandidateList)
 
-        // A candidate covering at most the typed input is not a prediction.
+        // 入力済みの範囲までしか含まない候補は予測候補ではない
         let inputCount = "よろし".count
         let regularIndex = try XCTUnwrap(
             candidates.firstIndex(where: { entry in

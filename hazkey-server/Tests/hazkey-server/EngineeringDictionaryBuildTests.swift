@@ -4,16 +4,14 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] Drift guard for the generated engineering terms dictionary.
+/// 生成された工学用語辞書のドリフトを防ぐテスト
 ///
-/// `hazkey-engineering-dictionary` ships both the source TSV and the compiled
-/// LOUDS shards. CI never re-runs the offline screening that produced the TSV;
-/// it only re-runs this compilation and asserts the committed binaries match
-/// byte for byte, so a stale or hand-edited shard cannot reach a release.
+/// "hazkey-engineering-dictionary"には、元のTSVとコンパイル済みのLOUDS shardの両方が含まれる
+/// CIは、TSVを作ったオフライン選別を再実行せず、このコンパイルだけを再実行して、コミット済みバイナリとのバイト単位の一致を検証する
+/// これにより、古いshardや手編集されたshardがリリースに入るのを防ぐ
 ///
-/// Set `HAZKEY_ENGINEERING_DICTIONARY_REGENERATE=1` to rewrite the committed
-/// output instead of asserting against it. That is the supported way to
-/// refresh the asset after the TSV or the system dictionary changes.
+/// "HAZKEY_ENGINEERING_DICTIONARY_REGENERATE=1"を設定すると、コミット済み出力との比較ではなく、それを再生成して書き換える
+/// TSVまたはシステム辞書の変更後にアセットを更新する正式な方法である
 final class EngineeringDictionaryBuildTests: XCTestCase {
     private static var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
@@ -41,15 +39,17 @@ final class EngineeringDictionaryBuildTests: XCTestCase {
             isDirectory: false)
     }
 
-    /// `pos` 列から CID への対応。`CIDData.固有名詞` / `固有名詞組織` / `一般名詞` と同値で、新規CIDは追加しない
+    /// pos列からCIDへの対応
+    /// CIDData.固有名詞 / 固有名詞組織 / 一般名詞と同値で、新規CIDは追加しない
     private static let cidByPOS: [String: Int] = [
         "proper": 1288,
         "org": 1292,
         "general": 1285,
     ]
-    /// 一般。専門用語専用のMIDは存在しない
+    /// 一般
+    /// 専門用語専用のMIDは存在しない
     private static let generalMID = 501
-    /// `DicdataStore.threshold` (-17) を下回らせない開始スコア
+    /// "DicdataStore.threshold" (-17) を下回らせない開始スコア
     private static let baseScore: PValue = -15.5
 
     private enum FixtureError: Error {
@@ -97,7 +97,8 @@ final class EngineeringDictionaryBuildTests: XCTestCase {
             shardByFirstCharacter: true,
             charIDFileURL: Self.systemCharIDURL
         )
-        // 照合スタンプ。DicdataStore はこれがシステム辞書と一致しなければ工学用語辞書を無効化する
+        // 照合スタンプ
+        // DicdataStoreは、これがシステム辞書と一致しなければ工学用語辞書を無効化する
         try FileManager.default.copyItem(
             at: Self.systemCharIDURL,
             to: loudsDirectory.appendingPathComponent("charID.chid", isDirectory: false))
@@ -148,7 +149,7 @@ final class EngineeringDictionaryBuildTests: XCTestCase {
         let entries = try self.loadEntries()
         XCTAssertFalse(entries.isEmpty)
 
-        // 同じ読み・表記でも CID が異なる要素は別エントリとして許す
+        // 同じ読み・表記でもCIDが異なる要素は別エントリとして許す
         var seen: Set<String> = []
         for entry in entries {
             XCTAssertLessThanOrEqual(

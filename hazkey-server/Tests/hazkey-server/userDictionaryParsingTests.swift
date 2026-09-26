@@ -36,11 +36,11 @@ final class UserDictionaryParsingTests: XCTestCase {
 
     XCTAssertNotNil(entry)
     XCTAssertEqual(entry?.comment, "")
-    // Base form uses detected 一段 CID (619), not old hardcoded 772
+    // 基本形には旧来のハードコードされた772ではなく、検出した一段 CID (619) を使用する
     let baseElement = entry?.toDicdataElement()
     XCTAssertEqual(baseElement?.lcid, 619)
     XCTAssertEqual(baseElement?.rcid, 619)
-    // Expansion produces 9 forms (8 conjugated + 1 base)
+    // 展開により9形態を生成する (活用形8つ + 基本形1つ)
     let forms = entry?.expandedDicdataElements()
     XCTAssertEqual(forms?.count, 9)
   }
@@ -94,10 +94,11 @@ final class UserDictionaryParsingTests: XCTestCase {
   func testVerbExpandedFormsForHashiru() {
     let entry = UserDictionary.parseLine("はしる\t走る\t\tverb")
     let forms = entry?.expandedDicdataElements()
-    // はしる's prev kana し in イ段 -> misdetected as 一段 (619) -- known limitation
-    // 一段 produces 8 conjugated forms + 1 base = 9
+    // はしるの直前のかな「し」はイ段に含まれるため、一段 (619) と誤検出される
+    // 既知の制限
+    // 一段は活用形8つ + 基本形1つ、計9形態を生成する
     XCTAssertEqual(forms?.count, 9)
-    // Base form 走る should be present
+    // 基本形の走るが含まれること
     XCTAssertTrue(forms?.contains(where: { $0.word == "走る" }) ?? false)
   }
 
@@ -108,8 +109,8 @@ final class UserDictionaryParsingTests: XCTestCase {
   }
 
   func testUserDictionaryToDicdataElementsFlatMaps() {
-    // Construct entries directly (avoids depending on defaultPath() which reads
-    // from XDG_CONFIG_HOME).
+    // エントリを直接構築する
+    // "XDG_CONFIG_HOME"を読む"defaultPath()"には依存しない
     let lines = [
       "はし\t橋",
       "はしる\t走る\t\tverb",
@@ -118,7 +119,7 @@ final class UserDictionaryParsingTests: XCTestCase {
     let entries = lines.compactMap { UserDictionary.parseLine($0) }
     XCTAssertEqual(entries.count, 3)
     let elements = entries.flatMap { $0.expandedDicdataElements() }
-    // noun(1) + verb(9, 一段 misclassification) + noun(1) = 11
+    // noun(1) + verb(9、一段への誤分類) + noun(1) = 11
     XCTAssertEqual(elements.count, 11)
   }
 }

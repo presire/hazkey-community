@@ -1,12 +1,12 @@
 // swift-tools-version: 6.1
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-versionは、このパッケージのビルドに必要なSwiftの最低バージョンを宣言する
 
 import PackageDescription
 
 let package = Package(
     name: "hazkey-server",
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
+        // Productsはパッケージが生成する実行可能ファイルとライブラリを定義し、他のパッケージから利用可能にする
         .executable(
             name: "hazkey-server",
             targets: ["hazkey-server"])
@@ -22,8 +22,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.27.0"),
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
+        // Targetsは、モジュールまたはテストスイートを定義するパッケージの基本構成要素である
+        // Targetsは、このパッケージ内の他のtargetや依存先のproductに依存できる
         .executableTarget(
             name: "hazkey-server",
             dependencies: [
@@ -47,9 +47,8 @@ let package = Package(
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
             path: "Tests/hazkey-server",
-            // Pre-existing integration tests reference Hazkey_Commands_QueryData
-            // which was removed from the protobuf schema. Exclude until they are
-            // updated to the current protocol.
+            // 既存の統合テストはprotobufスキーマから削除されたHazkey_Commands_QueryDataを参照している
+            // 現在のプロトコルへ更新されるまで除外する
             exclude: [
                 "base.swift",
                 "utils.swift",

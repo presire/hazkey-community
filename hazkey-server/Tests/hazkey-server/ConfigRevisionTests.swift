@@ -75,16 +75,16 @@ final class ConfigRevisionTests: XCTestCase {
     }
 
     func testSaveConfigBumpsRevisionButGetConfigDoesNot() throws {
-        // Given: a freshly loaded server configuration.
+        // 前提: 新たに読み込んだサーバ設定
         let config = HazkeyServerConfig()
         XCTAssertEqual(config.configRevision, 0)
 
-        // When: the settings are applied twice.
+        // 操作: 設定を2回適用する
         let profile = HazkeyServerConfig.genDefaultConfig()
         try config.saveConfig([profile])
         XCTAssertEqual(config.configRevision, 1)
 
-        // Then: a read does not bump it, and the next apply does.
+        // 期待: 読み取りではリビジョンは増加せず、次の適用で増加する
         _ = config.getCurrentConfig()
         XCTAssertEqual(config.configRevision, 1)
 
@@ -93,21 +93,21 @@ final class ConfigRevisionTests: XCTestCase {
     }
 
     func testResponseCarriesConfigRevision() throws {
-        // Given: a server state and a dispatcher.
+        // 前提: サーバ状態とディスパッチャ
         let shared = HazkeySharedResources(emojiDictionaryURL: nil)
         let state = HazkeyServerState(shared: shared)
         let handler = ProtocolHandler(state: state)
         var request = Hazkey_RequestEnvelope()
         request.getConfig = Hazkey_Config_GetConfig()
 
-        // When: a request is handled before and after an apply.
+        // 操作: 適用の前後でリクエストを処理する
         let before = try Hazkey_ResponseEnvelope(
             serializedBytes: handler.processProto(data: try request.serializedData()))
         try state.serverConfig.saveConfig([HazkeyServerConfig.genDefaultConfig()])
         let after = try Hazkey_ResponseEnvelope(
             serializedBytes: handler.processProto(data: try request.serializedData()))
 
-        // Then: the revision is carried on the wire and advances.
+        // 期待: リビジョンは通信上で送られ、増加する
         XCTAssertEqual(before.configRevision, 0)
         XCTAssertEqual(after.configRevision, 1)
     }

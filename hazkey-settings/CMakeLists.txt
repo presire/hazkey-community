@@ -19,9 +19,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools Network)
 find_package(Protobuf REQUIRED)
 
-# Link protobuf-lite through pkg-config (same as hazkey-frontend-common): the
-# FindProtobuf imported target omits abseil, which protobuf >= 22 headers call
-# directly in Debug builds (ABSL_DCHECK -> absl_log_internal_check_op).
+# pkg-config経由でprotobuf-liteをリンクする (hazkey-frontend-commonと同様)
+# FindProtobufのインポートターゲットは、protobuf >= 22のヘッダがDebugビルドで直接呼び出すabseilを省略する
+# (ABSL_DCHECK -> absl_log_internal_check_op)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ProtobufLite REQUIRED IMPORTED_TARGET protobuf-lite)
 
@@ -29,7 +29,7 @@ set(TS_FILES hazkey-settings_ja_JP.ts)
 
 configure_file(constants.h.in constants.h @ONLY)
 
-# Proto files
+# Protoファイル
 set(PROTO_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../protocol/base.proto
     ${CMAKE_CURRENT_SOURCE_DIR}/../protocol/commands.proto
@@ -76,7 +76,7 @@ qt_add_resources(hazkey-settings "translations"
 )
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
-    # 3.15 ~：stable proto3 optional support
+    # 3.15以降: 安定したproto3 optionalサポート
     message(STATUS "Using standard protobuf_generate (protobuf ${Protobuf_VERSION})")
     protobuf_generate(
         TARGET hazkey-settings
@@ -86,7 +86,7 @@ if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
         PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
     )
 elseif(Protobuf_VERSION VERSION_GREATER_EQUAL "3.12")
-    # 3.12 ~ 3.14: build with flag. cannot use PROTOC_OPTIONS.
+    # 3.12〜3.14: フラグを付けてビルドする。PROTOC_OPTIONSは使用できない
     # Ubuntu 22.04: v3.12.4 (2025/8/28)
     message(STATUS "Using manual protoc execution for proto3 optional (protobuf ${Protobuf_VERSION})")
 
@@ -117,7 +117,7 @@ elseif(Protobuf_VERSION VERSION_GREATER_EQUAL "3.12")
 
     target_sources(hazkey-settings PRIVATE ${PROTO_SRCS} ${PROTO_HDRS})
 else()
-    # ~ 3.12：no proto3 optional support
+    # 3.12未満: proto3 optionalをサポートしない
     message(FATAL_ERROR "protobuf 3.12+ required for proto3 optional support. Current version: ${Protobuf_VERSION}")
 endif()
 
@@ -133,18 +133,17 @@ target_link_libraries(hazkey-settings PRIVATE
 )
 
 include(GNUInstallDirs)
-# Installed as hazkey-community-settings under ${LIBDIR}/hazkey-community so it
-# can coexist with an upstream hazkey package.
+# 上流版パッケージと共存できるよう、${LIBDIR}/hazkey-community/配下へhazkey-community-settingsとしてインストールする
 set_target_properties(hazkey-settings PROPERTIES OUTPUT_NAME hazkey-community-settings)
 install(TARGETS hazkey-settings
     RUNTIME DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community
 )
 
-# install desktop entry
+# デスクトップエントリをインストールする
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/hazkey-community-settings.desktop"
     DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/applications)
 
-# create a symlink in the binary directory
+# バイナリディレクトリにシンボリックリンクを作成する
 install(CODE "
     file(MAKE_DIRECTORY \"\$ENV{DESTDIR}${CMAKE_INSTALL_FULL_BINDIR}\")
     file(CREATE_LINK
@@ -153,7 +152,7 @@ install(CODE "
     SYMBOLIC)
 ")
 
-# Tests
+# テスト
 find_package(Qt6 REQUIRED COMPONENTS Test)
 enable_testing()
 qt_add_executable(zenzai_model_management_test

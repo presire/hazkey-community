@@ -25,8 +25,7 @@ if(SWIFT_LINK_PATH)
     list(APPEND SWIFT_COMMAND "-Xlinker" "-L${SWIFT_LINK_PATH}")
 endif()
 
-# Resolve the converter checkout before applying the standalone-unit
-# Japanese-number conversion fix.
+# 単独の単位読みを日本語数詞へ変換する修正を適用する前に、コンバータのチェックアウトを解決する
 execute_process(
     COMMAND "${SWIFT_EXECUTABLE}" package resolve
             "--scratch-path=${CMAKE_CURRENT_BINARY_DIR}/swift-build"
@@ -37,22 +36,21 @@ if(NOT resolve_result EQUAL 0)
     message(FATAL_ERROR "Swift package resolve failed; converter checkouts are required for patch application.")
 endif()
 
-# Apply the standalone-unit Japanese-number conversion fix to the
-# AzooKeyKanaKanjiConverter fork.
-# Upstream bug: getJapaneseNumberDicdata() early-returns an empty result for
-# a bare unit reading with no preceding digit (e.g. "じゅう" alone, meaning
-# 10; also affects "ひゃく"=100, "せん"=1000, ...), because
-# `tokens.allSatisfy({$0.isNotNumber})` incorrectly classifies
-# [.じゅう, .おわり] as "not a number" before parseTokens() ever runs -
-# even though parseTokens() already handles this case correctly via
-# `curnum ?? .One`. This is unconditional (not gated by
-# HAZKEY_SERVER_ZENZAI_TRAIT) because JapaneseNumber.swift is part of the
-# core KanaKanjiConverterModule, which is always compiled regardless of the
-# Zenzai trait.
+# 単独の単位読みを日本語数詞へ変換する修正をAzooKeyKanaKanjiConverterフォークに適用する
 #
-# Idempotent: skips when the patch is already applied (e.g. on rebuild).
-# Non-fatal: warns and continues if git apply fails, so Swift build is not
-# blocked when the upstream fork already ships the fix.
+# 上流の不具合:
+# getJapaneseNumberDicdata()は、先行する数字を持たない単位だけの読み (例: 単独の"じゅう"は10、"ひゃく"は100、"せん"は1000等も同様) に対して空の結果を早期に返す
+# これは、"tokens.allSatisfy({$0.isNotNumber})"が"parseTokens()"の実行前に[.じゅう, .おわり]を誤って「数ではない」と判定するためである
+# "parseTokens()"は、"curnum ?? .One"により、このケースをすでに正しく処理している
+# この修正は、Zenzai traitの有無にかかわらず常にコンパイルされるコアKanaKanjiConverterModuleの一部であるJapaneseNumber.swiftを対象とするため、
+# 無条件で適用する (HAZKEY_SERVER_ZENZAI_TRAITには依存しない)
+#
+# 冪等:
+# パッチ適用済みの場合 (再ビルド時等) はスキップする
+#
+# 非致命的:
+# git applyコマンドに失敗しても警告を出して続行する
+# 上流フォークにすでに修正が含まれる場合も、Swiftビルドを妨げないためである
 set(NUMBER_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0003-fix-standalone-unit-japanese-number.patch")
 set(NUMBER_CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
 set(NUMBER_TARGET_FILE "${NUMBER_CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift")
@@ -84,16 +82,13 @@ if(EXISTS "${NUMBER_PATCH_FILE}" AND EXISTS "${NUMBER_TARGET_FILE}")
     endif()
 endif()
 
-# Note: the former 0006-zenzai-preserve-user-dictionary.patch (Zenzai review
-# retry preserving explicitly registered user-dictionary candidates) is baked
-# into the converter fork's hazkey branch (presire/AzooKeyKanaKanjiConverter,
-# commit 2cef753), so no apply step is needed here anymore.
+# 注記 1:
+# 旧0006-zenzai-preserve-user-dictionary.patch (明示的に登録したユーザ辞書候補を保持するZenzaiレビューの再試行) は、
+# AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (コミット: 2cef753) に焼き込み済みのため、ここでの適用は不要である
 
-# Note: the former 0007-jinen-qwen3-support.patch (jinen-v2 Qwen3 support:
-# NFKC normalization, no BOS, condition-field suppression, gated by GGUF
-# `general.architecture == "qwen3"`) is baked into the converter fork's
-# hazkey branch (presire/AzooKeyKanaKanjiConverter, commit 2cb1bad),
-# so no apply step is needed here anymore.
+# 注記 2:
+# 旧0007-jinen-qwen3-support.patch (jinen-v2のQwen3対応: NFKC正規化、BOSなし、条件フィールドの抑止。GGUFのgeneral.architecture == "qwen3"で有効化) は、
+# AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (コミット: 2cb1bad) に焼き込み済みのため、ここでの適用は不要である
 
 execute_process(
     COMMAND ${SWIFT_COMMAND}
@@ -101,7 +96,7 @@ execute_process(
     RESULT_VARIABLE result
 )
 
-# The first build fails for an unknown reason.
+# 原因不明により、最初のビルドは失敗する
 if(NOT result EQUAL 0)
     execute_process(
         COMMAND ${SWIFT_COMMAND}

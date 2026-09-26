@@ -4,15 +4,14 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] ユーザ辞書の再読込スロットル。
+/// ユーザ辞書の再読込スロットル
 ///
-/// 候補生成は毎打鍵で走るため、`UserDictionary.reloadIfNeeded()` が毎回 `stat`
-/// するとホットパス上で稀にOSレベルのブロックを踏む。`reloadThrottleInterval`
-/// (1秒) 以内の通常呼び出しはファイルシステムに触れずfalseを返し、設定適用時は
-/// `force: true` でスロットルを迂回して編集を取り込む、という契約を固定する。
+/// 候補生成は毎打鍵で走るため、"UserDictionary.reloadIfNeeded()"が毎回statすると、ホットパス上で稀にOSレベルのブロックを踏む
+/// "reloadThrottleInterval" (1秒) 以内の通常呼び出しは、ファイルシステムに触れずfalseを返し、
+/// 設定適用時は、"force: true"でスロットルを迂回して編集を取り込む、という契約を固定する
 final class UserDictionaryReloadThrottleTests: XCTestCase {
-    /// `XDG_CONFIG_HOME` / `XDG_STATE_HOME` を一時ディレクトリへ向けて実行する。
-    /// 元の値は終了時に復元する。
+    /// "XDG_CONFIG_HOME" / "XDG_STATE_HOME"を一時ディレクトリへ向けて実行する
+    /// 元の値は終了時に復元する
     private func withTemporaryXDG<T>(_ body: (URL) throws -> T) throws -> T {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "hazkey-userdict-throttle-tests-\(UUID().uuidString)", isDirectory: true)
@@ -40,9 +39,8 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         return try body(root)
     }
 
-    /// `$XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv` へ内容を書き込む。
-    /// `modificationDate` を渡すとmtimeを明示的に固定する (スロットル判定を
-    /// sleepに頼らず決定的にするため)。
+    /// "$XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv"へ内容を書き込む
+    /// "modificationDate"を渡すとmtimeを明示的に固定する (スロットル判定をsleepに頼らず決定的にするため)
     @discardableResult
     private func writeUserDictionary(
         _ contents: String,
@@ -61,8 +59,8 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         return url
     }
 
-    /// (a) 新規インスタンスの初回呼び出しは、事前に書かれた辞書ファイルを検出して
-    /// trueを返し、エントリを読み込む (スロットルはnilのため適用されない)。
+    /// (a) 新規インスタンスの初回呼び出しは、事前に書かれた辞書ファイルを検出してtrueを返し、エントリを読み込む
+    ///     (スロットルはnilのため適用されない)
     func testFirstCallOnFreshInstanceLoadsPrewrittenFile() throws {
         try withTemporaryXDG { root in
             try writeUserDictionary("はし\t橋\n", root: root)
@@ -73,8 +71,7 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         }
     }
 
-    /// (b) スロットル間隔内の2回目呼び出しは、ファイル内容とmtimeが変わっていても
-    /// 再statせずfalseを返し、キャッシュ済みエントリを保持する。
+    /// (b) スロットル間隔内の2回目呼び出しは、ファイル内容とmtimeが変わっていても再statせずfalseを返し、キャッシュ済みエントリを保持する
     func testSecondCallWithinThrottleIntervalDoesNotRestat() throws {
         try withTemporaryXDG { root in
             try writeUserDictionary("はし\t橋\n", root: root)
@@ -92,7 +89,7 @@ final class UserDictionaryReloadThrottleTests: XCTestCase {
         }
     }
 
-    /// (c) `force: true` はスロットルを迂回し、間隔内でも変更を検出してtrueを返す。
+    /// (c) "force: true"はスロットルを迂回し、間隔内でも変更を検出してtrueを返す
     func testForceReloadBypassesThrottleAndDetectsChange() throws {
         try withTemporaryXDG { root in
             try writeUserDictionary("はし\t橋\n", root: root)

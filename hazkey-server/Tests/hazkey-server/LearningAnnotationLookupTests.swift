@@ -6,9 +6,8 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] Reading-keyed point lookup behind the "deletable" candidate
-/// annotation (GitHub Issue #1), plus the two adjacent learning-memory
-/// correctness bugs fixed alongside it.
+/// [community] 「削除可能」候補注釈（GitHub Issue #1）を支える読みキー単位の
+/// ポイント照会と、同時に修正した隣接する学習メモリの正しさに関する2件のバグ。
 final class LearningAnnotationLookupTests: XCTestCase {
     private func withTemporaryXDG<T>(_ body: (URL) throws -> T) throws -> T {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -113,17 +112,17 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return response.getLearningHistoryResult.totalCount
     }
 
-    /// `emoji_all_E*.txt` TSV shape: emoji TAB comma-separated hiragana
-    /// readings TAB variations.
+    /// `emoji_all_E*.txt` のTSV形式: 絵文字 TAB カンマ区切りのひらがな読み
+    /// TAB バリエーション。
     private func writeEmojiFixture(_ contents: String, named name: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(name, isDirectory: false)
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
-    /// - Parameter emojiFixtureURL: Always pass a fixture. `nil` falls back to
-    ///   the production E17 asset, which is absent here and would disable the
-    ///   emoji injection this test relies on.
+    /// - Parameter emojiFixtureURL: 常にfixtureを渡す。`nil` は本番のE17アセットへ
+    ///   フォールバックするが、ここには存在せず、このテストが依存する絵文字注入が
+    ///   無効になる。
     private func annotationState(emojiFixtureURL: URL?) -> HazkeyServerState {
         let state = HazkeyServerState(emojiDictionaryURL: emojiFixtureURL)
         state.serverConfig.currentProfile.zenzaiEnable = false
@@ -166,7 +165,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         (state.currentCandidateList ?? []).count(where: predicate)
     }
 
-    // MARK: - R1: learned prediction candidates
+    // MARK: - R1: 学習済み予測候補
 
     /// 予測候補の永続エントリは予測部分まで含む完全 ruby の下に保存されるため、
     /// 入力 prefix に切り詰めた読みでは注釈も削除も当たらない。
@@ -211,7 +210,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Point lookup semantics
+    // MARK: - ポイント照会の意味論
 
     /// 永続 trie はカタカナ ruby を保存するため、ひらがな読みとの突き合わせは
     /// カタカナ正規化を経由しなければならない。
@@ -251,7 +250,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Alignment with injected candidates
+    // MARK: - 注入候補との整列
 
     /// 注釈は絵文字・相対日付・かな数字の注入より前に確定する。相対日付は
     /// 候補列の中間に insert するため、注入が先に走ると以降の候補が別の読みで
@@ -297,7 +296,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Delete round trip
+    // MARK: - 削除の往復確認
 
     /// `[削除可]` と表示された候補は実際に削除でき、削除後に取り直した候補では
     /// 注釈が消える。既存の削除テストは応答に載る再構築済みペイロードまでしか
@@ -389,7 +388,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Bug D (fork): memory LOUDS cache invalidation on profile switch
+    // MARK: - バグD（fork）: プロファイル切替時のmemory LOUDSキャッシュ無効化
 
     /// プロファイル切替直後の注釈は、切替後プロファイルの memory ディレクトリを反映する。
     /// バグD未修正だと旧プロファイルのキャッシュ済み trie で解決してしまう。
@@ -416,7 +415,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Bug B: clearing history must leave nothing to resurrect
+    // MARK: - バグB: 履歴を消去した後に復活するものがあってはならない
 
     func testClearProfileIndependentHistoryLeavesNothingToResurrect() throws {
         try withTemporaryXDG { _ in
@@ -438,7 +437,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - Bug C: pending learning must not leak across a profile switch
+    // MARK: - バグC: 保留中の学習がプロファイル切替をまたいで漏れてはならない
 
     func testPendingLearningDoesNotLeakIntoNewProfileDirectory() throws {
         try withTemporaryXDG { _ in

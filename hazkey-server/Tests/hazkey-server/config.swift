@@ -27,7 +27,7 @@ final class ConfigurationTests: BaseHazkeyServerTestCase {
   }
 
   func testConfigurationPersistence() throws {
-    // Set a custom configuration
+    // カスタム設定を適用する
     let customConfig = QueryDataBuilder.setConfig(
       numberFullwidth: 1,
       symbolFullwidth: 1
@@ -35,12 +35,12 @@ final class ConfigurationTests: BaseHazkeyServerTestCase {
     let configResponse = try sendQuery(customConfig)
     XCTAssertEqual(configResponse.status, .success)
 
-    // Create new composing text instance to test persistence
+    // 永続化を確認するため、新しい組成テキストのインスタンスを作成する
     let instanceQuery = QueryDataBuilder.createComposingTextInstance()
     let instanceResponse = try sendQuery(instanceQuery)
     XCTAssertEqual(instanceResponse.status, .success)
 
-    // Input number and check if it's converted to fullwidth
+    // 数字を入力し、全角に変換されることを確認する
     let inputQuery = QueryDataBuilder.inputText("1")
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success)
@@ -49,7 +49,7 @@ final class ConfigurationTests: BaseHazkeyServerTestCase {
     let stringResponse = try sendQuery(getStringQuery)
     XCTAssertEqual(stringResponse.status, .success)
 
-    // With fullwidth numbers enabled, "1" should become "１"
+    // 全角数字が有効な場合、"1"は"１"になる
     XCTAssertEqual(
       stringResponse.result, "１",
       "Number should be converted to fullwidth when numberFullwidth is enabled")

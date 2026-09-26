@@ -5,7 +5,8 @@ import XCTest
 
 @testable import hazkey_server
 
-// SELF-CONTAINED except for the sole shared dependency `TestTempRoot` (short temp root for sun_path).
+// 唯一共有する依存先は"TestTempRoot"のみ
+// sun_path用に短い一時ルートを使う
 final class InferenceSeamTests: XCTestCase {
     func testDisabledZenzaiOmitsInferenceStage() throws {
         let run = try runServer(zenzaiEnabled: false, modelPath: nil)

@@ -5,8 +5,8 @@ import SwiftProtobuf
 @testable import hazkey_server
 
 final class ProfileAutoConvertHotkeyTests: XCTestCase {
-    // A Profile with autoConvertHotkey set must survive a JSON round-trip
-    // with the exact fcitx5 key string preserved (not Qt's "Ctrl+Shift+L").
+    // autoConvertHotkeyを設定したProfileは、fcitx5のキー文字列を正確に保持したままJSONラウンドトリップできなければならない
+    // (Qtの"[Ctrl] + [Shift] + [L[]"ではない)
     func testAutoConvertHotkeyJSONRoundTrip() throws {
         var profile = Hazkey_Config_Profile()
         profile.autoConvertHotkey = "Control+Shift+L"
@@ -17,10 +17,9 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
         XCTAssertEqual(decoded.autoConvertHotkey, "Control+Shift+L")
     }
 
-    // A JSON object that omits autoConvertHotkey must decode without the field
-    // being marked as explicitly set, matching swift-protobuf's field-presence
-    // semantics for proto3 `optional`. The accessor itself returns the default
-    // value ("") when unset; use `hasAutoConvertHotkey` to check presence.
+    // autoConvertHotkeyを省略したJSONオブジェクトは、フィールドを明示設定済みにせずにデコードしなければならない
+    // これは、proto3 "optional"に対するswift-protobufのフィールド存在判定に従う
+    // 未設定時のアクセサは既定値（""）を返すため、存在確認には"hasAutoConvertHotkey"を使用する
     func testAutoConvertHotkeyDecodesToNilWhenOmitted() throws {
         let jsonData = try XCTUnwrap("{\"profileName\": \"Test\"}".data(using: .utf8))
         let decoded = try Hazkey_Config_Profile(jsonUTF8Data: jsonData)
@@ -28,9 +27,8 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
         XCTAssertFalse(decoded.hasAutoConvertHotkey)
     }
 
-    // A Profile with deleteLearningHotkey set must survive a JSON round-trip
-    // with the exact fcitx5 key string preserved ([community] candidate
-    // learning-data delete hotkey).
+    // deleteLearningHotkeyを設定したProfileは、fcitx5のキー文字列を正確に保持したままJSONラウンドトリップできなければならない
+    // (候補学習データ削除ホットキー)
     func testDeleteLearningHotkeyJSONRoundTrip() throws {
         var profile = Hazkey_Config_Profile()
         profile.deleteLearningHotkey = "Control+Delete"
@@ -41,9 +39,8 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
         XCTAssertEqual(decoded.deleteLearningHotkey, "Control+Delete")
     }
 
-    // A JSON object that omits deleteLearningHotkey must decode without the
-    // field being marked as explicitly set. The accessor returns "" when
-    // unset; the client falls back to its built-in default.
+    // deleteLearningHotkeyを省略したJSONオブジェクトは、フィールドを明示設定済みにせずにデコードしなければならない
+    // 未設定時のアクセサは""を返し、クライアントは組み込みの既定値へフォールバックする
     func testDeleteLearningHotkeyDecodesToNilWhenOmitted() throws {
         let jsonData = try XCTUnwrap("{\"profileName\": \"Test\"}".data(using: .utf8))
         let decoded = try Hazkey_Config_Profile(jsonUTF8Data: jsonData)
@@ -51,8 +48,8 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
         XCTAssertFalse(decoded.hasDeleteLearningHotkey)
     }
 
-    // A Profile with acceptPredictionHotkey set must survive a JSON round-trip
-    // with the exact fcitx5 key string preserved (field 125).
+    // acceptPredictionHotkeyを設定したProfileは、fcitx5のキー文字列を正確に保持したままJSONラウンドトリップできなければならない
+    // (フィールド125)
     func testAcceptPredictionHotkeyJSONRoundTrip() throws {
         var profile = Hazkey_Config_Profile()
         profile.acceptPredictionHotkey = "F5"
@@ -63,11 +60,9 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
         XCTAssertEqual(decoded.acceptPredictionHotkey, "F5")
     }
 
-    // A JSON object that omits acceptPredictionHotkey must decode without the
-    // field being marked as explicitly set, matching swift-protobuf's
-    // field-presence semantics for proto3 `optional`. The accessor itself
-    // returns the default value ("") when unset; use
-    // `hasAcceptPredictionHotkey` to check presence.
+    // acceptPredictionHotkeyを省略したJSONオブジェクトは、フィールドを明示設定済みにせずにデコードしなければならない
+    // これは、proto3 "optional"に対するswift-protobufのフィールド存在判定に従う
+    // 未設定時のアクセサは既定値（""）を返すため、存在確認には"hasAcceptPredictionHotkey"を使用する
     func testAcceptPredictionHotkeyDecodesToNilWhenOmitted() throws {
         let jsonData = try XCTUnwrap("{\"profileName\": \"Test\"}".data(using: .utf8))
         let decoded = try Hazkey_Config_Profile(jsonUTF8Data: jsonData)
@@ -76,14 +71,14 @@ final class ProfileAutoConvertHotkeyTests: XCTestCase {
     }
 
     func testZenzaiToggleHotkeyJSONRoundTrip() throws {
-        // Given: the persisted profile contains the dedicated toggle hotkey.
+        // 前提: 永続化したプロファイルに専用トグルホットキーが含まれる
         var profile = Hazkey_Config_Profile()
         profile.zenzaiToggleHotkey = "Control+Alt+Z"
 
-        // When: the profile crosses the JSON persistence boundary.
+        // 実行: プロファイルがJSON永続化境界を通過する
         let decoded = try Hazkey_Config_Profile(jsonUTF8Data: profile.jsonUTF8Data())
 
-        // Then: the exact fcitx5 key string is retained.
+        // 確認: fcitx5のキー文字列が正確に保持される
         XCTAssertEqual(decoded.zenzaiToggleHotkey, "Control+Alt+Z")
     }
 }

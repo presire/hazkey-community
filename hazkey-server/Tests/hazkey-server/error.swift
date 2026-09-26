@@ -6,16 +6,16 @@ import XCTest
 final class ErrorHandlingTests: BaseHazkeyServerTestCase {
 
   func testInvalidCharacterTypeInGetComposingString() throws {
-    // First input some text
+    // まずテキストを入力する
     let inputQuery = QueryDataBuilder.inputText("あ")
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success)
 
-    // Try to get composing string with invalid character type
+    // 不正な文字種別で組成文字列の取得を試みる
     var query = Hazkey_Commands_QueryData()
     query.function = .getComposingString
     query.getComposingString = Hazkey_Commands_QueryData.GetComposingStringProps.with {
-      $0.charType = .UNRECOGNIZED(999)  // Invalid char type
+      $0.charType = .UNRECOGNIZED(999)  // 不正な文字種別
     }
 
     let response = try sendQuery(query)
@@ -25,22 +25,22 @@ final class ErrorHandlingTests: BaseHazkeyServerTestCase {
   }
 
   func testMultipleComposingTextInstanceCreation() throws {
-    // Create first instance
+    // 1つ目のインスタンスを作成する
     let firstInstanceQuery = QueryDataBuilder.createComposingTextInstance()
     let firstResponse = try sendQuery(firstInstanceQuery)
     XCTAssertEqual(firstResponse.status, .success)
 
-    // Add some input
+    // テキストを入力する
     let inputQuery = QueryDataBuilder.inputText("test")
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success)
 
-    // Create second instance (should reset the first one)
+    // 2つ目のインスタンスを作成する（1つ目はリセットされる）
     let secondInstanceQuery = QueryDataBuilder.createComposingTextInstance()
     let secondResponse = try sendQuery(secondInstanceQuery)
     XCTAssertEqual(secondResponse.status, .success)
 
-    // Check that composing text is reset
+    // 組成文字列がリセットされたことを確認する
     let getStringQuery = QueryDataBuilder.getComposingString()
     let stringResponse = try sendQuery(getStringQuery)
     XCTAssertEqual(stringResponse.status, .success)
@@ -48,10 +48,10 @@ final class ErrorHandlingTests: BaseHazkeyServerTestCase {
   }
 
   func testLargeInputString() throws {
-    // Test with a very long string
+    // 非常に長い文字列で検証する
     let largeString = String(repeating: "あ", count: 1000)
 
-    // Note: The server only processes the first Unicode character
+    // 注: サーバは先頭のUnicode文字だけを処理する
     let inputQuery = QueryDataBuilder.inputText(largeString)
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success, "Large input should succeed")

@@ -7,36 +7,36 @@ import XCTest
 
 final class ConfigValidationTests: XCTestCase {
     func testDecodeProfilesRejectsWrongJSONShapes() {
-        // Given: valid JSON whose top level or member has the wrong shape.
+        // 前提: 最上位またはメンバーの形が不正な有効JSON。
         let inputs = [Data("{}".utf8), Data("[\"profile\"]".utf8)]
 
-        // When / Then: neither shape is accepted as a profile list.
+        // 実行・検証: どちらの形もプロファイルリストとして受け入れない。
         for input in inputs {
             XCTAssertThrowsError(try HazkeyServerConfig.decodeProfiles(from: input))
         }
     }
 
     func testDecodeProfilesNormalizesEmptyArrayToDefaultProfile() throws {
-        // Given: an empty persisted profile list.
+        // 前提: 空の永続化済みプロファイルリスト。
         let input = Data("[]".utf8)
 
-        // When: it is decoded.
+        // 実行: これをデコードする。
         let profiles = try HazkeyServerConfig.decodeProfiles(from: input)
 
-        // Then: exactly one default profile is returned.
+        // 検証: 既定プロファイルを1件だけ返す。
         XCTAssertEqual(profiles.count, 1)
         XCTAssertEqual(try XCTUnwrap(profiles.first).profileName, "Default")
     }
 
     func testNormalizeProfileUsesDefaultsForUnsetOptionalValues() throws {
-        // Given: a profile received with optional configuration values unset.
+        // 前提: optional設定値が未設定のまま受け取ったプロファイル。
         var profile = Hazkey_Config_Profile()
         profile.profileName = "Partial"
 
-        // When: it crosses the configuration boundary.
+        // 実行: 設定境界を通過させる。
         let normalized = try HazkeyServerConfig.normalizeProfile(profile)
 
-        // Then: defaults are made explicit for all runtime numeric and enum settings.
+        // 検証: 実行時の数値設定とenum設定すべてに既定値が明示される。
         XCTAssertEqual(normalized.autoConvertMode, .autoConvertForMultipleChars)
         XCTAssertEqual(normalized.autoConvertMinChars, 2)
         XCTAssertEqual(normalized.numSuggestions, 3)
@@ -45,51 +45,51 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testHalfwidthKatakanaCandidateOptionUsesExplicitProfileValue() throws {
-        // Given: profiles that explicitly disable and enable halfwidth-kana candidates.
+        // 前提: 半角かな候補を明示的に無効化または有効化したプロファイル。
         var disabledProfile = HazkeyServerConfig.genDefaultConfig()
         disabledProfile.specialConversionMode.halfwidthKatakana = false
         var enabledProfile = HazkeyServerConfig.genDefaultConfig()
         enabledProfile.specialConversionMode.halfwidthKatakana = true
         let config = HazkeyServerConfig()
 
-        // When: each normalized profile produces converter request options.
+        // 実行: 正規化済みプロファイルごとにconverter要求オプションを生成する。
         config.currentProfile = try HazkeyServerConfig.normalizeProfile(disabledProfile)
         let disabledOptions = config.genBaseConvertRequestOptions()
         config.currentProfile = try HazkeyServerConfig.normalizeProfile(enabledProfile)
         let enabledOptions = config.genBaseConvertRequestOptions()
 
-        // Then: the converter option preserves the explicit profile setting.
+        // 検証: converterオプションは明示的なプロファイル設定を保持する。
         XCTAssertFalse(disabledOptions.halfWidthKanaCandidate)
         XCTAssertTrue(enabledOptions.halfWidthKanaCandidate)
     }
 
     func testNormalizeProfileEnablesMissingHalfwidthKatakanaSetting() throws {
-        // Given: a legacy profile whose halfwidth-katakana optional field is absent.
+        // 前提: 半角カタカナのoptionalフィールドがない旧プロファイル。
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.specialConversionMode.clearHalfwidthKatakana()
 
-        // When: it crosses the configuration boundary.
+        // 実行: 設定境界を通過させる。
         let normalized = try HazkeyServerConfig.normalizeProfile(profile)
 
-        // Then: the default enabled value becomes explicit.
+        // 検証: 既定の有効値が明示される。
         XCTAssertTrue(normalized.specialConversionMode.hasHalfwidthKatakana)
         XCTAssertTrue(normalized.specialConversionMode.halfwidthKatakana)
     }
 
     func testNormalizeProfileRejectsUnknownEnumAndInvalidNumericValues() {
-        // Given: profiles containing values the server cannot safely interpret.
+        // 前提: サーバが安全に解釈できない値を含むプロファイル。
         var unknownEnum = HazkeyServerConfig.genDefaultConfig()
         unknownEnum.autoConvertMode = .UNRECOGNIZED(99)
         var invalidNumber = HazkeyServerConfig.genDefaultConfig()
         invalidNumber.zenzaiInferLimit = 101
 
-        // When / Then: validation rejects both before persistence.
+        // 実行・検証: 永続化前に検証で両方を拒否する。
         XCTAssertThrowsError(try HazkeyServerConfig.normalizeProfile(unknownEnum))
         XCTAssertThrowsError(try HazkeyServerConfig.normalizeProfile(invalidNumber))
     }
 
     func testNormalizeProfileAcceptsNumericBoundsAndRejectsEmptyProfiles() throws {
-        // Given: profiles using the UI's inclusive numeric limits.
+        // 前提: UIの両端を含む数値上限・下限を使うプロファイル。
         var minimum = HazkeyServerConfig.genDefaultConfig()
         minimum.numSuggestions = 1
         minimum.autoConvertMinChars = 1
@@ -101,10 +101,10 @@ final class ConfigValidationTests: XCTestCase {
         maximum.numCandidatesPerPage = 10
         maximum.zenzaiInferLimit = 100
 
-        // When: valid boundary profiles are normalized.
+        // 実行: 有効な境界値プロファイルを正規化する。
         let normalized = try HazkeyServerConfig.normalizeProfiles([minimum, maximum])
 
-        // Then: both values survive and an empty SetConfig list is rejected.
+        // 検証: 両方の値を保持し、空のSetConfigリストは拒否する。
         XCTAssertEqual(normalized.count, 2)
         XCTAssertEqual(try XCTUnwrap(normalized.first).numSuggestions, 1)
         XCTAssertEqual(try XCTUnwrap(normalized.last).zenzaiInferLimit, 100)
@@ -112,13 +112,13 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testCustomKeymapParserSkipsMalformedRowsAndLoadsValidRows() {
-        // Given: empty, tab-only, incomplete, and over-wide rows around valid rules.
+        // 前提: 有効な規則に混在する空行、タブだけの行、不完全な行、列数過多の行。
         let contents = "\n\t\nA\tあ\nB\tい\t\nC\tう\textra\tignored\nD\nE\t\n"
 
-        // When: the custom keymap is parsed.
+        // 実行: カスタムキーマップをパースする。
         let keymap = HazkeyServerConfig.parseCustomKeymap(contents)
 
-        // Then: malformed rows are ignored without preventing valid rules from loading.
+        // 検証: 不正な行は無視し、有効な規則の読み込みは妨げない。
         XCTAssertEqual(keymap["A"]?.0, "あ")
         XCTAssertNil(keymap["A"]?.1)
         XCTAssertEqual(keymap["B"]?.0, "い")
@@ -130,7 +130,7 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testZenzaiModelResolverUsesValidCustomWeightAndRejectsInvalidCustomWeight() throws {
-        // Given: a profile with custom weights enabled and both valid and invalid paths.
+        // 前提: カスタム重みを有効にし、有効・無効両方のパスを持つプロファイル。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -145,20 +145,20 @@ final class ConfigValidationTests: XCTestCase {
         profile.useZenzaiCustomWeight = true
         profile.zenzaiWeightPath = customModel.path
 
-        // When: the custom path is valid, then changed to a missing path.
+        // 実行: カスタムパスを有効なものから欠落したパスへ変更する。
         let resolvedCustom = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: discoveredModel)
         profile.zenzaiWeightPath = directory.appendingPathComponent("missing.gguf").path
         let resolvedMissing = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: discoveredModel)
 
-        // Then: the valid custom model wins, while an invalid explicit path disables Zenzai.
+        // 検証: 有効なカスタムモデルを優先し、無効な明示パスではZenzaiを無効にする。
         XCTAssertEqual(resolvedCustom, customModel)
         XCTAssertNil(resolvedMissing)
     }
 
     func testZenzaiModelResolverUsesDiscoveryWhenCustomWeightIsDisabledOrEmpty() throws {
-        // Given: an available discovered model and a profile without an active custom path.
+        // 前提: 利用可能な検出済みモデルと、有効なカスタムパスを持たないプロファイル。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -171,7 +171,7 @@ final class ConfigValidationTests: XCTestCase {
         profile.useZenzaiCustomWeight = false
         profile.zenzaiWeightPath = directory.appendingPathComponent("ignored.gguf").path
 
-        // When: custom weights are disabled, then enabled with an empty path.
+        // 実行: カスタム重みを無効化し、次に空のパスで有効化する。
         let disabledResolution = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: discoveredModel)
         profile.useZenzaiCustomWeight = true
@@ -179,13 +179,13 @@ final class ConfigValidationTests: XCTestCase {
         let emptyResolution = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: discoveredModel)
 
-        // Then: normal model discovery is retained in both cases.
+        // 検証: どちらの場合も通常のモデル検出を維持する。
         XCTAssertEqual(disabledResolution, discoveredModel)
         XCTAssertEqual(emptyResolution, discoveredModel)
     }
 
     func testManagedZenzaiSymlinkToJinenModelIsAcceptedByResolver() throws {
-        // Given: a managed <dataDir>/hazkey-community/zenzai/zenzai.gguf symlink pointing at a jinen-key GGUF.
+        // 前提: jinenキーのGGUFを指す管理下の<dataDir>/hazkey-community/zenzai/zenzai.ggufシンボリックリンク。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -223,14 +223,14 @@ final class ConfigValidationTests: XCTestCase {
             }
         }
 
-        // When: discovery runs against the sandboxed data dir and the result feeds the resolver.
+        // 実行: サンドボックス化したデータディレクトリで検出を行い、その結果をresolverへ渡す。
         let discovered = getZenzaiModelPath()
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.useZenzaiCustomWeight = false
         let resolved = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: discovered)
 
-        // Then: the managed symlink is discovered and accepted, pointing at the jinen target.
+        // 検証: 管理下のシンボリックリンクを検出・受理し、jinenの対象を指す。
         XCTAssertEqual(discovered, managedSymlink)
         XCTAssertEqual(resolved, managedSymlink)
         XCTAssertEqual(
@@ -240,7 +240,7 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testReloadZenzaiModelReResolvesRetargetedManagedSymlink() throws {
-        // Given: a managed symlink initially targeting one jinen key, loaded by a live config.
+        // 前提: 稼働中の設定が読み込んだ、最初は1つのjinenキーを指す管理下のシンボリックリンク。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -292,13 +292,13 @@ final class ConfigValidationTests: XCTestCase {
             config.zenzaiModelPath?.resolvingSymlinksInPath(),
             firstJinenModel.resolvingSymlinksInPath())
 
-        // When: the symlink is retargeted to a different jinen key and the model is reloaded.
+        // 実行: シンボリックリンクの対象を別のjinenキーへ変え、モデルを再読み込みする。
         try FileManager.default.removeItem(at: managedSymlink)
         try FileManager.default.createSymbolicLink(
             at: managedSymlink, withDestinationURL: secondJinenModel)
         config.reloadZenzaiModel()
 
-        // Then: the new target is returned, not the cached old one.
+        // 検証: キャッシュ済みの旧対象ではなく、新しい対象を返す。
         XCTAssertEqual(config.zenzaiModelPath, managedSymlink)
         XCTAssertEqual(
             config.zenzaiModelPath?.resolvingSymlinksInPath(),
@@ -308,14 +308,14 @@ final class ConfigValidationTests: XCTestCase {
             firstJinenModel.resolvingSymlinksInPath())
     }
 
-    /// The converter caches loaded models in a process-global registry keyed by the
-    /// weight path string (`SharedZenzModelCache.cacheKey(path:deviceConfig:)`), so the
-    /// path handed to it must be the resolved artifact and not the stable managed
-    /// symlink. Before that resolution the Settings model switch kept serving the
-    /// previously loaded weights until the server restarted, even though
-    /// `reload_zenzai_model` ran.
+    /// converterは重みパス文字列をキーにしたプロセス全体のレジストリ
+    /// (`SharedZenzModelCache.cacheKey(path:deviceConfig:)`) で読み込み済みモデルを
+    /// キャッシュする。そのため渡すパスは固定の管理下シンボリックリンクではなく、
+    /// 解決済みアーティファクトでなければならない。この解決前は
+    /// `reload_zenzai_model` を実行しても、サーバ再起動までSettingsのモデル切替が
+    /// 既に読み込まれた重みを使い続けていた。
     func testGenZenzaiModeHandsOverResolvedModelPathSoModelSwitchTakesEffect() throws {
-        // Given: a managed symlink targeting one jinen artifact.
+        // 前提: 1つのjinenアーティファクトを指す管理下のシンボリックリンク。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -364,7 +364,7 @@ final class ConfigValidationTests: XCTestCase {
         let config = HazkeyServerConfig()
         config.reloadZenzaiModel()
 
-        // The config keeps reporting the managed symlink; only the converter input resolves.
+        // configは管理下のシンボリックリンクを返し続け、解決するのはconverter入力だけ。
         XCTAssertEqual(config.zenzaiModelPath, managedSymlink)
 
         let beforeSwitch = config.genZenzaiMode(leftContext: "")
@@ -375,20 +375,20 @@ final class ConfigValidationTests: XCTestCase {
             beforeWeight.resolvingSymlinksInPath(), firstJinenModel.resolvingSymlinksInPath())
         XCTAssertNotEqual(beforeWeight, managedSymlink)
 
-        // A reload without retargeting must not perturb the mode, so the difference
-        // asserted below can only come from the model path itself.
+        // 対象を変えない再読み込みはモードを変えてはならない。そのため下記で確認する差分は
+        // モデルパス自体にしか由来しない。
         config.reloadZenzaiModel()
         XCTAssertEqual(config.genZenzaiMode(leftContext: ""), beforeSwitch)
 
-        // When: the symlink is retargeted (a model switch) and reloaded.
+        // 実行: シンボリックリンクの対象を変更（モデル切替）して再読み込みする。
         try FileManager.default.removeItem(at: managedSymlink)
         try FileManager.default.createSymbolicLink(
             at: managedSymlink, withDestinationURL: secondJinenModel)
         config.reloadZenzaiModel()
         let afterSwitch = config.genZenzaiMode(leftContext: "")
 
-        // Then: the path handed to the converter changed, so its cache key changes and
-        // the newly selected artifact is loaded instead of the stale one.
+        // 検証: converterへ渡すパスが変わるためキャッシュキーも変わり、古いものではなく
+        // 新しく選んだアーティファクトを読み込む。
         let afterWeight = try XCTUnwrap(
             Self.zenzaiWeightURL(of: afterSwitch), "ZenzaiMode must carry a weight URL")
         XCTAssertEqual(
@@ -397,14 +397,14 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertNotEqual(afterSwitch, beforeSwitch)
     }
 
-    /// Reads `ConvertRequestOptions.ZenzaiMode.weightURL`, which the converter module
-    /// keeps internal; this suite only needs to observe the value it was given.
+    /// converterモジュール内で非公開の `ConvertRequestOptions.ZenzaiMode.weightURL` を読む。
+    /// このスイートでは渡された値の観測だけが必要である。
     private static func zenzaiWeightURL<T>(of mode: T) -> URL? {
         Mirror(reflecting: mode).children.first { $0.label == "weightURL" }?.value as? URL
     }
 
     func testZenzaiModelResolverRejectsDirectoryCustomWeight() throws {
-        // Given: custom weight enabled with a directory and a symlink to a directory.
+        // 前提: ディレクトリとディレクトリへのシンボリックリンクをカスタム重みに指定する。
         let directory = try XCTUnwrap(FileManager.default.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
@@ -420,7 +420,7 @@ final class ConfigValidationTests: XCTestCase {
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.useZenzaiCustomWeight = true
 
-        // When: the explicit custom path is a non-regular file in either form.
+        // 実行: 明示カスタムパスがどちらの形式でも通常ファイルではない。
         profile.zenzaiWeightPath = weightDirectory.path
         let resolvedDirectory = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: nil)
@@ -428,24 +428,24 @@ final class ConfigValidationTests: XCTestCase {
         let resolvedDirectorySymlink = HazkeyServerConfig.resolveZenzaiModelPath(
             for: profile, discoveredModelPath: nil)
 
-        // Then: both are rejected exactly like a missing custom path (nil, Zenzai disabled).
+        // 検証: どちらも欠落したカスタムパスと同じく拒否する（nil、Zenzai無効）。
         XCTAssertNil(resolvedDirectory)
         XCTAssertNil(resolvedDirectorySymlink)
     }
 
     func testProfileHistoryDirectoryIsSharedUnlessIsolationIsEnabled() {
-        // Given: a profile with an identifier that cannot be used directly as a path component.
+        // 前提: パス要素として直接使えない識別子を持つプロファイル。
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.profileID = "work/team"
         let stateDirectory = URL(fileURLWithPath: "/tmp/hazkey-state")
 
-        // When: history isolation is disabled, then enabled.
+        // 実行: 履歴分離を無効化し、次に有効化する。
         profile.useProfileIndependentHistory = false
         let sharedDirectory = HazkeyServerConfig.memoryDirectory(for: profile, stateDirectory: stateDirectory)
         profile.useProfileIndependentHistory = true
         let isolatedDirectory = HazkeyServerConfig.memoryDirectory(for: profile, stateDirectory: stateDirectory)
 
-        // Then: shared history retains its existing location and isolated history has one safe component.
+        // 検証: 共有履歴は既存の場所を保ち、分離履歴には安全なパス要素が1つ付く。
         XCTAssertEqual(sharedDirectory, stateDirectory.appendingPathComponent("memory", isDirectory: true))
         XCTAssertEqual(isolatedDirectory.deletingLastPathComponent(), sharedDirectory)
         XCTAssertFalse(isolatedDirectory.lastPathComponent.contains("/"))
@@ -453,16 +453,16 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testRichCandidateSelectionUsesTheRequestKind() {
-        // Given: independently enabled rich suggestion and rich candidate settings.
+        // 前提: リッチサジェストとリッチ候補を独立して有効化した設定。
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.useRichSuggestion = true
         profile.useRichCandidates = false
 
-        // When: options are selected for suggestion and manual conversion requests.
+        // 実行: サジェスト要求と手動変換要求に対するオプションを選ぶ。
         let suggestionValue = HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: true)
         let conversionValue = HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: false)
 
-        // Then: each request reads only its corresponding setting.
+        // 検証: 各要求は対応する設定だけを読む。
         XCTAssertTrue(suggestionValue)
         XCTAssertFalse(conversionValue)
 
@@ -472,56 +472,56 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertTrue(HazkeyServerConfig.requestRichCandidates(for: profile, isSuggestion: false))
     }
 
-    // MARK: - [community] Emoji 17 direct conversion (test-first, RED)
+    // MARK: - [community] Emoji 17直接変換（テスト先行、RED）
 
     func testDefaultExtendedEmojiIsEnabled() {
-        // The factory default keeps extended emoji conversion enabled.
+        // ファクトリ既定値では拡張絵文字変換を有効に保つ。
         XCTAssertTrue(HazkeyServerConfig.genDefaultConfig().specialConversionMode.extendedEmoji)
         XCTAssertTrue(HazkeyServerConfig.genDefaultConfig().extendedEmojiEffective)
     }
 
     func testAbsentExtendedEmojiNormalizesToEnabled() throws {
-        // Given: a legacy profile whose extended_emoji optional is absent.
+        // 前提: extended_emojiのoptionalがない旧プロファイル。
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.specialConversionMode.clearExtendedEmoji()
         XCTAssertFalse(profile.specialConversionMode.hasExtendedEmoji)
 
-        // When: it crosses the configuration boundary.
+        // 実行: 設定境界を通過させる。
         let normalized = try HazkeyServerConfig.normalizeProfile(profile)
 
-        // Then: the enabled default becomes explicit.
+        // 検証: 有効な既定値が明示される。
         XCTAssertTrue(normalized.specialConversionMode.hasExtendedEmoji)
         XCTAssertTrue(normalized.specialConversionMode.extendedEmoji)
         XCTAssertTrue(normalized.extendedEmojiEffective)
     }
 
     func testExplicitFalseExtendedEmojiIsPreserved() throws {
-        // Given: a profile that explicitly disables extended emoji.
+        // 前提: 拡張絵文字を明示的に無効化するプロファイル。
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.specialConversionMode.extendedEmoji = false
 
-        // When: it crosses the configuration boundary.
+        // 実行: 設定境界を通過させる。
         let normalized = try HazkeyServerConfig.normalizeProfile(profile)
 
-        // Then: the explicit opt-out survives normalization.
+        // 検証: 明示的な無効化は正規化後も保持される。
         XCTAssertTrue(normalized.specialConversionMode.hasExtendedEmoji)
         XCTAssertFalse(normalized.specialConversionMode.extendedEmoji)
         XCTAssertFalse(normalized.extendedEmojiEffective)
     }
 
     func testNormalizeProfileDefaultsMissingAddressDictionaryAndPreservesExplicitFalse() throws {
-        // Given: a legacy profile missing the address-dictionary field and one opting out.
+        // 前提: 住所辞書フィールドがない旧プロファイルと、明示的に無効化するプロファイル。
         var missing = HazkeyServerConfig.genDefaultConfig()
         missing.clearUseAddressDictionary()
         XCTAssertFalse(missing.hasUseAddressDictionary)
         var disabled = HazkeyServerConfig.genDefaultConfig()
         disabled.useAddressDictionary = false
 
-        // When: each crosses the configuration boundary.
+        // 実行: それぞれを設定境界へ通す。
         let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
         let normalizedDisabled = try HazkeyServerConfig.normalizeProfile(disabled)
 
-        // Then: the missing field defaults to disabled while the explicit opt-out survives.
+        // 検証: 欠落フィールドは無効が既定となり、明示的な無効化は保持される。
         XCTAssertTrue(normalizedMissing.hasUseAddressDictionary)
         XCTAssertFalse(normalizedMissing.useAddressDictionary)
         XCTAssertFalse(normalizedMissing.useAddressDictionaryEffective)
@@ -531,7 +531,7 @@ final class ConfigValidationTests: XCTestCase {
     }
 
     func testNormalizeProfileDefaultsMissingEngineeringDictionaryAndPreservesExplicitTrue() throws {
-        // Given: a legacy profile missing the engineering-dictionary field and one opting in.
+        // 前提: 工学用語辞書フィールドがない旧プロファイルと、明示的に有効化するプロファイル。
         var missing = HazkeyServerConfig.genDefaultConfig()
         missing.clearUseEngineeringDictionary()
         XCTAssertFalse(missing.hasUseEngineeringDictionary)
@@ -539,11 +539,11 @@ final class ConfigValidationTests: XCTestCase {
         var enabled = HazkeyServerConfig.genDefaultConfig()
         enabled.useEngineeringDictionary = true
 
-        // When: each crosses the configuration boundary.
+        // 実行: それぞれを設定境界へ通す。
         let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
         let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
 
-        // Then: the missing field defaults to disabled while the explicit opt-in survives.
+        // 検証: 欠落フィールドは無効が既定となり、明示的な有効化は保持される。
         XCTAssertTrue(normalizedMissing.hasUseEngineeringDictionary)
         XCTAssertFalse(normalizedMissing.useEngineeringDictionary)
         XCTAssertFalse(normalizedMissing.useEngineeringDictionaryEffective)

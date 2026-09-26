@@ -5,11 +5,10 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] End-to-end coverage for the engineering terms dictionary toggle.
+/// 工学用語辞書トグルのエンドツーエンド検証
 ///
-/// The engineering source is wired next to the address source at converter
-/// construction and gated by `Profile.use_engineering_dictionary`. These tests
-/// drive the real server state against the committed submodule assets.
+/// コンバータ構築時に工学用語ソースを住所ソースと並べて登録し、Profile.use_engineering_dictionaryで有効化を制御する
+/// これらのテストは、コミット済みサブモジュールアセットに対して実際のサーバ状態を操作する
 final class EngineeringDictionaryServerTests: XCTestCase {
     private let environmentVariables = [
         "XDG_DATA_HOME",
@@ -268,7 +267,7 @@ final class EngineeringDictionaryServerTests: XCTestCase {
                 .contains(Self.engineeringWord))
     }
 
-    /// 複数ソース init が拒否された場合は補助辞書なしで構築し、通常変換を継続する
+    /// 複数ソースinitが拒否された場合は補助辞書なしで構築し、通常変換を継続する
     func testRejectedSourceListFallsBackToTheSystemDictionaryAlone() {
         let shared = HazkeySharedResources(emojiDictionaryURL: nil)
         let converter = HazkeySharedResources.makeConverter(
@@ -291,8 +290,8 @@ final class EngineeringDictionaryServerTests: XCTestCase {
                 .contains("変換"))
     }
 
-    /// Python は base converter が単独で候補に出せるため、収録基準どおり工学用語辞書には入れていない。
-    /// トグルOFFでも候補に出ることと、ソースTSVに存在しないことの両方を確認する。
+    /// Pythonは、base converterが単独で候補に出せるため、収録基準どおり工学用語辞書には入れていない
+    /// トグルOFFでも候補に出ることと、ソースTSVに存在しないことの両方を確認する
     func testBaseConvertibleTermIsNotShippedAndIsOfferedWithoutTheDictionary() throws {
         let tsv = try String(contentsOf: Self.engineeringSourceTSVURL, encoding: .utf8)
         let surfaces = Set(

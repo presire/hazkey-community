@@ -2,19 +2,20 @@ import Foundation
 import Glibc
 import XCTest
 
-/// Shared isolated temporary root for tests that spawn `hazkey-community-server`.
+/// "hazkey-community-server"を起動するテストで共有する隔離済みの一時ルート
 ///
-/// The server derives its socket path as
-/// `<XDG_RUNTIME_DIR>/hazkey-community-server.<uid>.sock`, and AF_UNIX `sun_path` accepts at
-/// most 107 usable bytes. A long `<prefix>-<UUID>` directory name can push the socket path over
-/// that limit; `bind` then silently truncates it while `chmod` uses the untruncated path and
-/// fails, so the spawned server exits and the test times out. `make()` keeps the root short and
-/// fails fast if the canonical socket path still would not fit.
+/// サーバはソケットパスを"<XDG_RUNTIME_DIR>/hazkey-community-server.<uid>.sock"として導出し、
+/// AF_UNIX "sun_path"は、最大107バイトまで使用できる
+///
+/// 長い"<prefix>-<UUID>"形式のディレクトリ名ではソケットパスがこの上限を超えることがある
+/// その場合、"bind"はパスを暗黙に切り詰める一方で、"chmod"は切り詰め前のパスを使用して失敗するため、起動したサーバが終了してテストがタイムアウトする
+/// "make()"はルートを短く保ち、正規のソケットパスがなお収まらない場合は速やかに失敗させる
 enum TestTempRoot {
-    /// AF_UNIX `sun_path` is `char[108]`, so the usable path length is 107 bytes (plus NUL).
+    /// AF_UNIX "sun_path"は"char[108]"のため、使用可能なパス長は107バイトである
+    /// NULは別に必要
     static let maxSocketPathBytes = 107
 
-    /// Creates a unique, short temporary directory such as `/tmp/hk1a2b3c4d5e`.
+    /// "/tmp/hk1a2b3c4d5e"のような、一意かつ短い一時ディレクトリを作成する
     static func make() throws -> URL {
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
         let url = FileManager.default.temporaryDirectory
@@ -24,13 +25,13 @@ enum TestTempRoot {
         return url
     }
 
-    /// The socket path the server will create for the conventional `runtime/` layout.
+    /// 標準的な"runtime/"レイアウトでサーバが作成するソケットパス
     static func canonicalSocketPath(under root: URL, uid: uid_t = getuid()) -> String {
         root.appendingPathComponent("runtime", isDirectory: true)
             .appendingPathComponent("hazkey-community-server.\(uid).sock").path
     }
 
-    /// Fails the test immediately (instead of a 120s server timeout) when the path is too long.
+    /// パスが長すぎる場合、120秒のサーバタイムアウトを待たずにテストを直ちに失敗させる
     static func requireFitsInSunPath(
         _ socketPath: String, file: StaticString = #filePath, line: UInt = #line
     ) {

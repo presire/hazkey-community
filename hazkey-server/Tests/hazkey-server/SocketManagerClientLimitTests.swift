@@ -4,12 +4,12 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Connection-cap tests for multi-client support.
+/// マルチクライアント対応の接続上限テスト
 ///
-/// Drives the REAL accept path (`handleNewConnection`) directly — no poll
-/// loop, no threads — by opening client UNIX sockets and accepting them one
-/// by one. The first `maxClientCount` connections are accepted; the next one
-/// is rejected (server closes it) without disturbing the accepted set.
+/// クライアントUNIXソケットを開き、1件ずつacceptすることで、実際のaccept経路 ("handleNewConnection") を直接駆動する
+/// pollループやスレッドは使わない
+/// 最初の"maxClientCount"件の接続は受理され、次の接続は受理済み集合を乱すことなく拒否される
+/// 拒否時はサーバがその接続を閉じる
 final class SocketManagerClientLimitTests: XCTestCase {
     private final class CountingDelegate: SocketManagerDelegate {
         var connected: [Int32] = []
@@ -48,8 +48,9 @@ final class SocketManagerClientLimitTests: XCTestCase {
         XCTAssertNotEqual(fd, -1, "client socket() failed")
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        // Copy the path bytes with explicit NUL termination (same pattern as
-        // SocketManager.setupSocket: strncpy straight into sun_path).
+        // 明示的なNUL終端でパスのバイト列をコピーする
+        // "sun_path"へ直接"strncpy"する
+        // "SocketManager.setupSocket"と同じパターン
         let pathLen = MemoryLayout.size(ofValue: addr.sun_path)
         socketPath.withCString { src in
             withUnsafeMutableBytes(of: &addr.sun_path) { raw in
@@ -79,11 +80,12 @@ final class SocketManagerClientLimitTests: XCTestCase {
         let manager = SocketManager(socketPath: socketPath)
         self.manager = manager
         try manager.setupSocket()
-        // `delegate` is weak: the local keeps the mock alive for the test.
+        // "delegate"はweakのため、このローカル変数でテスト中のモックを保持する
         let delegate = CountingDelegate()
         manager.delegate = delegate
 
-        // Accept exactly maxClientCount connections: none is evicted.
+        // maxClientCount件の接続を受理する
+        // 既存接続は追い出さない
         for _ in 0..<SocketManager.maxClientCount {
             _ = connectClient(to: socketPath)
             manager.handleNewConnection()
@@ -91,8 +93,8 @@ final class SocketManagerClientLimitTests: XCTestCase {
         XCTAssertEqual(delegate.connected.count, SocketManager.maxClientCount)
         XCTAssertEqual(manager.connectedClientCount, SocketManager.maxClientCount)
 
-        // One more connection is rejected: the delegate sees no new connect
-        // and the server side closes the socket, so the client's read hits EOF.
+        // 更に1件の接続は拒否される
+        // delegateは新たな接続を受け取らず、サーバ側がソケットを閉じるため、クライアントのreadはEOFになる
         let extraFd = connectClient(to: socketPath)
         manager.handleNewConnection()
         XCTAssertEqual(delegate.connected.count, SocketManager.maxClientCount)

@@ -2,8 +2,8 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Tests that a long Shift press (hold >= 500 ms) does not toggle the
-/// sub-input (Direct Input) mode, while a quick Shift tap still does.
+/// [Shift]キーの長押し (500[ms]以上) ではサブ入力 (Direct Input) モードを切り替えず、
+/// 短い[Shift]キータップでは従来どおり切り替えることを検証する
 final class ShiftLongPressTests: XCTestCase {
     private func currentInputMode(of state: HazkeyServerState) -> Hazkey_Commands_CurrentInputModeInfo.InputMode {
         state.getCurrentInputMode().currentInputModeInfo.inputMode
@@ -13,13 +13,13 @@ final class ShiftLongPressTests: XCTestCase {
         let state = HazkeyServerState()
         XCTAssertEqual(currentInputMode(of: state), .normal)
 
-        // First tap: normal -> direct.
+        // 1回目のタップ: normal -> direct
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .press).status, .success)
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .release).status, .success)
         XCTAssertTrue(state.isSubInputMode)
         XCTAssertEqual(currentInputMode(of: state), .direct)
 
-        // Second tap: direct -> normal.
+        // 2回目のタップ: direct -> normal
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .press).status, .success)
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .release).status, .success)
         XCTAssertFalse(state.isSubInputMode)
@@ -31,7 +31,7 @@ final class ShiftLongPressTests: XCTestCase {
         XCTAssertEqual(currentInputMode(of: state), .normal)
 
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .press).status, .success)
-        // Simulate a 600 ms hold by backdating the press timestamp.
+        // 押下時刻を過去に設定し、600[ms]の長押しを再現する
         state.shiftPressedAt = ContinuousClock.now - .milliseconds(600)
         XCTAssertEqual(state.processModifierEvent(modifier: .shift, event: .release).status, .success)
 

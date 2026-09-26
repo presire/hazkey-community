@@ -6,13 +6,13 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Regression guard for the server-level learning dirty flag.
+/// サーバ全体で共有する学習dirtyフラグの回帰防止テスト
 ///
-/// Learning memory is shared by every connection, so `learningDataNeedsCommit`
-/// must only ever be set by a commit that produced a learning update, and must
-/// only be cleared by `saveLearningData()`. A user-dictionary / emoji commit
-/// produces no learning update; clearing the shared flag there could silently
-/// drop another connection's pending persistence.
+/// 学習メモリは全ての接続で共有するため、"learningDataNeedsCommit"は学習更新を生じた確定時にのみ設定し、
+/// "saveLearningData()"によってのみ解除しなければならない
+///
+/// ユーザ辞書または絵文字の確定では学習更新は生じない
+/// そこで共有フラグを解除すると、別の接続で保留中の永続化が無言で失われる恐れがある
 final class LearningCommitFlagTests: XCTestCase {
     private enum LearningCommitFlagTestError: Error {
         case environmentUpdateFailed
@@ -52,8 +52,8 @@ final class LearningCommitFlagTests: XCTestCase {
         }
     }
 
-    /// A converter candidate whose data does NOT carry the user-dictionary
-    /// metadata, so completing it feeds the converter's learning store.
+    /// ユーザ辞書メタデータを持たないconverter候補
+    /// 確定すると、converterの学習ストアに反映される
     private func learnableCandidate(text: String, ruby: String) -> Candidate {
         Candidate(
             text: text,
@@ -68,8 +68,7 @@ final class LearningCommitFlagTests: XCTestCase {
         )
     }
 
-    /// Gives the connection one input element so `prefixComplete` has
-    /// something to consume.
+    /// "prefixComplete"が消費できる入力要素を接続に1つ与える
     private func composeOneCharacter(_ state: HazkeyServerState) {
         state.composingText.value.insertAtCursorPosition("あ", inputStyle: .direct)
     }
@@ -86,8 +85,8 @@ final class LearningCommitFlagTests: XCTestCase {
         .with { $0.saveLearningData = Hazkey_Commands_SaveLearningData() }
     }
 
-    /// 永続化に失敗したコミットは成功として扱わない。dirty フラグを維持したまま
-    /// FAILED を返し、保存先が復旧した後の次のトリガーで同じ学習が永続化される。
+    /// 永続化に失敗したコミットは成功として扱わない
+    /// dirtyフラグを維持したままFAILEDを返し、保存先が復旧した後の次のトリガーで同じ学習が永続化される
     func testFailedLearningCommitKeepsDirtyFlagAndReportsFailure() throws {
         let shared = HazkeySharedResources()
         let first = HazkeyServerState(shared: shared)
@@ -102,8 +101,8 @@ final class LearningCommitFlagTests: XCTestCase {
         XCTAssertEqual(first.completePrefix(candidateIndex: 0).status, .success)
         XCTAssertTrue(shared.learningDataNeedsCommit)
 
-        // 保存先を同名の通常ファイルに置き換えて書き込みを ENOTDIR で失敗させる。
-        // chmod は CI コンテナの root が迂回できるため使わない。
+        // 保存先を同名の通常ファイルに置き換えて書き込みをENOTDIRで失敗させる
+        // chmodは、CIコンテナのrootが迂回できるため使わない
         let memoryDirectory = shared.serverConfig.memoryDirectory()
         try FileManager.default.removeItem(at: memoryDirectory)
         XCTAssertTrue(FileManager.default.createFile(atPath: memoryDirectory.path, contents: Data()))
@@ -127,19 +126,19 @@ final class LearningCommitFlagTests: XCTestCase {
         let state = HazkeyServerState()
         state.learningDataNeedsCommit = false
 
-        // A converter commit sets the shared dirty flag.
+        // converter候補の確定で共有dirtyフラグが設定される
         composeOneCharacter(state)
         state.currentCandidateList = [.fromConverter(learnableCandidate(text: "亜", ruby: "ア"))]
         XCTAssertEqual(state.completePrefix(candidateIndex: 0).status, .success)
         XCTAssertTrue(state.learningDataNeedsCommit)
 
-        // A user-dictionary commit produces no learning update and must NOT
-        // clear the pending flag (regression: it used to be cleared here).
+        // ユーザ辞書の確定では学習更新が生じないため、保留フラグを解除してはならない
+        // 回帰防止: 以前はここで解除されていた
         state.currentCandidateList = [.fromUserDict(word: "テスト")]
         XCTAssertEqual(state.completePrefix(candidateIndex: 0).status, .success)
         XCTAssertTrue(state.learningDataNeedsCommit)
 
-        // Only an explicit save clears it.
+        // 明示的な保存だけがフラグを解除する
         XCTAssertEqual(state.saveLearningData().status, .success)
         XCTAssertFalse(state.learningDataNeedsCommit)
     }
@@ -153,7 +152,7 @@ final class LearningCommitFlagTests: XCTestCase {
         XCTAssertEqual(state.completePrefix(candidateIndex: 0).status, .success)
         XCTAssertTrue(state.learningDataNeedsCommit)
 
-        // Emoji direct-conversion commits never touch the learning store.
+        // 絵文字の直接変換候補を確定しても、学習ストアには一切触れない
         composeOneCharacter(state)
         state.currentCandidateList = [.fromEmoji(word: "😀", composingCount: .inputCount(1))]
         XCTAssertEqual(state.completePrefix(candidateIndex: 0).status, .success)

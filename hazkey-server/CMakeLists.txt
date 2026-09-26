@@ -12,7 +12,7 @@ include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# Skip ALL targets during install to avoid swift permission issues
+# Swift の権限問題を避けるため、インストール時にALLターゲットをスキップする
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
 
 find_program(SWIFT_EXECUTABLE swift REQUIRED)
@@ -28,7 +28,7 @@ set(HAZKEY_SERVER_SYSTEM_RESOURCE_PATH "${CMAKE_INSTALL_FULL_DATADIR}" CACHE PAT
 set(HAZKEY_SERVER_SYSTEM_LIBRARY_PATH "${CMAKE_INSTALL_FULL_LIBDIR}" CACHE PATH "System Resource path")
 option(HAZKEY_SERVER_INSTALL_DICTIONARY "Install dictionary" ON)
 
-# TODO: check path reliability
+# TODO: パスの信頼性を確認する
 set(HAZKEY_SERVER_LIBLLAMA_BINDIR "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Llama.cpp library directory" )
 
 # --- hazkey-server --- #
@@ -47,8 +47,8 @@ configure_file(
     @ONLY
 )
 
-# Auto detect swift library path
-# To bypass issue swiftlang/swift#78003
+# Swiftライブラリのパスを自動検出する
+# "swiftlang/swift#78003"を回避するため
 if(HAZKEY_SERVER_STATIC_SWIFT_STDLIB AND NOT SWIFT_DYNAMIC_LIB_PATH)
     if(SWIFT_EXECUTABLE)
         get_filename_component(SWIFT_REAL_PATH "${SWIFT_EXECUTABLE}" REALPATH)
@@ -91,7 +91,7 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
         set(GGML_LTO ON CACHE BOOL "")
     endif()
 
-    # Backend DSOs are installed one directory below the main llama libraries.
+    # バックエンドDSOは、主要なllama.cppライブラリの1つ下のディレクトリにインストールする
     set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/..")
     set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
     set(CMAKE_SKIP_BUILD_RPATH OFF)
@@ -102,10 +102,11 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     set(GGML_BACKEND_DL ON CACHE BOOL "")
     set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "")
     set(GGML_CPU ON CACHE BOOL "")
-    # GGML_VULKAN: Vulkan backend for Zenzai neural conversion.
-    # Default ON (required for GPU acceleration on Linux). Users who want a
-    # CPU-only build (e.g. to avoid the multi-ICD SIGILL issue on hybrid
-    # GPU systems) can pass -DGGML_VULKAN=OFF at configure time.
+
+    # GGML_VULKAN: Zenzaiニューラル変換用のVulkanバックエンド
+    # 既定は有効 (LinuxでGPUアクセラレーションを使用する場合に必要)
+    # CPU専用ビルドを希望する場合 (例: ハイブリッドGPUシステムでの複数ICDによるSIGILL問題を避ける場合) は、
+    # 設定時に"-DGGML_VULKAN=OFF"オプションを指定できる
     option(GGML_VULKAN "Build llama.cpp with Vulkan backend (CPU-only build: -DGGML_VULKAN=OFF)" ON)
     set(GGML_CUDA OFF CACHE BOOL "")
     set(GGML_HIP OFF CACHE BOOL "")
@@ -116,18 +117,16 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     add_dependencies(build_hazkey_server llama)
 endif()
 
-# ---- install ---- #
+# ---- インストール ---- #
 
-# install hazkey-server
-# Community edition installs under its own names (hazkey-community-server in
-# ${LIBDIR}/hazkey-community) so it can coexist with an upstream hazkey
-# package. The SwiftPM product keeps its "hazkey-server" name; only the
-# installed file is renamed.
+# hazkey-serverをインストールする
+# Hazkey Communityは上流版と共存できるように、独自の名前 ("${LIBDIR}/hazkey-community"のhazkey-community-server) でインストールする
+# SwiftPM productは、"hazkey-server"の名前を維持し、インストールされるファイルだけをリネームする
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/swift-build/${SWIFT_BUILD_TYPE}/hazkey-server
         DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/hazkey-community
         RENAME hazkey-community-server)
 
-# configure and install hazkey-community-server wrapper script
+# hazkey-community-serverのラッパースクリプトを設定してインストールする
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/hazkey-server.sh.in
     ${CMAKE_CURRENT_BINARY_DIR}/hazkey-community-server
@@ -137,31 +136,29 @@ configure_file(
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/hazkey-community-server
         DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
 
-# install the manual data migration script (upstream hazkey -> hazkey-community)
+# 手動データ移行スクリプトをインストールする
 install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/hazkey-community-migrate.sh
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 
-# install llama libraries
+# llama.cppライブラリをインストールする
 if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
-    # The llama.cpp build sets SOVERSION on these libraries, so each *.so
-    # name in HAZKEY_SERVER_LIBLLAMA_BINDIR is a symlink chain (e.g.
-    # libllama.so -> libllama.so.0 -> libllama.so.0.0.7771). install(FILES)
-    # has no symlink-chain option, so it only copies the top-level symlink
-    # itself; the installed symlink then dangles (its .so.N target is never
-    # installed), and the installed hazkey-server fails to start with
-    # "error while loading shared libraries: libllama.so.0: cannot open
-    # shared object file". file(COPY ... FOLLOW_SYMLINK_CHAIN), run at
-    # install time via install(CODE ...), installs the full chain (every
-    # intermediate symlink plus the final real file) and is a no-op for any
-    # of these paths that is already a plain file rather than a symlink.
-    # NOTE: install(CODE ...) runs raw CMake script at install time, so
-    # $ENV{DESTDIR} must be referenced as \$ENV{DESTDIR} (escaped) to expand
-    # at install time, not configure time. Without the DESTDIR prefix,
-    # file(COPY ... DESTINATION "/usr/...") writes to the build host's /usr
-    # instead of the staging tree, and the staged package silently misses
-    # the three main libraries (leap16 RPM self-dependency failure:
-    # 'libggml-base.so.0()(64bit)' unmet). install(DIRECTORY ...) below is
-    # DESTDIR-aware automatically and needs no such handling.
+    # llama.cppライブラリのビルドは、これらのライブラリにSOVERSIONを設定するため、
+    # HAZKEY_SERVER_LIBLLAMA_BINDIR内の各*.soファイル名はシンボリックリンクの連鎖になる
+    # (例: libllama.so -> libllama.so.0 -> libllama.so.0.0.7771)
+    #
+    # install(FILES)には連鎖をたどるオプションがないため、最上位のシンボリックリンクだけをコピーする
+    # 結果として、インストールしたリンクは宙に浮き (.so.Nの対象がインストールされない)、
+    # hazkey-serverは、"error while loading shared libraries: libllama.so.0: cannot open shared object file"で起動に失敗する
+    # インストール時に、"install(CODE ...)"経由で実行する"file(COPY ... FOLLOW_SYMLINK_CHAIN)"は、連鎖全体 (全ての中間リンクと最終的な実ファイル) をインストールする
+    #
+    # また、これらのパスがリンクではなく通常ファイルである場合は何もしない
+    #
+    # 注記:
+    # install(CODE ...) は、インストール時に生のCMakeスクリプトを実行するため、$ENV{DESTDIR} は設定時ではなくインストール時に展開されるよう、
+    # \$ENV{DESTDIR} (エスケープ付き) として参照する必要がある
+    # DESTDIR接頭辞が無いと、file(COPY ... DESTINATION "/usr/...") はステージングツリーではなく、ビルドホストの/usrへ書き込む
+    # その結果、ステージング済みパッケージには主要な3ライブラリが含まれずに欠落する (leap16 RPM の自己依存関係エラー: 'libggml-base.so.0()(64bit)' unmet)
+    # 下記の install(DIRECTORY ...) は、自動的にDESTDIRを認識するため、この処理は不要である
     install(CODE "
         foreach(_llama_lib libggml-base.so libggml.so libllama.so)
             if(NOT EXISTS \"${HAZKEY_SERVER_LIBLLAMA_BINDIR}/\${_llama_lib}\")
@@ -188,12 +185,11 @@ if(HAZKEY_SERVER_INSTALL_LLAMA_LIBS)
     )
 endif()
 
-# install icons
-# Community edition uses its own icon theme name (hazkey-community) instead of
-# upstream's "hazkey", so stale icon caches and an upstream package never
-# shadow it. Referenced by Icon= in fcitx5-hazkey/src/hazkey-im.conf.in,
-# fcitx5-hazkey/src/hazkey-addon.conf.in.in, hazkey-settings/hazkey-settings.desktop
-# and HAZKEY_ENGINE_ICON in ibus-hazkey/src/CMakeLists.txt.
+# アイコンをインストールする
+# Hazkey Communityは、上流版とは異なり、独自のアイコンテーマ名 (hazkey-community) を使用する
+# これにより、古いアイコンキャッシュや上流パッケージがアイコンを上書きすることを防ぐ
+# fcitx5-hazkey/src/hazkey-im.conf.in、fcitx5-hazkey/src/hazkey-addon.conf.in.in、hazkey-settings/hazkey-settings.desktopの"Icon="、
+# "ibus-hazkey/src/CMakeLists.txt"の"HAZKEY_ENGINE_ICON"から参照される
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/hazkey-community.svg
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/scalable/apps)
 foreach(_icon_size 512 256 48 32 24)
@@ -202,7 +198,7 @@ foreach(_icon_size 512 256 48 32 24)
             DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps)
 endforeach()
 
-# install dictionary
+# 辞書をインストールする
 if(HAZKEY_SERVER_INSTALL_DICTIONARY)
 
     set(_OLD_INSTALL_MESSAGE ${CMAKE_INSTALL_MESSAGE})
@@ -216,11 +212,11 @@ if(HAZKEY_SERVER_INSTALL_DICTIONARY)
     set(CMAKE_INSTALL_MESSAGE ${_OLD_INSTALL_MESSAGE})
 endif()
 
-#install emoji dictionary
+# 絵文字辞書をインストールする
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/azooKey_emoji_dictionary_storage/EmojiDictionary/emoji_all_E17.0.txt
         DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community)
 
-# install address dictionary (supplemental LOUDS, community extension)
+# 住所辞書をインストールする（補助LOUDS、コミュニティ拡張）
 set(HAZKEY_ADDRESS_DICTIONARY_DIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-address-dictionary/AddressDictionary)
 if(EXISTS ${HAZKEY_ADDRESS_DICTIONARY_DIR}/louds/charID.chid)
@@ -233,7 +229,7 @@ else()
         "Run: git submodule update --init hazkey-address-dictionary")
 endif()
 
-# install engineering terms dictionary (supplemental LOUDS, community extension)
+# 工学用語辞書をインストールする（補助LOUDS、コミュニティ拡張）
 set(HAZKEY_ENGINEERING_DICTIONARY_DIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-engineering-dictionary/EngineeringDictionary)
 if(EXISTS ${HAZKEY_ENGINEERING_DICTIONARY_DIR}/louds/charID.chid)

@@ -6,7 +6,7 @@ import XCTest
 final class IntegrationTests: BaseHazkeyServerTestCase {
 
   func testCompleteInputWorkflow() throws {
-    // 1. Set custom configuration
+    // 1. カスタム設定を適用する
     let configQuery = QueryDataBuilder.setConfig(
       numberFullwidth: 1,
       symbolFullwidth: 1
@@ -14,12 +14,12 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
     let configResponse = try sendQuery(configQuery)
     XCTAssertEqual(configResponse.status, .success)
 
-    // 2. Create composing text instance
+    // 2. 組成テキストのインスタンスを作成する
     let instanceQuery = QueryDataBuilder.createComposingTextInstance()
     let instanceResponse = try sendQuery(instanceQuery)
     XCTAssertEqual(instanceResponse.status, .success)
 
-    // 3. Input multiple characters
+    // 3. 複数文字を入力する
     let inputChars = ["こ", "ん", "に", "ち", "は"]
     for char in inputChars {
       let inputQuery = QueryDataBuilder.inputText(char)
@@ -27,13 +27,13 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
       XCTAssertEqual(inputResponse.status, .success, "Input of '\(char)' should succeed")
     }
 
-    // 4. Get composing string
+    // 4. 組成文字列を取得する
     let getStringQuery = QueryDataBuilder.getComposingString(charType: .hiragana)
     let stringResponse = try sendQuery(getStringQuery)
     XCTAssertEqual(stringResponse.status, .success)
     XCTAssertEqual(stringResponse.result, "こんにちは", "Should compose complete hiragana string")
 
-    // 5. Get candidates
+    // 5. 候補を取得する
     let candidatesQuery = QueryDataBuilder.getCandidates()
     let candidatesResponse = try sendQuery(candidatesQuery)
     XCTAssertEqual(candidatesResponse.status, .success)
@@ -41,7 +41,7 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
     if case .candidates(let candidatesResult) = candidatesResponse.props {
       XCTAssertFalse(candidatesResult.candidates.isEmpty, "Should return candidates for 'こんにちは'")
 
-      // Check if we get "こんにちは" or "今日は" as candidates
+      // "こんにちは"または"今日は"が候補に含まれることを確認する
       let candidateTexts = candidatesResult.candidates.map { $0.text }
       XCTAssertTrue(
         candidateTexts.contains("こんにちは") || candidateTexts.contains("今日は"),
@@ -52,7 +52,7 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
   }
 
   func testNumberAndSymbolConversion() throws {
-    // Configure for fullwidth conversion
+    // 全角変換を設定する
     let configQuery = QueryDataBuilder.setConfig(
       numberFullwidth: 1,
       symbolFullwidth: 1
@@ -64,7 +64,7 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
     let instanceResponse = try sendQuery(instanceQuery)
     XCTAssertEqual(instanceResponse.status, .success)
 
-    // Test number conversion
+    // 数字変換を検証する
     let numberInputQuery = QueryDataBuilder.inputText("5")
     let numberResponse = try sendQuery(numberInputQuery)
     XCTAssertEqual(numberResponse.status, .success)
@@ -76,7 +76,7 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
   }
 
   func testMultipleSessionsSequentially() throws {
-    // Session 1
+    // セッション1
     let session1InstanceQuery = QueryDataBuilder.createComposingTextInstance()
     let session1Response = try sendQuery(session1InstanceQuery)
     XCTAssertEqual(session1Response.status, .success)
@@ -85,12 +85,12 @@ final class IntegrationTests: BaseHazkeyServerTestCase {
     let session1InputResponse = try sendQuery(session1InputQuery)
     XCTAssertEqual(session1InputResponse.status, .success)
 
-    // Session 2 (new instance)
+    // セッション2 (新しいインスタンス)
     let session2InstanceQuery = QueryDataBuilder.createComposingTextInstance()
     let session2Response = try sendQuery(session2InstanceQuery)
     XCTAssertEqual(session2Response.status, .success)
 
-    // Session 2 should have clean state
+    // セッション2は初期状態であるべき
     let session2GetQuery = QueryDataBuilder.getComposingString()
     let session2StringResponse = try sendQuery(session2GetQuery)
     XCTAssertEqual(session2StringResponse.status, .success)

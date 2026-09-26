@@ -5,7 +5,7 @@ import XCTest
 
 final class RelativeDateProviderTests: XCTestCase {
 
-    // MARK: - Trigger detection (Day)
+    // MARK: - トリガー検出（日）
 
     func testDetectTriggerForAllDayWords() {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "きょう")?.kanji, "今日")
@@ -17,7 +17,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "しあさって")?.kanji, "明々後日")
     }
 
-    // MARK: - Trigger detection (Month)
+    // MARK: - トリガー検出（月）
 
     func testDetectTriggerForAllMonthWords() {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "こんげつ")?.kanji, "今月")
@@ -25,7 +25,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "せんげつ")?.kanji, "先月")
     }
 
-    // MARK: - Trigger detection (Month-end) [新規]
+    // MARK: - トリガー検出（月末）[新規]
 
     func testDetectTriggerForAllMonthEndWords() {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "げつまつ")?.kanji, "月末")
@@ -34,7 +34,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "せんげつまつ")?.kanji, "先月末")
     }
 
-    // MARK: - Trigger detection (Year)
+    // MARK: - トリガー検出（年）
 
     func testDetectTriggerForAllYearWords() {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "ことし")?.kanji, "今年")
@@ -44,7 +44,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "おととし")?.kanji, "一昨年")
     }
 
-    // MARK: - Trigger detection (Year absolute) [新規]
+    // MARK: - トリガー検出（年の絶対日付）[新規]
 
     func testDetectTriggerForAllYearAbsoluteWords() {
         XCTAssertEqual(RelativeDateProvider.detectTrigger(composingHiragana: "ねんまつ")?.kanji, "年末")
@@ -78,7 +78,7 @@ final class RelativeDateProviderTests: XCTestCase {
         }
     }
 
-    // MARK: - DateTarget offset values
+    // MARK: - DateTarget のオフセット値
 
     func testDayTargetOffsets() {
         expectTarget(.day(offset:  0), for: "きょう")
@@ -117,7 +117,7 @@ final class RelativeDateProviderTests: XCTestCase {
         expectTarget(.yearAbsolute(month:  1, day:  1), for: "がんじつ")
     }
 
-    // MARK: - Date generation: day granularity
+    // MARK: - 日単位の日付生成
 
     func testDayGranularityFormats() {
         // 2026-08-11 は火曜日
@@ -125,7 +125,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 6 patterns: 4 base + 2 曜日付き (西暦, 和暦)
+        // 6形式: 基本4種 + 曜日付き2種（西暦、和暦）
         XCTAssertEqual(result.count, 6)
         XCTAssertEqual(result[0], "2026年8月11日")
         XCTAssertEqual(result[1], "2026-08-11")
@@ -144,7 +144,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[1], "2026-08-10")
         XCTAssertEqual(result[2], "2026/08/10")
         XCTAssertEqual(result[3], "令和8年8月10日")
-        XCTAssertEqual(result[4], "2026年8月10日(月)")  // 8/10 = Monday
+        XCTAssertEqual(result[4], "2026年8月10日(月)")  // 8/10は月曜日
         XCTAssertEqual(result[5], "令和8年8月10日(月)")
     }
 
@@ -154,7 +154,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
         XCTAssertEqual(result[0], "2026年8月12日")
-        XCTAssertEqual(result[4], "2026年8月12日(水)")  // 8/12 = Wednesday
+        XCTAssertEqual(result[4], "2026年8月12日(水)")  // 8/12は水曜日
     }
 
     func testDayGranularityShiasatteThreeDaysAhead() {
@@ -164,11 +164,11 @@ final class RelativeDateProviderTests: XCTestCase {
 
         XCTAssertEqual(result[0], "2026年8月14日")
         XCTAssertEqual(result[1], "2026-08-14")
-        XCTAssertEqual(result[4], "2026年8月14日(金)")  // 8/14 = Friday
+        XCTAssertEqual(result[4], "2026年8月14日(金)")  // 8/14は金曜日
     }
 
     func testDayGranularityCrossesMonthBoundary() {
-        // 2026-08-31 + 1 day = 2026-09-01 (月またぎ)
+        // 2026-08-31 + 1日 = 2026-09-01（月またぎ）
         let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "あした")!
         let now = Self.makeDate(year: 2026, month: 8, day: 31)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
@@ -176,7 +176,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[0], "2026年9月1日")
         XCTAssertEqual(result[1], "2026-09-01")
         XCTAssertEqual(result[3], "令和8年9月1日")
-        XCTAssertEqual(result[4], "2026年9月1日(火)")  // 9/1 = Tuesday
+        XCTAssertEqual(result[4], "2026年9月1日(火)")  // 9/1は火曜日
     }
 
     func testDayGranularityOtotoiTwoDaysBack() {
@@ -184,19 +184,19 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 1)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 2026-08-01 - 2 days = 2026-07-30
+        // 2026-08-01 - 2日 = 2026-07-30
         XCTAssertEqual(result[0], "2026年7月30日")
         XCTAssertEqual(result[1], "2026-07-30")
     }
 
-    // MARK: - Date generation: month granularity (曜日なし)
+    // MARK: - 月単位の日付生成（曜日なし）
 
     func testMonthGranularityFormatsForCurrentMonth() {
         let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "こんげつ")!
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 4 patterns (曜日なし)
+        // 4形式（曜日なし）
         XCTAssertEqual(result.count, 4)
         XCTAssertEqual(result[0], "2026年8月")
         XCTAssertEqual(result[1], "2026-08")
@@ -214,7 +214,7 @@ final class RelativeDateProviderTests: XCTestCase {
     }
 
     func testMonthGranularityCrossesYearBoundary() {
-        // 2026-12 + 1 month = 2027-01
+        // 2026-12 + 1か月 = 2027-01
         let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "らいげつ")!
         let now = Self.makeDate(year: 2026, month: 12, day: 15)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
@@ -224,7 +224,7 @@ final class RelativeDateProviderTests: XCTestCase {
     }
 
     func testMonthGranularityAvoidsMonthOverflowFromEndOfMonth() {
-        // 2026-01-31 + 1 month: 月末オーバーフロー回避のため day=1 で計算
+        // 2026-01-31 + 1か月: 月末オーバーフロー回避のためday=1で計算
         let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "らいげつ")!
         let now = Self.makeDate(year: 2026, month: 1, day: 31)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
@@ -232,7 +232,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[0], "2026年2月")
     }
 
-    // MARK: - Date generation: monthEnd granularity [新規]
+    // MARK: - monthEnd単位の日付生成 [新規]
 
     func testMonthEndGranularityFormatsForCurrentMonthEnd() {
         // 2026年8月 → 8月31日 (月曜日)
@@ -240,7 +240,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 6 patterns (day と同じ)
+        // 6形式（dayと同じ）
         XCTAssertEqual(result.count, 6)
         XCTAssertEqual(result[0], "2026年8月31日")
         XCTAssertEqual(result[1], "2026-08-31")
@@ -298,14 +298,14 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[0], "2026年12月31日")
     }
 
-    // MARK: - Date generation: year granularity (曜日なし)
+    // MARK: - 年単位の日付生成（曜日なし）
 
     func testYearGranularityFormatsForCurrentYear() {
         let trigger = RelativeDateProvider.detectTrigger(composingHiragana: "ことし")!
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 2 patterns (曜日なし)
+        // 2形式（曜日なし）
         XCTAssertEqual(result.count, 2)
         XCTAssertEqual(result[0], "2026年")
         XCTAssertEqual(result[1], "令和8年")
@@ -331,7 +331,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[1], "令和6年")
     }
 
-    // MARK: - Date generation: yearAbsolute granularity [新規]
+    // MARK: - yearAbsolute単位の日付生成 [新規]
 
     func testYearAbsoluteNenmatsu() {
         // 当年の 12/31 (年末)
@@ -344,7 +344,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[1], "2026-12-31")
         XCTAssertEqual(result[2], "2026/12/31")
         XCTAssertEqual(result[3], "令和8年12月31日")
-        XCTAssertEqual(result[4], "2026年12月31日(木)")  // 12/31 = Thursday
+        XCTAssertEqual(result[4], "2026年12月31日(木)")  // 12/31は木曜日
         XCTAssertEqual(result[5], "令和8年12月31日(木)")
     }
 
@@ -367,7 +367,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[0], "2026年1月1日")
         XCTAssertEqual(result[1], "2026-01-01")
         XCTAssertEqual(result[3], "令和8年1月1日")
-        XCTAssertEqual(result[4], "2026年1月1日(木)")  // 1/1 = Thursday
+        XCTAssertEqual(result[4], "2026年1月1日(木)")  // 1/1は木曜日
     }
 
     func testYearAbsoluteGanjitsuSameAsNenshi() {
@@ -380,7 +380,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(r1, r2)
     }
 
-    // MARK: - 曜日 calculation correctness
+    // MARK: - 曜日計算の正しさ
 
     func testWeekdayCalculationKnownDates() {
         // 既知の曜日で検証
@@ -394,7 +394,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(Self.weekdayString(year: 2026, month: 8, day: 11), "火")
     }
 
-    // MARK: - Era boundary (元号切り替え)
+    // MARK: - 元号境界（元号切り替え）
 
     func testEraBoundaryHeiseiLastDayToReiwaFirstDay() {
         // 2019-04-30 = 平成31年4月30日 (火曜日、平成最終日)
@@ -425,7 +425,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[4], "2019年5月1日(水)")
     }
 
-    // MARK: - Output format sanity
+    // MARK: - 出力形式の健全性
 
     func testDayOutputOrderMatchesSpec() {
         // 仕様: yyyy年M月d日 / yyyy-MM-dd / yyyy/MM/dd / Gy年M月d日 /
@@ -468,7 +468,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertTrue(result[1].hasPrefix("令和") && result[1].hasSuffix("年"))
     }
 
-    // MARK: - Trigger table completeness
+    // MARK: - トリガー表の完全性
 
     func testAllTriggersHaveNonEmptyKanjiAndReading() {
         for trigger in RelativeDateProvider.triggers {
@@ -502,8 +502,8 @@ final class RelativeDateProviderTests: XCTestCase {
 
     func testTriggerCount() {
         // 期待されるトリガー数:
-        // 7 day (既存) + おとつい + さきおととい + さきおとつい = 10 day
-        // + 3 month + 4 monthEnd + 5 year + 4 yearAbsolute = 26
+        // 既存のday 7件 + おとつい + さきおととい + さきおとつい = day 10件
+        // + month 3件 + monthEnd 4件 + year 5件 + yearAbsolute 4件 = 26件
         XCTAssertEqual(RelativeDateProvider.triggers.count, 26)
     }
 
@@ -552,7 +552,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 2026-08-11 - 2 days = 2026-08-09 (日曜日)
+        // 2026-08-11 - 2日 = 2026-08-09（日曜日）
         XCTAssertEqual(result[0], "2026年8月9日")
         XCTAssertEqual(result[1], "2026-08-09")
         XCTAssertEqual(result[2], "2026/08/09")
@@ -591,7 +591,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        // 2026-08-11 - 3日 = 2026-08-08（土曜日）
         XCTAssertEqual(result.count, 6)
         XCTAssertEqual(result[0], "2026年8月8日")
         XCTAssertEqual(result[1], "2026-08-08")
@@ -658,7 +658,7 @@ final class RelativeDateProviderTests: XCTestCase {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
         let result = RelativeDateProvider.generateDateStrings(for: trigger, now: now)
 
-        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        // 2026-08-11 - 3日 = 2026-08-08（土曜日）
         XCTAssertEqual(result.count, 6)
         XCTAssertEqual(result[0], "2026年8月8日")
         XCTAssertEqual(result[1], "2026-08-08")
@@ -668,12 +668,12 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(result[5], "令和8年8月8日(土)")
     }
 
-    // --- offset -2 エイリアス群の決定論的等価性 ---
+    // --- オフセット-2エイリアス群の決定論的等価性 ---
 
-    /// offset -2 の全エイリアス (おととい / おとつい) が同一の6日付文字列を生成する。
+    /// オフセット-2の全エイリアス（おととい / おとつい）が同一の6日付文字列を生成する。
     func testAllOffsetMinus2AliasesYieldIdenticalSixDateStrings() {
         let now = Self.makeDate(year: 2026, month: 8, day: 3)!
-        // 2026-08-03 - 2 days = 2026-08-01 (土曜日)
+        // 2026-08-03 - 2日 = 2026-08-01（土曜日）
         let readings = ["おととい", "おとつい"]
         var allResults: [[String]] = []
         for reading in readings {
@@ -699,10 +699,10 @@ final class RelativeDateProviderTests: XCTestCase {
         }
     }
 
-    /// offset -3 の全エイリアス (さきおととい / さきおとつい) が同一の6日付文字列を生成する。
+    /// オフセット-3の全エイリアス（さきおととい / さきおとつい）が同一の6日付文字列を生成する。
     func testAllOffsetMinus3AliasesYieldIdenticalSixDateStrings() {
         let now = Self.makeDate(year: 2026, month: 8, day: 11)!
-        // 2026-08-11 - 3 days = 2026-08-08 (土曜日)
+        // 2026-08-11 - 3日 = 2026-08-08（土曜日）
         let readings = ["さきおととい", "さきおとつい"]
         var allResults: [[String]] = []
         for reading in readings {
@@ -728,7 +728,7 @@ final class RelativeDateProviderTests: XCTestCase {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - ヘルパー
 
     private func expectTarget(_ expected: RelativeDateProvider.DateTarget, for reading: String,
                               file: StaticString = #filePath, line: UInt = #line) {
@@ -737,7 +737,7 @@ final class RelativeDateProviderTests: XCTestCase {
         XCTAssertEqual(trigger?.target, expected, "Wrong target for \(reading)", file: file, line: line)
     }
 
-    /// 決定論的テストのため、Tokyo timezoneで指定年月日の Date を生成する。
+    /// 決定論的テストのため、Tokyoタイムゾーンで指定年月日のDateを生成する。
     private static func makeDate(year: Int, month: Int, day: Int) -> Date? {
         var comps = DateComponents()
         comps.year = year
@@ -749,7 +749,7 @@ final class RelativeDateProviderTests: XCTestCase {
         return calendar.date(from: comps)
     }
 
-    /// テスト用: 指定日の曜日漢字を取得 (実装の private 関数と同じロジック)。
+    /// テスト用: 指定日の曜日漢字を取得する（実装のprivate関数と同じロジック）。
     private static func weekdayString(year: Int, month: Int, day: Int) -> String {
         guard let date = makeDate(year: year, month: month, day: day) else { return "" }
         let kanji = ["日", "月", "火", "水", "木", "金", "土"]

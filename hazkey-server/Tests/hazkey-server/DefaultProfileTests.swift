@@ -4,13 +4,13 @@ import XCTest
 
 final class DefaultProfileTests: XCTestCase {
     func testDefaultProfileResponseContainsFreshFactoryProfile() throws {
-        // Given: the server's default-profile response factory.
+        // 前提: サーバの既定プロファイル応答ファクトリ
         let response = HazkeyServerConfig.getDefaultProfile()
 
-        // When: the factory builds the reset-preview response.
+        // 実行: ファクトリがリセットプレビュー用の応答を生成する
         let profile = try XCTUnwrap(response.currentConfig.profiles.first)
 
-        // Then: it returns the unpersisted server defaults in CurrentConfig.
+        // 期待: 未永続化のサーバ既定値をCurrentConfigで返す
         XCTAssertEqual(response.status, .success)
         XCTAssertTrue(response.errorMessage.isEmpty)
         XCTAssertEqual(response.currentConfig.profiles.count, 1)
@@ -23,25 +23,25 @@ final class DefaultProfileTests: XCTestCase {
     }
 
     func testDefaultProfileDisablesAddressDictionary() throws {
-        // Given: the server's default-profile response factory.
+        // 前提: サーバの既定プロファイル応答ファクトリ
         let response = HazkeyServerConfig.getDefaultProfile()
 
-        // When: the factory builds the reset-preview response.
+        // 実行: ファクトリがリセットプレビュー用の応答を生成する
         let profile = try XCTUnwrap(response.currentConfig.profiles.first)
 
-        // Then: the address dictionary is explicitly disabled by default.
+        // 期待: 住所辞書は既定で明示的に無効化されている
         XCTAssertTrue(profile.hasUseAddressDictionary)
         XCTAssertEqual(profile.useAddressDictionary, false)
     }
 
     func testDefaultProfileDisablesEngineeringDictionary() throws {
-        // Given: the server's default-profile response factory.
+        // 前提: サーバの既定プロファイル応答ファクトリ
         let response = HazkeyServerConfig.getDefaultProfile()
 
-        // When: the factory builds the reset-preview response.
+        // 実行: ファクトリがリセットプレビュー用の応答を生成する
         let profile = try XCTUnwrap(response.currentConfig.profiles.first)
 
-        // Then: the engineering dictionary is explicitly disabled by default.
+        // 期待: 工学用語辞書は既定で明示的に無効化されている
         XCTAssertTrue(profile.hasUseEngineeringDictionary)
         XCTAssertEqual(profile.useEngineeringDictionary, false)
     }

@@ -4,14 +4,14 @@ import XCTest
 
 @testable import hazkey_server
 
-// MARK: - Test Configuration
+// MARK: - テスト設定
 struct TestConfig {
   static let defaultTimeout: TimeInterval = 5.0
   static let socketCheckInterval: useconds_t = 50_000  // 50ms
   static let maxRetries = 3
 }
 
-// MARK: - Test Data Builders
+// MARK: - テストデータビルダー
 struct QueryDataBuilder {
   static func setConfig(
     commaStyle: Int32 = 0,
@@ -80,7 +80,7 @@ struct QueryDataBuilder {
   }
 }
 
-// MARK: - Server Client
+// MARK: - サーバクライアント
 class HazkeyServerClient {
   private var socket: Int32?
   private let socketPath: String
@@ -92,7 +92,7 @@ class HazkeyServerClient {
   }
 
   func connect() throws {
-    guard socket == nil else { return }  // Already connected
+    guard socket == nil else { return }  // 接続済み
 
     let clientSocket = SwiftGlibc.socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
     guard clientSocket != -1 else {
@@ -150,19 +150,19 @@ class HazkeyServerClient {
   }
 
   private func sendRequest(_ reqData: Data, socket: Int32) throws -> Data {
-    // Send request size
+    // リクエストサイズを送信する
     var size = Int32(reqData.count).bigEndian
     let sizeData = Data(bytes: &size, count: MemoryLayout<Int32>.size)
 
     try write(data: sizeData, to: socket)
     try write(data: reqData, to: socket)
 
-    // Read response size
+    // レスポンスサイズを読み取る
     let responseSizeData = try read(bytes: 4, from: socket)
     let responseSize = Int(
       Int32(bigEndian: responseSizeData.withUnsafeBytes { $0.load(as: Int32.self) }))
 
-    // Read response data
+    // レスポンスデータを読み取る
     return try read(bytes: responseSize, from: socket)
   }
 
@@ -198,7 +198,7 @@ class HazkeyServerClient {
   }
 }
 
-// MARK: - Test Errors
+// MARK: - テストエラー
 enum TestError: Error, LocalizedError {
   case socketCreationFailed
   case pathDataNotFound
@@ -234,7 +234,7 @@ enum TestError: Error, LocalizedError {
   }
 }
 
-// MARK: - Test Utilities
+// MARK: - テストユーティリティ
 class TestUtilities {
   static func waitForServer(timeout: TimeInterval = TestConfig.defaultTimeout) -> Bool {
     let runtimeDir = ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"] ?? "/tmp"
@@ -262,7 +262,7 @@ class TestUtilities {
       } catch {
         lastError = error
         if attempt < maxRetries {
-          usleep(100_000)  // Wait 100ms before retry
+          usleep(100_000)  // 再試行前に100 ms待つ
         }
       }
     }

@@ -24,9 +24,9 @@ final class KanaNumberIntegrationTests: XCTestCase {
     }
 
     func testApprovedGlyphsAppearAtMostOnce() throws {
-        // Given: a value whose candidate list also contains dictionary variants
-        // When: converting the Japanese number reading
-        // Then: no approved glyph is duplicated by the synthetic insertion
+        // 前提: 候補リストに辞書由来の候補も含まれる値
+        // 実行: 日本語の数詞読みを変換する
+        // 期待: 合成挿入によって承認済みの字形が重複しない
         let texts = try candidateTexts(forReading: "いち")
         for glyph in KanaNumberProvider.generateCandidates(forDecimalDigits: "1") {
             XCTAssertLessThanOrEqual(texts.filter { $0 == glyph }.count, 1)

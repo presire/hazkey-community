@@ -46,19 +46,19 @@ final class TextInputTests: BaseHazkeyServerTestCase {
   func testEmptyStringInput() throws {
     let inputQuery = QueryDataBuilder.inputText("")
     let inputResponse = try sendQuery(inputQuery)
-    // This should fail because empty string doesn't have a first unicode character
+    // 空文字列には先頭のUnicode文字がないため失敗するはず
     XCTAssertEqual(inputResponse.status, .failed, "Empty string input should fail")
     XCTAssertFalse(
       inputResponse.errorMessage.isEmpty, "Should provide error message for empty input")
   }
 
   func testNumericInputWithFullwidthConfiguration() throws {
-    // Set configuration for fullwidth numbers
+    // 全角数字の設定を行う
     let configQuery = QueryDataBuilder.setConfig(numberFullwidth: 1)
     let configResponse = try sendQuery(configQuery)
     XCTAssertEqual(configResponse.status, .success)
 
-    // Create new instance to apply config
+    // 設定を適用するため、新しいインスタンスを作成する
     let instanceQuery = QueryDataBuilder.createComposingTextInstance()
     let instanceResponse = try sendQuery(instanceQuery)
     XCTAssertEqual(instanceResponse.status, .success)
@@ -78,7 +78,7 @@ final class TextInputTests: BaseHazkeyServerTestCase {
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success)
 
-    // Test different character type outputs
+    // 文字種別ごとの出力を検証する
     let testCases: [(Hazkey_Commands_QueryData.GetComposingStringProps.CharType, String)] = [
       (.hiragana, "あ"),
       (.katakanaFull, "ア"),

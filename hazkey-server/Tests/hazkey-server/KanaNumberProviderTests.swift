@@ -4,9 +4,9 @@ import XCTest
 
 final class KanaNumberProviderTests: XCTestCase {
     func testZeroReadingsRecognizesAllApprovedTriggers() {
-        // Given: the approved zero-trigger readings
-        // When: inspecting the provider's trigger set
-        // Then: all and only the approved aliases are present
+        // 前提: 承認済みのゼロ起動読み
+        // 実行: プロバイダの起動読み集合を調べる
+        // 期待: 承認済みの別名だけがすべて含まれる
         XCTAssertEqual(KanaNumberProvider.zeroReadings, ["れい", "ぜろ", "ゼロ"])
     }
 
@@ -23,18 +23,18 @@ final class KanaNumberProviderTests: XCTestCase {
     }
 
     func testDecimalTenProducesAllBoundedFamilies() {
-        // Given: decimal 10, representable in every approved family
-        // When: generating candidates
-        // Then: all families appear in the prescribed order
+        // 前提: 承認済みのすべての文字種で表せる10進数の10
+        // 実行: 候補を生成する
+        // 期待: すべての文字種が規定の順序で現れる
         XCTAssertEqual(
             KanaNumberProvider.generateCandidates(forDecimalDigits: "10"),
             ["₁₀", "¹⁰", "⑩", "Ⅹ", "⑽", "⒑", "❿", "ⅹ"])
     }
 
     func testDecimalTwentyOneProducesOnlyDigitFamilies() {
-        // Given: decimal 21, beyond every bounded-family range
-        // When: generating candidates
-        // Then: only multi-digit subscript and superscript remain
+        // 前提: すべての範囲限定の文字種の上限を超える10進数の21
+        // 実行: 候補を生成する
+        // 期待: 複数字の下付き文字と上付き文字だけが残る
         XCTAssertEqual(
             KanaNumberProvider.generateCandidates(forDecimalDigits: "21"),
             ["₂₁", "²¹"])

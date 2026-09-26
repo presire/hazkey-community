@@ -8,7 +8,7 @@ import XCTest
 /// これにより、GPUハードウェアやドライバ状態に依存せず、終了・シグナル・タイムアウトの分類ロジックを確認できる
 final class BackendProbeTests: XCTestCase {
 
-    // MARK: - Vulkan環境変数の上書き判定
+    // MARK: Vulkan環境変数の上書き判定
 
     func testVulkanEnvOverridePresentTrueForEachKnownVariable() {
         for variable in vulkanOverrideEnvironmentVariables {
@@ -23,7 +23,7 @@ final class BackendProbeTests: XCTestCase {
         XCTAssertFalse(vulkanEnvOverridePresent(in: ["PATH": "/usr/bin", "HOME": "/home/x"]))
     }
 
-    // MARK: - バックエンドプローブの安全な実行
+    // MARK: バックエンドプローブの安全な実行
 
     func testProbeSuccessOnCleanExit() {
         let outcome = probeVulkanBackendsSafely(
@@ -56,7 +56,7 @@ final class BackendProbeTests: XCTestCase {
         }
     }
 
-    // MARK: - 実行中バイナリのパス取得
+    // MARK: 実行中バイナリのパス取得
 
     func testResolveSelfExecutablePathReturnsNonEmptyPath() {
         let path = resolveSelfExecutablePath()
@@ -64,7 +64,7 @@ final class BackendProbeTests: XCTestCase {
         XCTAssertFalse(path?.isEmpty ?? true)
     }
 
-    // MARK: - GPUフォールバックの有効判定
+    // MARK: GPUフォールバックの有効判定
 
     func testGPUFallbackActiveForUnsafeOutcomes() {
         XCTAssertTrue(zenzaiGPUFallbackActive(.crashed(signal: SIGILL)))

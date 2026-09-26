@@ -1,14 +1,13 @@
 import Foundation
 
-/// Resolves the `hazkey-community-server` executable that tests spawn.
+/// テストが起動する"hazkey-community-server"実行ファイルを解決する
 ///
-/// Release build products are preferred over SwiftPM debug builds, matching the historical
-/// CMake layout. Swift 6.4 uses Swift Build, whose products live under
-/// `out/Products/<Config>-<os>-<arch>/` with a `<config>` convenience symlink, so both the
-/// symlinked and the explicit product paths are probed.
+/// 従来のCMakeレイアウトに合わせ、SwiftPMのデバッグビルドよりリリースビルド成果物を優先する
+/// Swift 6.4はSwift Buildを使用し、その成果物は"out/Products/<Config>-<os>-<arch>/"配下に置かれ、"<config>"の簡易シンボリックリンクも作られる
+/// そのため、シンボリックリンク経由と明示的な成果物パスの両方を探索する
 enum TestServerBinary {
-    /// Explicit `HAZKEY_SERVER_TEST_BIN` always wins, even when it does not exist (callers may
-    /// intentionally exercise the failure path).
+    /// 明示的な"HAZKEY_SERVER_TEST_BIN"は、パスが存在しない場合でも常に優先する
+    /// 呼び出し元が意図的に失敗経路を検証する場合があるため
     static func resolve(packageRoot: URL) -> URL? {
         if let override = ProcessInfo.processInfo.environment["HAZKEY_SERVER_TEST_BIN"],
             !override.isEmpty
@@ -22,14 +21,16 @@ enum TestServerBinary {
         return nil
     }
 
-    /// Candidate executable paths, release first, then debug. Returned in probe order so callers
-    /// can include them in failure messages.
+    /// 実行ファイルの候補パス
+    /// リリース版、デバッグ版の順に並べる
+    /// 呼び出し元が失敗メッセージに含められるよう、探索順で返す
     static func candidatePaths(packageRoot: URL) -> [String] {
         let repositoryRoot = packageRoot.deletingLastPathComponent()
         let scratch = repositoryRoot
             .appendingPathComponent("build/hazkey-server/swift-build", isDirectory: true)
         var candidates = [
-            // Convenience symlink: present in Swift Build and native SwiftPM.
+            // 簡易シンボリックリンク
+            // Swift Buildと標準のSwiftPMに存在する
             scratch.appendingPathComponent("release/hazkey-server").path
         ]
         for config in ["Release-linux-x86_64", "Release-linux-aarch64"] {

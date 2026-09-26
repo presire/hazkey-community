@@ -4,14 +4,13 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Regression tests for duplicate candidates in the suggestion response.
+/// サジェスト応答内の重複候補に対する回帰テスト
 ///
-/// The suggestion window (suggestionListMode = ShowPredictiveResults) receives
-/// `predictionResults` followed by `mainResults`. Both arrays can contain the
-/// same surface text (e.g. a user dictionary word that the converter also emits
-/// as a prediction of its own best node), and `makeCandidatesResult` used to
-/// concatenate them without cross-deduplication, so the same candidate appeared
-/// twice in the candidate window.
+/// サジェストウィンドウ ("suggestionListMode = ShowPredictiveResults") は、"predictionResults"の後に"mainResults"を受け取る
+/// 両配列には同じ表記が含まれ得る
+/// 例えば、converterが自身の最良ノードの予測としても出力するユーザ辞書語等である
+///
+/// "makeCandidatesResult"は以前、配列間の重複排除をせずに連結していたため、同じ候補が候補ウィンドウに2回表示されていた
 final class CandidateDeduplicationTests: XCTestCase {
     private let environmentVariables = [
         "XDG_DATA_HOME",
@@ -35,7 +34,7 @@ final class CandidateDeduplicationTests: XCTestCase {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
         }
-        // config/hazkey-community/ holds the user dictionary TSV consumed by the server.
+        // "config/hazkey-community/"にはサーバが読むユーザ辞書TSVを置く
         try FileManager.default.createDirectory(
             at: root.appendingPathComponent("config/hazkey-community"), withIntermediateDirectories: true)
 
@@ -68,9 +67,8 @@ final class CandidateDeduplicationTests: XCTestCase {
         }
         temporaryDirectory = root
 
-        // Register 衛宮 (えみや) through the real TSV pipeline. The word is
-        // expected to surface both as a prediction of its own best node and as
-        // a conversion candidate, reproducing the reported duplicate.
+        // 実際のTSVパイプライン経由で衛宮 (えみや) を登録する
+        // この語は自身の最良ノードの予測と変換候補の両方に現れ、報告された重複を再現する
         let tsv = root.appendingPathComponent("config/hazkey-community/user_dictionary.tsv")
         try "えみや\t衛宮\tregression test\tperson\n"
             .write(to: tsv, atomically: true, encoding: .utf8)
@@ -111,7 +109,8 @@ final class CandidateDeduplicationTests: XCTestCase {
         let texts = result.candidates.map(\.text)
         print("DEDUP-TEST suggestion texts:", texts)
 
-        // Core regression: no surface text may appear more than once.
+        // 中核となる回帰確認
+        // いかなる表記も複数回出現してはならない
         let duplicates = Dictionary(grouping: texts, by: { $0 }).mapValues(\.count)
             .filter { $0.value > 1 }
         XCTAssertTrue(
@@ -121,8 +120,8 @@ final class CandidateDeduplicationTests: XCTestCase {
             texts.contains("衛宮"),
             "user dictionary entry missing from suggestion response: \(texts)")
 
-        // The live text must keep pointing at a visible entry carrying the
-        // same text (index == texts.count models the hidden-entry case).
+        // ライブテキストは同じ文字列を持つ可視エントリを指し続けなければならない
+        // "index == texts.count"は、非表示エントリのケースを表す
         let liveIndex = Int(result.liveTextIndex)
         if liveIndex >= 0 && liveIndex < texts.count {
             XCTAssertEqual(texts[liveIndex], result.liveText)

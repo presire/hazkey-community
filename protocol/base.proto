@@ -59,8 +59,8 @@ message ResponseEnvelope {
         hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;
     }
 
-    // Monotonic revision of the persisted configuration, bumped on every
-    // successful SetConfig and carried by every response so frontends can
-    // reload their cached profile as soon as it changes.
+    // 永続化された設定の単調増加リビジョン
+    // SetConfig が成功するたびに更新される
+    // フロントエンドが変更直後にキャッシュしたプロファイルを再読み込みできるよう、全レスポンスに含める
     uint64 config_revision = 103;
 }

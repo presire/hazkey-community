@@ -23,7 +23,7 @@ final class CandidateTests: BaseHazkeyServerTestCase {
   }
 
   func testGetCandidatesWithHiraganaInput() throws {
-    // Input some hiragana
+    // ひらがなを入力する
     let inputQuery = QueryDataBuilder.inputText("あい")
     let inputResponse = try sendQuery(inputQuery)
     XCTAssertEqual(inputResponse.status, .success)
@@ -37,7 +37,7 @@ final class CandidateTests: BaseHazkeyServerTestCase {
       XCTAssertFalse(
         candidatesResult.candidates.isEmpty, "Should return some candidates for hiragana input")
 
-      // Check first candidate structure
+      // 先頭候補の構造を確認する
       if let firstCandidate = candidatesResult.candidates.first {
         XCTAssertFalse(firstCandidate.text.isEmpty, "Candidate text should not be empty")
       }
@@ -75,7 +75,7 @@ final class CandidateTests: BaseHazkeyServerTestCase {
     XCTAssertEqual(candidatesResponse.status, .success, "Predict mode should work")
 
     if case .candidates(let candidatesResult) = candidatesResponse.props {
-      // In predict mode, we might get prediction candidates
+      // 予測モードでは予測候補が返る場合がある
       XCTAssertTrue(candidatesResult.candidates.count >= 0, "Should return candidates array")
     } else {
       XCTFail("Response should contain candidates")

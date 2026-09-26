@@ -4,16 +4,14 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] Drift guard for the generated address dictionary.
+/// 生成された住所辞書のドリフトを防ぐテスト
 ///
-/// `hazkey-address-dictionary` ships both the source TSV and the compiled
-/// LOUDS shards. CI never re-runs the offline screening that produced the TSV;
-/// it only re-runs this compilation and asserts the committed binaries match
-/// byte for byte, so a stale or hand-edited shard cannot reach a release.
+/// "hazkey-address-dictionary"には、元のTSVとコンパイル済みのLOUDS shardの両方が含まれる
+/// CIは、TSVを作ったオフライン選別を再実行せず、このコンパイルだけを再実行して、コミット済みバイナリとのバイト単位の一致を検証する
+/// これにより、古いshardや手編集されたshardがリリースに入るのを防ぐ
 ///
-/// Set `HAZKEY_ADDRESS_DICTIONARY_REGENERATE=1` to rewrite the committed
-/// output instead of asserting against it. That is the supported way to
-/// refresh the asset after the TSV or the system dictionary changes.
+/// "HAZKEY_ADDRESS_DICTIONARY_REGENERATE=1"を設定すると、コミット済み出力との比較ではなく、それを再生成して書き換える
+/// TSVまたはシステム辞書の変更後にアセットを更新する正式な方法である
 final class AddressDictionaryBuildTests: XCTestCase {
     private static var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
@@ -41,11 +39,13 @@ final class AddressDictionaryBuildTests: XCTestCase {
             isDirectory: false)
     }
 
-    /// 地名一般。`CIDData.地名一般` と同値で、新規CIDは追加しない
+    /// 地名一般
+    /// "CIDData.地名一般"と同値で、新規CIDは追加しない
     private static let placeNameCID = 1293
-    /// 一般。地名専用のMIDは存在しない
+    /// 一般
+    /// 地名専用のMIDは存在しない
     private static let generalMID = 501
-    /// `DicdataStore.threshold` (-17) を下回らせない開始スコア
+    /// "DicdataStore.threshold" (-17) を下回らせない開始スコア
     private static let baseScore: PValue = -15.5
 
     private enum FixtureError: Error {
@@ -91,7 +91,8 @@ final class AddressDictionaryBuildTests: XCTestCase {
             shardByFirstCharacter: true,
             charIDFileURL: Self.systemCharIDURL
         )
-        // 照合スタンプ。DicdataStore はこれがシステム辞書と一致しなければ住所辞書を無効化する
+        // 照合スタンプ
+        // DicdataStoreは、これがシステム辞書と一致しなければ住所辞書を無効化する
         try FileManager.default.copyItem(
             at: Self.systemCharIDURL,
             to: loudsDirectory.appendingPathComponent("charID.chid", isDirectory: false))

@@ -4,11 +4,10 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] End-to-end coverage for the address dictionary toggle.
+/// 住所辞書トグルのエンドツーエンドテスト
 ///
-/// The supplemental source is wired at converter construction and gated by
-/// `Profile.use_address_dictionary`. These tests drive the real server state
-/// against the committed `hazkey-address-dictionary` asset.
+/// 補助ソースはconverterの構築時に接続され、"Profile.use_address_dictionary"で有効化を制御する
+/// これらのテストはコミット済みの"hazkey-address-dictionary"アセットを用いて、実際のサーバ状態を検証する
 final class AddressDictionaryServerTests: XCTestCase {
     private let environmentVariables = [
         "XDG_DATA_HOME",
@@ -170,8 +169,8 @@ final class AddressDictionaryServerTests: XCTestCase {
             "一ツ家 leaked into candidates while the address dictionary was off")
     }
 
-    /// 上伊那郡辰野町 は base converter が単独で先頭に出せるため、収録基準どおり住所辞書には入れていない。
-    /// トグルOFFでも同じ先頭候補が出ることが、基準が守られている証拠になる。
+    /// "上伊那郡辰野町"は、base converterが単独で先頭に出せるため、収録基準どおり住所辞書には入れていない
+    /// トグルOFFでも同じ先頭候補が出ることが、基準が守られている証拠になる
     /// (住所辞書ONでは部分読みに対する候補が下位に増えるため、候補列全体の一致は要求しない)
     func testBaseConvertibleDistrictNameIsOfferedRegardlessOfTheToggle() {
         let reading = "かみいなぐんたつのまち"

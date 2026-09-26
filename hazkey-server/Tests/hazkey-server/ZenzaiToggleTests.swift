@@ -35,7 +35,7 @@ final class ZenzaiToggleTests: XCTestCase {
     }
 
     func testToggleZenzaiPersistsActiveProfileAndChangesGeneratedMode() throws {
-        // Given: an active profile with Zenzai enabled and an available model.
+        // 前提: Zenzaiが有効で、利用可能なモデルを持つアクティブプロファイル
         let config = HazkeyServerConfig()
         config.zenzaiAvailable = true
         config.zenzaiModelPath = temporaryDirectory?.appendingPathComponent("model.gguf")
@@ -45,10 +45,10 @@ final class ZenzaiToggleTests: XCTestCase {
             return
         }
 
-        // When: the dedicated toggle operation is invoked.
+        // 実行: 専用トグル操作を呼び出す
         let response = config.toggleZenzai()
 
-        // Then: the returned state, next generated mode, and persisted profile are disabled.
+        // 確認: 戻り値の状態、次に生成するモード、永続化したプロファイルが無効になる
         XCTAssertEqual(response.status, .success)
         XCTAssertFalse(response.toggleZenzaiResult.enabled)
         guard case .off = config.genZenzaiMode(leftContext: "") else {
@@ -59,7 +59,7 @@ final class ZenzaiToggleTests: XCTestCase {
     }
 
     func testToggleZenzaiRPCPreservesCompositionAndCandidateState() throws {
-        // Given: an in-progress composition and an existing candidate list.
+        // 前提: 入力中の組成と既存の候補リスト
         let state = HazkeyServerState()
         XCTAssertEqual(state.inputChar(inputString: "a").status, .success)
         state.currentCandidateList = [.fromUserDict(word: "sentinel")]
@@ -70,11 +70,11 @@ final class ZenzaiToggleTests: XCTestCase {
             $0.toggleZenzai = Hazkey_Commands_ToggleZenzai()
         }
 
-        // When: the lightweight toggle RPC is dispatched.
+        // 実行: 軽量なトグルRPCをディスパッチする
         let response = try Hazkey_ResponseEnvelope(
             serializedBytes: handler.processProto(data: try request.serializedData()))
 
-        // Then: only Zenzai enablement changes; composition and candidates remain valid.
+        // 確認: Zenzaiの有効状態だけが変わり、組成と候補は有効なまま残る
         XCTAssertEqual(response.status, .success)
         XCTAssertFalse(response.toggleZenzaiResult.enabled)
         XCTAssertEqual(

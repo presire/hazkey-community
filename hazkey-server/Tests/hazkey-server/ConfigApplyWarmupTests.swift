@@ -4,10 +4,9 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] The config-apply warm-up is a fire-and-forget side effect of the
-/// `setConfig` RPC: it must run the neural model load, but a failed load must
-/// never turn the RPC itself into a failure (the settings dialog already
-/// reports model-load errors through the dedicated `reloadZenzaiModel` RPC).
+/// 設定適用時のウォームアップは、"setConfig" RPCのfire-and-forgetな副作用である
+/// ニューラルモデルのロードを実行する必要がある一方、ロード失敗によってRPC自体を失敗にしてはならない
+/// モデルロードのエラーは、設定ダイアログが専用の"reloadZenzaiModel" RPC経由で報告する
 final class ConfigApplyWarmupTests: XCTestCase {
     private var originalConfigHome: String?
     private var temporaryDirectory: URL?
@@ -39,7 +38,7 @@ final class ConfigApplyWarmupTests: XCTestCase {
     }
 
     func testSetConfigTriggersWarmupAttemptWithInvalidWeight() throws {
-        // Given: a setConfig request whose profile points Zenzai at a file that is not a GGUF model.
+        // 前提: ZenzaiにGGUFモデルではないファイルを指定するプロファイルを持つsetConfigリクエスト
         let state = HazkeyServerState()
         try XCTSkipUnless(
             !state.serverConfig.ggmlBackendDevices.isEmpty,
@@ -53,26 +52,25 @@ final class ConfigApplyWarmupTests: XCTestCase {
         state.serverConfig.currentProfile.zenzaiWeightPath = invalidWeight.path
         XCTAssertEqual(state.converter.zenzStatus, "")
 
-        // When: the configuration is applied over the RPC.
+        // 操作: RPC経由で設定を適用する
         let response = try setConfig(using: state)
 
-        // Then: the warm-up ran (the converter recorded the attempted load) but
-        // its failure did not fail the RPC that persisted the configuration.
+        // 期待: ウォームアップが実行される (converterがロード試行を記録する) が、その失敗は設定を永続化するRPCを失敗にしない
         XCTAssertEqual(response.status, .success)
         XCTAssertTrue(state.converter.zenzStatus.hasPrefix("load "))
         XCTAssertTrue(state.converter.zenzStatus.contains(invalidWeight.path))
     }
 
     func testSetConfigWithDisabledZenzaiDoesNotForceInference() throws {
-        // Given: a setConfig request whose profile disables Zenzai.
+        // 前提: Zenzaiを無効化するプロファイルを持つsetConfigリクエスト
         let state = HazkeyServerState()
         state.serverConfig.currentProfile.zenzaiEnable = false
         let statusBefore = state.converter.zenzStatus
 
-        // When: the configuration is applied over the RPC.
+        // 操作: RPC経由で設定を適用する
         let response = try setConfig(using: state)
 
-        // Then: no warm-up was forced and the converter status is untouched.
+        // 期待: ウォームアップは強制されず、converterの状態は変更されない
         XCTAssertEqual(response.status, .success)
         XCTAssertEqual(state.converter.zenzStatus, statusBefore)
     }

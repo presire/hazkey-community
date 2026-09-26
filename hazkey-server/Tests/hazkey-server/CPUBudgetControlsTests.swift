@@ -5,24 +5,22 @@ import XCTest
 
 @testable import hazkey_server
 
-/// Opt-in functional QA for the fork's `HAZKEY_ZENZAI_CPU_THREADS` /
-/// `HAZKEY_ZENZAI_DEADLINE_MS` env-var controls (see
-/// `.omo/plans/hazkey-ime-cpu-latency.md` todo 3).
+/// fork の `HAZKEY_ZENZAI_CPU_THREADS` / `HAZKEY_ZENZAI_DEADLINE_MS`
+/// 環境変数制御に対するオプトインの機能QA（`.omo/plans/hazkey-ime-cpu-latency.md`
+/// の todo 3 を参照）。
 ///
-/// This deliberately duplicates the small subprocess+socket-client pattern
-/// already established by `CandidateParityTests.swift` /
-/// `InferenceSeamBenchmarkTests.swift` (each file owns its own
-/// file-scoped-private copy because Swift's top-level `private` makes those
-/// helper types file-scoped and neither donor file may be edited). Fully
-/// opt-in: skipped unless `HAZKEY_CPU_BUDGET_QA=1`. Never touches the live
-/// system `hazkey-server` (always an isolated subprocess under a temporary
-/// XDG root).
-// allow: SIZE_OK — this one staged test file intentionally owns its isolated server and socket harness.
+/// `CandidateParityTests.swift` / `InferenceSeamBenchmarkTests.swift` で確立済みの
+/// 小規模な子プロセスとソケットクライアントのパターンを意図的に複製している。Swift の
+/// トップレベル `private` はヘルパー型をファイルスコープにするため、各ファイルが専用の
+/// コピーを持つ必要があり、どちらの移植元ファイルも編集できない。完全なオプトインであり、
+/// `HAZKEY_CPU_BUDGET_QA=1` がない場合はスキップする。実行中のシステム
+/// `hazkey-server` には触れず、常に一時的な XDG ルート配下の隔離子プロセスを使う。
+// allow: SIZE_OK — このテストファイルは隔離サーバとソケットハーネスを意図的に内包する。
 final class CPUBudgetControlsTests: XCTestCase {
     private static let reading = CorpusFixtures.fullConversion.reading
 
-    /// Happy path: valid override values (1 thread, 2000ms deadline) still
-    /// produce non-empty candidates and the server stays alive.
+/// 正常系: 有効な上書き値（1スレッド、期限2000ms）でも空でない候補を生成し、
+/// サーバが稼働し続ける。
     func testHappyPathCPUBudgetControls() throws {
         try XCTSkipUnless(qaEnabled, "Set HAZKEY_CPU_BUDGET_QA=1 to run this opt-in QA harness.")
         try runFixture(
@@ -33,9 +31,8 @@ final class CPUBudgetControlsTests: XCTestCase {
             ])
     }
 
-    /// Failure fixtures: invalid values for both controls must degrade to
-    /// existing default behavior — never crash, never trap, candidates
-    /// remain non-empty, and the server survives.
+/// 異常系フィクスチャ: 両制御の無効値は既存の既定動作へ縮退しなければならない。
+/// クラッシュもトラップもせず、候補は空にならず、サーバは稼働し続ける。
     func testFailureFixturesCPUBudgetControls() throws {
         try XCTSkipUnless(qaEnabled, "Set HAZKEY_CPU_BUDGET_QA=1 to run this opt-in QA harness.")
         let invalidFixtures: [(String, [String: String])] = [
@@ -51,7 +48,7 @@ final class CPUBudgetControlsTests: XCTestCase {
         }
     }
 
-    // MARK: - Shared fixture runner
+    // MARK: - 共通フィクスチャ実行処理
 
     private var qaEnabled: Bool {
         !(ProcessInfo.processInfo.environment["HAZKEY_CPU_BUDGET_QA"] ?? "").isEmpty
@@ -109,7 +106,7 @@ final class CPUBudgetControlsTests: XCTestCase {
         XCTAssertTrue(process.isRunning, "[\(label)] server process must still be alive after the request")
     }
 
-    // MARK: - Server process helpers (duplicated pattern, see file doc comment)
+// MARK: - サーバプロセス用ヘルパー（重複パターン。ファイル先頭のdocコメントを参照）
 
     private func resolveZenzaiModelPath() throws -> String {
         if let override = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"], !override.isEmpty {
@@ -159,8 +156,8 @@ final class CPUBudgetControlsTests: XCTestCase {
         environment["HAZKEY_ZENZAI_MODEL"] = modelPath
         environment["HAZKEY_DICTIONARY"] = packageRoot
             .appendingPathComponent("azooKey_dictionary_storage/Dictionary").path
-        // Explicitly clear any ambient override from a prior fixture in the same
-        // `swift test` process, then apply only this fixture's values.
+        // 同一 `swift test` プロセスで先行フィクスチャが設定した環境上書きを明示的に消去し、
+        // このフィクスチャの値だけを適用する。
         environment.removeValue(forKey: "HAZKEY_ZENZAI_CPU_THREADS")
         environment.removeValue(forKey: "HAZKEY_ZENZAI_DEADLINE_MS")
         for (key, value) in extraEnvironment {
@@ -203,9 +200,9 @@ private enum QAError: Error {
     case invalidResponse
 }
 
-/// Minimal length-prefixed UNIX-socket protobuf client, duplicated from
-/// `CandidateParityTests.ParityRPCClient` (top-level `private` makes that
-/// class file-scoped, and that donor file must not be edited).
+/// `CandidateParityTests.ParityRPCClient` から複製した最小限の長さプレフィックス付き
+/// UNIXソケット protobuf クライアント。トップレベルの `private` によりこのクラスは
+/// ファイルスコープとなり、移植元ファイルは編集できない。
 private final class QARPCClient {
     private var fileDescriptor: Int32
 

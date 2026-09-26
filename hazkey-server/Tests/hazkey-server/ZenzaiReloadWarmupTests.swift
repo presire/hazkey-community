@@ -6,7 +6,7 @@ import XCTest
 
 final class ZenzaiReloadWarmupTests: XCTestCase {
     func testReloadZenzaiModelWithoutAvailableModelPreservesRequestingState() throws {
-        // Given: a composing client with no backend available to resolve a model.
+        // 前提: モデル解決に使えるバックエンドがなく、組成中のクライアント
         let state = HazkeyServerState()
         state.serverConfig.ggmlBackendDevices = []
         state.shared.learningDataNeedsCommit = true
@@ -14,10 +14,10 @@ final class ZenzaiReloadWarmupTests: XCTestCase {
         state.currentCandidateList = [.fromUserDict(word: "sentinel")]
         let composingBefore = state.getComposingString(charType: .hiragana, currentPreedit: "").text
 
-        // When: Settings asks the server to reload the Zenzai model over the existing RPC.
+        // 操作: Settings が既存のRPC経由でサーバにZenzaiモデルの再ロードを要求する
         let response = try reloadZenzaiModel(using: state)
 
-        // Then: no warmup is needed and the client-local and learning state survive.
+        // 期待: ウォームアップは不要で、クライアントローカル状態と学習状態は維持される
         XCTAssertEqual(response.status, .success)
         XCTAssertEqual(
             state.getComposingString(charType: .hiragana, currentPreedit: "").text,
@@ -31,21 +31,21 @@ final class ZenzaiReloadWarmupTests: XCTestCase {
     }
 
     func testReloadZenzaiModelWhenDisabledDoesNotForceInference() throws {
-        // Given: a disabled Zenzai profile and an untouched converter status.
+        // 前提: Zenzaiを無効化したプロファイルと、未変更のconverter状態
         let state = HazkeyServerState()
         state.serverConfig.currentProfile.zenzaiEnable = false
         let statusBefore = state.converter.zenzStatus
 
-        // When: the model metadata is reloaded.
+        // 操作: モデルメタデータを再ロードする。
         let response = try reloadZenzaiModel(using: state)
 
-        // Then: disabled Zenzai remains a successful no-warmup path.
+        // 期待: 無効化されたZenzaiは、ウォームアップなしで成功する経路のままである
         XCTAssertEqual(response.status, .success)
         XCTAssertEqual(state.converter.zenzStatus, statusBefore)
     }
 
     func testReloadZenzaiModelReportsFailureWhenInvalidWeightCannotLoad() throws {
-        // Given: an available backend and a regular file that is not a GGUF model.
+        // 前提: 利用可能なバックエンドと、GGUFモデルではない通常ファイル
         let state = HazkeyServerState()
         try XCTSkipUnless(
             !state.serverConfig.ggmlBackendDevices.isEmpty,
@@ -62,10 +62,10 @@ final class ZenzaiReloadWarmupTests: XCTestCase {
         state.currentCandidateList = [.fromUserDict(word: "sentinel")]
         let composingBefore = state.getComposingString(charType: .hiragana, currentPreedit: "").text
 
-        // When: reload performs its single warmup request.
+        // 操作: 再ロードが単一のウォームアップ要求を実行する
         let response = try reloadZenzaiModel(using: state)
 
-        // Then: fallback converter candidates cannot mask an unconfirmed model load.
+        // 期待: converter のフォールバック候補は、未確認のモデルロードを隠してはならない
         XCTAssertEqual(response.status, .failed)
         XCTAssertTrue(response.errorMessage.hasPrefix("Zenzai model warmup failed:"))
         XCTAssertTrue(state.shared.learningDataNeedsCommit)
