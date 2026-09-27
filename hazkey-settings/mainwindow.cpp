@@ -2018,6 +2018,8 @@ void MainWindow::onCheckAllConversion() {
     ui_->romanTypographyConversion->setChecked(true);
     ui_->hazkeyVersionConversion->setChecked(true);
     ui_->relativeDateConversion->setChecked(true);
+    ui_->useAddressDict->setChecked(true);
+    ui_->useEngineeringDict->setChecked(true);
 }
 
 void MainWindow::onUncheckAllConversion() {
@@ -2031,6 +2033,8 @@ void MainWindow::onUncheckAllConversion() {
     ui_->romanTypographyConversion->setChecked(false);
     ui_->hazkeyVersionConversion->setChecked(false);
     ui_->relativeDateConversion->setChecked(false);
+    ui_->useAddressDict->setChecked(false);
+    ui_->useEngineeringDict->setChecked(false);
 }
 
 void MainWindow::onClearLearningData() {
