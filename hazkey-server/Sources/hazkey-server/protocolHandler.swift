@@ -1,13 +1,36 @@
 import Foundation
 import SwiftProtobuf
 
+/// 要求を対応する処理へ振り分ける薄いディスパッチャ
+///
+/// 接続単位のHazkeyServerStateを持ち、自身は要求ごとの状態を持たない
+///
+/// 要求1件ごとに生成して使い捨てる
 class ProtocolHandler {
+    /// 振り分け先の接続単位のサーバ状態
+    ///
+    /// 変換と設定の実処理はここに委譲する
     private let state: HazkeyServerState
 
+    /// 処理対象のサーバ状態を保持する
+    ///
+    /// - Parameter state: この接続のサーバ状態
     init(state: HazkeyServerState) {
         self.state = state
     }
 
+    /// 要求バイト列を解析して対応する処理を呼び出す
+    ///
+    /// [set_config]や[get_config]や[delete_learning_entries]を含む全要求を扱う
+    ///
+    /// 解析に失敗した場合は失敗応答を返す
+    ///
+    /// 応答には[config_revision]を付けて返す
+    ///
+    /// - Parameter data: 要求エンベロープのバイト列
+    /// - Returns: 応答エンベロープのバイト列、応答の生成に失敗した場合は空である
+    /// - Note: 計測はPerfProbeを通して行う
+    /// - Warning: ペイロード未設定の要求は失敗応答になる
     func processProto(data: Data) -> Data {
         let query: Hazkey_RequestEnvelope
         let response: Hazkey_ResponseEnvelope
@@ -91,7 +114,7 @@ class ProtocolHandler {
             }
         case .deleteLearningEntries(let req):
             do {
-                // エントリは (reading, word) をキーにマージされた行であり、各表記の全CID変種を削除する
+                // エントリは(reading, word)をキーにまとめた行であり、各表記の全CID変種を削除する
                 let deletedCount = try state.forgetLearningSurfaces(
                     req.entries.map { ($0.reading, $0.word) })
                 response = Hazkey_ResponseEnvelope.with {
@@ -118,6 +141,14 @@ class ProtocolHandler {
         return serializeResult(unserialized: response)
     }
 
+    /// 応答に[config_revision]を付けてバイト列に変換する
+    ///
+    /// 版数は接続のserverConfigから取得する
+    ///
+    /// 変換に失敗した場合は空のバイト列を返す
+    ///
+    /// - Parameter unserialized: 変換前の応答エンベロープ
+    /// - Returns: 応答エンベロープのバイト列、失敗時は空である
     private func serializeResult(unserialized: Hazkey_ResponseEnvelope) -> Data {
         var response = unserialized
         response.configRevision = state.serverConfig.configRevision

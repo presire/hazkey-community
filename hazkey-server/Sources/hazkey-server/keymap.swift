@@ -1,7 +1,19 @@
 import KanaKanjiConverterModule
 
+/// 入力文字から意図文字と上書き入力文字への対応表
+///
+/// 入力文字をキーにする
+///
+/// 意図する文字と任意の上書き入力文字の組を値にする
+///
+/// 上書き入力文字がnilの場合は意図文字をそのまま用いる
 typealias Keymap = [Character: (Character, Character?)]
 
+/// JISかな配列の対応表
+///
+/// 数字と記号の行および英字キーをかなに対応付ける
+///
+/// シフト面の小書きや句読点も含む
 let JISKanaMap: Keymap = [
     "1": ("ぬ", nil),
     "!": ("ぬ", nil),
@@ -98,6 +110,9 @@ let JISKanaMap: Keymap = [
     "_": ("ろ", nil),
 ]
 
+/// ASCII数字から全角数字への対応表
+///
+/// [0]から[9]を全角に変換するために用いる
 let fullwidthNumberMap: Keymap = [
     "1": ("１", nil),
     "2": ("２", nil),
@@ -111,6 +126,9 @@ let fullwidthNumberMap: Keymap = [
     "0": ("０", nil),
 ]
 
+/// ASCII記号から全角記号への対応表
+///
+/// [!]や[?]等の記号を全角に変換するために用いる
 let fullwidthSymbolMap: Keymap = [
     "!": ("！", nil),
     "#": ("＃", nil),
@@ -139,6 +157,11 @@ let fullwidthSymbolMap: Keymap = [
     "'": ("＇", nil),
 ]
 
+/// 日本語約物への対応表
+///
+/// 角括弧やスラッシュやハイフン等のキーを約物に変換するために用いる
+///
+/// 変換先は[「]や[」]や[・]や[ー]や[￥]や[、]や[。]である
 let japaneseSymbolMap: Keymap = [
     "[": ("「", nil),
     "]": ("」", nil),
@@ -149,18 +172,39 @@ let japaneseSymbolMap: Keymap = [
     ".": ("。", nil),
 ]
 
+/// 全角ピリオドへの対応表
+///
+/// [.](ピリオド)を[．](全角ピリオド)に変換するために用いる
 let fullwidthPeriodMap: Keymap = [
     ".": ("．", nil)
 ]
 
+/// 全角カンマへの対応表
+///
+/// [,](カンマ)を[，](全角カンマ)に変換するために用いる
 let fullwidthCommaMap: Keymap = [
     ",": ("，", nil)
 ]
 
+/// 全角空白への対応表
+///
+/// [空白]を[　](全角空白)に変換するために用いる
 let fullwidthSpaceMap: Keymap = [
     " ": ("　", nil)
 ]
 
+/// 文字列対応表からInputTableを組み立てる
+///
+/// キー文字列を1文字ずつのキー要素列に分解する
+///
+/// 値文字列を文字要素列に変換してInputTable化する
+///
+/// 追加対応表を併合し、衝突時は既存の先頭要素を優先する
+///
+/// - Parameters:
+///   - base: キー文字列から値文字列への基本対応表
+///   - additionalMapping: キー要素列から値要素列への追加対応表
+/// - Returns: 変換に用いるInputTable
 func constructInputTable(
     _ base: [String: String],
     additionalMapping: [[InputTable.KeyElement]: [InputTable.ValueElement]] = [:]
@@ -177,12 +221,24 @@ func constructInputTable(
     return InputTable(baseMapping: map)
 }
 
+/// 文節区切りだけを含むInputTable
+///
+/// 空の基本対応表に文節区切りのみの追加対応を持たせる
 let compositionSeparatorTable = constructInputTable(
     [:],
     additionalMapping: [
         [.piece(.compositionSeparator)]: []
     ])
 
+/// ローマ字からかなへの変換表
+///
+/// [n]と[nn]および文節区切りによる[ん]の確定を含む
+///
+/// [kk]のような子音重ねを[っk]のような促音付き列に変換する
+///
+/// [z]と[h]や[j]や[k]や[l]の組み合わせで矢印を入力できる
+///
+/// [z]と[・]や[ー]や[。]の組み合わせで約物や省略記号を入力できる
 let romajiTable = constructInputTable(
     [
         "a": "あ",
@@ -487,6 +543,11 @@ let romajiTable = constructInputTable(
         [.piece(.character("n")), .any1]: [.character("ん"), .any1],
     ])
 
+/// かな入力用の変換表
+///
+/// かなと濁点や半濁点の組み合わせを濁音や半濁音に変換する
+///
+/// [か]と[゛]は[が]に、[は]と[゜]は[ぱ]に対応する
 let kanaTable = constructInputTable([
     "う゛": "ゔ",
     "か゛": "が",

@@ -1,33 +1,65 @@
 import Foundation
 
-// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey, commit 79686594)
-// 元実装では、これらのenumを単一ファイル内のfile-privateに置いていたが、ここでは2ファイルに分割しているため、module-internalとしている
-// builder構造体内のヘルパ関数はprivateのまま
+// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey、コミットID: 79686594)
+// 元実装ではこれらのenumを単一ファイル内のfile-privateに置いていたがここでは2ファイルに分割しているためmodule-internalとしている
+// builder構造体内のヘルパー関数はprivateのまま
 
+/// 活用の種類を表す区分
+///
+/// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey、commit 79686594)
+///
+/// 元実装では単一ファイル内のfile-privateだったが、ここでは分割のためmodule-internalとしている
 enum 活用の種類 {
+    /// 一段活用
     case 一段
+    /// 五段活用
     case 五段
+    /// サ変活用
     case サ変
+    /// ザ変活用
     case ザ変
+    /// カ変活用
     case カ変
 }
 
+/// 動詞の行を表す区分
+///
+/// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey、コミットID: 79686594)
+///
+/// 元実装では単一ファイル内のfile-privateだったがここでは分割のためmodule-internalとしている
 enum 行 {
+    /// ア行
     case ア行
+    /// カ行
     case カ行
+    /// ガ行
     case ガ行
+    /// サ行
     case サ行
+    /// タ行
     case タ行
+    /// ダ行
     case ダ行
+    /// ナ行
     case ナ行
+    /// ハ行
     case ハ行
+    /// バ行
     case バ行
+    /// マ行
     case マ行
+    /// ヤ行
     case ヤ行
+    /// ラ行
     case ラ行
+    /// ワ行
     case ワ行
+    /// 不明な行
     case unknown
 
+    /// 該当行のア段カタカナを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var ア段: String {
         switch self {
         case .ア行: return "ア"
@@ -46,6 +78,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のあ段ひらがなを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var あ段: String {
         switch self {
         case .ア行: return "あ"
@@ -64,6 +99,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のイ段カタカナを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var イ段: String {
         switch self {
         case .ア行: return "イ"
@@ -82,6 +120,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のい段ひらがなを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var い段: String {
         switch self {
         case .ア行: return "い"
@@ -100,7 +141,10 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
-    // NOTE: ウ段 / う段は省略 (活用形取得では未使用であり、Character / Stringの不整合を解消するため)
+    // NOTE: ウ段/う段は省略 (活用形生成では未使用でありCharacter/Stringの不整合を避けるため)
+    /// 該当行のエ段カタカナを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var エ段: String {
         switch self {
         case .ア行: return "エ"
@@ -119,6 +163,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のえ段ひらがなを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var え段: String {
         switch self {
         case .ア行: return "え"
@@ -137,6 +184,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のオ段カタカナを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var オ段: String {
         switch self {
         case .ア行: return "オ"
@@ -155,6 +205,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のお段ひらがなを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var お段: String {
         switch self {
         case .ア行: return "お"
@@ -173,6 +226,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のヤ段カタカナを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var ヤ段: String {
         switch self {
         case .ア行: return "イ"
@@ -191,6 +247,9 @@ enum 行 {
         case .unknown: return "\0"
         }
     }
+    /// 該当行のや段ひらがなを返す
+    ///
+    /// - Note: unknownはヌル文字を返す
     var や段: String {
         switch self {
         case .ア行: return "や"
@@ -211,10 +270,18 @@ enum 行 {
     }
 }
 
+/// JapaneseConjugationBuilderが使用するかな定数群
+///
+/// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey、コミットID: 79686594)
 extension String {
+    /// かな[い]
     static var い: String { "い" }
+    /// かな小書き[つ]
     static var 小書きつ: String { "っ" }
+    /// かな[よ]
     static var よ: String { "よ" }
+    /// かな[ろ]
     static var ろ: String { "ろ" }
+    /// かな[ん]
     static var ん: String { "ん" }
 }

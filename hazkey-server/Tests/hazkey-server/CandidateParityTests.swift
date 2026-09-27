@@ -5,25 +5,29 @@ import XCTest
 
 @testable import hazkey_server
 
-/// オプトインの Zenzai（`zenzaiEnable=true`）候補出力パリティハーネス。
+/// Zenzai (ニューラル変換) を有効にした状態で、変換候補の出力が変わっていないかを確かめるテスト
+/// 設定キー[zenzaiEnable]をtrueにして実行する
 ///
-/// `OutputParityTests.swift` は `zenzaiEnable = false` を固定するため（`state.swift:578` の
-/// 「この値が true のままなら config.swift:578 がニューラル変換を有効化する」というコメントを参照）、
-/// Zenzai/llama.cpp のコードパスを実行しない。`InferenceSeamBenchmarkTests.swift` は
-/// `zenzai_inference_ms` の時間だけを記録し、候補テキスト自体は記録しない。既存のどちらの
-/// ハーネスも、llama.cpp/Zenzai バックエンドの更新による候補出力の退行を検出できない。
-/// このファイルはその不足を補う。実際の Zenzai モデルを使う実際の子プロセス
-/// `hazkey-server` を、本番クライアントと同じ UNIXソケット protobuf トランスポート経由で
-/// 操作し、将来の llama.cpp 更新で候補パリティを検証できるよう候補テキストを記録、比較する。
+/// 既存テストとの役割分担
+/// - OutputParityTestsは[zenzaiEnable]をfalseに固定するため、Zenzai / llama.cppの処理を通らない
+/// - InferenceSeamBenchmarkTestsは推論時間[zenzai_inference_ms]だけを記録して、候補の文字列は記録しない
+/// - そのため、既存テストではllama.cppやZenzaiの更新で候補が変わっても検出できない
 ///
-/// 完全なオプトインであり、`HAZKEY_PARITY=1` がない場合はスキップする。既定の
-/// `swift test` スイートには含まれず、実行中のシステム `hazkey-server` にも触れない。
-/// 常に隔離した一時 XDG ルート配下に専用の子プロセスを起動する。隔離方法は
-/// `InferenceSeamBenchmarkTests.startServer` / `OutputParityTests.setUpWithError` と同じ。
-// allow: SIZE_OK — このテストファイルは隔離サーバとソケットハーネスを意図的に内包する。
+/// このテストは上記の不足を補う
+/// 実際のZenzaiモデルを読み込んだhazkey-serverを子プロセスとして起動し、
+/// 本番のクライアントと同じUNIXソケット + protobuf通信で操作する
+/// 得られた候補の文字列をベースラインとして記録し、次回以降の実行でベースラインと比較する
+///
+/// 環境変数[HAZKEY_PARITY]が未設定の場合はスキップする
+/// 通常のswift testでは実行されず、動作中のシステムのhazkey-serverにも影響しない
+/// サーバは毎回、一時ディレクトリに作ったXDGディレクトリ群の配下で隔離して起動する
+/// (隔離方法はInferenceSeamBenchmarkTests.startServer / OutputParityTests.setUpWithErrorと同じ)
+
+// allow: SIZE_OK - 隔離サーバの起動処理とソケット通信処理を意図的にこのファイル内に持つ
 final class CandidateParityTests: XCTestCase {
-/// `CorpusFixtures.swift` から再利用する読み。フィクスチャ宣言順で重複を除く
-/// （ここで新しいコーパス内容を作成しない）。
+    /// テストで入力する読みの一覧
+    /// CorpusFixtures.swiftの既存フィクスチャを宣言順に並べ、重複する読みを除いて使用する
+    /// (このテスト専用の読みは新たに追加しない)
     private static let corpus: [String] = {
         let fixtures = [
             CorpusFixtures.fullConversion,
@@ -64,9 +68,10 @@ final class CandidateParityTests: XCTestCase {
 
     // MARK: - 記録 / 検証モード
 
-/// ベースラインファイルがない場合は記録実行となる。ベースラインを書き込む前に、読みごとに
-/// 状態変更を挟まず `getCandidates` を2回連続で呼ぶ決定性プローブが成功しなければならない。
-/// 候補順位が非決定的なら、将来の検証時の比較は意味を失うためである。
+    /// 記録モード (環境変数[HAZKEY_PARITY_BASELINE_JSON]が指すファイルが存在しない場合)
+    /// ベースラインを書き込む前に、読みごとに[getCandidates]を2回続けて呼び、結果が同じかを確認する
+    /// 同じ入力で候補の順位が毎回変わるようでは、後の比較が意味を持たないため、
+    /// 1つでも一致しない読みがあればテストを失敗させ、ベースラインは書き込まない
     private func runRecord(baselineURL: URL, modelPath: String) throws {
         let (snapshot, probeFailures) = try collectCandidates(
             corpus: Self.corpus, modelPath: modelPath, probeDeterminism: true)
@@ -88,8 +93,9 @@ final class CandidateParityTests: XCTestCase {
         try data.write(to: baselineURL, options: .atomic)
     }
 
-/// ベースラインファイルがある場合は検証実行となる。コーパスを1回実行して記録済みの
-/// ベースラインと比較する。決定性プローブは記録時に実行済みのため、ここでは繰り返さない。
+    /// 検証モード (ベースラインファイルが存在する場合)
+    /// 全ての読みを1回ずつ変換し、記録済みのベースラインと完全一致するかを確認する
+    /// 2回呼び出しによる一致確認は記録時に済んでいるため、ここでは行わない
     private func runVerify(baselineURL: URL, modelPath: String) throws {
         let (snapshot, _) = try collectCandidates(
             corpus: Self.corpus, modelPath: modelPath, probeDeterminism: false)
@@ -100,9 +106,11 @@ final class CandidateParityTests: XCTestCase {
     }
 
     // MARK: - モデルパスの解決
-// .omo/evidence/hazkey-zenzai-inference/ の task-4/task-5 証跡に合わせる。
-// 明示的な HAZKEY_ZENZAI_MODEL 上書きを優先し、それ以外では実行中のシステムサーバが使う
-// 実際の固定済みユーザーレベルモデルへフォールバックする。
+    //
+    // 使用するZenzaiモデルの決め方
+    // 1. 環境変数[HAZKEY_ZENZAI_MODEL]が設定されていれば、そのファイルを使う
+    // 2. 未設定なら、ユーザが使用している "~/.local/share/hazkey-community/zenzai/zenzai.gguf" を使用する
+    // どちらもファイルが存在しなければエラーにする
 
     private func resolveZenzaiModelPath() throws -> String {
         if let override = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"], !override.isEmpty {
@@ -124,11 +132,14 @@ final class CandidateParityTests: XCTestCase {
 
     // MARK: - サーバを使った候補収集
 
-/// 隔離した子プロセス `hazkey-server` を1つ起動し、`zenzaiEnable = true` で `corpus` を
-/// 再生して候補テキストのスナップショットを返す。`probeDeterminism` が true の場合、各読みの
-/// `getCandidates` を状態変更を挟まず2回連続で実行する。`getCandidates` は冪等である
-/// （`state.swift:355-367` の `ensureCompositionSeparatorForConversion` を参照）。
-/// 一致しない読みは throw せず、返却する失敗リストで報告するため、呼び出し元が対応を決められる。
+    /// 隔離したhazkey-serverを1つ起動して、Zenzaiを有効にして全ての読みを入力し、
+    /// 読みごとの候補文字列の一覧 (スナップショット) を返す
+    ///
+    /// probeDeterminismがtrueの場合は、読みごとに[getCandidates]を2回続けて呼び、結果を比較する
+    /// [getCandidates]は何度呼んでも入力状態を変えないため、2回目も同じ条件で変換される
+    /// (HazkeyServerState.getCandidates(is_suggest:)内のensureCompositionSeparatorForConversion()を参照)
+    ///
+    /// 結果が一致しない読みは例外にせず、戻り値のprobeFailuresに入れて呼び出し元に判断を任せる
     private func collectCandidates(
         corpus: [String],
         modelPath: String,
@@ -157,9 +168,9 @@ final class CandidateParityTests: XCTestCase {
         try waitForSocket(at: socketURL.path)
 
         let client = try ParityRPCClient(socketPath: socketURL.path)
-        // `client` がスコープを抜けると `ParityRPCClient.deinit` がソケットを閉じる。
-        // ここで明示的に `defer { client.close() }` を置くと閉じる処理が重複する。
-        // `deinit` は、すでに開いたファイルディスクリプタを解放する必要がある init-throws 経路も扱う。
+        // clientがスコープを抜けると、ParityRPCClientのdeinitがソケットを閉じる
+        // そのため、ここで"defer { client.close() }" は書かない (閉じる処理が重複するため)
+        // deinitは、initの途中で例外が発生した場合に開いたままのソケットも閉じる
         try setZenzaiProfile(client: client)
 
         var snapshot: [String: [String]] = [:]
@@ -189,10 +200,10 @@ final class CandidateParityTests: XCTestCase {
         environment["XDG_CACHE_HOME"] = root.appendingPathComponent("cache").path
         environment["XDG_STATE_HOME"] = root.appendingPathComponent("state").path
         environment["HAZKEY_ZENZAI_MODEL"] = modelPath
-        // 候補出力が実際のユーザーの ~/.local/share 辞書状態に依存しないよう、
-        // システム辞書 submodule を固定する。
-        environment["HAZKEY_DICTIONARY"] = packageRoot
-            .appendingPathComponent("azooKey_dictionary_storage/Dictionary").path
+
+        // 候補がユーザ環境 (~/.local/share配下) の辞書に左右されないよう、
+        // リポジトリ内のシステム辞書submoduleを[HAZKEY_DICTIONARY]で指定する
+        environment["HAZKEY_DICTIONARY"] = packageRoot.appendingPathComponent("azooKey_dictionary_storage/Dictionary").path
         process.environment = environment
         try process.run()
         return process
@@ -275,12 +286,11 @@ private enum ParityError: Error {
     case invalidResponse
 }
 
-/// 最小限の長さプレフィックス付き UNIXソケット protobuf クライアント。フレーミングと
-/// transact 動作（接続、長さプレフィックス付き送信、長さプレフィックス付き受信）は
-/// `InferenceSeamBenchmarkTests.BenchmarkClient` とバイト単位で一致する。Swift の
-/// トップレベル `private` により同クラスは `InferenceSeamBenchmarkTests.swift` の
-/// ファイルスコープとなり、そのファイルは編集できないため、再実装せず同じクライアントパターンを
-/// ここで複製する。
+/// テスト用の最小限のUNIXソケットクライアント
+/// 本番クライアントと同じく、4バイト (ビッグエンディアン) の長さの後にprotobufの本体を続けて送受信する
+/// 通信手順はInferenceSeamBenchmarkTestsのBenchmarkClientとバイト単位で同じ
+///
+/// BenchmarkClientはprivate宣言のため他のファイルから使えず、ここに同じ実装を複製している
 private final class ParityRPCClient {
     private var fileDescriptor: Int32
 

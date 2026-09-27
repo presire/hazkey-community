@@ -2,39 +2,68 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftUtils
 
-/// 表示候補ごとに保持するエントリ
-/// 確定時に変換エンジンの結果とユーザ辞書の注入候補を区別する
+/// 候補リストの各位置に対応するサーバ側の候補エントリ
+///
+/// クライアントへ送る候補 (Hazkey_Commands_CandidatesResult.Candidate) と同じ位置に並べ、確定・予測受入・学習削除の際に候補の出所を判別する
+///
+/// 確定処理はHazkeyServerState.completePrefix(candidateIndex:)がこの値で振り分ける
 enum DisplayedCandidate {
+    /// 変換エンジン (KanaKanjiConverter) が返した候補で、確定時に学習データを更新する
     case fromConverter(Candidate)
-    /// レガシー: エンジン注入方式への移行後は生成されない
-    /// エンジンに注入されたユーザ辞書エントリは、現在".fromConverter"として届く
+    /// 旧方式のユーザ辞書候補 (現在は生成されない)
+    ///
+    /// ユーザ辞書はimportDynamicUserDictionaryでエンジンに注入する方式へ移行したため、ユーザ辞書の単語は現在fromConverterとして届く
     case fromUserDict(word: String)
     /// RelativeDateProviderが注入する相対日付候補
-    /// 確定時は、".fromUserDict"と同様に扱う (組成テキストを消去し、学習しない) が、明確さと将来の拡張のため別ケースとして保持する
+    ///
+    /// 確定時はfromUserDictと同様に組成テキストを消去し、学習しない
+    ///
+    /// 明確さと将来の拡張のため、別のケースとして保持する
     case fromDateProvider(word: String)
-    /// KanaNumberProviderが注入する特殊数値候補 (下付き/上付き/丸囲み/ローマ数字等)
-    /// 確定時は、".fromDateProvider"と同様に扱う (組成テキストを消去し、学習しない) が、明確さのため別ケースとして保持する
+    /// KanaNumberProviderが注入する特殊数値候補 (下付き・上付き・丸囲み・ローマ数字等)
+    ///
+    /// 確定時はfromDateProviderと同様に組成テキストを消去して、学習しない
     case fromKanaNumberProvider(word: String)
     /// EmojiCandidateProviderが注入するEmoji 17.0直接変換候補
-    /// 確定時は、prefixCompleteにより一致した正規化クエリのprefix (composingCount) だけを消費し、後続のsuffixは組成に残す
-    /// 学習は行わない。
-    /// 明確さと削除処理の振り分けのため、別ケースとして保持する
+    ///
+    /// 確定時は一致した正規化クエリのprefix (composingCount) のみを消費して、後続の読みは組成に残す
+    ///
+    /// 学習は行わず、学習削除では削除件数0として扱う
     case fromEmoji(word: String, composingCount: ComposingCount)
 }
 
+/// 学習履歴の列挙・削除で発生するエラー
 private enum LearningHistoryError: Error {
+    /// 列挙の開始位置が列挙上限 (HazkeySharedResources.learningEnumerationLimit) を超えている
     case invalidOffset
+    /// 削除対象のエントリが学習メモリに保存されていない
     case unknownEntry
+    /// CID (品詞ID) の値が変換エンジンのInt型で表現できない
     case unsupportedCID
 }
 
+/// 学習メモリの1エントリを完全に識別するキー
+///
+/// 学習メモリは読み・表記・左右の品詞ID (CID) の組ごとに1行を保存するため、重複排除と存在確認にこの4要素を使う
 private struct LearningHistoryKey: Hashable {
+    /// 学習エントリの読み (カタカナ)
     let reading: String
+    /// 学習エントリの表記
     let word: String
+    /// 左文脈の品詞ID (CID)
     let lcid: UInt32
+    /// 右文脈の品詞ID (CID)
     let rcid: UInt32
 }
 
+/// ひらがなをカタカナへ変換する
+///
+/// 学習メモリの読みはカタカナで保存されるため、照合前に組成テキストのひらがな読みを正規化する
+///
+/// ひらがな (U+3041〜U+3096) 以外の文字はそのまま残す
+///
+/// - Parameter text: 変換する文字列
+/// - Returns: ひらがなをカタカナに置き換えた文字列
 func katakanaNormalized(_ text: String) -> String {
     var normalized = String.UnicodeScalarView()
     for scalar in text.unicodeScalars {
@@ -49,6 +78,15 @@ func katakanaNormalized(_ text: String) -> String {
     return String(normalized)
 }
 
+/// 学習履歴のエントリが検索クエリに一致するかどうかを判定する
+///
+/// クエリ・読み・表記をカタカナに正規化して部分一致で比較するため、ひらがなとカタカナのどちらで検索しても一致する
+///
+/// - Parameters:
+///   - query: 設定画面の学習履歴ダイアログで入力された検索文字列
+///   - reading: 学習エントリの読み
+///   - word: 学習エントリの表記
+/// - Returns: クエリが空、または読みか表記にクエリが含まれる場合はtrue
 func learningHistoryMatches(query: String, reading: String, word: String) -> Bool {
     let normalizedQuery = katakanaNormalized(query)
     return normalizedQuery.isEmpty
@@ -57,24 +95,34 @@ func learningHistoryMatches(query: String, reading: String, word: String) -> Boo
 }
 
 /// 変換候補が学習メモリに保存されうる2種類の読み
-/// トライの完全一致キーに合わせてカタカナ正規化する
 ///
-/// "prefixReading"は、候補位置まで切り詰めた入力読み ("min(rubyCount, requestHiraganaPreeditLen)") で、通常変換はこの読みで保存される
-/// "fullRuby"は、候補全体のrubyで、予測候補はこの読みで保存される
-/// 予測は入力済み範囲より先まで伸びるため、切り詰めた読みでは別のトライノードを指し、一致しない
-/// 候補にdataが無い場合 (キャッシュ済み予測経路) は空とし、その場合は"prefixReading"のみを使用する
+/// 学習メモリのトライは読みの完全一致で引くため、どちらもカタカナに正規化して保持する
+///
+/// 予測候補は入力済みの範囲より先まで読みが伸びるため、切り詰めた読みでは別のトライノードを指して一致しない
+/// そのため、注釈と削除では両方の読みで照会する
 struct CandidateLearningReadings {
+    /// 候補の位置まで切り詰めた入力読み (通常変換の候補はこの読みで保存される)
     let prefixReading: String
+    /// 候補全体の読み (予測候補はこの読みで保存される。候補にdataが無い場合は空)
     let fullRuby: String
 }
 
-/// CID違いをまたいで候補の学習エントリを識別する (reading, word) 表層キー
-/// 組成テキストのひらがな読みが学習メモリ内のカタカナrubyに一致するよう、readingをカタカナ正規化する
-/// 「削除可能」注釈と削除ハンドラで共有し、削除可能と表示された候補を必ず削除できるようにする
+/// 品詞ID (CID) の違いをまたいで学習エントリを識別する、読みと表記の組のキー
+///
+/// 組成テキストのひらがな読みが学習メモリ内のカタカナの読みに一致するよう、読みをカタカナに正規化する
+///
+/// 削除可能の注釈と学習削除の処理で同じキーを使用するため、削除可能と表示された候補は必ず削除できる
 struct LearningSurfaceKey: Hashable {
+    /// カタカナに正規化した読み
     let reading: String
+    /// 表記
     let word: String
 
+    /// 読みをカタカナに正規化してキーを生成する
+    ///
+    /// - Parameters:
+    ///   - reading: 読み (ひらがなでもカタカナでもよい)
+    ///   - word: 表記
     init(reading: String, word: String) {
         self.reading = katakanaNormalized(reading)
         self.word = word
@@ -83,47 +131,85 @@ struct LearningSurfaceKey: Hashable {
 
 /// 全クライアント接続で共有するサーバ全体のリソース
 ///
-/// KanaKanjiConverterインスタンス (辞書、Zenzaiモデル、学習メモリ、メモ化キャッシュ) は重いため、プロセス全体で共有する
-/// 変換エンジン内では組成ごとの状態 (ラティス、確定済みデータ、Zenzai/予測キャッシュ) のみをConversionSessionIDで管理する
-/// 各ソケットクライアントには、変換セッションと独自の組成テキスト・候補リストを持つHazkeyServerStateを割り当てる
+/// 変換エンジン (辞書・Zenzaiモデル・学習メモリ・メモ化キャッシュ) は重いため、プロセス全体で1つを共有する
+///
+/// 変換エンジン内では、組成ごとの状態 (ラティス・確定済みデータ・Zenzaiキャッシュ・予測キャッシュ) のみを変換セッションIDで分離する
+///
+/// 各ソケット接続には、変換セッションと独自の組成テキスト・候補リストを持つHazkeyServerStateを割り当てる
+///
+/// - Note: Fcitx 5とIBusを同時に有効化した場合も、ユーザ辞書・学習メモリ・Zenzaiモデルはこのオブジェクトで共有される
 class HazkeySharedResources {
+    // MARK: 設定と変換エンジン
+
+    /// 設定ファイル (config.json) の読み書きとZenzaiの初期化を担う設定管理
     let serverConfig: HazkeyServerConfig
+    /// 全接続で共有するかな漢字変換エンジン
     let converter: KanaKanjiConverter
-    let userDictionary: UserDictionary = UserDictionary()
-    /// キャッシュ済みの不変な絵文字プロバイダ
-    /// プロセスごとに一度だけ構築し、その後は更新しない
-    let emojiProvider: EmojiCandidateProvider?
-
-    var keymap: Keymap
-    var currentTableName: String
+    /// 変換要求の基本オプション (設定の適用時に作り直す)
     var baseConvertRequestOptions: ConvertRequestOptions
-    var learningDataNeedsCommit = false
+
+    // MARK: 入力テーブル
+
+    /// 文字キーの入力をローマ字かな変換の意図文字へ対応付けるキーマップ
+    var keymap: Keymap
+    /// 現在の入力テーブルの登録名 (設定の適用ごとに新しいUUIDで登録し直す)
+    var currentTableName: String
+
+    // MARK: 辞書と特殊候補
+
+    /// ユーザ辞書 (user_dictionary.tsv)
+    let userDictionary: UserDictionary = UserDictionary()
+    /// ユーザ辞書を変換エンジンへ注入済みかどうか (falseにすると次の候補生成時に再注入する)
     var userDictInjected = false
-
-    /// allLearningMemoryEntries()が1回の走査で列挙する行数の上限
-    /// 保存エントリの正式な上限であるHazkeyServerConfig.genBaseConvertRequestOptions()に渡すmaxMemoryCountと一致させること
-    static let learningEnumerationLimit = 65_536
-
-    /// 注釈の照会は打鍵ごとに実行されるため、回復不能な障害をそのまま記録するとキーごとにログが出てしまう
-    private var lastLearningLookupFailureLog: ContinuousClock.Instant?
-    private static let learningLookupFailureLogInterval: Duration = .seconds(60)
-
-    private var lastLearningCommitFailureLog: ContinuousClock.Instant?
-    private static let learningCommitFailureLogInterval: Duration = .seconds(60)
-
-    /// 「削除可」注釈と削除ハンドラが使うポイント照会
-    /// nilの場合は本番経路 (converter.persistedLearningMemoryKeys(exactReadings:)) を使用する
-    /// テストでは失敗するクロージャに置き換え、未検査パースでトラップする可能性のある実シャードを破損させずに縮退経路を検証する
-    var learningSurfaceKeyLookup: (([String]) throws -> [PersistedLearningMemoryKey])?
-
-    /// 接続中の全セッションID
-    /// 学習削除時は要求元だけでなく全セッションの変換キャッシュを無効化し、削除済みエントリが他クライアントの候補に再出現しないようにする
-    private var liveConversionSessionIDs: Set<KanaKanjiConverter.ConversionSessionID> = []
-
+    /// Emoji 17.0直接変換の候補プロバイダ (プロセスごとに1度だけ構築し、以後は更新しない)
+    let emojiProvider: EmojiCandidateProvider?
+    /// 住所辞書の補助辞書ソースID
     static let addressDictionarySourceID = "address"
+    /// 工学辞書の補助辞書ソースID
     static let engineeringDictionarySourceID = "engineering"
 
-    /// 宣言順は固定: addressが先、engineeringが後
+    // MARK: 学習データ
+
+    /// 永続化していない学習データがあるかどうか (全接続で共有するdirtyフラグ)
+    var learningDataNeedsCommit = false
+    /// allLearningMemoryEntries()が1回の走査で列挙する行数の上限
+    ///
+    /// - Important: HazkeyServerConfig.genBaseConvertRequestOptions()が指定するmaxMemoryCount (保存エントリ数の上限) と同じ値を維持すること
+    static let learningEnumerationLimit = 65_536
+    /// 削除可能の注釈と学習削除で使う、読みによるポイント照会の差し替え口 (テスト専用)
+    ///
+    /// nilの場合は、本番経路 (converter.persistedLearningMemoryKeys(exactReadings:)) を使用する
+    ///
+    /// テストでは失敗するクロージャに差し替え、実際のシャードを破損させずに照会失敗時の縮退動作を検証する
+    var learningSurfaceKeyLookup: (([String]) throws -> [PersistedLearningMemoryKey])?
+
+    // MARK: 接続セッション
+
+    /// 接続中の全変換セッションID
+    ///
+    /// 学習削除時は要求元だけでなく全セッションの変換キャッシュを無効化して、削除済みエントリが他のクライアントの候補に再び現れないようにする
+    private var liveConversionSessionIDs: Set<KanaKanjiConverter.ConversionSessionID> = []
+
+    // MARK: ログの間引き
+
+    /// 学習メモリ照会の失敗を最後にログへ出力した時刻
+    ///
+    /// 注釈の照会は打鍵ごとに実行されるため、回復不能な障害をそのまま記録するとキー入力ごとにログが出てしまう
+    private var lastLearningLookupFailureLog: ContinuousClock.Instant?
+    /// 学習メモリ照会の失敗ログを出力する最短間隔
+    private static let learningLookupFailureLogInterval: Duration = .seconds(60)
+    /// 学習データの保存失敗を最後にログへ出力した時刻
+    private var lastLearningCommitFailureLog: ContinuousClock.Instant?
+    /// 学習データの保存失敗ログを出力する最短間隔
+    private static let learningCommitFailureLogInterval: Duration = .seconds(60)
+
+    /// 変換エンジンに登録する補助辞書ソースの一覧を返す
+    ///
+    /// 宣言順は固定で、住所辞書 (address) が先、工学辞書 (engineering) が後になる
+    ///
+    /// - Parameter config: 各辞書のディレクトリパスを提供する設定
+    /// - Returns: 変換エンジンの初期化に渡す補助辞書ソースの配列
+    /// - Note: ディレクトリが存在しない辞書はdirectoryURLがnilになり、変換エンジン側でその辞書だけが無効になる
     static func supplementalDictionarySources(
         for config: HazkeyServerConfig
     ) -> [SupplementalDictionarySource] {
@@ -135,8 +221,15 @@ class HazkeySharedResources {
         ]
     }
 
-    /// ソースリストが拒否されても変換を停止させない
-    /// システム辞書のみへフォールバックし、その場合は両トグルを無効な操作とする
+    /// 補助辞書付きの変換エンジンを生成する
+    ///
+    /// 補助辞書ソースの一覧が拒否されても変換を停止させず、システム辞書だけの変換エンジンへ縮退する
+    ///
+    /// - Parameters:
+    ///   - dictionaryURL: システム辞書のディレクトリ
+    ///   - supplementalDictionaries: 登録する補助辞書ソース (住所辞書・工学辞書)
+    /// - Returns: 生成した変換エンジン
+    /// - Note: 縮退した場合、住所辞書と工学辞書の切り替えは何も効果を持たない
     static func makeConverter(
         dictionaryURL: URL, supplementalDictionaries: [SupplementalDictionarySource]
     ) -> KanaKanjiConverter {
@@ -149,12 +242,18 @@ class HazkeySharedResources {
         }
     }
 
+    /// 本番用の絵文字辞書 (Emoji 17.0) で共有リソースを生成する
     convenience init() {
         self.init(emojiDictionaryURL: nil)
     }
 
-    /// Parameter emojiDictionaryURL: テスト用に注入する辞書URL
-    ///                               nilの場合は、本番用E17アセットを使用する
+    /// 共有リソースを生成して、変換エンジン・入力テーブル・学習メモリを初期化する
+    ///
+    /// 学習メモリのディレクトリが無い場合は作成して、v0.2.0の保存場所にデータがあれば移動する
+    ///
+    /// 最後にダミーの変換を1回実行して、変換エンジンに学習設定を読み込ませる
+    ///
+    /// - Parameter emojiDictionaryURL: テスト用に注入する絵文字辞書 (nilの場合は本番用のEmoji 17.0辞書を使用する)
     init(emojiDictionaryURL: URL?) {
         self.serverConfig = HazkeyServerConfig()
         self.emojiProvider = EmojiCandidateProvider(
@@ -215,12 +314,16 @@ class HazkeySharedResources {
         )
     }
 
-    /// サーバ全体のキャッシュ無効化対象として、接続セッションを登録する
+    /// 接続の変換セッションを、学習削除時のキャッシュ無効化対象として登録する
+    ///
+    /// - Parameter id: 登録する変換セッションID
     func registerConversionSession(_ id: KanaKanjiConverter.ConversionSessionID) {
         liveConversionSessionIDs.insert(id)
     }
 
-    /// 切断済み接続のセッション登録を解除する
+    /// 切断した接続の変換セッションを、キャッシュ無効化対象から外す
+    ///
+    /// - Parameter id: 登録を解除する変換セッションID
     func unregisterConversionSession(_ id: KanaKanjiConverter.ConversionSessionID) {
         liveConversionSessionIDs.remove(id)
     }
@@ -230,13 +333,18 @@ class HazkeySharedResources {
 // MARK: - 共有設定と学習
 
 extension HazkeySharedResources {
-    /// キーマップ、入力テーブル、基本オプション、メモリディレクトリを再読み込みする
+    /// 設定の変更を共有リソースへ反映する
+    ///
+    /// キーマップ・入力テーブル・基本オプション・学習メモリのディレクトリを読み込み直して、補助辞書の切り替えとユーザ辞書の再読み込みを行う
+    ///
     /// 組成状態は接続ごとに保持されるため、ここでは変更しない
-    /// 呼び出し後に各HazkeyServerStateが自身の組成をリセットする
+    ///
+    /// - Note: 呼び出し後に組成をリセットするのは要求元の接続だけで、他の接続は入力途中の組成を維持する
     func reinitializeConfiguration() {
         // 呼び出し後に自身の組成をリセットするのは要求元接続だけで、他の接続中セッションは入力途中の組成を維持する
+        //
         // InputStyleManager.registerInputStyle(table:for:) (KanaKanjiConverterModule) は、
-        // 新しい".tableName(UUID)"をキーとするエントリを追加するだけで、以前の登録名を削除しないため安全
+        // 新しい".tableName(UUID)"をキーとするエントリを追加するだけで、以前の登録名を削除しないため安全である
         // したがって、古い".tableName(...)"が付いたComposingText要素も引き続き解決できる
         //
         // 許容する残差: 1つの入力途中の組成で、設定変更前のキーは旧マッピング、変更後のキーは新しいキーマップ / テーブルを使用する
@@ -254,14 +362,17 @@ extension HazkeySharedResources {
         }
         syncConverterLearningConfig()
         syncConverterAddressDictionary()
-        // ホットパス側のユーザ辞書再読込はスロットルされるため、設定適用時はスロットルを迂回して強制再読込し、辞書編集を取りこぼさない
+        // ホットパス側のユーザ辞書の再読み込みはスロットルされるため、設定適用時はスロットルを迂回して強制再読み込みして、辞書編集を取りこぼさない
         // userDictInjectedを倒して次回の候補生成で (変更後の) エントリを再注入させる
         userDictionary.reloadIfNeeded(force: true)
         userDictInjected = false
     }
 
-    /// [変換]タブの住所辞書・工学用語辞書トグルを反映する
-    /// 両補助ソースは変換エンジン構築時に登録済みのため、OFFにする際はフラグを切り替えるだけでよく、再構築やアセット再読み込みは不要
+    /// [変換]タブの住所辞書・工学辞書の有効 / 無効を変換エンジンへ反映する
+    ///
+    /// 両辞書は変換エンジンの構築時に登録済みのため、フラグを切り替えるだけでよく、再構築や辞書の再読み込みは不要
+    ///
+    /// - Note: フラグが実際に変わった場合のみ、変換エンジンが全セッションの変換キャッシュとZenzaiのメモ化キャッシュを破棄する
     func syncConverterAddressDictionary() {
         let profile = serverConfig.currentProfile
         converter.setSupplementalDictionaryEnabled(
@@ -270,8 +381,11 @@ extension HazkeySharedResources {
             profile.useEngineeringDictionaryEffective, for: Self.engineeringDictionarySourceID)
     }
 
-    /// 変換エンジンは、requestCandidates(_:options:)内でmemoryDirectoryURLを遅延適用する
-    /// 設定ダイアログは変換を行わないため、学習履歴の列挙・削除は次の打鍵まで前プロファイルのディレクトリを読み続けてしまうため、ここで先行適用する
+    /// 学習設定 (学習の種類・保存件数の上限・保存先ディレクトリ) を変換エンジンへ即時に反映する
+    ///
+    /// 変換エンジンは、学習メモリの保存先を変換要求 (requestCandidates(_:options:)) の中で遅延して適用する
+    ///
+    /// 設定ダイアログは変換を行わないため、ここで先に適用しないと、次の打鍵まで学習履歴の列挙・削除が前のプロファイルのディレクトリを読み続ける
     func syncConverterLearningConfig() {
         converter.updateLearningConfig(
             LearningConfig(
@@ -281,9 +395,13 @@ extension HazkeySharedResources {
     }
 
     /// 保留中の学習データを永続化する
-    /// コミット失敗時は、learningDataNeedsCommitを維持して、.failedを返す
-    /// 変換エンジンは一時メモリ上の保留データを保持するため、次の契機 (次のsave_learning_data RPC、切断、設定変更) で再試行される
-    /// ここでフラグを消すと、ディスクに到達していない学習データを通知なく破棄してしまう
+    ///
+    /// 永続化する学習データが無い場合は、何もせずに成功を返す
+    ///
+    /// - Returns: 成功時は.success、保存に失敗した場合は.failedとエラーメッセージを含むレスポンス
+    /// - Important: 保存に失敗した場合は、learningDataNeedsCommitを維持して、次の契機 (save_learning_data RPC・切断・設定変更) で再試行する
+    ///
+    ///   ここでフラグを消すと、ディスクに書き込まれていない学習データを通知なく破棄してしまう
     func saveLearningData() -> Hazkey_ResponseEnvelope {
         guard learningDataNeedsCommit else {
             return Hazkey_ResponseEnvelope.with { $0.status = .success }
@@ -303,6 +421,14 @@ extension HazkeySharedResources {
         }
     }
 
+    /// Zenzaiモデルを読み込み直して、ウォームアップを行う
+    ///
+    /// 一時的な変換セッションで「あ」を1回変換し、モデルの読込とVulkanバックエンドの初期化を最初の打鍵より前に済ませる
+    ///
+    /// Zenzaiが無効、またはモデルが無い場合は、ウォームアップせずに成功を返す
+    ///
+    /// - Returns: 成功時は.success、モデルを読み込めなかった場合は.failedとエラーメッセージを含むレスポンス
+    /// - Note: サーバの起動直後・設定の適用後・[ニューラル変換モデル管理]画面のreload_zenzai_model RPCから呼ばれる
     func reloadZenzaiModel() -> Hazkey_ResponseEnvelope {
         serverConfig.reloadZenzaiModel()
 
@@ -357,6 +483,11 @@ extension HazkeySharedResources {
         }
     }
 
+    /// 現在のプロファイルの学習データを消去する
+    ///
+    /// 変換エンジンの学習メモリとdirtyフラグをリセットして、[プロファイル非依存の入力履歴]が無効の場合は、プロファイル専用の学習ディレクトリも作り直す
+    ///
+    /// - Returns: 成功時は.success、ディレクトリの削除・作成に失敗した場合は、.failedを含むレスポンス
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
         // ディレクトリだけを削除しても変換エンジンの未コミット一時メモリ、キャッシュ済みmemory LOUDS、dirtyフラグは残る
         // そのため次のコミットで保留エントリが、消去したばかりのディレクトリへ書き戻される
@@ -383,9 +514,20 @@ extension HazkeySharedResources {
         }
     }
 
-    /// 学習履歴を (reading, word) 表層キーごとに1行へ統合する
-    /// 学習メモリは (ruby, word, lcid, rcid) ごとに1行を保存するため、同じ表層でも複数のCID違いの行になりうる (例: 1回の確定による文節バイグラムと全文エントリ)
-    /// ダイアログでは表層ごとに統合した1行を表示し、削除時は候補削除ホットキーと同じく全バリアントを削除するため、クライアントにはlcid / rcidを公開しない
+    /// 学習履歴を読みと表記の組ごとに1行へまとめて、ページ単位で返す
+    ///
+    /// 学習メモリは読み・表記・左右の品詞ID (CID) の組ごとに1行を保存するため、同じ表記でもCIDの異なる複数行になりうる
+    /// (例: 1回の確定による文節のエントリと全文のエントリ)
+    ///
+    /// まとめた行は使用回数を合算し、最終使用日は最も新しい値を使う
+    ///
+    /// - Parameters:
+    ///   - query: 検索文字列 (空の場合は全件)
+    ///   - offset: ページの開始位置
+    ///   - limit: 1ページの行数 (1〜200に丸める)
+    /// - Returns: ページ内の行と、検索に一致した行の総数
+    /// - Throws: offsetが列挙上限を超える場合は、LearningHistoryError.invalidOffset、学習メモリの読込に失敗した場合は変換エンジンのエラー
+    /// - Note: 削除時は候補の学習削除ホットキーと同じく全てのCIDのエントリを削除するため、クライアントにはCIDを公開しない
     func listLearningEntries(
         query: String,
         offset: UInt32,
@@ -424,6 +566,15 @@ extension HazkeySharedResources {
         return (entries, surfaceOrder.count)
     }
 
+    /// 指定した学習エントリを削除し、全接続の変換キャッシュを無効化する
+    ///
+    /// 削除前に全てのキーが学習メモリに存在することを確認し、一つでも無ければ何も削除しない
+    ///
+    /// - Parameter keys: 削除するエントリの読み・表記・左右の品詞ID (重複は1件にまとめる)
+    /// - Returns: 削除したエントリ数
+    /// - Throws: 存在しないキーが含まれる場合はLearningHistoryError.unknownEntry、
+    ///   CIDがIntで表せない場合はLearningHistoryError.unsupportedCID、照会・削除に失敗した場合は変換エンジンのエラー
+    /// - Note: 変換エンジンの削除は直ちにディスクへ反映され、各接続の組成テキストは変更しない
     func forgetLearningEntries(
         _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
     ) throws -> UInt32 {
@@ -473,12 +624,15 @@ extension HazkeySharedResources {
         return UInt32(uniqueKeys.count)
     }
 
-    /// CIDにかかわらず各 (reading, word) 表層キーに一致する学習エントリを全て削除する
-    /// 候補削除ホットキー (deleteCandidateLearningData) と同じ動作
+    /// 読みと表記が一致する学習エントリを、品詞ID (CID) にかかわらず全て削除する
     ///
-    /// listLearningEntriesがCID違いを統合した行を表示する設定ダイアログから使用する
-    /// 保存エントリがない表層はスキップするため、処理中に削除済みの行がバッチ全体を失敗させない
-    /// 返す件数は実際に削除した完全一致エントリ数
+    /// 候補の学習削除ホットキー (deleteCandidateLearningData) と同じ動作で、設定画面の学習履歴ダイアログから使用する
+    ///
+    /// 保存エントリが無い読みと表記は読み飛ばすため、処理中に削除済みの行があっても一括削除全体は失敗しない
+    ///
+    /// - Parameter surfaces: 削除する読みと表記の組
+    /// - Returns: 実際に削除したエントリ数 (CID違いを個別に数える)
+    /// - Throws: 学習メモリの照会・削除に失敗した場合はそのエラー
     func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
         var requestedSurfaces: Set<LearningSurfaceKey> = []
         var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
@@ -491,11 +645,24 @@ extension HazkeySharedResources {
         return try forgetLearningEntries(resolvedKeys)
     }
 
-    // internal (privateではない): 接続ごとのHazkeyServerStateが候補注釈と削除対象の照合に使用する
+    /// 学習メモリに保存されたエントリを列挙する
+    ///
+    /// 変換エンジンの単一走査APIを1回だけ呼び、learningEnumerationLimit件までを返す
+    ///
+    /// - Returns: 学習メモリのエントリ (読み・表記・品詞ID・使用回数・最終使用日時)
+    /// - Throws: 学習メモリの読込に失敗した場合は変換エンジンのエラー
+    /// - Note: 接続ごとのHazkeyServerStateやテストからも使うため、privateにはしない
     func allLearningMemoryEntries() throws -> [LearningMemoryEntry] {
         try converter.allLearningMemoryEntries(limit: Self.learningEnumerationLimit).entries
     }
 
+    /// 指定した読みに保存された学習エントリのキーを、読みのポイント照会で取得する
+    ///
+    /// テスト用の差し替え口 (learningSurfaceKeyLookup) が設定されていればそちらを使う
+    ///
+    /// - Parameter readings: 照会する読み (カタカナに正規化済みであること)
+    /// - Returns: 一致したエントリの読み・表記・左右の品詞ID
+    /// - Throws: 学習メモリのシャードが破損・欠落している場合や、学習が一時停止中の場合は変換エンジンのエラー
     private func persistedLearningMemoryKeys(
         exactReadings readings: [String]
     ) throws -> [PersistedLearningMemoryKey] {
@@ -505,9 +672,14 @@ extension HazkeySharedResources {
         return try converter.persistedLearningMemoryKeys(exactReadings: readings)
     }
 
-    /// readingsの下に保存された学習エントリの表層キー
-    /// 「削除可」とする変換候補の注釈に使用する
-    /// 読みはトライの完全一致キーであるため、事前にカタカナ正規化しておくこと
+    /// 指定した読みに保存された学習エントリを、読みと表記の組のキーで返す
+    ///
+    /// 変換候補に削除可能の注釈 (has_learning_entry) を付けるために使う
+    ///
+    /// - Parameter readings: 照会する読み
+    /// - Returns: 学習済みの読みと表記の組
+    /// - Throws: 学習メモリの照会に失敗した場合は変換エンジンのエラー
+    /// - Precondition: 読みはトライの完全一致で引くため、事前にカタカナに正規化しておくこと
     func learningSurfaceKeys(forReadings readings: [String]) throws -> Set<LearningSurfaceKey> {
         Set(
             try persistedLearningMemoryKeys(exactReadings: readings).map {
@@ -515,8 +687,15 @@ extension HazkeySharedResources {
             })
     }
 
-    /// CIDにかかわらず候補の (reading, word) に一致する保存済み学習エントリ全てを、forgetLearningEntries用のキーとして返す
-    /// 注釈と同じポイント照会から導出するため、削除可能と表示された候補を必ず削除できる
+    /// 読みと表記が一致する保存済みの学習エントリを、品詞ID (CID) にかかわらず全て返す
+    ///
+    /// 注釈と同じポイント照会から導くため、削除可能と表示された候補は必ず削除できる
+    ///
+    /// - Parameters:
+    ///   - reading: 候補の読み
+    ///   - word: 候補の表記
+    /// - Returns: forgetLearningEntries(_:)に渡す削除対象のキー
+    /// - Throws: 学習メモリの照会に失敗した場合は変換エンジンのエラー
     func matchingLearningEntryKeys(
         reading: String,
         word: String
@@ -524,9 +703,18 @@ extension HazkeySharedResources {
         try matchingLearningEntryKeys(readings: [reading], word: word)
     }
 
-    /// 候補がいずれかの読みで保存された場合も上記と同様に照合する (通常変換は入力prefix、予測はfull ruby)
-    /// 全ての読みを1回の照会にまとめる
-    /// 削除時に読みごとにリクエストしてはならない
+    /// 複数の読みのいずれかと表記が一致する保存済みの学習エントリを、品詞ID (CID) にかかわらず全て返す
+    ///
+    /// 通常変換の候補は切り詰めた入力読み、予測候補は候補全体の読みで保存されるため、両方の読みで照合する
+    ///
+    /// 同じエントリは1件にまとめる
+    ///
+    /// - Parameters:
+    ///   - readings: 候補の読み (空文字列は無視する)
+    ///   - word: 候補の表記
+    /// - Returns: forgetLearningEntries(_:)に渡す削除対象のキー
+    /// - Throws: 学習メモリの照会に失敗した場合は変換エンジンのエラー
+    /// - Important: 全ての読みを1回の照会にまとめること (読みごとに照会してはならない)
     func matchingLearningEntryKeys(
         readings: [String],
         word: String
@@ -554,6 +742,11 @@ extension HazkeySharedResources {
         return matches
     }
 
+    /// 学習メモリ照会の失敗をログへ出力する
+    ///
+    /// 注釈の照会は打鍵ごとに実行されるため、60秒に1回までに間引く
+    ///
+    /// - Parameter error: 照会で発生したエラー
     func reportLearningLookupFailure(_ error: Error) {
         let now = ContinuousClock.now
         if let lastLearningLookupFailureLog,
@@ -565,7 +758,11 @@ extension HazkeySharedResources {
         NSLog("Failed to look up learning memory for annotations: \(error)")
     }
 
-    /// dirtyフラグが立っている間はコミットの契機ごとに再試行するため、ディスク障害が続くとコミットごとにログが出てしまう
+    /// 学習データの保存失敗をログへ出力する
+    ///
+    /// dirtyフラグが立っている間は保存の契機ごとに再試行するため、ディスク障害が続いてもログが増え続けないよう、60秒に1回までに間引く
+    ///
+    /// - Parameter error: 保存で発生したエラー
     func reportLearningCommitFailure(_ error: Error) {
         let now = ContinuousClock.now
         if let lastLearningCommitFailureLog,
@@ -580,71 +777,104 @@ extension HazkeySharedResources {
 
 // MARK: - 接続ごとの組成セッション
 
-/// 1つのソケットクライアントに結び付いたIME組成セッション
+/// 1つのソケット接続に結び付いた、入力中の組成セッション
 ///
-/// HazkeyServerは、接続を受け入れるたびにHazkeyServerStateを1つ生成し、切断時に破棄する
-/// 重い変換エンジン、設定、ユーザ辞書、絵文字プロバイダはサーバ全体のsharedオブジェクトに置く
-/// このオブジェクトが所有するのは組成ごとの状態 (組成テキスト、候補リスト、Shift/サブモードフラグ、Zenzai左文脈) と、
-/// 共有変換エンジン内のセッション単位の状態 (ラティス、確定済みデータ、Zenzai/予測キャッシュ) を選択するKanaKanjiConverter.ConversionSessionIDのみ
+/// HazkeyServerは、接続を受け入れるたびにこのオブジェクトを1つ生成して、切断時に破棄する
 ///
-/// 組成状態に触れる変換エンジン呼び出しは全てwithConversionSession内で行い、同時接続のクライアント同士が互いの未確定入力を参照しないようにする
-/// 学習メモリはサーバ全体で共有する
+/// 重い変換エンジン・設定・ユーザ辞書・絵文字プロバイダは、サーバ全体の共有リソース (HazkeySharedResources) に置く
+///
+/// このオブジェクトが持つのは、組成ごとの状態 (組成テキスト・候補リスト・[Shift]キーと直接入力モードの状態・Zenzaiの左文脈) と、
+/// 共有の変換エンジン内でこの接続の状態を選ぶ変換セッションIDだけである
+///
+/// 組成状態に触れる変換エンジンの呼び出しは全てwithConversionSession内で行い、同時に接続したクライアント同士が互いの未確定の入力を参照しないようにする
+///
+/// - Note: 学習メモリはサーバ全体で共有する
 class HazkeyServerState {
+    // MARK: 共有リソースと変換セッション
+
+    /// 全接続で共有するサーバ全体のリソース
     let shared: HazkeySharedResources
+    /// 共有の変換エンジン内で、この接続の組成状態を選ぶ変換セッションID
     let conversionSessionID: KanaKanjiConverter.ConversionSessionID
+    /// 変換セッションを解放済みかどうか (close()を冪等にするために使う)
+    private var isClosed = false
 
+    // MARK: 組成テキストと候補リスト
+
+    /// 入力中の組成テキスト
     var composingText: ComposingTextBox = ComposingTextBox()
+    /// 最後にクライアントへ返した候補リスト (確定・予測受入・学習削除で候補の位置から引く)
     var currentCandidateList: [DisplayedCandidate]?
-    /// currentCandidateListのモード (サジェストまたは変換)
-    /// 候補の学習データ削除後は同じモードでリストを再構築する
-    /// サジェストモードのリストを非予測リストとして再構築するとライブ変換状態が壊れる
-    /// makeCandidatesResultの呼び出しごとに記録し、nilでないcurrentCandidateListと常に同期させる
+    /// currentCandidateListがサジェストと変換のどちらで作られたか
+    ///
+    /// 候補の学習削除後は同じモードで候補リストを作り直す (サジェストの候補リストを変換の候補リストとして作り直すと、ライブ変換の状態が壊れる)
+    ///
+    /// makeCandidatesResultを呼ぶたびに記録して、currentCandidateListと常に一致させる
     var currentCandidateListIsSuggest = false
-
-    var isShiftPressedAlone = false
-    var shiftPressedAt: ContinuousClock.Instant?
-    var isSubInputMode = false
-    /// [Shift]キーの押下・解放をタップとみなす最長時間
-    /// これより長い押下は長押しとして扱い、サブ入力モードを切り替えない
-    private static let shiftTapMaxDuration: Duration = .milliseconds(500)
+    /// Zenzaiの左文脈 (カーソルより前にある周辺テキスト)
     var zenzaiLeftContext = ""
 
-    private var isClosed = false
+    // MARK: [Shift]キーと直接入力モード
+
+    /// [Shift]キーが単独で押されているかどうか (他のキーが入力されるとfalseになる)
+    var isShiftPressedAlone = false
+    /// [Shift]キーを押した時刻 (長押しの判定に使う)
+    var shiftPressedAt: ContinuousClock.Instant?
+    /// 直接入力 (サブ入力) モードかどうか (trueの場合はローマ字かな変換せずに文字をそのまま挿入する)
+    var isSubInputMode = false
+    /// [Shift]キーの押下から解放までをタップとみなす最長時間
+    ///
+    /// これより長い押下は長押しとして扱い、直接入力モードを切り替えない
+    private static let shiftTapMaxDuration: Duration = .milliseconds(500)
 
     // MARK: - 共有リソースへの転送アクセサ
 
     // 保存先をsharedに移した後も、既存のstate.xxx呼び出し箇所 (ProtocolHandler、テスト) を変更せずにコンパイルできるようにする
+
+    /// 共有の設定管理 (shared.serverConfigへの転送)
     var serverConfig: HazkeyServerConfig { shared.serverConfig }
+    /// 共有の変換エンジン (shared.converterへの転送)
     var converter: KanaKanjiConverter { shared.converter }
-    var userDictionary: UserDictionary { shared.userDictionary }
-    var emojiProvider: EmojiCandidateProvider? { shared.emojiProvider }
+    /// 変換要求の基本オプション (shared.baseConvertRequestOptionsへの転送)
     var baseConvertRequestOptions: ConvertRequestOptions {
         get { shared.baseConvertRequestOptions }
         set { shared.baseConvertRequestOptions = newValue }
     }
+    /// キーマップ (shared.keymapへの転送)
     var keymap: Keymap {
         get { shared.keymap }
         set { shared.keymap = newValue }
     }
+    /// 現在の入力テーブルの登録名 (shared.currentTableNameへの転送)
     var currentTableName: String {
         get { shared.currentTableName }
         set { shared.currentTableName = newValue }
     }
+    /// ユーザ辞書 (shared.userDictionaryへの転送)
+    var userDictionary: UserDictionary { shared.userDictionary }
+    /// Emoji 17.0直接変換の候補プロバイダ (shared.emojiProviderへの転送)
+    var emojiProvider: EmojiCandidateProvider? { shared.emojiProvider }
+    /// 永続化していない学習データがあるかどうか (shared.learningDataNeedsCommitへの転送)
     var learningDataNeedsCommit: Bool {
         get { shared.learningDataNeedsCommit }
         set { shared.learningDataNeedsCommit = newValue }
     }
 
+    /// 共有リソースを新しく生成して、接続セッションを生成する (主にテスト用)
     convenience init() {
         self.init(emojiDictionaryURL: nil)
     }
 
-    /// Parameter emojiDictionaryURL: テスト用に注入する辞書URL
-    ///                               nilの場合は、本番用E17アセットを使用する
+    /// 指定した絵文字辞書で共有リソースを新しく生成して、接続セッションを生成する (主にテスト用)
+    ///
+    /// - Parameter emojiDictionaryURL: テスト用に注入する絵文字辞書 (nilの場合は本番用のEmoji 17.0辞書を使う)
     convenience init(emojiDictionaryURL: URL?) {
         self.init(shared: HazkeySharedResources(emojiDictionaryURL: emojiDictionaryURL))
     }
 
+    /// 共有リソース上に接続セッションを生成して、変換セッションを登録する
+    ///
+    /// - Parameter shared: 全接続で共有するサーバ全体のリソース
     init(shared: HazkeySharedResources) {
         self.shared = shared
         self.conversionSessionID = shared.converter.createSession()
@@ -652,7 +882,8 @@ class HazkeyServerState {
     }
 
     /// この接続の変換セッションを解放する
-    /// 冪等であり、切断処理と後続のfd再利用時のcloseが重なって2回呼ばれても安全
+    ///
+    /// - Note: 冪等であり、切断処理とファイル記述子の再利用時の解放が重なって2回呼ばれても安全
     func close() {
         guard !isClosed else { return }
         isClosed = true
@@ -660,15 +891,22 @@ class HazkeyServerState {
         converter.removeSession(conversionSessionID)
     }
 
-    /// この接続の変換セッションを有効にして、"body"を実行する
-    /// 変換エンジンはサーバ全体で共有され、組成ごとの状態 (ラティス、確定済みデータ、Zenzaiキャッシュ、lastData) はセッションをキーとして管理されるため、
-    /// 組成を扱う呼び出しでは先にこの接続のセッションを選択する
+    /// この接続の変換セッションを選んで処理を実行する
+    ///
+    /// 変換エンジンはサーバ全体で共有され、組成ごとの状態 (ラティス・確定済みデータ・Zenzaiキャッシュ・前回の入力) は、変換セッションごとに管理される
+    ///
+    /// そのため、組成を扱う呼び出しは必ずこのメソッドを経由する
+    ///
+    /// - Parameter body: 変換セッションを選んだ状態で実行する処理
+    /// - Returns: 処理の戻り値 (変換セッションが使えない場合はnil)
     private func withConversionSession<T>(_ body: () throws -> T) -> T? {
         do { return try converter.withSession(conversionSessionID, operation: body) }
         catch { NSLog("[hazkey] Conversion session unavailable: \(error)"); return nil }
     }
 
-    /// 共有設定を再初期化した後、この接続の組成状態をリセットする
+    /// 設定の変更を共有リソースへ反映した後、この接続の組成状態をリセットする
+    ///
+    /// - Note: 他の接続の組成状態はリセットしない
     func reinitializeConfiguration() {
         NSLog("Reinitializing state configuration...")
         shared.reinitializeConfiguration()
@@ -685,11 +923,25 @@ class HazkeyServerState {
 
     // MARK: - 共有学習処理への転送
 
-    // "ProtocolHandler"とテストが引き続き、"state.*"を呼べるようにする薄い転送メソッド
+    // ProtocolHandlerとテストが引き続きstate.*を呼べるようにする薄い転送メソッド
+
+    /// 現在のプロファイルの学習データを消去する
+    ///
+    /// - Returns: 成功時は.success、失敗時は.failedを含むレスポンス
+    /// - Note: HazkeySharedResources.clearProfileLearningData()へ転送する
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
         shared.clearProfileLearningData()
     }
 
+    /// 学習履歴を読みと表記の組ごとに1行へまとめて、ページ単位で返す
+    ///
+    /// - Parameters:
+    ///   - query: 検索文字列 (空の場合は全件)
+    ///   - offset: ページの開始位置
+    ///   - limit: 1ページの行数
+    /// - Returns: ページ内の行と、検索に一致した行の総数
+    /// - Throws: HazkeySharedResources.listLearningEntries(query:offset:limit:) が投げるエラー
+    /// - Note: HazkeySharedResources.listLearningEntries(query:offset:limit:) へ転送する
     func listLearningEntries(
         query: String,
         offset: UInt32,
@@ -698,16 +950,36 @@ class HazkeyServerState {
         try shared.listLearningEntries(query: query, offset: offset, limit: limit)
     }
 
+    /// 読みと表記が一致する学習エントリを、品詞ID (CID) にかかわらず全て削除する
+    ///
+    /// - Parameter surfaces: 削除する読みと表記の組
+    /// - Returns: 実際に削除したエントリ数
+    /// - Throws: HazkeySharedResources.forgetLearningSurfaces(_:) が投げるエラー
+    /// - Note: HazkeySharedResources.forgetLearningSurfaces(_:) へ転送する
     func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
         try shared.forgetLearningSurfaces(surfaces)
     }
 
+    /// 指定した学習エントリを削除し、全接続の変換キャッシュを無効化する
+    ///
+    /// - Parameter keys: 削除するエントリの読み・表記・左右の品詞ID
+    /// - Returns: 削除したエントリ数
+    /// - Throws: HazkeySharedResources.forgetLearningEntries(_:) が投げるエラー
+    /// - Note: HazkeySharedResources.forgetLearningEntries(_:) へ転送する
     func forgetLearningEntries(
         _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
     ) throws -> UInt32 {
         try shared.forgetLearningEntries(keys)
     }
 
+    /// アプリケーションの周辺テキストから、Zenzaiの左文脈を設定する
+    ///
+    /// カーソル位置は周辺テキストの範囲内に丸める
+    ///
+    /// - Parameters:
+    ///   - surroundingText: 周辺テキスト
+    ///   - anchorIndex: 周辺テキスト内のカーソル位置 (文字数)
+    /// - Returns: 常に.successを含むレスポンス
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
         let clamped = max(0, min(anchorIndex, surroundingText.count))
         if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(surroundingText.count)") }
@@ -719,8 +991,13 @@ class HazkeyServerState {
         }
     }
 
-    /// ComposingText
+    // MARK: - 組成テキスト
 
+    /// 新しい組成を開始する
+    ///
+    /// 組成テキスト・候補リスト・Zenzaiの左文脈・直接入力モードを初期化して、この接続の変換セッションのキャッシュを破棄する
+    ///
+    /// - Returns: 常に.successを含むレスポンス
     func createComposingTextInstanse() -> Hazkey_ResponseEnvelope {
         composingText = ComposingTextBox()
         currentCandidateList = nil
@@ -728,7 +1005,7 @@ class HazkeyServerState {
         isSubInputMode = false
         isShiftPressedAlone = false
         shiftPressedAt = nil
-        // 新しい組成の開始時にこの接続の変換セッションを破棄し、同じ入力でも前の組成のラティスを再利用して新たに学習した候補が隠れないようにする
+        // 新しい組成の開始時にこの接続の変換セッションを破棄して、同じ入力でも前の組成のラティスを再利用して新たに学習した候補が隠れないようにする
         // 1つの組成内での逐次変換ではセッションを引き続き再利用する
         _ = withConversionSession { converter.stopComposition() }
         return Hazkey_ResponseEnvelope.with {
@@ -736,6 +1013,14 @@ class HazkeyServerState {
         }
     }
 
+    /// 1文字を組成テキストのカーソル位置へ挿入する
+    ///
+    /// 直接入力モードでは文字をそのまま挿入して、通常モードではキーマップと入力テーブルでローマ字かな変換する
+    ///
+    /// [Shift]キーを単独で押下した状態で直接入力の開始文字 (設定の大文字等) を入力すると、直接入力モードに入る
+    ///
+    /// - Parameter inputString: 入力された文字 (先頭の1文字だけを使用する)
+    /// - Returns: 成功時は.success、文字列が空の場合は.failedを含むレスポンス
     func inputChar(inputString: String) -> Hazkey_ResponseEnvelope {
         guard let inputChar = inputString.first else {
             return Hazkey_ResponseEnvelope.with {
@@ -769,6 +1054,14 @@ class HazkeyServerState {
         return Hazkey_ResponseEnvelope.with { $0.status = .success }
     }
 
+    /// 修飾キーのイベントを処理して、[Shift]キーの単独タップで直接入力モードを切り替える
+    ///
+    /// [Shift]キーを押して500[ms]未満で離した場合だけ切り替え、長押しや他のキーとの同時押下 (CANCEL) では切り替えない
+    ///
+    /// - Parameters:
+    ///   - modifier: 修飾キーの種類 (現在は[Shift]キーのみ)
+    ///   - event: 押下・解放・取消のいずれか
+    /// - Returns: 成功時は.success、未知の修飾キーやイベントの場合は.failedを含むレスポンス
     func processModifierEvent(
         modifier: Hazkey_Commands_ModifierEvent.ModifierType,
         event: Hazkey_Commands_ModifierEvent.EventType
@@ -792,7 +1085,7 @@ class HazkeyServerState {
                     shiftPressedAt = nil
                 }
             case .cancel:
-                // [Shift]が別のキー (修飾キーまたは文字キー) と組み合わされた状態で離された
+                // [Shift]が別のキー (修飾キーまたは文字キー) と組み合わされた状態で離された場合
                 // サブ入力 (直接入力) モードは切り替えない
                 isShiftPressedAlone = false
                 shiftPressedAt = nil
@@ -813,6 +1106,9 @@ class HazkeyServerState {
         return Hazkey_ResponseEnvelope.with { $0.status = .success }
     }
 
+    /// 現在の入力モードを返す
+    ///
+    /// - Returns: 直接入力モードの場合は.direct、それ以外は.normalを含むレスポンス
     func getCurrentInputMode() -> Hazkey_ResponseEnvelope {
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -822,14 +1118,25 @@ class HazkeyServerState {
         }
     }
 
+    /// 保留中の学習データを永続化する
+    ///
+    /// - Returns: 成功時は.success、保存に失敗した場合は.failedを含むレスポンス
+    /// - Note: HazkeySharedResources.saveLearningData()へ転送する
     func saveLearningData() -> Hazkey_ResponseEnvelope {
         shared.saveLearningData()
     }
 
+    /// Zenzaiモデルを読み込み直して、ウォームアップを行う
+    ///
+    /// - Returns: 成功時は.success、モデルを読み込めなかった場合は.failedを含むレスポンス
+    /// - Note: HazkeySharedResources.reloadZenzaiModel()へ転送する
     func reloadZenzaiModel() -> Hazkey_ResponseEnvelope {
         shared.reloadZenzaiModel()
     }
 
+    /// カーソルの左の1文字を削除する ([BackSpace]キー)
+    ///
+    /// - Returns: 常に.successを含むレスポンス
     func deleteLeft() -> Hazkey_ResponseEnvelope {
         composingText.value.deleteBackwardFromCursorPosition(count: 1)
         return Hazkey_ResponseEnvelope.with {
@@ -837,6 +1144,9 @@ class HazkeyServerState {
         }
     }
 
+    /// カーソルの右の1文字を削除する ([Delete]キー)
+    ///
+    /// - Returns: 常に.successを含むレスポンス
     func deleteRight() -> Hazkey_ResponseEnvelope {
         composingText.value.deleteForwardFromCursorPosition(count: 1)
         return Hazkey_ResponseEnvelope.with {
@@ -844,6 +1154,14 @@ class HazkeyServerState {
         }
     }
 
+    /// 候補を確定して、候補が対応する読みを組成テキストから取り除く
+    ///
+    /// 変換エンジンの候補は学習データを更新する (ユーザ辞書由来の候補を除く)
+    ///
+    /// 相対日付・かな数字・絵文字等の注入候補は学習しない
+    ///
+    /// - Parameter candidateIndex: 候補リスト内の確定する候補の位置
+    /// - Returns: 成功時は.success、候補が見つからない場合は.failedを含むレスポンス
     func completePrefix(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
         // 範囲を先に確認する
         // Swiftの配列添字は範囲外でトラップするため、不正なクライアント添字でサーバをクラッシュさせない
@@ -889,12 +1207,18 @@ class HazkeyServerState {
         }
     }
 
-    /// 予測候補を先頭の固定表記として受け入れる (upstream ad714fe / #357)
-    /// completePrefixと異なり確定は行わず、候補の残りrubyを組成テキストに追加し、受け入れた表記を以降のZenzai変換の先頭制約とする
-    ///　まだ確定していないため学習データは更新しない
+    /// 予測候補を先頭の固定表記として受け入れる (上流ad714fe / #357)
+    ///
+    /// completePrefixと異なり確定はせず、候補の残りの読みを組成テキストに追加し、受け入れた表記を以降のZenzai変換の先頭の制約とする
+    ///
+    /// まだ確定していないため、学習データは更新しない
+    ///
+    /// - Parameter candidateIndex: 候補リスト内の受け入れる候補の位置
+    /// - Returns: 成功時は.success、候補が見つからない場合や受け入れられない候補の場合は.failedを含むレスポンス
+    /// - Note: 受入のホットキーは設定で変更できる (既定は[F5]キー)
     func acceptPrediction(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
         // 範囲を先に確認する
-        //　Swiftの配列添字 (およびそのoptional chaining) は範囲外でnilを返さずトラップするため、不正なクライアント添字でサーバをクラッシュさせない
+        // Swiftの配列添字 (およびそのoptional chaining) は範囲外でnilを返さずトラップするため、不正なクライアント添字でサーバをクラッシュさせない
         guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
@@ -924,6 +1248,10 @@ class HazkeyServerState {
         }
     }
 
+    /// 組成テキスト内のカーソルを移動する
+    ///
+    /// - Parameter offset: 移動する文字数 (負の値は左、正の値は右)
+    /// - Returns: 常に.successを含むレスポンス
     func moveCursor(offset: Int) -> Hazkey_ResponseEnvelope {
         _ = composingText.value.moveCursorFromCursorPosition(count: offset)
         return Hazkey_ResponseEnvelope.with {
@@ -931,6 +1259,12 @@ class HazkeyServerState {
         }
     }
 
+    /// 文節の境界を移動し、変換候補を作り直す ([Shift]+[Left] / [Shift]+[Right])
+    ///
+    /// カーソル位置を文節の境界として扱い、先頭の1文字から末尾までの範囲に丸めて移動する
+    ///
+    /// - Parameter offset: 境界を移動する文字数 (負の値は左、正の値は右)
+    /// - Returns: 作り直した候補リストとひらがなの読みを含むレスポンス (組成テキストが空の場合は空の結果)
     func adjustClauseBoundary(offset: Int) -> Hazkey_ResponseEnvelope {
         isShiftPressedAlone = false
         shiftPressedAt = nil
@@ -963,13 +1297,16 @@ class HazkeyServerState {
         }
     }
 
-    /// ComposingText -> Characters
+    // MARK: - 組成テキストの文字列化
 
-    /// 構造APIであり表示設定は適用しない
-    /// auxTextModeによるAUXの表示・非表示は、
-    /// フロントエンド側 (hazkey-frontend-common/composing_cursor_view.h - hazkey::frontend::shouldShowAuxText) が判断する
-    /// ここで空文字列を返すと、preeditのキャレット位置まで設定に従属してしまうため、常に実際の3分割を返す
+    /// 組成テキストのひらがなを、カーソルの前・カーソル位置の1文字・カーソルの後の3つに分けて返す
+    ///
+    /// 表示設定を適用しない構造APIで、補助テキストの表示・非表示 (auxTextMode) はフロントエンド側 (hazkey::frontend::shouldShowAuxText) が判断する
+    ///
+    /// - Returns: 3分割したひらがなを含むレスポンス
+    /// - Important: 設定によって空文字列を返すとpreeditのキャレット位置まで設定に従属してしまうため、常に実際の3分割を返すこと
     func getHiraganaWithCursor() -> Hazkey_ResponseEnvelope {
+        // 範囲外の指定ではトラップせずに空文字列を返す部分文字列の取得
         func safeSubstring(_ text: String, start: Int, end: Int) -> String {
             guard start >= 0, end >= 0, start < text.count, end <= text.count, start < end else {
                 return ""
@@ -994,6 +1331,14 @@ class HazkeyServerState {
         }
     }
 
+    /// 組成テキストを指定した文字種に変換して返す ([F6]〜[F10]キー等の直接変換)
+    ///
+    /// 英字への変換では、同じキーを押すたびに小文字・大文字・先頭のみ大文字を巡回する
+    ///
+    /// - Parameters:
+    ///   - charType: 変換先の文字種 (ひらがな・全角カタカナ・半角カタカナ・全角英字・半角英字)
+    ///   - currentPreedit: 現在のpreedit (英字の大文字・小文字の巡回に使用する)
+    /// - Returns: 成功時は変換した文字列を含む.success、未知の文字種の場合は.failedを含むレスポンス
     func getComposingString(
         charType: Hazkey_Commands_GetComposingString.CharType,
         currentPreedit: String
@@ -1024,8 +1369,13 @@ class HazkeyServerState {
         }
     }
 
-    /// 候補
+    // MARK: - 候補
 
+    /// 変換の前に、組成テキストの末尾へ組成の区切りを挿入する
+    ///
+    /// 区切りを挿入すると、末尾の未確定のローマ字 (例: n) がかなへ確定される
+    ///
+    /// - Note: カーソルが末尾に無い場合や、既に区切りがある場合は何もしない
     func ensureCompositionSeparatorForConversion() {
         guard composingText.value.isAtEndIndex else {
             return
@@ -1040,6 +1390,12 @@ class HazkeyServerState {
         ])
     }
 
+    /// 変換エンジンへ渡す組成テキストを返す
+    ///
+    /// 変換でカーソルが末尾に無い場合は、カーソルまでの読み (文節の境界まで) を変換する
+    ///
+    /// - Parameter is_suggest: サジェストの場合はtrue、変換の場合はfalse
+    /// - Returns: サジェストまたはカーソルが末尾の場合は組成テキスト全体、それ以外はカーソルまでの組成テキスト
     func candidateRequestText(is_suggest: Bool) -> ComposingText {
         let usePrefixTarget = !is_suggest && !composingText.value.isAtEndIndex
         return usePrefixTarget
@@ -1047,16 +1403,21 @@ class HazkeyServerState {
             : composingText.value
     }
 
-    /// 永続化済み学習メモリへの一括ポイント照会により、変換候補の"has_learning_entry"を設定する
+    /// 学習メモリへの一括ポイント照会で、変換候補に削除可能の注釈 (has_learning_entry) を付ける
     ///
-    /// 各候補の両方の読みを1回の照会にまとめ、いずれかが一致すれば注釈を付ける
-    /// 表示候補数にかかわらず、リクエストあたりの呼び出しは1回
+    /// 各候補の2種類の読みをまとめて照会して、いずれかが表記と一致すれば注釈を付ける
     ///
-    /// - Important: "converter.requestCandidates(...)"の後にのみ呼び出すこと
-    ///              変換エンジンはその呼び出し内で有効プロファイルのmemoryDirectoryURLを遅延適用するため、
-    ///              プロファイル切替直後に先行照会すると前プロファイルのディレクトリを読む
-    /// - Note: 照会失敗時は全ての候補に注釈を付けない
-    ///         ポイント照会導入前と同じ保守的な縮退動作
+    /// 候補数にかかわらず、照会は1回の要求につき1回だけ行う
+    ///
+    /// - Parameters:
+    ///   - readings: clientCandidatesと同じ位置に並んだ各候補の読み
+    ///   - clientCandidates: 注釈を付けるクライアント向けの候補
+    /// - Important: converter.requestCandidates(...) の後にのみ呼び出すこと
+    ///
+    ///   変換エンジンはその呼び出しの中で学習メモリの保存先を遅延して適用するため、
+    ///   先に照会するとプロファイルの切り替え直後に前のプロファイルのディレクトリを読んでしまう
+    ///
+    /// - Note: 照会に失敗した場合は、全ての候補を注釈無しのままにする (保守的な縮退動作)
     private func annotateLearningEntries(
         readings: [CandidateLearningReadings],
         into clientCandidates: inout [Hazkey_Commands_CandidatesResult.Candidate]
@@ -1089,6 +1450,19 @@ class HazkeyServerState {
         }
     }
 
+    /// 変換エンジンで候補を生成し、クライアント向けの候補リストとサーバ側の候補リストを作る
+    ///
+    /// 処理の流れは次の通り
+    ///
+    /// 1. 必要ならユーザ辞書を変換エンジンへ注入する
+    /// 2. この接続の変換セッションで変換し、予測候補と変換候補を重複なく並べ、ライブ変換の表記を決める
+    /// 3. 削除可能の注釈を付ける
+    /// 4. 絵文字・相対日付・かな数字の候補を注入する
+    /// 5. 自動変換の設定に従ってライブ変換の表記を消して、ページの候補数を設定する
+    ///
+    /// - Parameter is_suggest: サジェスト (入力中の候補) の場合はtrue、変換 ([Space]キー等) の場合はfalse
+    /// - Returns: クライアントへ返す候補結果と、同じ位置に並んだサーバ側の候補リスト
+    /// - Note: 絵文字とかな数字の候補は変換の場合だけ注入して、サジェストやライブ変換には混ぜない
     private func makeCandidatesResult(
         is_suggest: Bool
     ) -> (Hazkey_Commands_CandidatesResult, [DisplayedCandidate]) {
@@ -1100,15 +1474,16 @@ class HazkeyServerState {
         var zenzaiInferenceNanoseconds: UInt64?
         // 既にレスポンスへ出力した表記
         // 変換エンジンは、predictionResultsとmainResultsの各配列内では個別に重複排除するが、両配列間では同じ表記が重なることがある
-        // (ユーザ辞書の単語が自身の最良ノードの予測としても現れるなど)
+        // (ユーザ辞書の単語が自身の最良ノードの予測としても現れる等)
         // そのため連結後のリストでは後続の重複を除外する
         var appendedTexts: Set<String> = []
 
         // 以下で出力する全変換候補のカタカナ正規化済み読み
         // clientCandidatesと位置を対応させる
-        // 「削除可能」注釈は、変換エンジンの応答後にこれらを使用した1回の一括ポイント照会で解決する - "annotateLearningEntries"を参照
+        // 削除可能の注釈は、変換エンジンの応答後にこれらを使用した1回の一括ポイント照会で決める (annotateLearningEntriesを参照)
         var annotationReadings: [CandidateLearningReadings] = []
 
+        // 候補を追加できるかどうか (サジェストでは上限まで、変換では常に追加できる)
         func canAppend(
             isSuggest: Bool,
             currentCount: Int,
@@ -1117,6 +1492,7 @@ class HazkeyServerState {
             return !isSuggest || currentCount < limit
         }
 
+        // 変換エンジンの候補を、クライアント向け・サーバ側・注釈用の読みの3つのリストへ同じ位置で追加する
         func appendCandidate(
             _ candidate: Candidate,
             fullHiraganaPreedit: String,
@@ -1182,7 +1558,7 @@ class HazkeyServerState {
 
         let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
 
-        // ユーザ辞書を変換エンジンに注入し、各エントリが指定品詞 (CID) の接続コスト順位付けに参加するようにする
+        // ユーザ辞書を変換エンジンに注入して、各エントリが指定品詞 (CID) の接続コスト順位付けに参加するようにする
         // 注入自体はインスタンス単位 (全接続で共有) の処理なので、変換セッション外で実行する
         if serverConfig.currentProfile.useUserDictionaryEffective {
             let reloaded = userDictionary.reloadIfNeeded()
@@ -1206,7 +1582,8 @@ class HazkeyServerState {
                 converter.requestCandidates(copiedComposingText, options: options)
             })
         else {
-            // セッションは接続終了時にのみ削除され、単一スレッドのサーバループが終了済みセッションで変換することもないが、念のためトラップせず空リストを返す
+            // セッションは接続終了時にのみ削除され、単一スレッドのサーバループが終了済みセッションで変換することもないが、
+            // 念のためトラップせず空リストを返す
             var emptyResult = Hazkey_Commands_CandidatesResult()
             emptyResult.liveTextIndex = -1
             return (emptyResult, [])
@@ -1278,7 +1655,7 @@ class HazkeyServerState {
             )
         }
 
-        // ここで「削除可能」注釈を解決する
+        // ここで削除可能の注釈を付ける
         // 変換候補は全て出力済みであり、以下の注入処理は任意の位置にエントリを挿入して、annotationReadingsとの位置対応を崩すため
         annotateLearningEntries(readings: annotationReadings, into: &clientCandidates)
 
@@ -1311,7 +1688,7 @@ class HazkeyServerState {
         }
 
         // === 相対日付候補の注入 (後処理) ===
-        // 組成中のひらがなが相対日付トリガーワード (きょう、きのうなど) に完全一致し、かつ変換エンジンが漢字表現 (今日、昨日など) を返した場合、
+        // 組成中のひらがなが相対日付トリガーワード (きょう、きのう等) に完全一致し、かつ変換エンジンが漢字表現 (今日、昨日等) を返した場合、
         // 書式化した日付文字列 (yyyy年M月d日、yyyy-MM-ddなど) を注入する
         // completePrefixとのindex対応のためserverCandidatesに、wireシリアライズのためclientCandidatesにも、漢字表現の直後に候補を挿入する
         //
@@ -1323,7 +1700,7 @@ class HazkeyServerState {
                 composingHiragana: hiraganaPreedit)
             {
                 // serverCandidates内の漢字表現のindexを検索する
-                // 漢字形が存在する場合のみ注入し、「漢字表現が有る時だけ挿入」というユーザ設定に従う
+                // 漢字形が存在する場合のみ注入して、「漢字表現が有る時だけ挿入」というユーザ設定に従う
                 let kanjiIndex = serverCandidates.firstIndex(where: { dc in
                     if case .fromConverter(let c) = dc { return c.text == trigger.kanji }
                     return false
@@ -1364,7 +1741,7 @@ class HazkeyServerState {
                         currentCount: clientCandidates.count,
                         limit: N_best
                     ) {
-                        // 合成漢字アンカー (確定時はfromDateProviderとして扱う)
+                        // 合成漢字アンカー (確定時は、fromDateProviderとして扱う)
                         var anchorClientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
                         anchorClientCandidate.text = trigger.kanji
                         anchorClientCandidate.subHiragana = String(
@@ -1474,6 +1851,13 @@ class HazkeyServerState {
     }
 
     // TODO: エラーメッセージを返す
+
+    /// 候補リストを生成して返して、確定等のためにサーバ側の候補リストを記録する
+    ///
+    /// 変換の場合は、先に組成テキストの末尾へ組成の区切りを挿入する
+    ///
+    /// - Parameter is_suggest: サジェストの場合はtrue、変換の場合はfalse
+    /// - Returns: 候補結果を含むレスポンス
     func getCandidates(is_suggest: Bool) -> Hazkey_ResponseEnvelope {
         if !is_suggest {
             ensureCompositionSeparatorForConversion()
@@ -1487,11 +1871,18 @@ class HazkeyServerState {
         }
     }
 
-    /// フォーカス中の候補に対応する学習メモリエントリを削除し、記憶しているモードで候補リストを再構築する
+    /// 候補について、学習データを削除し、候補リストを作り直す
     ///
-    /// CID違いをまたいで (reading, word) の表層ペアで照合する
-    /// 「削除可能」注釈と同じ規則なので、削除可能と表示された候補を必ず削除できる
-    /// forgetLearningMemoryは直ちにディスクへ永続化し、変換エンジンのメモリキャッシュをリセットするため、再構築したリストに削除が反映される
+    /// 読みと表記が同じであれば、品詞ID (CID) だけが異なる学習エントリも全て削除する
+    ///
+    /// 削除可能の注釈と同じ規則で照合するため、削除可能と表示された候補は必ず削除できる
+    ///
+    /// 候補リストは削除前と同じモード (サジェストまたは変換) で作り直す
+    ///
+    /// - Parameter candidateIndex: 候補リスト内の対象候補の位置
+    /// - Returns: 削除件数と作り直した候補リストを含むレスポンス
+    /// - Note: 絵文字等の注入候補や未学習の候補は学習データを持たないため、削除件数は0になる (候補リストは作り直さない)
+    /// - Important: 変換エンジンの学習削除は直ちにディスクへ反映され、作り直した候補リストにも削除が反映される
     func deleteCandidateLearningData(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
         // 範囲を先に確認する
         // Swiftの配列添字は範囲外でトラップするため、不正なクライアント添字でサーバをクラッシュさせない
@@ -1571,9 +1962,14 @@ class HazkeyServerState {
 
 }
 
+/// 変換候補から学習メモリの照会に使う読みを導く拡張
 extension Candidate {
-    /// 候補の学習メモリキーを一元的に導出する
-    /// 注釈と削除ハンドラで共有し、削除可能と表示された候補を必ず削除できるようにする
+    /// 候補が学習メモリに保存されうる2種類の読みを返す
+    ///
+    /// 注釈と学習削除でこのメソッドだけを使うため、削除可能と表示された候補は必ず削除できる
+    ///
+    /// - Parameter typedPrefix: 候補の位置まで切り詰めた入力のひらがな読み
+    /// - Returns: カタカナに正規化した切り詰めた読みと候補全体の読み
     func learningReadings(truncatedTo typedPrefix: String) -> CandidateLearningReadings {
         CandidateLearningReadings(
             prefixReading: katakanaNormalized(typedPrefix),
@@ -1581,15 +1977,18 @@ extension Candidate {
     }
 }
 
+/// 未設定の項目を既定値で補ったプロファイル設定の有効値
 extension Hazkey_Config_Profile {
-    /// プロファイルごとのユーザ辞書設定の有効値
-    /// 既存動作を維持するため、レガシー設定または未設定時はtrueを既定値とする
+    /// [ユーザ辞書を使用]の有効値
+    ///
+    /// 既存の動作を維持するため、古い設定ファイルや未設定の場合はtrueになる
     var useUserDictionaryEffective: Bool {
         hasUseUserDictionary ? useUserDictionary : true
     }
 
-    /// 相対日付候補設定の有効値
-    /// 既存動作を維持するため、レガシー設定または未設定時はtrueを既定値とする
+    /// [相対日付]候補の有効値
+    ///
+    /// 既存の動作を維持するため、古い設定ファイルや未設定の場合はtrueになる
     var useRelativeDateEffective: Bool {
         let mode = specialConversionMode
         return mode.hasRelativeDate ? mode.relativeDate : true

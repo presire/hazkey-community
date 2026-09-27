@@ -2,9 +2,12 @@ import Foundation
 import Glibc
 import KanaKanjiConverterModule
 
-/// ユーザがVulkan Loaderに使用するドライバを明示したことを表す環境変数
-/// いずれかが存在する場合、hazkey-serverは独自のprobeにより、この選択を上書きしてはならない
-/// これらの優先順位は、Vulkan Loader自身が解決するため、ここでの並び順は意味を持たない
+/// ユーザがVulkanドライバの選択を明示したことを示す環境変数の一覧
+///
+/// [VK_DRIVER_FILES]、[VK_ICD_FILENAMES]、[VK_ADD_DRIVER_FILES]、[VK_LOADER_DRIVERS_SELECT]、[VK_LOADER_DRIVERS_DISABLE]のいずれかが設定されている場合、
+/// hazkey-serverは独自のプローブでその選択を上書きしない
+///
+/// 優先順位はVulkan Loaderが解決するため、ここでの並び順に意味はない
 let vulkanOverrideEnvironmentVariables = [
     "VK_DRIVER_FILES",
     "VK_ICD_FILENAMES",
@@ -13,20 +16,32 @@ let vulkanOverrideEnvironmentVariables = [
     "VK_LOADER_DRIVERS_DISABLE",
 ]
 
-/// GGML/Vulkanバックエンドのロードを試す隔離子プロセスの終了結果
-/// 子プロセスがSIGILL / SIGSEGVでクラッシュすれば、実サーバやユーザのFcitx5 / IBusセッションを停止させずに、
-/// 現在のドライバー組み合わせが安全でないことを検出できる
+/// GGML/Vulkanバックエンドの読み込みを試す隔離子プロセスの終了結果
+///
+/// 子プロセスが異常なドライバの組み合わせでクラッシュしても、実サーバやユーザのFcitx5 / IBusセッションを停止させずに安全でない組み合わせを検出できる
 enum BackendProbeOutcome: Equatable {
+    /// 正常終了したことを示す
     case success
+    /// 子プロセスがシグナルで強制終了したことを示す
     case crashed(signal: Int32)
+    /// 子プロセスが非ゼロの終了コードで終了したことを示す
     case failedExit(code: Int32)
+    /// 子プロセスが制限時間内に終了しなかったことを示す
     case timedOut
+    /// 子プロセスを起動できなかったことを示す
     case spawnFailed(String)
 }
 
-/// プローブが現在のVulkanドライバ組み合わせを安全でないと判定したため、推論をCPU専用で実行する場合にTrueを返す
-/// "spawnFailed"と"nil"はフォールバックではなく、プローブ導入前と同様にバックエンドを直接ロードする
-/// 設定GUIで無言の性能低下を警告できるよう、"CurrentConfig.zenzai_gpu_probe_fallback"に公開する
+/// プローブが現在のVulkanドライバの組み合わせを安全でないと判定したため推論をCPU専用で実行するかどうかを返す
+///
+/// [crashed]、[failedExit]、[timedOut]の場合に真を返す
+///
+/// [spawnFailed]とnilはフォールバックではなく、プローブ導入前と同様にバックエンドを直接読み込む
+///
+/// CPU専用への切り替えは[zenzai_gpu_probe_fallback]として公開し、設定GUIが無言の性能低下を警告できるようにする
+///
+/// - Parameter outcome: 判定対象のプローブ結果 (nilの場合はプローブ未実行を表す)
+/// - Returns: CPU専用で実行する場合に真を返す
 func zenzaiGPUFallbackActive(_ outcome: BackendProbeOutcome?) -> Bool {
     switch outcome {
     case .crashed, .failedExit, .timedOut:
@@ -36,13 +51,23 @@ func zenzaiGPUFallbackActive(_ outcome: BackendProbeOutcome?) -> Bool {
     }
 }
 
-/// ユーザがシェルの環境変数 / "$XDG_CONFIG_HOME/hazkey-community/env"ファイルでVulkanドライバを既に選択している場合にTrueを返す
-/// その場合、選択を信頼して以降の安全性プローブを完全に省略し、ユーザ指定どおりに適用する
+/// ユーザがVulkanドライバを既に選択しているかどうかを返す
+///
+/// シェル環境または[$XDG_CONFIG_HOME/hazkey-community/env]ファイルでの指定を検出する
+///
+/// 真の場合はその選択を信頼し、以降の安全性プローブを完全に省略する
+///
+/// - Parameter environment: 検査対象の環境変数
+/// - Returns: ユーザによる明示指定がある場合に真を返す
 func vulkanEnvOverridePresent(in environment: [String: String]) -> Bool {
     vulkanOverrideEnvironmentVariables.contains { environment[$0] != nil }
 }
 
-/// "/proc/self/exe"ファイルを使用して、実行中バイナリの絶対パスを取得する (Linux専用)
+/// 実行中バイナリの絶対パスを取得する
+///
+/// [/proc/self/exe]を読み取って解決する (Linux専用)
+///
+/// - Returns: 取得に成功した場合は絶対パス、失敗した場合はnilを返す
 func resolveSelfExecutablePath() -> String? {
     let capacity = 4096
     let buffer = UnsafeMutablePointer<Int8>.allocate(capacity: capacity)
@@ -53,9 +78,26 @@ func resolveSelfExecutablePath() -> String? {
     return String(cString: buffer)
 }
 
-/// "executablePath arguments..."を起動して終了を待機し、終了状態を分類する
-/// 実際の"--probe-backends"再実行に加え、Vulkanに触れずにクラッシュ・タイムアウト・非ゼロ終了を検証するため、
-/// 実行ファイルと引数を注入したユニットテストでも利用する
+/// 実行ファイルを指定引数で起動して終了状態を分類する
+///
+/// 実サーバと同じ環境を観測しなければならないため、Vulkan関連の環境変数はそのまま継承する
+///
+/// 既定引数は[--probe-backends]、既定の制限時間は5.0秒である
+///
+/// 制限時間でウォッチドッグスレッドが[SIGTERM]を送り、0.5秒後に[SIGKILL]を送る
+///
+/// 未捕捉シグナルによる終了のうち[SIGTERM] / [SIGKILL]はウォッチドッグ由来とみなして[timedOut]とし、
+/// それ以外 ([SIGILL] / [SIGSEGV] / [SIGABRT] / [SIGBUS] / [SIGFPE]) は[crashed]とする
+///
+/// 非ゼロ終了は[failedExit]とする
+///
+/// 通常起動の[--probe-backends]再実行に加え、実行ファイルと引数を注入した単体試験でも利用する
+///
+/// - Parameters:
+///   - executablePath: 起動する実行ファイル (nilの場合は実行中のバイナリを解決する)
+///   - arguments: 子プロセスへ渡す引数
+///   - timeoutSeconds: 子プロセスの終了を待つ制限時間(秒)
+/// - Returns: 分類したプローブ結果
 func probeVulkanBackendsSafely(
     executablePath: String? = nil,
     arguments: [String] = ["--probe-backends"],
@@ -68,8 +110,7 @@ func probeVulkanBackendsSafely(
     let process = Process()
     process.executableURL = URL(fileURLWithPath: exePath)
     process.arguments = arguments
-    // プローブは実サーバと同じ環境を観測しなければならないため、
-    // Vulkan関連の環境変数を追加・削除せずにそのまま継承する
+    // 実サーバと同じ環境を観測するためVulkan関連の環境変数は追加も削除もせずに継承する
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
 
@@ -83,7 +124,7 @@ func probeVulkanBackendsSafely(
     let watchdog = Thread {
         Thread.sleep(forTimeInterval: timeoutSeconds)
         guard process.isRunning else { return }
-        process.terminate()  // SIGTERMシグナルを送信して、強制終了へ進む
+        process.terminate()  // [SIGTERM]を送って強制終了へ進む
         Thread.sleep(forTimeInterval: 0.5)
         if process.isRunning {
             kill(process.processIdentifier, SIGKILL)
@@ -91,15 +132,15 @@ func probeVulkanBackendsSafely(
     }
     watchdog.start()
 
-    // 子プロセスが終了するか上記ウォッチドッグに停止されるまで待機する
-    // ドライバクラッシュでも正常終了と同様に子プロセスのfdが閉じるため、SIGILL / SIGSEGVでもここは正しく待機解除される
+    // 子プロセスが終了するかウォッチドッグによる停止まで待機する
+    // ドライバクラッシュでも正常終了と同様に子プロセスのfdが閉じるため、[SIGILL] / [SIGSEGV]でもここは正しく待機解除される
     process.waitUntilExit()
 
     if process.terminationReason == .uncaughtSignal {
         let signal = process.terminationStatus
-        // 実際のドライバクラッシュは、
-        // SIGILL / SIGSEGV / SIGABRT / SIGBUS / SIGFPEを発生させ、子プロセス自身がSIGTERM / SIGKILLを送信することはない
-        // 後者は、上記ウォッチドッグ経由でのみ届くため、この関数とウォッチドッグスレッド間で共有可変状態を持たずにタイムアウトとして判別できる
+        // 実際のドライバクラッシュは、[SIGILL] / [SIGSEGV] / [SIGABRT] / [SIGBUS] / [SIGFPE]を起こし、
+        // 子プロセス自身が[SIGTERM]/[SIGKILL]を送ることはない
+        // 後者はウォッチドッグ経由でのみ届くため、この関数とウォッチドッグスレッド間で共有可変状態を持たずにタイムアウトと判別できる
         if signal == SIGTERM || signal == SIGKILL {
             return .timedOut
         }
@@ -112,15 +153,22 @@ func probeVulkanBackendsSafely(
     return .success
 }
 
-/// baseDirectory内のバックエンドプラグインからVulkan用だけを除外して、一時ディレクトリにシンボリックリンクを作成する
-/// 対象名は、GGMLが走査する"libggml-vulkan-*.so" / "libggml-vulkan.so"と一致させる
-/// (ggml-backend-reg.cppのggml_backend_load_best()を参照)
+/// Vulkan用を除いたバックエンドの一時ディレクトリを構築する
 ///
-/// GGMLは、ディレクトリ内の全候補をdlopenして呼び出すため、
-/// プローブ子プロセスが危険と判定した後にVulkanを再ロードさせない方法は、走査対象から隠すことだけである
-/// GGML側に個別の名前を除外するAPIはない
+/// baseDirectory内のエントリからVulkan用だけを除外して、一時ディレクトリへシンボリックリンクを作成する
 ///
-/// ディレクトリを読めない場合、または、Vulkan以外のエントリがない場合はnilを返す
+/// 除外対象名はGGMLが走査する[libggml-vulkan-*] / [libggml-vulkan.so]に一致させる (ggml-backend-reg.cppのggml_backend_load_best()を参照する)
+///
+/// GGMLは候補ディレクトリ内をすべてdlopenするため、個別名を除外するAPIがなく、走査対象から隠すことがVulkanの再読み込みを避ける唯一の方法である
+///
+/// 参照元ディレクトリはbaseDirectory、[GGML_BACKEND_DIR]、systemLibraryPath配下のlibllama/backends/の順に解決する
+///
+/// ディレクトリを読めない場合またはVulkan以外のエントリが残らない場合はnilを返す
+///
+/// - Parameters:
+///   - baseDirectory: 走査元のバックエンドディレクトリ (nilの場合は環境変数と既定配置から解決する)
+///   - fileManager: ファイル操作に使用するマネージャ
+/// - Returns: 構築した一時ディレクトリのパス、構築できない場合はnilを返す
 func cpuOnlyBackendDirectory(
     baseDirectory: String? = nil,
     fileManager: FileManager = .default
@@ -154,10 +202,13 @@ func cpuOnlyBackendDirectory(
     return stagingDirectory.path
 }
 
-/// 危険と判定されたドライバスタックに対する第2段階のフォールバック
-/// cpuOnlyBackendDirectory()が作成したVulkanを含まないディレクトリからバックエンドを再ロードして、
-/// 他のGPUプラグインが存在する場合も考慮してCPUデバイスだけを残す
-/// ディレクトリを作成できない場合のみ空配列を返して、AIモデルを完全に無効化する
+/// 第2段階のフォールバックとしてVulkanなしのCPUデバイスだけを読み込む
+///
+/// cpuOnlyBackendDirectory()が作成したVulkanなしのディレクトリからバックエンドを再読み込みし、他のGPUプラグインが存在する場合も考慮してCPUデバイスだけを残す
+///
+/// ディレクトリを作成できない場合のみ空配列を返してモデルを完全に無効化する
+///
+/// - Returns: 利用可能なCPUデバイス、復旧できない場合は空配列を返す
 func cpuOnlyZenzaiDevices() -> [GGMLBackendDevice] {
     guard let directory = cpuOnlyBackendDirectory() else {
         NSLog("[BackendProbe] Could not build a Vulkan-free backend directory; disabling Zenzai for this session.")
@@ -166,26 +217,33 @@ func cpuOnlyZenzaiDevices() -> [GGMLBackendDevice] {
     return getZenzaiDevices(backendDirectoryOverride: directory).filter { $0.type == .cpu }
 }
 
-/// 隠し"--probe-backends"モードの入口
-/// 通常起動と同じ方法で、GGMLバックエンドをロードしてから正常終了する
-/// 異なるベンダーのVulkan ICDが競合する等、ドライバースタックが危険な場合は、
-/// 実サーバではなく、このプロセスがクラッシュし、親のloadZenzaiDevicesSafely()がprobeVulkanBackendsSafely()で検出する
+/// 隠し[--probe-backends]モードの入口として実行して終了する
+///
+/// 通常起動と同じ方法でGGMLバックエンドを読み込んでから、終了コード0で終了する
+///
+/// ドライバスタックが安全でない場合は、実サーバではなくこのプロセスがクラッシュし、親はprobeVulkanBackendsSafely()で検出する
+///
+/// - Note: 正常系でも終了コード0で終了するため戻らない
 func runBackendProbeAndExit() -> Never {
     _ = getZenzaiDevices()
     exit(0)
 }
 
-/// 利用可能なZenzaiバックエンドデバイスをロードする
+/// 利用可能なZenzaiバックエンドデバイスを実サーバのクラッシュから保護しながら読み込む
+///
 /// getZenzaiDevices()単体では防げないドライバクラッシュから実サーバを保護する
 ///
-/// - ユーザがVulkan環境変数を明示指定している場合は、そのまま信頼してプローブを省略する ("probeOutcome"はnil)
-/// - それ以外では、隔離された"--probe-backends"子プロセスが先に同じバックエンドロードを行う
-///   クラッシュ・タイムアウト・非ゼロ終了時は、 実サーバで同じクラッシュを起こす代わりに、cpuOnlyZenzaiDevices()へフォールバックする
-/// - 成功時は従来どおり実プロセス内でバックエンドをロードする
-///   実際の推論に必要なGGMLバックエンド登録はプロセス間で共有できないためである
+/// ユーザがVulkan環境変数を明示指定している場合は、その指定を信頼してプローブを省略して、probeOutcomeはnilになる
 ///
-/// [Hazkey 設定]画面でCPU専用フォールバックを通知できるよう、ロードしたデバイスとプローブ結果をまとめて返す
-/// (zenzaiGPUFallbackActive(_:)を参照)
+/// それ以外の場合は隔離した[--probe-backends]子プロセスが同じバックエンド読み込みを先行して試す
+///
+/// 子プロセスのクラッシュ、タイムアウト、非ゼロ終了時は実サーバで同じクラッシュを起こす代わりにcpuOnlyZenzaiDevices()へフォールバックする
+///
+/// 成功時は実際の推論に必要なGGMLバックエンド登録をプロセス間で共有できないため、実プロセス内でバックエンドを読み込む
+///
+/// 読み込んだデバイスとプローブ結果をまとめて返すことで、[Hazkey Community設定]画面がCPU専用フォールバックを通知できる
+///
+/// - Returns: 読み込んだデバイスとプローブ結果の組
 func loadZenzaiDevicesSafely() -> (devices: [GGMLBackendDevice], probeOutcome: BackendProbeOutcome?) {
     let environment = ProcessInfo.processInfo.environment
     if vulkanEnvOverridePresent(in: environment) {

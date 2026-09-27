@@ -1,3 +1,20 @@
+/// システムリソースディレクトリのパス
+///
+/// CMakeのconfigure_fileで生成される定数であり、ビルド時の[HAZKEY_SERVER_SYSTEM_RESOURCE_PATH]から組み立てられる
+///
+/// - Note: このファイルはテンプレートであり直接編集した内容はビルド時に置換される
 let systemResourcePath: String = "@HAZKEY_SERVER_SYSTEM_RESOURCE_PATH@/hazkey-community"
+/// 共有ライブラリディレクトリのパス
+///
+/// CMakeのconfigure_fileで生成される定数であり、ビルド時の[HAZKEY_SERVER_SYSTEM_LIBRARY_PATH]から組み立てられる
+///
+/// - Note: このファイルはテンプレートであり直接編集した内容はビルド時に置換される
 let systemLibraryPath: String = "@HAZKEY_SERVER_SYSTEM_LIBRARY_PATH@/hazkey-community"
+/// ビルド時のバージョン文字列
+///
+/// CMakeのconfigure_fileで[PROJECT_VERSION]から組み立てられる
+///
+/// ロックファイルやプロファイルの版数照合に使用される
+///
+/// - Note: このファイルはテンプレートであり直接編集した内容はビルド時に置換される
 let hazkeyVersion: String = "@PROJECT_VERSION@"

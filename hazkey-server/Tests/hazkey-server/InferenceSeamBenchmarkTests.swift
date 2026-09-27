@@ -5,8 +5,8 @@ import XCTest
 
 @testable import hazkey_server
 
-// allow: SIZE_OK — このテストファイルは隔離サーバとソケットハーネスを意図的に内包する。
-// 唯一の共有依存である `TestTempRoot`（sun_path 用の短い一時ルート）を除き、自己完結している。
+// allow: SIZE_OK - このテストファイルは隔離サーバとソケットハーネスを意図的に内包する
+// 唯一の共有依存であるTestTempRoot (sun_path用の短い一時ルート) を除き、自己完結している
 final class InferenceSeamBenchmarkTests: XCTestCase {
     private let corpus = [
         "かな", "にほんご", "きょう", "あした", "とうきょう", "へんかん",

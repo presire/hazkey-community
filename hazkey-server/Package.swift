@@ -35,6 +35,8 @@ let package = Package(
                     package: "AzooKeyKanaKanjiConverter"),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
+            // constants.swift.inは、CMakeのconfigure_fileテンプレート (生成物: constants.swiftがソース)
+            exclude: ["constants.swift.in"],
             swiftSettings: [.interoperabilityMode(.Cxx)],
             linkerSettings: [
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "$ORIGIN/libllama"])
@@ -47,7 +49,7 @@ let package = Package(
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
             path: "Tests/hazkey-server",
-            // 既存の統合テストはprotobufスキーマから削除されたHazkey_Commands_QueryDataを参照している
+            // 既存の統合テストは、protobufスキーマから削除されたHazkey_Commands_QueryDataを参照している
             // 現在のプロトコルへ更新されるまで除外する
             exclude: [
                 "base.swift",
@@ -59,6 +61,8 @@ let package = Package(
                 "integration.swift",
                 "userDictionaryProfileSetting.swift",
                 "autoConversion.swift",
+                // 実行時フィクスチャ (PerfProbeTestsが#filePath相対で読むためリソース宣言不要)
+                "rpc_baseline.json",
             ],
             swiftSettings: [.interoperabilityMode(.Cxx)],
         ),

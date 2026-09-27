@@ -7,60 +7,79 @@ option optimize_for = LITE_RUNTIME;
 import "commands.proto";
 import "config.proto";
 
+// クライアントからhazkey-serverへ送るリクエストの共通の外枠
+//
+// 1回のリクエストでは、payloadのうち1つのコマンドだけを指定する
+//
+// フロントエンド (Fcitx 5 / IBus) と設定GUIは、UNIXドメインソケットで4バイト (ビッグエンディアン) の長さに続けてこのメッセージを送る
+//
+// - Note: フィールド番号は、1〜99が入力・変換用のコマンド (hazkey.commands)、100以降が設定用のコマンド (hazkey.config)
 message RequestEnvelope {
+    // 実行するコマンド (いずれか1つ)
     oneof payload {
-        hazkey.commands.NewComposingText new_composing_text = 1;
-        hazkey.commands.SetContext set_context = 2;
-        hazkey.commands.InputChar input_char = 3;
-        hazkey.commands.ModifierEvent modifier_event = 4;
-        hazkey.commands.MoveCursor move_cursor = 5;
-        hazkey.commands.PrefixComplete prefix_complete = 6;
-        hazkey.commands.DeleteLeft delete_left = 7;
-        hazkey.commands.DeleteRight delete_right = 8;
-        hazkey.commands.GetComposingString get_composing_string = 9;
-        hazkey.commands.GetHiraganaWithCursor get_hiragana_with_cursor = 10;
-        hazkey.commands.GetCandidates get_candidates = 11;
-        hazkey.commands.GetCurrentInputModeInfo get_current_input_mode = 12;
-        hazkey.commands.SaveLearningData save_learning_data = 13;
-        hazkey.commands.AdjustClauseBoundary adjust_clause_boundary = 14;
-        hazkey.commands.AcceptPrediction accept_prediction = 15;
-        hazkey.commands.DeleteCandidateLearningData delete_candidate_learning_data = 16;
-        hazkey.commands.ToggleZenzai toggle_zenzai = 17;
-
-        hazkey.config.GetConfig get_config = 100;
-        hazkey.config.SetConfig set_config = 101;
-        hazkey.config.GetDefaultProfile get_default_profile = 102;
-        hazkey.config.ClearAllHistory clear_all_history = 103;
-        hazkey.config.ReloadZenzaiModel reload_zenzai_model = 104;
-        hazkey.config.GetLearningHistory get_learning_history = 105;
-        hazkey.config.DeleteLearningEntries delete_learning_entries = 106;
+        hazkey.commands.NewComposingText new_composing_text = 1;                            // 新しい入力 (組成) を開始する
+        hazkey.commands.SetContext set_context = 2;                                         // カーソル左側の文脈をZenzai用に設定する
+        hazkey.commands.InputChar input_char = 3;                                           // 1文字を入力する
+        hazkey.commands.ModifierEvent modifier_event = 4;                                   // 修飾キー ([Shift]) の押下・解放を通知する
+        hazkey.commands.MoveCursor move_cursor = 5;                                         // 入力中テキスト内のカーソルを移動する
+        hazkey.commands.PrefixComplete prefix_complete = 6;                                 // 候補を選び、その読みの分だけ確定する
+        hazkey.commands.DeleteLeft delete_left = 7;                                         // カーソルの左の1文字を削除する
+        hazkey.commands.DeleteRight delete_right = 8;                                       // カーソルの右の1文字を削除する
+        hazkey.commands.GetComposingString get_composing_string = 9;                        // 入力中テキストを指定の文字種で取得する
+        hazkey.commands.GetHiraganaWithCursor get_hiragana_with_cursor = 10;                // 入力中のひらがなをカーソル位置で分割して取得する
+        hazkey.commands.GetCandidates get_candidates = 11;                                  // 変換候補または予測候補を取得する
+        hazkey.commands.GetCurrentInputModeInfo get_current_input_mode = 12;                // 現在の入力モード (通常 / 直接入力) を取得する
+        hazkey.commands.SaveLearningData save_learning_data = 13;                           // 未保存の学習データをファイルへ保存する
+        hazkey.commands.AdjustClauseBoundary adjust_clause_boundary = 14;                   // 文節の区切り位置を調整する
+        hazkey.commands.AcceptPrediction accept_prediction = 15;                            // 予測候補を先頭部分の表記として固定する
+        hazkey.commands.DeleteCandidateLearningData delete_candidate_learning_data = 16;    // フォーカス中の候補の学習データを削除する
+        hazkey.commands.ToggleZenzai toggle_zenzai = 17;                                    // Zenzaiの有効 / 無効を切り替える
+        hazkey.config.GetConfig get_config = 100;                                           // 現在の設定を取得する
+        hazkey.config.SetConfig set_config = 101;                                           // 設定を保存して適用する
+        hazkey.config.GetDefaultProfile get_default_profile = 102;                          // 既定のプロファイルを取得する
+        hazkey.config.ClearAllHistory clear_all_history = 103;                              // 現在のプロファイルの学習データを全て削除する
+        hazkey.config.ReloadZenzaiModel reload_zenzai_model = 104;                          // Zenzaiのモデルを読み込み直す
+        hazkey.config.GetLearningHistory get_learning_history = 105;                        // 入力履歴 (学習データ) の一覧を取得する
+        hazkey.config.DeleteLearningEntries delete_learning_entries = 106;                  // 指定した入力履歴を削除する
     }
 }
 
+// リクエストの処理結果
 enum StatusCode {
-    UNSPECIFIED = 0;
-    SUCCESS = 1;
-    FAILED = 2;
+    UNSPECIFIED = 0;    // 未設定 (通常は使われない)
+    SUCCESS = 1;        // 成功
+    FAILED = 2;         // 失敗 (理由は、ResponseEnvelopeのerror_messageに入る)
 }
 
+// hazkey-serverからクライアントへ返すレスポンスの共通の外枠
+//
+// 1つのリクエストに対して、必ず1つのレスポンスを返す
+//
+// - Note: 戻り値を持たないコマンドでは、payloadは空のままstatusだけを返す
 message ResponseEnvelope {
-    StatusCode status = 1;
-    string error_message = 2;
+    StatusCode status = 1;      // 処理結果
+    string error_message = 2;   // 失敗時のエラーメッセージ (成功時は空)
+
+    // コマンドごとの戻り値 (いずれか1つ、または無し)
     oneof payload {
-        string text = 3;
-        hazkey.commands.CandidatesResult candidates = 4;
-        hazkey.commands.TextWithCursor text_with_cursor = 5;
-        hazkey.commands.CurrentInputModeInfo current_input_mode_info = 6;
-        hazkey.commands.ClauseBoundaryResult clause_boundary_result = 7;
-        hazkey.commands.DeleteCandidateLearningDataResult delete_candidate_learning_data_result = 8;
-        hazkey.commands.ToggleZenzaiResult toggle_zenzai_result = 9;
-        hazkey.config.CurrentConfig current_config = 100;
-        hazkey.config.GetLearningHistoryResult get_learning_history_result = 101;
-        hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;
+        string text = 3;                                                                                // 文字列の戻り値 (GetComposingString)
+        hazkey.commands.CandidatesResult candidates = 4;                                                // 候補リスト (GetCandidates)
+        hazkey.commands.TextWithCursor text_with_cursor = 5;                                            // カーソル位置で分割したひらがな (GetHiraganaWithCursor)
+        hazkey.commands.CurrentInputModeInfo current_input_mode_info = 6;                               // 現在の入力モード (GetCurrentInputModeInfo)
+        hazkey.commands.ClauseBoundaryResult clause_boundary_result = 7;                                // 文節調整後の候補 (AdjustClauseBoundary)
+        hazkey.commands.DeleteCandidateLearningDataResult delete_candidate_learning_data_result = 8;    // 学習データ削除の結果 (DeleteCandidateLearningData)
+        hazkey.commands.ToggleZenzaiResult toggle_zenzai_result = 9;                                    // 切り替え後のZenzaiの状態 (ToggleZenzai)
+        hazkey.config.CurrentConfig current_config = 100;                                               // 設定 (GetConfig / GetDefaultProfile)
+        hazkey.config.GetLearningHistoryResult get_learning_history_result = 101;                       // 入力履歴の一覧 (GetLearningHistory)
+        hazkey.config.DeleteLearningEntriesResult delete_learning_entries_result = 102;                 // 入力履歴削除の結果 (DeleteLearningEntries)
     }
 
-    // 永続化された設定の単調増加リビジョン
-    // SetConfig が成功するたびに更新される
-    // フロントエンドが変更直後にキャッシュしたプロファイルを再読み込みできるよう、全レスポンスに含める
+    // 保存済み設定のリビジョン番号 (単調増加)
+    //
+    // サーバは[set_config]が成功するたびに1加算し、全てのレスポンスにこの値を載せる
+    //
+    // フロントエンド (Fcitx 5 / IBus) は値の変化を検知すると、キャッシュしているプロファイルを再読込する
+    //
+    // - Note: これにより、[Hazkey Community 設定]画面で[適用]ボタンを押下した直後から、起動中のアプリケーションにも新しい設定が反映される
     uint64 config_revision = 103;
 }

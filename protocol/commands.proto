@@ -4,137 +4,204 @@ package hazkey.commands;
 
 option optimize_for = LITE_RUNTIME;
 
-// Request messages
+// リクエスト用メッセージ
 
+// 新しい入力 (組成) を開始する
+//
+// 入力中のテキスト・候補リスト・Zenzai用の文脈・直接入力モードをリセットし、この接続の変換セッションも破棄する
+//
+// - Note: 前回の組成で作った変換結果を再利用しないため、同じ読みでも新たに学習した候補が正しく反映される
 message NewComposingText {}
 
+// カーソルの左側にある文脈 (確定済みの文字列) を、Zenzaiの変換に使う文脈として設定する
+//
+// - Note: 文脈を使うかどうかは、プロファイルの[zenzai_contextual_mode]で決まる
 message SetContext {
-    string context = 1;
-    int32 anchor = 2;
+    string context = 1;     // カーソル周辺の文字列 (surrounding text)
+    int32 anchor = 2;       // context内のカーソル位置 (文字数単位)、この位置より左側が文脈になる (範囲外は0〜文字数に丸められる)
 }
 
+// 1文字を入力中テキストのカーソル位置へ挿入する
+//
+// 直接入力モードではそのまま挿入し、通常の入力ではキーマップと入力テーブル (ローマ字・かな等) に従って変換する
 message InputChar {
-    string text = 1;
+    string text = 1;    // 入力する文字 (先頭の1文字だけを使う)
 }
 
+// 修飾キーの押下・解放をサーバへ通知する
+//
+// [Shift]キーを単体で短く押して離すと、通常入力と直接入力 (英字) を切り替える
+//
+// - Note: 500[ms]以上の長押しや、他のキーと組み合わせた場合は切り替えない
 message ModifierEvent {
+    // 対象の修飾キー
     enum ModifierType {
-        MODIFIER_TYPE_UNSPECIFIED = 0;
-        SHIFT = 1;
+        MODIFIER_TYPE_UNSPECIFIED = 0;  // 未設定 (エラーとして扱う)
+        SHIFT = 1;                      // [Shift]キー
     }
 
+    // 修飾キーのイベントの種類
     enum EventType {
-        EVENT_TYPE_UNSPECIFIED = 0;
-        PRESS = 1;
-        RELEASE = 2;
-        CANCEL = 3;
+        EVENT_TYPE_UNSPECIFIED = 0;     // 未設定 (エラーとして扱う)
+        PRESS = 1;                      // 押下した
+        RELEASE = 2;                    // 単体で押下したまま離した (短押しなら入力モードを切り替える)
+        CANCEL = 3;                     // 他のキーと組み合わせて離した (入力モードは切り替えない)
     }
 
-    ModifierType mod_type = 1;
-    EventType event_type = 2;
+    ModifierType mod_type = 1;  // 対象の修飾キー
+    EventType event_type = 2;   // イベントの種類
 }
 
+// 入力中テキスト内でカーソルを移動する
 message MoveCursor {
-    int32 offset = 1;
+    int32 offset = 1;   // 移動量 (文字数単位、負の値で左、正の値で右へ移動する)
 }
 
+// 文節の区切り位置を調整し、調整後の候補を返す (既定のキーは[Shift] + [Left] / [Shift] + [Right])
+//
+// - Note: 移動量は、先頭の1文字から入力中テキストの末尾までの範囲に丸められる
 message AdjustClauseBoundary {
-    int32 offset = 1;
+    int32 offset = 1;   // 区切り位置の移動量 (文字数単位、負の値で短く、正の値で長くする)
 }
 
+// 候補を選び、その候補がカバーする読みの分だけ確定する
+//
+// 残りの読みは入力中テキストとして残り、続けて変換できる
+//
+// - Note: 変換エンジンの候補を確定した場合は、学習データも更新する (ユーザ辞書・日付・かな数字・絵文字の候補は学習しない)
 message PrefixComplete {
-    int32 index = 1;
+    int32 index = 1;    // 候補リスト内の対象候補の位置
 }
 
-// 予測候補を先頭表記として確定する
-// PrefixCompleteとは異なり、コミットは行わない
-// 候補の残り読みを変換中テキストに追記し、確定した表記を後続のZenzai変換の先頭制約とする
+// 予測候補を、先頭部分の表記として固定する
+//
+// 候補の読みのうち未入力の残りを入力中テキストに追加する
+//
+// 固定した表記は、以降のZenzai変換で先頭に必ず来る表記として扱われる
+//
+// - Note: 既定のホットキーは[F5]キー
+// - Important: PrefixCompleteとは異なり、文字列をアプリケーションへ確定 (コミット) しない
 message AcceptPrediction {
-    int32 index = 1;
+    int32 index = 1;    // 候補リスト内の対象候補の位置
 }
 
-// フォーカス中の候補を支えるAzooKey学習メモリのエントリを削除し、候補リストを再構築する
-// 同一 (読み、表記) ペアの格納済み全CID変種を照合対象とする
+// フォーカス中の候補について、学習データ (AzooKeyの学習メモリ) を削除して、候補リストを作り直す
+//
+// 読みと表記が同じであれば、品詞ID (CID) だけが異なる学習エントリも全て削除する
+//
+// - Note: 既定のホットキーは[Ctrl] + [D]キー
 message DeleteCandidateLearningData {
-    int32 index = 1;
+    int32 index = 1;    // 候補リスト内の対象候補の位置
 }
 
+// DeleteCandidateLearningDataの結果
 message DeleteCandidateLearningDataResult {
-    uint32 deleted_count = 1;
-    CandidatesResult candidates = 2;
-    string hiragana = 3;
+    uint32 deleted_count = 1;           // 削除した学習エントリの数 (学習データを持たない候補では0)
+    CandidatesResult candidates = 2;    // 削除後に作り直した候補リスト
+    string hiragana = 3;                // 入力中テキスト全体のひらがな
 }
 
+// カーソルの左の1文字を削除する ([BackSpace]キー)
 message DeleteLeft {}
 
+// カーソルの右の1文字を削除する ([Delete]キー)
 message DeleteRight {}
 
+// 入力中テキストを、指定した文字種へ変換して取得する
+//
+// ファンクションキー ([F6]〜[F10]キー) や[Ctrl] + [U] / [I] / [O] / [P] / [T]キーによる直接変換で使う
 message GetComposingString {
+    // 取得する文字種
     enum CharType {
-        HIRAGANA = 0;
-        KATAKANA_FULL = 1;
-        KATAKANA_HALF = 2;
-        ALPHABET_FULL = 3;
-        ALPHABET_HALF = 4;
+        HIRAGANA = 0;       // ひらがな
+        KATAKANA_FULL = 1;  // 全角カタカナ
+        KATAKANA_HALF = 2;  // 半角カタカナ
+        ALPHABET_FULL = 3;  // 全角英字
+        ALPHABET_HALF = 4;  // 半角英字
     }
 
-    CharType char_type = 1;
-    string current_preedit = 2;
+    CharType char_type = 1;         // 取得する文字種
+    string current_preedit = 2;     // 現在表示中の文字列 (英字では、これと比べて小文字 → 大文字 → 先頭だけ大文字の順に切り替える)
 }
 
+// 入力中のひらがなを、カーソルの前・カーソル上・カーソルの後の3つに分けて取得する
+//
+// - Note: 補助表示を出すかどうかの判断はフロントエンドが行うため、サーバは設定に関係なく常に実際の値を返す
 message GetHiraganaWithCursor {}
 
+// 入力中テキストの候補リストを取得する
 message GetCandidates {
-    bool is_suggest = 1;
+    bool is_suggest = 1;    // trueなら入力中に表示する予測候補 (サジェスト)、falseなら[Space]キー等による通常の変換候補
 }
 
+// 現在の入力モード (通常 / 直接入力) を取得する
 message GetCurrentInputModeInfo {}
 
+// 未保存の学習データをファイルへ保存する
+//
+// - Note: 学習データは全ての接続で共有されるため、他の接続で入力した未保存の学習データも保存される
 message SaveLearningData {}
 
-// 現在の変換内容や候補リストをリセットせず、アクティブなプロファイルのAIモデル有効化のみを切り替える
+// 現在のプロファイルのZenzai (ニューラル変換) の有効 / 無効だけを切り替える
+//
+// 入力中のテキストや候補リストはリセットしない
+//
+// - Note: 既定のホットキーは[Control] + [Alt] + [Z]キー
 message ToggleZenzai {}
 
+// ToggleZenzaiの結果
 message ToggleZenzaiResult {
-    bool enabled = 1;
+    bool enabled = 1;   // 切り替え後にZenzaiが有効ならtrue
 }
 
-// Response messages
+// レスポンス用メッセージ
 
+// 文字列の戻り値
 message Text {
-    string text = 1;
+    string text = 1;    // 文字列
 }
 
+// カーソル位置で3つに分けた文字列
 message TextWithCursor {
-    string beforeCursosr = 1;
-    string onCursor = 2;
-    string afterCursor = 3;
+    string beforeCursosr = 1;   // カーソルより前の文字列 (フィールド名のtypoは互換性のため維持する)
+    string onCursor = 2;        // カーソル上の1文字 (カーソルが末尾にある場合は空)
+    string afterCursor = 3;     // カーソルより後の文字列
 }
 
+// 候補リスト
 message CandidatesResult {
+    // 1つの候補
     message Candidate {
-        string text = 1;
-        string sub_hiragana = 2;
-        // AzooKey学習メモリがこの候補に一致するエントリを保持している場合はTrue ([削除可]注釈として表示される)
+        string text = 1;            // 候補の表記
+        string sub_hiragana = 2;    // この候補でカバーされない残りの読み (ひらがな、読み全体をカバーする場合は空)
+
+        // この候補に一致する学習データがAzooKeyの学習メモリにある場合はtrue
+        //
+        // trueの候補にフォーカスすると、補助表示に[削除可]と表示され、学習データ削除ホットキーで削除できる
+        //
+        // - Note: 学習データ削除ホットキーの既定は[Ctrl] + [D]キー
         optional bool has_learning_entry = 3;
     }
 
-    repeated Candidate candidates = 1;
-    string live_text = 2;
-    int32 live_text_index = 3;
-    int32 page_size = 4;
+    repeated Candidate candidates = 1;  // 候補の一覧 (表示順)
+    string live_text = 2;               // ライブ変換で入力中テキストの代わりに表示する文字列 (ライブ変換しない場合は空)
+    int32 live_text_index = 3;          // live_textに対応する候補のcandidates内の位置 (無い場合は -1)
+    int32 page_size = 4;                // 1ページに表示する候補数 (予測候補を表示しない設定では 0)
 }
 
+// AdjustClauseBoundaryの結果
 message ClauseBoundaryResult {
-    CandidatesResult candidates = 1;
-    string hiragana = 2;
+    CandidatesResult candidates = 1;    // 区切り位置を調整した後の候補リスト
+    string hiragana = 2;                // 入力中テキスト全体のひらがな
 }
 
+// 現在の入力モード
 message CurrentInputModeInfo {
+    // 入力モードの種類
     enum InputMode {
-        NORMAL = 0;
-        DIRECT = 1;
+        NORMAL = 0;     // 通常の入力 (かな漢字変換を行う)
+        DIRECT = 1;     // 直接入力 (英字をそのまま入力する)
     }
 
-    InputMode input_mode = 1;
+    InputMode input_mode = 1;   // 現在の入力モード
 }

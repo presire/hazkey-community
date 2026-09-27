@@ -419,7 +419,7 @@ final class Emoji17DirectConversionTests: XCTestCase {
     func testBaseConvertOptionsKeepTextReplacerEmpty() {
         // 直接注入は意図的なもの
         // converterの組成後予測は対象外に保つ
-        // 空のreplacerは絵文字クエリに答えない (公開シーム。isEmpty自体は、converterパッケージ内にあり、@testableでも参照できない)
+        // 空のreplacerは絵文字クエリに答えない (公開シーム: isEmpty自体は、converterパッケージ内にあり、@testableでも参照できない)
         let config = HazkeyServerConfig()
         let options = config.genBaseConvertRequestOptions()
         XCTAssertTrue(

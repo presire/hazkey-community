@@ -5,22 +5,24 @@ import XCTest
 
 @testable import hazkey_server
 
-/// fork の `HAZKEY_ZENZAI_CPU_THREADS` / `HAZKEY_ZENZAI_DEADLINE_MS`
-/// 環境変数制御に対するオプトインの機能QA（`.omo/plans/hazkey-ime-cpu-latency.md`
-/// の todo 3 を参照）。
+/// ZenzaiのCPU推論を制御する2つの環境変数の動作確認テスト
+/// - [HAZKEY_ZENZAI_CPU_THREADS]: CPU推論のスレッド数 (有効範囲は1〜8)
+/// - [HAZKEY_ZENZAI_DEADLINE_MS]: 推論1回の上限時間[ms] (有効範囲は0〜2000、0は期限なし)
 ///
-/// `CandidateParityTests.swift` / `InferenceSeamBenchmarkTests.swift` で確立済みの
-/// 小規模な子プロセスとソケットクライアントのパターンを意図的に複製している。Swift の
-/// トップレベル `private` はヘルパー型をファイルスコープにするため、各ファイルが専用の
-/// コピーを持つ必要があり、どちらの移植元ファイルも編集できない。完全なオプトインであり、
-/// `HAZKEY_CPU_BUDGET_QA=1` がない場合はスキップする。実行中のシステム
-/// `hazkey-server` には触れず、常に一時的な XDG ルート配下の隔離子プロセスを使う。
-// allow: SIZE_OK — このテストファイルは隔離サーバとソケットハーネスを意図的に内包する。
+/// どちらもAzooKeyKanaKanjiConverterのフォーク (presire/AzooKeyKanaKanjiConverter) 側で解釈される
+///
+/// サーバの起動処理とソケットクライアントは、CandidateParityTests / InferenceSeamBenchmarkTestsと同じものを複製している
+/// 複製元はprivate宣言のため他のファイルから使用できないため、このファイルにも同じ実装を持たせている
+///
+/// 環境変数[HAZKEY_CPU_BUDGET_QA]が未設定の場合はスキップする
+/// 動作中のシステムのhazkey-serverには影響せず、毎回一時ディレクトリ配下で隔離したサーバを起動する
+
+// allow: SIZE_OK - 隔離サーバの起動処理とソケット通信処理を意図的にこのファイル内に持つ
 final class CPUBudgetControlsTests: XCTestCase {
     private static let reading = CorpusFixtures.fullConversion.reading
 
-/// 正常系: 有効な上書き値（1スレッド、期限2000ms）でも空でない候補を生成し、
-/// サーバが稼働し続ける。
+    /// 正常系
+    /// 有効な値 (1スレッド、上限2000[ms]) を指定しても候補が1件以上返り、リクエスト後もサーバが動作し続けることを確認する
     func testHappyPathCPUBudgetControls() throws {
         try XCTSkipUnless(qaEnabled, "Set HAZKEY_CPU_BUDGET_QA=1 to run this opt-in QA harness.")
         try runFixture(
@@ -31,8 +33,9 @@ final class CPUBudgetControlsTests: XCTestCase {
             ])
     }
 
-/// 異常系フィクスチャ: 両制御の無効値は既存の既定動作へ縮退しなければならない。
-/// クラッシュもトラップもせず、候補は空にならず、サーバは稼働し続ける。
+    /// 異常系
+    /// 範囲外や数値でない値 (0、9、-5、999999、abc) を指定した場合は、その値を無視して既定の動作になることを確認する
+    /// サーバがクラッシュ (トラップ) せず、候補が1件以上返り、リクエスト後もサーバが動作し続けること
     func testFailureFixturesCPUBudgetControls() throws {
         try XCTSkipUnless(qaEnabled, "Set HAZKEY_CPU_BUDGET_QA=1 to run this opt-in QA harness.")
         let invalidFixtures: [(String, [String: String])] = [
@@ -106,7 +109,7 @@ final class CPUBudgetControlsTests: XCTestCase {
         XCTAssertTrue(process.isRunning, "[\(label)] server process must still be alive after the request")
     }
 
-// MARK: - サーバプロセス用ヘルパー（重複パターン。ファイル先頭のdocコメントを参照）
+    // MARK: - サーバプロセス用ヘルパー (他のテストからの複製、ファイル先頭のコメントを参照)
 
     private func resolveZenzaiModelPath() throws -> String {
         if let override = ProcessInfo.processInfo.environment["HAZKEY_ZENZAI_MODEL"], !override.isEmpty {
@@ -154,10 +157,9 @@ final class CPUBudgetControlsTests: XCTestCase {
         environment["XDG_CACHE_HOME"] = root.appendingPathComponent("cache").path
         environment["XDG_STATE_HOME"] = root.appendingPathComponent("state").path
         environment["HAZKEY_ZENZAI_MODEL"] = modelPath
-        environment["HAZKEY_DICTIONARY"] = packageRoot
-            .appendingPathComponent("azooKey_dictionary_storage/Dictionary").path
-        // 同一 `swift test` プロセスで先行フィクスチャが設定した環境上書きを明示的に消去し、
-        // このフィクスチャの値だけを適用する。
+        environment["HAZKEY_DICTIONARY"] = packageRoot.appendingPathComponent("azooKey_dictionary_storage/Dictionary").path
+
+        // テストを実行するシェル側で設定された値が混ざらないよう、2つの環境変数を一度削除して、 このケースで指定した値だけを設定する
         environment.removeValue(forKey: "HAZKEY_ZENZAI_CPU_THREADS")
         environment.removeValue(forKey: "HAZKEY_ZENZAI_DEADLINE_MS")
         for (key, value) in extraEnvironment {
@@ -200,9 +202,9 @@ private enum QAError: Error {
     case invalidResponse
 }
 
-/// `CandidateParityTests.ParityRPCClient` から複製した最小限の長さプレフィックス付き
-/// UNIXソケット protobuf クライアント。トップレベルの `private` によりこのクラスは
-/// ファイルスコープとなり、移植元ファイルは編集できない。
+/// テスト用の最小限のUNIXソケットクライアント (CandidateParityTestsのParityRPCClientの複製)
+/// 本番クライアントと同じく、4バイト (ビッグエンディアン) の長さの後にprotobufの本体を続けて送受信する
+/// 複製元はprivate宣言のため他のファイルから使用できず、ここに同じ実装を持たせている
 private final class QARPCClient {
     private var fileDescriptor: Int32
 

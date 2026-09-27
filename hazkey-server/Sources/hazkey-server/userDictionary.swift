@@ -2,13 +2,26 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftUtils
 
-/// ユーザ定義の単語エントリ (読み -> 単語)
+/// ユーザ定義の単語エントリ ([reading]から[word]への対応)
+///
+/// [reading]と[word]とコメントと[pos]を持つ
 struct UserDictionaryEntry {
+    /// 照合に使うひらがな読み
     let reading: String
+    /// 表記
     let word: String
+    /// 備考
     let comment: String
+    /// 品詞トークン
     let pos: String
 
+    /// エントリを生成する
+    ///
+    /// - Parameters:
+    ///   - reading: 照合に使うひらがな読み
+    ///   - word: 表記
+    ///   - comment: 備考
+    ///   - pos: 品詞トークンであり既定値は[noun]
     init(reading: String, word: String, comment: String, pos: String = "noun") {
         self.reading = reading
         self.word = word
@@ -16,7 +29,17 @@ struct UserDictionaryEntry {
         self.pos = pos
     }
 
-    /// かな漢字変換エンジンで使用できるDicdataElementを返す
+    /// 変換エンジン用のDicdataElementを1件組み立てる
+    ///
+    /// [pos]が[verb]の場合はVerbConjugator.detectBaseCidでCIDを決める
+    ///
+    /// 検出できない場合は、772へフォールバックする
+    ///
+    /// [verb]以外はcid(for:)でCIDを決める
+    ///
+    /// MIDはMIDData一般とし値は-5とする
+    ///
+    /// - Returns: 組み立てた単一要素
     func toDicdataElement() -> DicdataElement {
         let cid: Int
         if pos == "verb" {
@@ -33,8 +56,13 @@ struct UserDictionaryEntry {
         )
     }
 
-    /// このエントリを1つ以上のDicdataElementへ展開する
-    /// 動詞エントリは全活用形を生成し、それ以外の品詞は単一の要素を生成する
+    /// エントリを1件以上のDicdataElementへ展開する
+    ///
+    /// [verb]エントリはVerbConjugator.dicdataElementsで全活用形を生成する
+    ///
+    /// それ以外の品詞は単一要素を生成する
+    ///
+    /// - Returns: 展開した要素列
     func expandedDicdataElements() -> [DicdataElement] {
         if pos == "verb" {
             return VerbConjugator.dicdataElements(word: word, hiraganaReading: reading)
@@ -42,7 +70,19 @@ struct UserDictionaryEntry {
         return [toDicdataElement()]
     }
 
-    // 動詞の品詞は、VerbConjugator (末尾検出 + 活用展開) で別途処理する
+    // 動詞の品詞はVerbConjugator (末尾検出と活用展開) で別途処理する
+    /// [pos]トークンをCIDへ変換する
+    ///
+    /// [noun]は固有名詞へ変換する
+    ///
+    /// [person]は人名一般へ変換する
+    ///
+    /// [place]は地名一般へ変換する
+    ///
+    /// 未知のトークンは警告を出して[noun]として扱う
+    ///
+    /// - Parameter pos: 品詞トークン
+    /// - Returns: 対応するCID
     private static func cid(for pos: String) -> Int {
         switch pos {
         case "noun":
@@ -58,35 +98,62 @@ struct UserDictionaryEntry {
     }
 }
 
-/// ユーザ辞書ファイルを読み込み、キャッシュする
+/// ユーザ辞書TSVファイルを読み込み保持する
 ///
-/// ファイル形式 (TSV, UTF-8):
-///   reading<TAB>word[<TAB>comment][<TAB>pos]
-/// '#' で始まる行と空行は無視される
-/// 読みは照合のためにひらがなへ正規化される
+/// ファイル形式はTSV(UTF-8)とする
+///
+/// 形式は、[reading]TAB[word][TAB comment][TAB pos]とする
+///
+/// [#]で始まる行と空行は無視する
+///
+/// [reading]は照合のためひらがなへ正規化する
 class UserDictionary {
+    /// 保持中のエントリ一覧
     private var entries: [UserDictionaryEntry] = []
+    /// 前回読込時の更新時刻
     private var lastModified: Date? = nil
+    /// 前回読込時のファイルパス
     private var lastLoadedPath: String = ""
-    /// 直近にファイルシステムを確認した単調時刻 (ナノ秒)。未確認ならnil。
-    /// wall clock (Date) は時刻変更の影響を受けるため使わない。
+    /// 直近にファイルを確認した単調時刻 (ナノ秒)
+    ///
+    /// 未確認の場合はnilとする
+    ///
+    /// 実時刻(Date)は時計変更の影響を受けるため使わない
     private var lastCheckUptime: UInt64? = nil
 
-    /// ホットパスでの `stat` を抑えるための再確認間隔 (秒)
+    /// ファイル再確認の最短間隔 (秒)
+    ///
+    /// 打鍵ごとにstatしないための間引きとする
     static let reloadThrottleInterval: TimeInterval = 1.0
 
-    /// 上記の間隔をナノ秒へ変換したもの (比較のたびに変換しないためのヘルパ)
+    /// 最短間隔のナノ秒換算値
+    ///
+    /// 比較のたびに変換しないため保持する
     private static let reloadThrottleIntervalNanoseconds: UInt64 =
         UInt64(reloadThrottleInterval * 1_000_000_000)
 
-    /// 既定パス: $XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv
+    /// 既定パスを返す
+    ///
+    /// [$XDG_CONFIG_HOME]/hazkey-community/[user_dictionary.tsv]を指す
+    ///
+    /// - Returns: 既定パスのURL
     static func defaultPath() -> URL {
         return HazkeyServerConfig.getConfigDirectory()
             .appendingPathComponent("user_dictionary.tsv", isDirectory: false)
     }
 
-    /// TSVの1行をエントリへパースする
-    /// コメント行・空行・不正な行は、nilを返す
+    /// TSVの1行をエントリへ変換する
+    ///
+    /// 形式は、[reading]TAB[word][TAB comment][TAB pos]とする
+    ///
+    /// コメント行と空行と不正な行はnilを返す
+    ///
+    /// [reading]は照合のためひらがなへ正規化する
+    ///
+    /// 未知の[pos]トークンは警告を出して[noun]として扱う
+    ///
+    /// - Parameter line: 変換対象の1行
+    /// - Returns: 変換したエントリ、対象外の行ではnil
     static func parseLine(_ line: String) -> UserDictionaryEntry? {
         if line.isEmpty || line.hasPrefix("#") { return nil }
         let cols = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -108,13 +175,17 @@ class UserDictionary {
         return UserDictionaryEntry(reading: reading, word: word, comment: comment, pos: pos)
     }
 
-    /// ファイルのmtimeが変化していれば (または未ロードなら) ディスクから再読込する
-    /// `force` がfalseのときは、直近のファイルシステム確認 (`lastCheckUptime`) から
-    /// `reloadThrottleInterval` 未満しか経過していなければ、statも再読込も行わずに
-    /// 即座にfalseを返す (毎打鍵のstatをホットパスから外すためのスロットル)。
-    /// 初回呼び出しは `lastCheckUptime` がnilなので必ず確認する。
-    /// `force` がtrueのときはスロットルを迂回して必ず確認する (設定適用時の強制再読込用)。
-    /// エントリが (再) 読み込まれた場合、またはファイルが空 / 存在しなくなった場合にTrueを返す
+    /// 更新時刻変化や未読込時にファイルを読み込み直す
+    ///
+    /// forceがfalseの場合は前回確認から最短間隔未満ならstatも再読込も行わずfalseを返す
+    ///
+    /// 初回は未確認のため必ず確認する
+    ///
+    /// forceがtrueの場合は間引きせず必ず確認する
+    ///
+    /// - Parameter force: 間引きを迂回して必ず確認する場合はtrue
+    /// - Returns: 読み込み直した場合やファイルが空や不在になった場合はtrue
+    /// - Note: 設定適用時の強制再読込で使う
     @discardableResult
     func reloadIfNeeded(force: Bool = false) -> Bool {
         if !force, let lastCheck = lastCheckUptime {
@@ -159,17 +230,22 @@ class UserDictionary {
         }
     }
 
-    /// 読みがhiraganaと完全一致するエントリを返す
+    /// [reading]が[hiragana]と完全一致するエントリを返す
+    ///
+    /// - Parameter hiragana: 照合するひらがな読み
+    /// - Returns: 完全一致したエントリ列
     func exactMatches(hiragana: String) -> [UserDictionaryEntry] {
         if hiragana.isEmpty { return [] }
         return entries.filter { $0.reading == hiragana }
     }
 
-    /// 変換エンジンとの統合のため、全エントリをDicdataElementとして返す
+    /// 全エントリを展開して変換エンジン用の要素列を作る
+    ///
+    /// - Returns: 変換器へ注入する要素列
     func toDicdataElements() -> [DicdataElement] {
         return entries.flatMap { $0.expandedDicdataElements() }
     }
 
-    /// エントリの総数 (診断用)
+    /// エントリ件数(診断用)
     var count: Int { entries.count }
 }

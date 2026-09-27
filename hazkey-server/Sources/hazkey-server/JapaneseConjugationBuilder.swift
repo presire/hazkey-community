@@ -1,13 +1,28 @@
 import Foundation
 
-// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey, commit 79686594)
-// public struct -> struct (internal) および public static func -> static func (internal) に変更
+// azooKeyのJapaneseConjugationBuilderから移植 (ensan-hcl/azooKey, コミットID: 79686594)
+// public structからstruct(internal)へ変更し、public static funcからstatic func(internal)へ変更する
 //
-// ヘルパ関数は、privateのままである
+// ヘルパ関数はprivateのままである
 //
-// 活用の種類と行enumは、ConjugationRow.swiftにある
+// 活用の種類と行enumはConjugationRow.swiftにある
 
+/// 動詞の全活用形を生成するビルダー
+///
+/// azooKeyのJapaneseConjugationBuilderの移植 (ensan-hcl/azooKey, コミットID: 79686594)
+///
+/// 基本[cid]から活用の種類と行を求め、表記と読みの組を作る
+///
+/// - Note: 活用の種類と行の定義はConjugationRow.swiftにある
 struct JapaneseConjugationBuilder {
+    /// 基本[cid]から活用の種類と行の名前を求める
+    ///
+    /// [サ変]は583、[ザ変]は592、[一段]は619に割り当てる
+    ///
+    /// [五段]は行ごとに割り当てる(679と695はカ行、723はガ行、731はサ行、738はタ行、746はナ行、754はバ行、762はマ行、772はラ行、802と817はワ行)
+    ///
+    /// - Parameter cid: 照会する基本形の品詞ID
+    /// - Returns: 活用の種類と行の名前の組、未知の[cid]ではnilを返す
     static private func 動詞情報照会(cid: Int) -> (活用: 活用の種類, 行の名前: 行)? {
         if cid == 583 { return (活用: .サ変, 行の名前: .unknown) }
         if cid == 592 { return (活用: .ザ変, 行の名前: .unknown) }
@@ -26,6 +41,19 @@ struct JapaneseConjugationBuilder {
         return nil
     }
 
+    /// 指定した活用の種類と行の名前から活用形の一覧を作る
+    ///
+    /// [五段]は[cid]ごとに音便形を切り替える(679はカ行イ音便、695はカ行促音便など)
+    ///
+    /// [一段]と[サ変]と[ザ変]はそれぞれ固有の形を作る
+    ///
+    /// [カ変]は空配列を返す
+    ///
+    /// - Parameters:
+    ///   - データ: 元になる表記と読みと[cid]の組
+    ///   - 活用: 適用する活用の種類
+    ///   - 行の名前: 適用する行の名前
+    /// - Returns: 表記と読みと[cid]の組の配列
     static private func 活用形取得(データ: (word: String, ruby: String, cid: Int), 活用: 活用の種類, 行の名前: 行) -> [(word: String, ruby: String, cid: Int)] {
         switch 活用 {
         case .五段:
@@ -180,6 +208,18 @@ struct JapaneseConjugationBuilder {
         return []
     }
 
+    /// 動詞の活用形の一覧を返す公開入口
+    ///
+    /// [cid]から動詞情報を照会して、活用形取得で形を作る
+    ///
+    /// includingStandardFormがtrueの時は、入力自体を標準形として末尾に加える
+    ///
+    /// 未知の[cid]では空配列を返す
+    ///
+    /// - Parameters:
+    ///   - data: 表記と読みと[cid]の組
+    ///   - includingStandardForm: 入力自体を標準形として含めるか
+    /// - Returns: 表記と読みと[cid]の組の配列
     static func conjugations(
         for data: (word: String, ruby: String, cid: Int),
         includingStandardForm: Bool = false

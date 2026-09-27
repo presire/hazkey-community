@@ -2,17 +2,48 @@ import Foundation
 import KanaKanjiConverterModule
 import SwiftProtobuf
 
-let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024  // ユーザ定義キーマップTSVのサイズ上限 (1[MB])
-let TABLE_FILE_SIZE_LIMIT = 1024 * 1024   // ユーザ定義入力テーブルTSVのサイズ上限 (1[MB])
+/// ユーザ定義キーマップTSVのサイズ上限である
+///
+/// - Note: 上限は1[MB]であり、上限を超えたファイルは無視される
+let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024
+/// ユーザ定義入力テーブルTSVのサイズ上限である
+///
+/// - Note: 上限は1[MB]であり、上限を超えたファイルは無視される
+let TABLE_FILE_SIZE_LIMIT = 1024 * 1024
 
+/// 設定の検証と書き込みに関するエラーを表す
+///
+/// LocalizedErrorに準拠し、errorDescriptionで利用者向けメッセージを返す
 enum ConfigError: LocalizedError {
+    /// 設定JSONの最上位が配列でない場合を示す
     case invalidJSONTopLevel
+    /// 設定JSONの配列要素がオブジェクトでない場合を示す
+    ///
+    /// - Parameter index: オブジェクトでなかった要素の位置
     case invalidJSONProfile(index: Int)
+    /// プロファイルが空の場合を示す
     case emptyProfiles
+    /// 未知のenum値が含まれる場合を示す
+    ///
+    /// - Parameters:
+    ///   - field: 検証対象のフィールド名
+    ///   - rawValue: 認識できなかった整数値
     case unrecognizedEnum(field: String, rawValue: Int)
+    /// 数値が許容範囲外の場合を示す
+    ///
+    /// - Parameters:
+    ///   - field: 検証対象のフィールド名
+    ///   - value: 検出した値
+    ///   - range: 許容範囲
     case valueOutOfRange(field: String, value: Int32, range: ClosedRange<Int32>)
+    /// 保留中の学習データの保存に失敗した場合を示す
+    ///
+    /// 設定は変更されず、何も書き込まない
     case learningCommitFailed(String)
 
+    /// 利用者向けのエラーメッセージを返す
+    ///
+    /// - Returns: 原因を説明するメッセージ
     var errorDescription: String? {
         switch self {
         case .invalidJSONTopLevel:
@@ -33,6 +64,9 @@ enum ConfigError: LocalizedError {
     }
 }
 
+/// 組み込みキーマップの一覧である
+///
+/// isBuiltIn付きの名前列であり、利用可能なキーマップの基礎になる
 let builtInKeymaps = [
     "JIS Kana",
     "Japanese Symbol",
@@ -49,6 +83,9 @@ let builtInKeymaps = [
     }
 }
 
+/// 組み込み入力テーブルの一覧である
+///
+/// isBuiltIn付きの名前列であり、利用可能な入力テーブルの基礎になる
 let builtInInputTables = [
     "Romaji",
     "Kana",
@@ -60,22 +97,52 @@ let builtInInputTables = [
     }
 }
 
+/// サーバ設定を保持して、読み込みと保存と派生値を担う
+///
+/// 保存済みプロファイルと現在のプロファイル、辞書パス、ニューラル変換の状態を持つ
 class HazkeyServerConfig {
+    /// 保存済みプロファイルの一覧である
+    ///
+    /// [0]が現在のプロファイルを指す
     var profiles: [Hazkey_Config_Profile]
+    /// 現在のプロファイルである
+    ///
+    /// profilesの先頭と同期し、変換要求の生成に直接使われる
     var currentProfile: Hazkey_Config_Profile
-    // Bumped on every successful SetConfig; carried on every response so
-    // frontends can reload their cached profile when it changes.
+    /// 設定のリビジョン番号である
+    ///
+    /// [set_config]が成功するたびに1を加算して、全てのレスポンスの[config_revision]に載せる
+    ///
+    /// フロントエンドはこの値の変化を検知して、キャッシュしているプロファイルを再読み込みする
     private(set) var configRevision: UInt64 = 0
+    /// システム辞書のディレクトリである
     let dictionaryPath: URL
-    /// [community] 住所辞書 (補助LOUDS辞書) のディレクトリ。未配備なら `nil`。
+    /// 住所辞書 (補助LOUDS辞書) のディレクトリである
+    ///
+    /// 未配備の場合はnilになる
     let addressDictionaryPath: URL?
-    /// [community] 工学用語辞書 (補助LOUDS辞書) のディレクトリ。未配備なら `nil`。
+    /// 工学辞書 (補助LOUDS辞書) のディレクトリである
+    ///
+    /// 未配備の場合はnilになる
     let engineeringDictionaryPath: URL?
+    /// ニューラル変換が利用可能かどうかを示す
+    ///
+    /// バックエンドデバイスとモデルパスの両方が揃った場合に真になる
     var zenzaiAvailable: Bool
+    /// 有効なニューラル変換モデルのパスである
+    ///
+    /// モデルが見つからない場合はnilになる
     var zenzaiModelPath: URL?
+    /// 利用可能なGGMLバックエンドデバイスの一覧である
     var ggmlBackendDevices: [GGMLBackendDevice]
+    /// GPU安全確認プローブの結果である
     let backendProbeOutcome: BackendProbeOutcome?
 
+    /// サーバ設定を初期化する
+    ///
+    /// 保存済み設定の読み込みと辞書パスの決定とニューラル変換状態の解決を行う
+    ///
+    /// - Note: 設定の読み込みに失敗した場合は既定プロファイルへ縮退する
     init() {
         do {
             profiles = try Self.loadConfig()
@@ -90,7 +157,7 @@ class HazkeyServerConfig {
         let fileManager = FileManager()
 
         // 辞書ディレクトリのパスを決める
-        // 環境変数HAZKEY_DICTIONARYが実在パスを指す場合はそれを使用し、無ければシステム配備のDictionaryを使用する
+        // 環境変数HAZKEY_DICTIONARYが実在するパスを指す場合はそれを使用して、無ければシステム配備のDictionaryを使用する
         dictionaryPath = {
             if let envPath = ProcessInfo.processInfo.environment["HAZKEY_DICTIONARY"],
                 fileManager.fileExists(atPath: envPath)
@@ -102,8 +169,10 @@ class HazkeyServerConfig {
             }
         }()
 
-        // 住所辞書は任意配備。存在しなければnilを渡し、通常変換のみで動作する
-        // 環境変数が指定されていればその値だけを根拠にし、実在しなくてもシステム配備へはフォールバックしない
+        // 住所辞書の配備は任意
+        // 存在しなければnilを渡して、住所辞書なしの通常変換のみで動作する
+        // 環境変数HAZKEY_ADDRESS_DICTIONARYが設定されていればその値だけを使用して、
+        // そのパスが実在しなくてもシステム配備 (/usr/share/hazkey-community/AddressDictionary) へはフォールバックしない
         addressDictionaryPath = {
             let candidate: URL =
                 if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ADDRESS_DICTIONARY"] {
@@ -115,7 +184,8 @@ class HazkeyServerConfig {
             return Self.existingDirectoryURL(candidate, fileManager: fileManager)
         }()
 
-        // 工学用語辞書も住所辞書と同じ規則で決める
+        // 工学辞書も住所辞書と同じ規則で決める
+        // (環境変数はHAZKEY_ENGINEERING_DICTIONARY、システム配備は"/usr/share/hazkey-community/EngineeringDictionary")
         engineeringDictionaryPath = {
             let candidate: URL =
                 if let envPath = ProcessInfo.processInfo.environment["HAZKEY_ENGINEERING_DICTIONARY"] {
@@ -136,6 +206,12 @@ class HazkeyServerConfig {
         self.zenzaiAvailable = (ggmlBackendDevices.count > 0) && (zenzaiModelPath != nil)
     }
 
+    /// 現在の設定を返す
+    ///
+    /// 保存済みプロファイルと利用可能なキーマップと入力テーブルとバックエンド情報を束ねる
+    ///
+    /// - Returns: CurrentConfigを含むレスポンスを返す
+    /// - Note: 読み込みに失敗した場合は失敗応答を返す
     func getCurrentConfig() -> Hazkey_ResponseEnvelope {
         let profiles: [Hazkey_Config_Profile]
         do {
@@ -248,6 +324,18 @@ class HazkeyServerConfig {
         }
     }
 
+    /// 新しい設定を検証して適用する
+    ///
+    /// 受信したプロファイルを正規化して検証して、保留中の学習を旧プロファイルへ確定してから書き込む
+    ///
+    /// 書き込み後に現設定を切り替えてリビジョンを加算して、モデルを再ウォームアップする
+    ///
+    /// - Parameters:
+    ///   - hashes: ファイル検証用ハッシュ列
+    ///   - profiles: 保存するプロファイル列
+    ///   - state: 学習確定と再初期化に使う接続 (省略時は保存のみ行う)
+    /// - Returns: 成功または失敗を示すレスポンスを返す
+    /// - Note: ウォームアップの失敗は保存成功に影響せず、ログのみ残す
     func setCurrentConfig(
         _ hashes: [Hazkey_Config_FileHash],
         _ profiles: [Hazkey_Config_Profile],
@@ -262,11 +350,11 @@ class HazkeyServerConfig {
             }
         }
 
-        // [community] 設定適用後にニューラル変換モデルを再ウォームアップする。
-        // デバイスやモデルの切替があっても、そのロードコストを次の打鍵に持たせない。
-        // 設定の保存自体は成功しているため、ウォームアップ失敗は応答をfailedにせず
-        // ログのみで報告する (モデル管理ダイアログ経由のreloadZenzaiModel RPCが
-        // 失敗をUIへ報告する経路を持つ)。
+        // 設定の適用後に、ニューラル変換モデルを再ウォームアップする
+        // デバイスやモデルを切り替えた場合でも、モデルのロード時間を次の打鍵に持ち越さないため
+        //
+        // 設定の保存自体は成功しているため、ウォームアップに失敗しても応答はfailedにせず、ログ出力のみとする
+        // (失敗をUIへ伝える経路は、モデル管理ダイアログから呼ぶreload_zenzai_model RPCが別に持っている)
         if let state {
             let warmup = state.reloadZenzaiModel()
             if warmup.status == .failed {
@@ -279,6 +367,11 @@ class HazkeyServerConfig {
         }
     }
 
+    /// ニューラル変換の有効無効を切り替える
+    ///
+    /// 現在のプロファイルの[zenzai_enable]を反転して保存する
+    ///
+    /// - Returns: 切替後の状態を含むレスポンスを返す
     func toggleZenzai() -> Hazkey_ResponseEnvelope {
         var updatedProfiles = profiles
         guard !updatedProfiles.isEmpty else {
@@ -304,6 +397,16 @@ class HazkeyServerConfig {
         }
     }
 
+    /// パスが実在するディレクトリの場合にのみURLを返す
+    ///
+    /// 存在しない場合や通常ファイルの場合はnilを返す
+    ///
+    /// 辞書パスの環境変数規則の判定に使う
+    ///
+    /// - Parameters:
+    ///   - url: 判定対象の候補パス
+    ///   - fileManager: 存在確認に使う管理機構
+    /// - Returns: ディレクトリの場合のみ候補を返し、それ以外はnilを返す
     static func existingDirectoryURL(_ url: URL, fileManager: FileManager) -> URL? {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
@@ -314,6 +417,15 @@ class HazkeyServerConfig {
         return url
     }
 
+    /// 既定のプロファイルを生成する
+    ///
+    /// 名称はDefaultであり、複数文字の自動変換と最小2文字と予測表示と提案3件と1頁9件と入力履歴を含む
+    ///
+    /// ホットキー・カーソル非末尾時の補助表示・特殊変換・内蔵キーマップ・ローマ字表・推論上限10の文脈付きCPUニューラル変換を持つ
+    ///
+    /// 住所辞書と工学辞書は既定で無効である
+    ///
+    /// - Returns: 既定値で埋めたプロファイルを返す
     static func genDefaultConfig() -> Hazkey_Config_Profile {
         var newConf = Hazkey_Config_Profile.init()
         newConf.profileName = "Default"
@@ -384,6 +496,11 @@ class HazkeyServerConfig {
         return newConf
     }
 
+    /// 既定のプロファイルを応答形式で返す
+    ///
+    /// genDefaultConfigをCurrentConfigに包み、設定画面の[リセット]処理に使う
+    ///
+    /// - Returns: 既定プロファイルを含む成功応答を返す
     static func getDefaultProfile() -> Hazkey_ResponseEnvelope {
         let currentConfig = Hazkey_Config_CurrentConfig.with {
             $0.profiles = [Self.genDefaultConfig()]
@@ -394,6 +511,17 @@ class HazkeyServerConfig {
         }
     }
 
+    /// 設定を検証して保存する
+    ///
+    /// 受信したプロファイルを正規化し、config.jsonの書き込み前に旧プロファイルへ保留中の学習を確定する
+    ///
+    /// 書き込み後に現設定とモデル状態を更新して、要求元接続の構成を作り直してリビジョンを加算する
+    ///
+    /// - Parameters:
+    ///   - newProfiles: 保存するプロファイル列
+    ///   - state: 未保存の学習データを保存する接続 (nilの場合は保存しない)
+    /// - Throws: 学習データの保存に失敗した場合は、ConfigError.learningCommitFailedを投げる
+    /// - Important: config.jsonより先に学習データを保存して、失敗した場合は何も書き込まずに中止する
     func saveConfig(
         _ newProfiles: [Hazkey_Config_Profile],
         state: HazkeyServerState? = nil
@@ -402,15 +530,14 @@ class HazkeyServerConfig {
         let configDir = Self.getConfigDirectory()
         let configPath = configDir.appendingPathComponent("config.json")
 
-        // [community] Pending learning belongs to the profile that was active
-        // when it was typed. Commit it while `currentProfile` (and therefore
-        // `memoryDirectory()`) still points at the old directory, otherwise the
-        // next commit merges it into the incoming profile's history.
+        // 未保存の学習データは、入力した時点で有効だったプロファイルに属する
+        // そのため、currentProfile (つまりmemoryDirectory()) が旧プロファイルのディレクトリを指している間に保存する
+        // 先にプロファイルを切り替えると、次回の保存時に新しいプロファイルの履歴へ混ざってしまう
         //
-        // This runs before config.json is written so that a failed commit
-        // leaves disk and memory consistent: nothing is written, the profile
-        // switch is abandoned, and the pending learning stays attached to the
-        // still-active old profile. Applying the settings again retries.
+        // この保存は、config.jsonを書き込む前に行う
+        // 保存に失敗した場合は、config.jsonを書き込まずにプロファイルの切替を中止して、
+        // 未保存の学習データは旧プロファイルに属したまま残す (ディスクとメモリの状態が食い違わない)
+        // 再度設定を適用すると、保存が再試行される
         if let state {
             let commitResult = state.saveLearningData()
             guard commitResult.status == .success else {
@@ -453,6 +580,12 @@ class HazkeyServerConfig {
         configRevision &+= 1
     }
 
+    /// 保存済み設定を読み込む
+    ///
+    /// config.jsonが無い場合は、既定プロファイルを正規化して返す
+    ///
+    /// - Returns: 検証済みプロファイル列を返す
+    /// - Throws: 読み込みや復号や検証に失敗した場合に投げる
     static func loadConfig() throws -> [Hazkey_Config_Profile] {
         let configDir = Self.getConfigDirectory()
         let configPath = configDir.appendingPathComponent("config.json")
@@ -473,6 +606,15 @@ class HazkeyServerConfig {
         return configs
     }
 
+    /// 設定JSONをプロファイル列へ復号する
+    ///
+    /// 最上位配列の各要素を個別に復号して、未知フィールドを無視して正規化する
+    ///
+    /// 空配列の場合は既定プロファイルへ縮退する
+    ///
+    /// - Parameter jsonData: config.jsonの内容
+    /// - Returns: 検証済みプロファイル列を返す
+    /// - Throws: 形式不正や検証失敗の場合に投げる
     static func decodeProfiles(from jsonData: Data) throws -> [Hazkey_Config_Profile] {
         guard let jsonArray = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [Any]
         else {
@@ -500,6 +642,13 @@ class HazkeyServerConfig {
         return try normalizeProfiles(profiles)
     }
 
+    /// プロファイル列を検証して正規化する
+    ///
+    /// 各プロファイルにnormalizeProfileを適用する
+    ///
+    /// - Parameter profiles: 検証対象のプロファイル列
+    /// - Returns: 正規化済みプロファイル列を返す
+    /// - Throws: 空配列や検証失敗の場合に投げる
     static func normalizeProfiles(_ profiles: [Hazkey_Config_Profile]) throws -> [Hazkey_Config_Profile] {
         guard !profiles.isEmpty else {
             throw ConfigError.emptyProfiles
@@ -507,6 +656,33 @@ class HazkeyServerConfig {
         return try profiles.map(normalizeProfile)
     }
 
+    /// 単一プロファイルを検証して正規化する
+    ///
+    /// 欠落した任意項目を既定値で補い、enumと数値範囲を検証する
+    ///
+    /// 補完対象を以下に示す
+    /// - 変換方式
+    /// - 補助表示
+    /// - 候補表示
+    /// - [zenzai_infer_limit]
+    /// - [num_suggestions]
+    /// - [auto_convert_min_chars]
+    /// - 候補表示件数
+    /// - 切替ホットキー
+    /// - 半角カナ
+    /// - 拡張絵文字
+    /// - [use_address_dictionary]
+    /// - [use_engineering_dictionary]
+    ///
+    /// 範囲検査を以下に示す
+    /// - 候補提案数
+    /// - 自動変換最小文字数
+    /// - 候補表示件数が1〜10
+    /// - 推論上限が1〜100である
+    ///
+    /// - Parameter profile: 検証対象のプロファイル
+    /// - Returns: 正規化済みプロファイルを返す
+    /// - Throws: 未知のenumや範囲外の値がある場合に投げる
     static func normalizeProfile(_ profile: Hazkey_Config_Profile) throws -> Hazkey_Config_Profile {
         let defaults = Self.genDefaultConfig()
         var normalized = profile
@@ -558,6 +734,10 @@ class HazkeyServerConfig {
         return normalized
     }
 
+    /// プロファイル内のenum値を検証する
+    ///
+    /// - Parameter profile: 検証対象のプロファイル
+    /// - Throws: 未知のenum値がある場合に投げる
     private static func validateEnums(_ profile: Hazkey_Config_Profile) throws {
         if case .UNRECOGNIZED(let rawValue) = profile.autoConvertMode {
             throw ConfigError.unrecognizedEnum(field: "autoConvertMode", rawValue: rawValue)
@@ -570,6 +750,13 @@ class HazkeyServerConfig {
         }
     }
 
+    /// 数値が許容範囲内かを検証する
+    ///
+    /// - Parameters:
+    ///   - value: 検証対象の値
+    ///   - field: 検証対象のフィールド名
+    ///   - range: 許容範囲
+    /// - Throws: 範囲外の場合に投げる
     private static func validateRange(
         _ value: Int32,
         field: String,
@@ -580,6 +767,11 @@ class HazkeyServerConfig {
         }
     }
 
+    /// 設定ディレクトリのパスを返す
+    ///
+    /// 環境変数XDG_CONFIG_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    ///
+    /// - Returns: 設定ディレクトリのURLを返す
     static func getConfigDirectory() -> URL {
         if let xdgConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
             !xdgConfigHome.isEmpty
@@ -592,6 +784,11 @@ class HazkeyServerConfig {
         return homeDir.appendingPathComponent(".config").appendingPathComponent("hazkey-community")
     }
 
+    /// データディレクトリのパスを返す
+    ///
+    /// 環境変数XDG_DATA_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    ///
+    /// - Returns: データディレクトリのURLを返す
     static func getDataDirectory() -> URL {
         if let xdgDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"],
             !xdgDataHome.isEmpty
@@ -599,12 +796,19 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgDataHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_DATA_HOME未設定時の代替として、"~/.local/share/hazkey-community/"ディレクトリを使用する
+        // 環境変数XDG_DATA_HOME未設定時の代替として、"~/.local/share/hazkey-community/"ディレクトリを使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("share")
             .appendingPathComponent("hazkey-community")
     }
 
+    /// 状態ディレクトリのパスを返す
+    ///
+    /// 環境変数XDG_STATE_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    ///
+    /// 学習メモリの配置基準になる
+    ///
+    /// - Returns: 状態ディレクトリのURLを返す
     static func getStateDirectory() -> URL {
         if let xdgStateHome = ProcessInfo.processInfo.environment["XDG_STATE_HOME"],
             !xdgStateHome.isEmpty
@@ -612,12 +816,17 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgStateHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_STATE_HOME未設定時の代替として、"~/.local/state/hazkey-community/"を使用する
+        // 環境変数XDG_STATE_HOME未設定時の代替として、"~/.local/state/hazkey-community/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".local").appendingPathComponent("state")
             .appendingPathComponent("hazkey-community")
     }
 
+    /// キャッシュディレクトリのパスを返す
+    ///
+    /// 環境変数XDG_CACHE_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    ///
+    /// - Returns: キャッシュディレクトリのURLを返す
     static func getCacheDirectory() -> URL {
         if let xdgCacheHome = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"],
             !xdgCacheHome.isEmpty
@@ -625,11 +834,19 @@ class HazkeyServerConfig {
             return URL(fileURLWithPath: xdgCacheHome).appendingPathComponent("hazkey-community")
         }
 
-        // XDG_CACHE_HOME未設定時の代替として、"~/.cache/hazkey-community/"を使用する
+        // 環境変数XDG_CACHE_HOME未設定時の代替として、"~/.cache/hazkey-community/"を使用する
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         return homeDir.appendingPathComponent(".cache").appendingPathComponent("hazkey-community")
     }
 
+    /// 候補表示にリッチ候補を使うかを判定する
+    ///
+    /// 予測候補はuseRichSuggestionを、通常変換はuseRichCandidatesを使用する
+    ///
+    /// - Parameters:
+    ///   - profile: 判定対象のプロファイル
+    ///   - isSuggestion: 予測候補かどうかの真偽値
+    /// - Returns: リッチ表示を使う場合に真を返す
     static func requestRichCandidates(
         for profile: Hazkey_Config_Profile,
         isSuggestion: Bool
@@ -637,6 +854,16 @@ class HazkeyServerConfig {
         isSuggestion ? profile.useRichSuggestion : profile.useRichCandidates
     }
 
+    /// 学習メモリのディレクトリを解決する
+    ///
+    /// [use_profile_independent_history]が無効の場合は、共有のmemory配下を返す
+    ///
+    /// 有効の場合はprofile_idをbase64url化した専用配下を返して、空の識別子はdefault扱いになる
+    ///
+    /// - Parameters:
+    ///   - profile: 判定対象のプロファイル
+    ///   - stateDirectory: 状態ディレクトリ (省略時は既定の状態位置)
+    /// - Returns: 学習メモリのディレクトリを返す
     static func memoryDirectory(
         for profile: Hazkey_Config_Profile,
         stateDirectory: URL = HazkeyServerConfig.getStateDirectory()
@@ -655,6 +882,16 @@ class HazkeyServerConfig {
         return sharedDirectory.appendingPathComponent(profileIdentifier, isDirectory: true)
     }
 
+    /// 有効なニューラル変換モデルのパスを解決する
+    ///
+    /// カスタム重み指定が有効で実在する通常ファイルの場合はそのパスを返して、それ以外は探索済みパスを返す
+    ///
+    /// 通常ファイルでない指定は記録してnilを返す
+    ///
+    /// - Parameters:
+    ///   - profile: カスタム重み設定を持つプロファイル
+    ///   - discoveredModelPath: 探索で見つかったモデルパス
+    /// - Returns: 有効なモデルパスを返して、解決できない場合はnilを返す
     static func resolveZenzaiModelPath(
         for profile: Hazkey_Config_Profile,
         discoveredModelPath: URL?
@@ -673,15 +910,26 @@ class HazkeyServerConfig {
         return customModelPath
     }
 
+    /// 現在のプロファイルに対応する学習メモリのディレクトリを返す
+    ///
+    /// - Returns: 学習メモリのディレクトリを返す
     func memoryDirectory() -> URL {
         Self.memoryDirectory(for: currentProfile)
     }
 
+    /// 学習メモリのディレクトリを必要に応じて作成する
+    ///
+    /// - Throws: 作成に失敗した場合に投げる
     func createMemoryDirectoryIfNeeded() throws {
         try FileManager.default.createDirectory(
             at: memoryDirectory(), withIntermediateDirectories: true)
     }
 
+    /// 現在有効なニューラル変換モデルのパスを解決する
+    ///
+    /// バックエンドデバイスが無い場合はnilを返す
+    ///
+    /// - Returns: 有効なモデルパスを返して、解決できない場合はnilを返す
     private func resolveActiveZenzaiModelPath() -> URL? {
         guard !ggmlBackendDevices.isEmpty else {
             return nil
@@ -690,6 +938,18 @@ class HazkeyServerConfig {
             for: currentProfile, discoveredModelPath: getZenzaiModelPath())
     }
 
+    /// 変換要求用のニューラル変換モードを生成する
+    ///
+    /// 無効時や利用不可時は無効モードを返して、有効時は重みと推論上限と文脈付き条件を束ねる
+    ///
+    /// カーソル左側の文脈はleftContextで渡して、文脈モード有効時のみ参照する
+    ///
+    /// モデルパスは実体へ解決して渡すが、保持値は管理下リンクのままにする
+    ///
+    /// - Parameters:
+    ///   - leftContext: カーソル左側の文脈文字列
+    ///   - requestRichCandidates: リッチ候補要求の上書き (省略時は現設定を使用する)
+    /// - Returns: 変換要求に渡すニューラル変換モードを返す
     func genZenzaiMode(
         leftContext: String,
         requestRichCandidates: Bool? = nil
@@ -701,11 +961,11 @@ class HazkeyServerConfig {
             ? "CPU" : currentProfile.zenzaiBackendDeviceName
 
         if zenzaiAvailable, let zenzaiModelPath = zenzaiModelPath, currentProfile.zenzaiEnable {
-            // 変換エンジンは読み込み済みモデルをプロセス全体のレジストリに保持し、重みパス文字列をキーにしている
+            // 変換エンジンは読み込み済みモデルをプロセス全体のレジストリに保持して、重みパス文字列をキーにしている
             // (SharedZenzModelCache.cacheKey(path:deviceConfig:))
             //
             // 管理下のzenzai.ggufシンボリックリンクをそのまま渡すと、リンク先を切り替えても以前のモデルを供給し続けるため、
-            // [Hazkey 設定]画面でのモデル切替がサーバ再起動後まで反映されない
+            // [Hazkey Community設定]画面でのモデル切替がサーバ再起動後まで反映されない
             //
             // ここでリンクを実体に解決することにより、キーが実ファイルを追跡するようにする
             // なお、zenzaiModelPath自体は意図的に管理下シンボリックリンクのままにしている
@@ -731,6 +991,11 @@ class HazkeyServerConfig {
         }
     }
 
+    /// 基本の変換要求オプションを生成する
+    ///
+    /// [use_input_history]と新規履歴の保存可否から学習種別を決め、1頁の候補数と特殊候補と学習配置と誤字補正無効化を束ねる
+    ///
+    /// - Returns: 変換要求の基礎オプションを返す
     func genBaseConvertRequestOptions() -> ConvertRequestOptions {
         let learningType =
             switch (currentProfile.useInputHistory, currentProfile.stopStoreNewHistory) {
@@ -776,16 +1041,21 @@ class HazkeyServerConfig {
             specialCandidateProviders: specialCandidateProviders,
             zenzaiMode: zenzaiMode,
             preloadDictionary: false,
-            // aZooKeyリポジ鳥のhazkey (基点の上流93766c4) において、
-            // "needTypoCorrection: Bool"が"typoCorrectionMode: TypoCorrectionMode"に置き換えられた
+            // AzooKeyKanaKanjiConverterのフォーク (hazkeyブランチ) では、
+            // 引数needTypoCorrection: BoolがtypoCorrectionMode: TypoCorrectionModeに置き換えている
             //
-            // ".disabled"は、従来の"needTypoCorrection: false"と動作上完全に等価 (無条件に無効化)
+            // .disabledは、従来の"needTypoCorrection: false"と動作上完全に等価 (誤字補正を無条件に無効化)
             // (KanaKanjiConverter.isClassicTypoCorrectionEnabledを参照)
             typoCorrectionMode: .disabled,
             metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey-Community \(hazkeyVersion)")
         )
     }
 
+    /// 有効なキーマップを読み込む
+    ///
+    /// 内蔵定義と利用者定義TSVを後勝ちで合成して、不明な定義や読み込み失敗は飛ばす
+    ///
+    /// - Returns: 合成済みキーマップを返す
     func loadKeymap() -> Keymap {
         var maps: Keymap = [:]
         outer: for enabledKeymap in currentProfile.enabledKeymaps.reversed() {
@@ -833,6 +1103,12 @@ class HazkeyServerConfig {
         return maps
     }
 
+    /// 利用者定義キーマップの内容を解釈する
+    ///
+    /// タブ区切り1列は無効化、2列以上は入力文字と修飾文字として取り込む
+    ///
+    /// - Parameter contents: TSVファイルの内容
+    /// - Returns: 解釈済みキーマップを返す
     static func parseCustomKeymap(_ contents: String) -> Keymap {
         var keymap: Keymap = [:]
         for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -852,6 +1128,13 @@ class HazkeyServerConfig {
         return keymap
     }
 
+    /// 指定名の入力テーブルを読み込んで登録する
+    ///
+    /// 区切り表を土台に、有効な入力表を後勝ちで合成する
+    ///
+    /// 不明な定義や読み込み失敗は飛ばす
+    ///
+    /// - Parameter tableName: 登録先の入力方式名
     func loadInputTable(tableName: String) {
         var tables: [InputTable] = [compositionSeparatorTable]
         outer: for enabledTable in currentProfile.enabledTables.reversed() {
@@ -886,51 +1169,80 @@ class HazkeyServerConfig {
         InputStyleManager.registerInputStyle(table: inputTable, for: tableName)
     }
 
+    /// 直接入力サブモードへ入る文字列を返す
+    ///
+    /// [Shift]キー同時押下で、直接入力へ切り替える対象文字である
+    ///
+    /// - Returns: 対象文字の配列を返す
     func getSubModeEntryPointChars() -> [Character] {
         return Array(currentProfile.submodeEntryPointChars)
     }
 
+    /// 有効なニューラル変換モデルを解決し直して準備する
+    ///
+    /// 起動時と設定適用後の初回打鍵の待ち時間を抑える
     func reloadZenzaiModel() {
         zenzaiModelPath = resolveActiveZenzaiModelPath()
         self.zenzaiAvailable = (ggmlBackendDevices.count > 0) && (zenzaiModelPath != nil)
     }
 }
 
+/// 設定プロファイルの欠落時実効値を提供する
+///
+/// 旧設定との互換のため、項目欠落時の代替値を一箇所で定義する
 extension Hazkey_Config_Profile {
-    /// 旧設定または項目欠落時はプロファイル間で履歴を共有する (従来動作を維持)
+    /// プロファイル非依存の入力履歴設定[use_profile_independent_history]の実効値である
+    ///
+    /// 旧設定または項目欠落時はfalseとする (従来動作を維持)
     var useProfileIndependentHistoryEffective: Bool {
         hasUseProfileIndependentHistory ? useProfileIndependentHistory : false
     }
 
-    /// 拡張絵文字候補設定の実効値
-    /// 旧設定または項目欠落時は既存動作維持のため真を既定とする
+    /// 拡張絵文字候補設定の実効値である
+    ///
+    /// 旧設定または項目欠落時は、既存動作を維持するためtrueとする
     var extendedEmojiEffective: Bool {
         let mode = specialConversionMode
         return mode.hasExtendedEmoji ? mode.extendedEmoji : true
     }
 
-    /// 住所辞書設定の実効値
-    /// 旧設定または項目欠落時は既定OFF扱いとする
+    /// 住所辞書設定[use_address_dictionary]の実効値である
+    ///
+    /// 旧設定または項目欠落時は既定の無効として扱う
     var useAddressDictionaryEffective: Bool {
         hasUseAddressDictionary ? useAddressDictionary : false
     }
 
-    /// 工学用語辞書設定の実効値
-    /// 旧設定または項目欠落時は既定OFF扱いとする
+    /// 工学辞書設定[use_engineering_dictionary]の実効値である
+    ///
+    /// 旧設定または項目欠落時は既定の無効として扱う
     var useEngineeringDictionaryEffective: Bool {
         hasUseEngineeringDictionary ? useEngineeringDictionary : false
     }
 }
 
-/// backendDirectoryOverrideは、nil以外の場合はGGML_BACKEND_DIRとシステム既定値より優先する
-/// backendProbe.swiftのcpuOnlyBackendDirectory()がVulkanバックエンドプラグインを含まないフィルタ済みディレクトリをGGMLに指定するために使用する
-/// これにより、プローブ子プロセスが危険と判定したドライバ組み合わせを、再びdlopenしない
+/// 利用可能なllama.cpp(GGML)のバックエンドデバイスを列挙する
+///
+/// バックエンドの探索ディレクトリは、次の優先順位で決める
+///
+/// 1. 引数backendDirectoryOverride(nil以外の場合)
+///
+/// 2. 環境変数GGML_BACKEND_DIR
+///
+/// 3. システム既定値 (配下のlibllama/backends/)
+///
+/// backendDirectoryOverrideは、安全確認処理がVulkanを含まない隔離配置を指定するために使用する
+///
+/// 危険と判定した組み合わせの再読み込みを避ける
+///
+/// - Parameter backendDirectoryOverride: 探索先の上書き (省略時は、環境変数と既定値を使用する)
+/// - Returns: 列挙したバックエンドデバイスを返す
 func getZenzaiDevices(backendDirectoryOverride: String? = nil) -> [GGMLBackendDevice] {
     var ggmlBackendDirectory =
         backendDirectoryOverride
         ?? ProcessInfo.processInfo.environment["GGML_BACKEND_DIR"]
         ?? (systemLibraryPath + "/libllama/backends/")
-    // 末尾のスラッシュが必須
+    // GGMLはディレクトリ名の末尾に/が必要なため、無ければ補う
     if !ggmlBackendDirectory.hasSuffix("/") {
         ggmlBackendDirectory.append("/")
     }
@@ -947,6 +1259,13 @@ func getZenzaiDevices(backendDirectoryOverride: String? = nil) -> [GGMLBackendDe
     return backendDevices
 }
 
+/// 有効なニューラル変換モデルのパスを探索する
+///
+/// 探索順は[HAZKEY_ZENZAI_MODEL]の指定、利用者配下のzenzai.gguf、システム配備の順である
+///
+/// 最初に見つかった通常ファイルを返す
+///
+/// - Returns: 有効なモデルパスを返して、見つからない場合はnilを返す
 func getZenzaiModelPath() -> URL? {
     let systemZenzaiModelPath = URL(fileURLWithPath: systemResourcePath)
         .appendingPathComponent("zenzai.gguf", isDirectory: false)

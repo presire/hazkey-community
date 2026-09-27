@@ -1,50 +1,117 @@
 import Foundation
 
+/// サーバが実装するソケットイベントの委譲先
+///
+/// 接続の確立と切断の通知と受信データの処理を受け持つ
 protocol SocketManagerDelegate: AnyObject {
+    /// 受信データを処理して応答バイト列を返す
+    ///
+    /// - Parameters:
+    ///   - manager: イベント元のSocketManager
+    ///   - data: 受信した要求バイト列
+    ///   - clientFd: 送信元のクライアントfd
+    /// - Returns: 返送する応答バイト列
     func socketManager(_ manager: SocketManager, didReceiveData data: Data, from clientFd: Int32)
         -> Data
+    /// クライアント接続の確立を通知する
+    ///
+    /// - Parameters:
+    ///   - manager: イベント元のSocketManager
+    ///   - clientFd: 接続したクライアントfd
     func socketManager(_ manager: SocketManager, clientDidConnect clientFd: Int32)
+    /// クライアント接続の切断を通知する
+    ///
+    /// - Parameters:
+    ///   - manager: イベント元のSocketManager
+    ///   - clientFd: 切断したクライアントfd
     func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32)
 }
 
 /// 同時接続クライアントの受入ポリシー
 ///
-/// acceptされた各接続は独立したcomposition sessionを持つが、
-/// それでも各接続は単一のサーバスレッド上でpoll対象のfdとリクエストごとの処理コストを消費するため、接続数には上限を設けている
+/// acceptされた各接続は、独立したcomposition sessionを持つ
+///
+/// それでも各接続は、単一サーバスレッド上でpoll対象のfdと処理コストを消費するため接続数に上限を設ける
 enum ClientSessionLimit {
+    /// 現在数で新規接続を受け入れ可能か判定する
+    ///
+    /// - Parameter currentCount: 現在の接続数
+    /// - Returns: 現在数が[maxClientCount]未満の場合にtrueを返す
     static func accepts(currentCount: Int) -> Bool {
         currentCount < SocketManager.maxClientCount
     }
 }
 
+/// クライアントを受け入れて全fdを単一スレッドでpollする管理者
+///
+/// サーバソケットと自己パイプと全クライアントfdを1つのループで監視する
 class SocketManager {
+    /// イベントの委譲先であるサーバ
+    ///
+    /// 循環参照を避けるためweak参照で保持する
     weak var delegate: SocketManagerDelegate?
 
     /// 同時接続クライアントの最大数
-    /// フル構成では、Fcitx5 + IBus + hazkey-settings = 3接続だが、
-    /// 余裕分は一時的な再接続 (古いfdが回収される前にクライアントが再接続してくるケース) を吸収するためのもの
-    /// テストが上限値を正確に操作できるようinternalにしている
+    ///
+    /// フル構成では、Fcitx5とIBusとhazkey-community-settingsの3接続になる
+    ///
+    /// 余裕分は、一時的な再接続を吸収するためのものである
+    ///
+    /// 古いfdが回収される前に、クライアントが再接続する呼び出しを想定している
+    ///
+    /// - Note: テストが上限値を正確に操作できるようinternalにしている
     static let maxClientCount = 8
 
     /// 現在接続中のクライアント数
     var connectedClientCount: Int { clientFds.count }
 
+    /// シグナル待受用のDispatchSource群
+    ///
+    /// ループ終了まで登録を保持するために所有する
     private var signalSources: [DispatchSourceSignal] = []
+    /// trueの間ループを継続する停止フラグ
+    ///
+    /// シグナル受信時にfalseへ変わる
     private var continueServing = true
 
+    /// サーバソケットのfd
+    ///
+    /// 初期値は-1であり設定前は無効である
     private var serverFd: Int32 = -1
+    /// 接続中クライアントのfd一覧
+    ///
+    /// poll集合と接続数の根拠になる
     private var clientFds: [Int32] = []
+    /// 待ち受けるUNIXドメインソケットのパス
+    ///
+    /// 初期化時に受け取り以後は変わらない
     private let socketPath: String
+    /// pollを起こす自己パイプのfd対
+    ///
+    /// 初期値は無効値の対であり書込端のクローズがループ停止の合図になる
     private var pipeFds: [Int32] = [-1, -1]
 
+    /// ソケットパスを保持して初期化する
+    ///
+    /// - Parameter socketPath: 待ち受けるソケットのパス
     init(socketPath: String) {
         self.socketPath = socketPath
     }
 
+    /// ソケットを閉じて終了する
+    ///
+    /// closeSocketを呼び出して資源を解放する
     deinit {
         closeSocket()
     }
 
+    /// 待ち受けソケットと自己パイプを準備する
+    ///
+    /// 古いパスをunlinkしてAF_UNIXストリームソケットを作りbindして、権限0600でlisten(10)する
+    ///
+    /// サーバソケットは[O_NONBLOCK]で非ブロッキング化して、自己パイプを作る
+    ///
+    /// - Throws: 作成とbindと権限設定とlistenとパイプ作成の失敗時に、SocketError.readFailedを送出する
     func setupSocket() throws {
         unlink(socketPath)
 
@@ -90,6 +157,11 @@ class SocketManager {
         pipeFds = fds
     }
 
+    /// シグナルハンドラを登録する
+    ///
+    /// [SIGPIPE]を無視し[SIGINT]と[SIGTERM]と[SIGHUP]でcontinueServingをfalseにする
+    ///
+    /// パイプ書込端を閉じてpollを起こし、ループを停止させる
     private func setupSignalHandlers() {
         signal(SIGPIPE, SIG_IGN)
 
@@ -101,7 +173,7 @@ class SocketManager {
             source.setEventHandler { [weak self] in
                 NSLog("Signal \(sig) received, shutting down...")
                 self?.continueServing = false
-                // poll を止める
+                // pollを止める
                 if let pipeFd = self?.pipeFds[1] {
                     close(pipeFd)
                     self?.pipeFds[1] = -1
@@ -112,6 +184,15 @@ class SocketManager {
         }
     }
 
+    /// 全fdをpollする単一スレッドの主ループを実行する
+    ///
+    /// poll集合はサーバソケットとパイプ読取端と全クライアントfdであり待機は1000[ms]である
+    ///
+    /// [EINTR]とタイムアウトはループを継続する
+    ///
+    /// [POLLIN]または[POLLHUP]のあるパイプはループを抜ける
+    ///
+    /// - Note: 既存クライアントをacceptより先に処理するため、同一反復で解放したfd番号の再利用がrevents処理より先に起きない
     func startListening() {
         setupSignalHandlers()
         while continueServing {
@@ -151,11 +232,13 @@ class SocketManager {
                 break
             }
 
-            // 新規接続をacceptするより先に、既存クライアントを処理する
-            // acceptを最後に行うことで、accept()がこのイテレーション内でcloseClient()によって直前に解放されたfd番号を、
-            // そのreventsが処理される前に再利用してしまう事態を防げる
-            // これは旧来のpolledClientFd == currentClientFdという古いイベントに対するガードを、複数fdに対応させたものに相当する
-            // さらに下のclientFds.containsチェックは、同一イテレーション内で既にクローズされたfdをスキップする
+            // 新規接続をacceptするより先に既存クライアントを処理する
+            //
+            // acceptを最後に行うことで同一反復内のcloseClientによるfd番号解放の再利用をrevents処理より前に防ぐ
+            //
+            // 旧来の単一fdガードを複数fdに対応させたものである
+            //
+            // さらに下のcontains確認は同一反復で既に閉じたfdをスキップする
             for (index, polledFd) in polledClientFds.enumerated() {
                 guard clientFds.contains(polledFd) else { continue }
                 let clientEvents = Int32(pollFds[2 + index].revents)
@@ -179,16 +262,23 @@ class SocketManager {
     }
 
     /// 保留中の接続を1件acceptする
-    /// pollループを介さずテストが実際のaccept経路を直接実行できるよう、privateではなくinternalにしている
+    ///
+    /// 上限超過時は即時クローズで拒否して、それ以外は非ブロッキング化して追加し委譲先へ通知する
+    ///
+    /// 各接続は独自セッションを保ち、新規接続が既存クライアントを追い出すことはない
+    ///
+    /// - Note: pollループを介さずテストが実際のaccept経路を実行できるよう、internalにしている
     func handleNewConnection() {
         var clientAddr = sockaddr()
         var clientLen: socklen_t = socklen_t(MemoryLayout<sockaddr>.size)
         let newClientFd = accept(serverFd, &clientAddr, &clientLen)
 
         if newClientFd != -1 {
-            // マルチクライアントの契約:
-            // 各接続は自分自身のセッションを保持し、新規接続が既存クライアントを追い出すことはない
-            // 上限を超える場合は、代わりに新規接続を拒否する (即座にクローズする)
+            // マルチクライアントの契約である
+            //
+            // 各接続は独自セッションを保ち新規接続が既存クライアントを追い出すことはない
+            //
+            // 上限超過時は新規接続を即時クローズで拒否する
             if !ClientSessionLimit.accepts(currentCount: clientFds.count) {
                 NSLog(
                     "Client limit reached (\(Self.maxClientCount)); rejecting connection \(newClientFd)"
@@ -213,6 +303,13 @@ class SocketManager {
         }
     }
 
+    /// 1要求を読み処理し応答を書き戻す
+    ///
+    /// 4バイトのビッグエンディアン長を読み本体が1[MB]以下であることを検証する
+    ///
+    /// 委譲先の処理結果に4バイト長を付けて書き込みfsyncする
+    ///
+    /// - Parameter clientFd: 処理対象のクライアントfd
     private func handleClientData(_ clientFd: Int32) {
         do {
             // クライアントのリクエストを処理する
@@ -259,6 +356,11 @@ class SocketManager {
         }
     }
 
+    /// SocketErrorの種類を記録してクライアントを閉じる
+    ///
+    /// - Parameters:
+    ///   - error: 発生したSocketError
+    ///   - clientFd: 閉じる対象のクライアントfd
     private func handleSocketError(_ error: SocketError, clientFd: Int32) {
         switch error {
         case .clientDisconnected(let msg):
@@ -279,8 +381,15 @@ class SocketManager {
         closeClient(clientFd)
     }
 
+    /// クライアントfdを閉じて一覧から外し切断を通知する
+    ///
+    /// 既に外されたfdでは何もせずに返す
+    ///
+    /// - Parameter clientFd: 閉じる対象のクライアントfd
     private func closeClient(_ clientFd: Int32) {
-        // 既に削除済みの場合はNOP (同一イテレーション内で先に閉じられたfdに対する古いpollイベント、または、重複したHUP / ERRの場合等)
+        // 既に外されたfdでは何もせずに返す
+        //
+        // 同一反復内の古いpollイベントまたは[POLLHUP]と[POLLERR]の重複を想定している
         guard clientFds.contains(clientFd) else { return }
         NSLog("Closing client connection: \(clientFd)")
         close(clientFd)
@@ -288,6 +397,9 @@ class SocketManager {
         delegate?.socketManager(self, clientDidDisconnect: clientFd)
     }
 
+    /// 全クライアントとサーバソケットを閉じてパスをunlinkする
+    ///
+    /// deinitからも呼び出される終了処理である
     func closeSocket() {
         for clientFd in clientFds {
             close(clientFd)

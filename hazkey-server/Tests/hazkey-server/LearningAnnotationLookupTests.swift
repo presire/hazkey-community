@@ -6,8 +6,7 @@ import XCTest
 
 @testable import hazkey_server
 
-/// [community] 「削除可能」候補注釈（GitHub Issue #1）を支える読みキー単位の
-/// ポイント照会と、同時に修正した隣接する学習メモリの正しさに関する2件のバグ。
+/// 「削除可能」候補注釈 (GitHub Issue #1) を支える読みキー単位のポイント照会と、同時に修正した隣接する学習メモリの正しさに関する2件のバグ
 final class LearningAnnotationLookupTests: XCTestCase {
     private func withTemporaryXDG<T>(_ body: (URL) throws -> T) throws -> T {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -112,17 +111,17 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return response.getLearningHistoryResult.totalCount
     }
 
-    /// `emoji_all_E*.txt` のTSV形式: 絵文字 TAB カンマ区切りのひらがな読み
-    /// TAB バリエーション。
+    /// emoji_all_E*.txtのTSV形式: 絵文字 TAB カンマ区切りのひらがな読み
+    /// TABバリエーション
     private func writeEmojiFixture(_ contents: String, named name: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(name, isDirectory: false)
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
-    /// - Parameter emojiFixtureURL: 常にfixtureを渡す。`nil` は本番のE17アセットへ
-    ///   フォールバックするが、ここには存在せず、このテストが依存する絵文字注入が
-    ///   無効になる。
+    /// - Parameter emojiFixtureURL:
+    ///   常にfixtureを渡す
+    ///   nilは本番のE17アセットへフォールバックするが、ここには存在せず、このテストが依存する絵文字注入が無効になる
     private func annotationState(emojiFixtureURL: URL?) -> HazkeyServerState {
         let state = HazkeyServerState(emojiDictionaryURL: emojiFixtureURL)
         state.serverConfig.currentProfile.zenzaiEnable = false
@@ -167,8 +166,8 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - R1: 学習済み予測候補
 
-    /// 予測候補の永続エントリは予測部分まで含む完全 ruby の下に保存されるため、
-    /// 入力 prefix に切り詰めた読みでは注釈も削除も当たらない。
+    /// 予測候補の永続エントリは予測部分まで含む完全rubyの下に保存されるため、
+    /// 入力prefixに切り詰めた読みでは注釈も削除も当たらない
     func testLearnedPredictionCandidateIsAnnotatedAndDeletable() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -212,8 +211,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - ポイント照会の意味論
 
-    /// 永続 trie はカタカナ ruby を保存するため、ひらがな読みとの突き合わせは
-    /// カタカナ正規化を経由しなければならない。
+    /// 永続trieは、カタカナrubyを保存するため、ひらがな読みとの突き合わせはカタカナ正規化を経由しなければならない
     func testPersistedTrieStoresKatakanaRubyAndAnnotatesHiraganaReading() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -228,10 +226,10 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    /// 注釈は列挙 API (全走査) ではなくポイント照会で解決される。列挙は
-    /// `memory.memorymetadata` を必ず読むが、ポイント照会は LOUDS と該当シャード
-    /// しか読まないので、metadata を消すと履歴は空になり注釈だけが残る。
-    /// 全走査方式へ戻すと最後のアサートが落ちる。
+    /// 注釈は、列挙API (全走査) ではなくポイント照会で解決される
+    /// 列挙はmemory.memorymetadataを必ず読むが、ポイント照会はLOUDSと該当シャードしか読まないため、
+    /// metadataを消すと履歴は空になり注釈だけが残る
+    /// 全走査方式へ戻すと最後のアサートが落ちる
     func testPointLookupDoesNotDependOnEnumerationMetadata() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -252,9 +250,8 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - 注入候補との整列
 
-    /// 注釈は絵文字・相対日付・かな数字の注入より前に確定する。相対日付は
-    /// 候補列の中間に insert するため、注入が先に走ると以降の候補が別の読みで
-    /// 判定される。
+    /// 注釈は絵文字・相対日付・かな数字の注入より前に確定する
+    /// 相対日付は候補列の中間にinsertするため、注入が先に走ると以降の候補が別の読みで判定される
     func testInjectedCandidatesDoNotDisturbAnnotationAlignment() throws {
         try withTemporaryXDG { root in
             let fixture = try writeEmojiFixture(
@@ -298,9 +295,8 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - 削除の往復確認
 
-    /// `[削除可]` と表示された候補は実際に削除でき、削除後に取り直した候補では
-    /// 注釈が消える。既存の削除テストは応答に載る再構築済みペイロードまでしか
-    /// 見ないので、再照会の経路はここでしか固定されない。
+    /// [削除可]と表示された候補は実際に削除でき、削除後に取り直した候補では注釈が消える
+    /// 既存の削除テストは応答に載る再構築済みペイロードまでしか見ないので、再照会の経路はここでしか固定されない
     func testAnnotatedCandidateDeleteRoundTripRemovesAnnotationOnRequery() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -333,8 +329,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    /// `.pause` がある間はスナップショットが不整合なので、注釈は付けずに縮退する
-    /// (候補取得自体は成功させる)。
+    /// .pauseがある間はスナップショットが不整合なので、注釈は付けずに縮退する (候補取得自体は成功させる)
     func testPausedSnapshotLeavesCandidatesUnannotated() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -352,9 +347,8 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    /// `.pause` 以外の照会失敗 (破損シャード) でも、候補取得そのものは成功し、
-    /// 全候補が未注釈へ縮退する。実シャードをゴミで壊すと変換経路が境界検証の
-    /// ない parse へ到達し得るため、照会シームに `malformedShard` を注入する。
+    /// .pause以外の照会失敗 (破損シャード) でも、候補取得そのものは成功し、全候補が未注釈へ縮退する
+    /// 実シャードをゴミで壊すと、変換経路が境界検証のないparseへ到達し得るため、照会シームにmalformedShardを注入する
     func testCorruptedShardLeavesCandidatesUnannotated() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -388,10 +382,10 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - バグD（fork）: プロファイル切替時のmemory LOUDSキャッシュ無効化
+    // MARK: - バグD: プロファイル切替時のmemory LOUDSキャッシュ無効化
 
-    /// プロファイル切替直後の注釈は、切替後プロファイルの memory ディレクトリを反映する。
-    /// バグD未修正だと旧プロファイルのキャッシュ済み trie で解決してしまう。
+    /// プロファイル切替直後の注釈は、切替後プロファイルのmemoryディレクトリを反映する
+    /// バグD未修正だと旧プロファイルのキャッシュ済みtrieで解決してしまう
     func testAnnotationFollowsProfileMemoryDirectoryAfterSwitch() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()

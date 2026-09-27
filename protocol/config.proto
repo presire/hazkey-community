@@ -4,209 +4,293 @@ package hazkey.config;
 
 option optimize_for = LITE_RUNTIME;
 
+// 設定ファイルの名前とハッシュ値
+//
+// - Note: 現在のサーバはこの値を使用せず、GetConfigでは常に空のリストを返す
 message FileHash {
+    // 設定ファイルの種類
     enum ConfigFileType {
-        CONFIG_MAIN = 0;
-        INPUT_TABLE = 1;
+        CONFIG_MAIN = 0;    // 設定本体 (config.json)
+        INPUT_TABLE = 1;    // 入力テーブル (TSV)
     }
 
-    string name = 1;
-    string sha256sum = 2;
-    ConfigFileType type = 3;
+    string name = 1;            // ファイル名
+    string sha256sum = 2;       // ファイル内容のSHA-256ハッシュ値
+    ConfigFileType type = 3;    // ファイルの種類
 }
 
+// 利用できるキーマップ (キー入力の置き換え規則)
+//
+// 組み込みのキーマップ (全角数字・全角記号・日本語記号等) と、~/.config/hazkey-community/keymap/内のユーザ定義TSVファイルがある
 message Keymap {
-    string name = 1;
-    bool is_built_in = 2;
-    string filename = 3;
+    string name = 1;        // 表示名
+    bool is_built_in = 2;   // 組み込みのキーマップならtrue、ユーザ定義ならfalse
+    string filename = 3;    // ファイル名 (組み込みではnameと同じ)
 }
 
+// 利用できる入力テーブル (ローマ字・かな等の入力方式)
+//
+// 組み込みの入力テーブル (Romaji / Kana) と、~/.config/hazkey-community/table/内のユーザ定義TSVファイルがある
 message InputTable {
-    string name = 1;
-    bool is_built_in = 2;
-    string filename = 3;
+    string name = 1;        // 表示名
+    bool is_built_in = 2;   // 組み込みの入力テーブルならtrue、ユーザ定義ならfalse
+    string filename = 3;    // ファイル名 (組み込みではnameと同じ)
 }
 
+// Zenzaiの推論に使えるバックエンドデバイス (CPU / Vulkan GPU)
 message BackendDevice {
-    string name = 1;
-    string desc = 2;
+    string name = 1;    // デバイス名 (Profileの[zenzai_backend_device_name]に指定する値)
+    string desc = 2;    // 設定画面に表示する説明
 }
 
+// 入力・変換の設定一式 (プロファイル)
+//
+// 設定画面で編集し、SetConfigでサーバへ保存する
+//
+// - Note: optionalのフィールドが欠けている場合は、サーバが既定値で補う
 message Profile {
+    // ライブ変換 (入力中に変換結果を表示する機能) の動作
     enum AutoConvertMode {
-        AUTO_CONVERT_MODE_UNSPECIFIED = 0;
-        AUTO_CONVERT_DISABLED = 1;
-        AUTO_CONVERT_ALWAYS = 2;
-        AUTO_CONVERT_FOR_MULTIPLE_CHARS = 3;
+        AUTO_CONVERT_MODE_UNSPECIFIED = 0;      // 未設定
+        AUTO_CONVERT_DISABLED = 1;              // ライブ変換しない
+        AUTO_CONVERT_ALWAYS = 2;                // 常にライブ変換する
+        AUTO_CONVERT_FOR_MULTIPLE_CHARS = 3;    // 読みが[auto_convert_min_chars]文字以上の場合だけライブ変換する (既定)
     }
 
+    // 補助表示 (入力中のひらがなとカーソル位置) の表示方法
     enum AuxTextMode {
-        AUX_TEXT_MODE_UNSPECIFIED = 0;
-        AUX_TEXT_DISABLED = 1;
-        AUX_TEXT_SHOW_ALWAYS = 2;
-        AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END = 3;
+        AUX_TEXT_MODE_UNSPECIFIED = 0;              // 未設定 (カーソルが末尾にない場合だけ表示する扱い)
+        AUX_TEXT_DISABLED = 1;                      // 表示しない
+        AUX_TEXT_SHOW_ALWAYS = 2;                   // 常に表示する
+        AUX_TEXT_SHOW_WHEN_CURSOR_NOT_AT_END = 3;   // カーソルが末尾にない場合だけ表示する (既定)
     }
 
+    // 入力中に表示する候補リスト (サジェスト) の内容
     enum SuggestionListMode {
-        SUGGESTION_LIST_MODE_UNSPECIFIED = 0;
-        SUGGESTION_LIST_DISABLED = 1;
-        SUGGESTION_LIST_SHOW_NORMAL_RESULTS = 2;
-        SUGGESTION_LIST_SHOW_PREDICTIVE_RESULTS = 3;
+        SUGGESTION_LIST_MODE_UNSPECIFIED = 0;           // 未設定
+        SUGGESTION_LIST_DISABLED = 1;                   // 表示しない
+        SUGGESTION_LIST_SHOW_NORMAL_RESULTS = 2;        // 通常の変換結果を表示する
+        SUGGESTION_LIST_SHOW_PREDICTIVE_RESULTS = 3;    // 予測変換の結果を含めて表示する (既定)
     }
 
+    // 特殊な変換候補の有効 / 無効
+    //
+    // - Note: 既定では全て有効
     message SpecialConversionMode {
-        optional bool comma_separated_number = 1;
-        optional bool mail_domain = 2;
-        optional bool calendar = 3;
-        optional bool time = 4;
-        optional bool roman_typography = 5;
-        optional bool unicode_codepoint = 6;
-        optional bool hazkey_version = 7;
-        // 相対日付候補 (きょう -> 今日 + 2026年8月11日 + ...)
-        // 有効時は、認識したトリガー語の漢字表記の後に整形した日付文字列を付加する
+        optional bool comma_separated_number = 1;   // 数字を3桁区切りにした候補 (1000 → 1,000)
+        optional bool mail_domain = 2;              // メールアドレスのドメインの候補
+        optional bool calendar = 3;                 // 和暦・西暦の変換候補
+        optional bool time = 4;                     // 時刻表記の候補
+        optional bool roman_typography = 5;         // 英字の装飾文字の候補
+        optional bool unicode_codepoint = 6;        // Unicodeのコードポイント (U+XXXX) から文字への変換候補
+        optional bool hazkey_version = 7;           // Hazkeyのバージョン表記の候補
+
+        // 相対日付候補を有効にする
+        //
+        // 有効時は、認識したトリガー語 (きょう、あした等) の漢字表記の後に、整形した日付文字列を候補として追加する
+        //
+        // - Note: 例えば、[きょう]を変換すると[今日]に続いて[2026年8月11日]等の候補が並ぶ
         optional bool relative_date = 8;
-        optional bool halfwidth_katakana = 50;
-        optional bool extended_emoji = 51;
+
+        optional bool halfwidth_katakana = 50;      // 半角カタカナの候補
+        optional bool extended_emoji = 51;          // Emoji 17の絵文字を通常の変換候補に加える (予測候補には加えない)
     }
 
+    // プロファイルで有効にしたキーマップ
     message EnabledKeymap {
-        optional string name = 1;
-        optional bool is_built_in = 2;
-        optional string filename = 3;
+        optional string name = 1;           // 表示名
+        optional bool is_built_in = 2;      // 組み込みのキーマップならtrue
+        optional string filename = 3;       // ファイル名
     }
 
+    // プロファイルで有効にした入力テーブル
     message EnabledInputTable {
-        optional string name = 1;
-        optional bool is_built_in = 2;
-        optional string filename = 3;
+        optional string name = 1;           // 表示名
+        optional bool is_built_in = 2;      // 組み込みの入力テーブルならtrue
+        optional string filename = 3;       // ファイル名
     }
 
-    optional string server_version = 4;
+    optional string server_version = 4;     // 設定を保存したサーバのバージョン (現在は未使用)
 
-    string profile_name = 5;
-    string profile_id = 6;
+    string profile_name = 5;                // プロファイル名 (既定は[Default])
+    string profile_id = 6;                  // プロファイルの識別子 (プロファイル別の学習データの保存先に使う)
 
-    optional bool use_default_input_ui_settings = 10;
-    optional AutoConvertMode auto_convert_mode = 11;
-    optional AuxTextMode aux_text_mode = 12;
-    optional SuggestionListMode suggestion_list_mode = 13;
-    optional bool use_rich_suggestion = 14;
-    optional int32 num_suggestions = 15;
-    optional int32 auto_convert_min_chars = 16;
+    // --- 入力表示の設定 ---
 
-    optional bool use_default_conversion_ui_settings = 20;
-    optional int32 num_candidates_per_page = 21;
-    optional bool use_rich_candidates = 22;
+    optional bool use_default_input_ui_settings = 10;           // 入力表示の設定に既定値を使う (現在は未使用)
+    optional AutoConvertMode auto_convert_mode = 11;            // ライブ変換の動作
+    optional AuxTextMode aux_text_mode = 12;                    // 補助表示の表示方法
+    optional SuggestionListMode suggestion_list_mode = 13;      // 入力中に表示する候補リストの内容
+    optional bool use_rich_suggestion = 14;                     // 入力中の候補リストにZenzaiの候補を使う (既定はfalse)
+    optional int32 num_suggestions = 15;                        // 入力中の候補リストの表示数 (1〜10、既定は3)
+    optional int32 auto_convert_min_chars = 16;                 // ライブ変換を始める最小の文字数 (1〜10、既定は2)
 
-    optional bool use_default_history_settings = 30;
-    optional bool use_profile_independent_history = 31;
-    optional bool use_input_history = 32;
-    optional bool stop_store_new_history = 23;
+    // --- 変換候補の設定 ---
 
-    optional bool use_default_special_conversion_settings = 40;
-    optional SpecialConversionMode special_conversion_mode = 41;
+    optional bool use_default_conversion_ui_settings = 20;      // 変換候補の設定に既定値を使う (現在は未使用)
+    optional int32 num_candidates_per_page = 21;                // 変換候補の1ページあたりの表示数 (1〜10、既定は9)
+    optional bool use_rich_candidates = 22;                     // 変換候補にZenzaiの候補を使う (既定はfalse)
 
-    optional bool use_default_keymap_settings = 50;
-    repeated EnabledKeymap enabled_keymaps = 51;
+    // --- 入力履歴 (学習) の設定 ---
 
-    optional bool use_default_table_settings = 55;
-    repeated EnabledInputTable enabled_tables = 56;
+    optional bool use_default_history_settings = 30;           // 入力履歴の設定に既定値を使う (現在は未使用)
+    optional bool use_profile_independent_history = 31;         // trueならプロファイルごとに学習データを分けて保存する (既定はfalse)
+    optional bool use_input_history = 32;                       // 入力履歴を変換に使う (既定はtrue)
+    optional bool stop_store_new_history = 23;                  // trueなら新しい入力履歴を保存しない (既存の履歴は使う)
 
-    optional string submode_entry_point_chars = 60;
-    optional string auto_convert_hotkey = 61;
-    optional bool use_user_dictionary = 70;
+    // --- 特殊変換の設定 ---
 
-    optional bool use_default_zenzai_settings = 100;
-    optional bool zenzai_enable = 101;
-    optional int32 zenzai_infer_limit = 102;
-    optional bool zenzai_contextual_mode = 103;
-    optional bool use_zenzai_custom_weight = 105;
-    optional string zenzai_weight_path = 106;
-    optional string zenzai_backend_device_name = 107;
+    optional bool use_default_special_conversion_settings = 40; // 特殊変換の設定に既定値を使う (現在は未使用)
+    optional SpecialConversionMode special_conversion_mode = 41; // 特殊な変換候補の有効 / 無効
 
-    optional string zenzai_profile = 120;
-    optional string zenzai_topic = 121;
-    optional string zenzai_style = 122;
-    optional string zenzai_preference = 123;
+    // --- キーマップの設定 ---
+
+    optional bool use_default_keymap_settings = 50;             // キーマップの設定に既定値を使う (現在は未使用)
+    repeated EnabledKeymap enabled_keymaps = 51;                // 有効にしたキーマップ
+
+    // --- 入力テーブルの設定 ---
+
+    optional bool use_default_table_settings = 55;              // 入力テーブルの設定に既定値を使う (現在は未使用)
+    repeated EnabledInputTable enabled_tables = 56;             // 有効にした入力テーブル (既定は[Romaji])
+
+    optional string submode_entry_point_chars = 60;             // [Shift]キーと同時に入力すると直接入力モードに入る文字 (既定はA〜Zの大文字)
+    optional string auto_convert_hotkey = 61;                   // ライブ変換を切り替えるホットキー (既定は[Control] + [Shift] + [L]キー)
+    optional bool use_user_dictionary = 70;                     // ユーザ辞書を変換に使う
+
+    // --- Zenzai (ニューラル変換) の設定 ---
+
+    optional bool use_default_zenzai_settings = 100;            // Zenzaiの設定に既定値を使う (現在は未使用)
+    optional bool zenzai_enable = 101;                          // Zenzaiを有効にする (既定はtrue)
+    optional int32 zenzai_infer_limit = 102;                    // 1回の変換での推論回数の上限 (1〜100、既定は10)
+    optional bool zenzai_contextual_mode = 103;                 // カーソル左側の文脈 (SetContext) を変換に使う (既定はtrue)
+    optional bool use_zenzai_custom_weight = 105;               // [zenzai_weight_path]のモデルファイルを使う
+    optional string zenzai_weight_path = 106;                   // 任意のモデルファイル (GGUF) のパス
+    optional string zenzai_backend_device_name = 107;           // 推論に使うバックエンドデバイス名 (空の場合は[CPU])
+
+    // --- Zenzaiへ渡す条件 (jinen系のモデルでは使われない) ---
+
+    optional string zenzai_profile = 120;                       // 利用者のプロフィール
+    optional string zenzai_topic = 121;                         // 入力する文章の話題
+    optional string zenzai_style = 122;                         // 文体
+    optional string zenzai_preference = 123;                    // 変換の好み
+
     // フォーカス中の候補の学習データを削除するホットキー
+    //
+    // - Note: 既定は[Ctrl] + [D]キー
     optional string delete_learning_hotkey = 124;
-    optional string accept_prediction_hotkey = 125;
-    optional string zenzai_toggle_hotkey = 126;
+
+    optional string accept_prediction_hotkey = 125;             // 予測候補を先頭部分の表記として固定するホットキー (既定は[F5]キー)
+    optional string zenzai_toggle_hotkey = 126;                 // Zenzaiを切り替えるホットキー (既定は[Control] + [Alt] + [Z]キー)
+
     // 住所辞書 (日本全国の難読地名) を変換候補に使用する
+    //
+    // - Note: 既定はOFF
     optional bool use_address_dictionary = 127;
+
     // 工学用語辞書 (機械・電気・電子・情報・建築・土木等の専門用語) を変換候補に使用する
+    //
+    // - Note: 既定はOFF
     optional bool use_engineering_dictionary = 128;
 }
 
-// Request messages
+// リクエスト用メッセージ
 
+// 現在の設定と、設定画面に必要な情報 (利用できるキーマップ・入力テーブル・デバイス等) を取得する
 message GetConfig {}
 
+// 設定を検証して保存し、サーバへ適用する
+//
+// - Important: 保存の前に、未保存の学習データを旧プロファイルへ保存する (失敗した場合は設定を保存せずに中止する)
 message SetConfig {
-    repeated FileHash file_hashes = 1;
-    repeated Profile profiles = 2;
+    repeated FileHash file_hashes = 1;  // 設定ファイルのハッシュ値 (現在は未使用)
+    repeated Profile profiles = 2;      // 保存するプロファイル (先頭が現在のプロファイル)
 }
 
+// 既定のプロファイルを取得する (設定画面の[リセット]ボタンで使う)
 message GetDefaultProfile {}
 
+// 現在のプロファイルの学習データを全て削除する
 message ClearAllHistory {
-    string profile_id = 1;
+    string profile_id = 1;  // 対象のプロファイルの識別子 (現在のサーバは現在のプロファイルを対象にする)
 }
 
+// Zenzaiのモデルを読み込み直す (設定画面のモデル管理ダイアログで、モデルを切り替えた後に使う)
 message ReloadZenzaiModel {}
 
-// Response messages
+// レスポンス用メッセージ
 
+// 現在の設定と、設定画面に必要な情報
 message CurrentConfig {
-    repeated FileHash file_hashes = 1;
-    repeated Profile profiles = 2;
-    repeated Keymap available_keymaps = 3;
-    repeated InputTable available_tables = 4;
-    repeated BackendDevice available_zenzai_backend_devices = 7;
-    bool zenzai_model_available = 8;
-    string zenzai_model_path = 9;
-    // 隔離バックエンドプローブがクラッシュ・タイムアウト・エラー終了して、このセッションがCPU専用フォールバックで動作している場合はTrue
-    // GPUアクセラレーションの無言の低下を防ぐため、GUIは"~/.config/hazkey/env"ファイルで単一ICDを固定する案内を表示する
+    repeated FileHash file_hashes = 1;                              // 設定ファイルのハッシュ値 (現在は常に空)
+    repeated Profile profiles = 2;                                  // 保存されているプロファイル (先頭が現在のプロファイル)
+    repeated Keymap available_keymaps = 3;                          // 利用できるキーマップ
+    repeated InputTable available_tables = 4;                       // 利用できる入力テーブル
+    repeated BackendDevice available_zenzai_backend_devices = 7;    // Zenzaiに使えるバックエンドデバイス
+    bool zenzai_model_available = 8;                                // Zenzaiのモデルファイルが見つかった場合はtrue
+    string zenzai_model_path = 9;                                   // 使用するモデルファイルのパス (見つからない場合は空)
+
+    // GPUバックエンドの安全確認に失敗し、CPU専用で動作している場合はtrue
+    //
+    // 起動時に隔離した子プロセスでGPUバックエンド (Vulkan) の読み込みを試し、クラッシュ・タイムアウト・異常終了した場合に、このセッションはCPU専用のニューラル変換へフォールバックする
+    //
+    // - Note: GPUが使われないまま気付かれない事態を防ぐため、設定GUIは~/.config/hazkey-community/envファイルで単一のVulkan ICDを固定するよう案内を表示する
     bool zenzai_gpu_probe_fallback = 10;
-    string xdg_config_home_path = 6;
+
+    string xdg_config_home_path = 6;                                // サーバの設定ディレクトリ (通常は~/.config/hazkey-community)
 }
 
+// 入力履歴 (学習データ) の一覧を、ページ単位で取得する (設定画面の入力履歴ダイアログで使う)
 message GetLearningHistory {
-    string profile_id = 1;
-    // ページング前に読み・単語への部分一致を適用する
+    string profile_id = 1;  // 対象のプロファイルの識別子
+
+    // 読みまたは単語に部分一致する履歴だけに絞り込む検索文字列
+    //
+    // - Note: 絞り込みはページ分割 (offset / limit) より前に適用される
     string query = 2;
-    uint32 offset = 3;
-    // サーバ側で上限200にクランプされる
+
+    uint32 offset = 3;      // 取得を始める位置 (先頭は0)
+
+    // 1ページあたりの最大件数
+    //
+    // - Note: サーバ側で1〜200の範囲に丸められる
     uint32 limit = 4;
 }
 
+// 削除する入力履歴を指定するキー
 message LearningEntryKey {
-    string reading = 1;
-    string word = 2;
-    uint32 lcid = 3;
-    uint32 rcid = 4;
+    string reading = 1;     // 読み
+    string word = 2;        // 表記
+    uint32 lcid = 3;        // 左側の品詞ID (現在の削除処理では使わず、読みと表記が同じ全ての品詞IDを削除する)
+    uint32 rcid = 4;        // 右側の品詞ID (同上)
 }
 
+// 指定した入力履歴を削除する
+//
+// - Note: 読みと表記が同じであれば、品詞IDだけが異なる学習エントリも全て削除する
 message DeleteLearningEntries {
-    string profile_id = 1;
-    repeated LearningEntryKey entries = 2;
+    string profile_id = 1;                  // 対象のプロファイルの識別子
+    repeated LearningEntryKey entries = 2;  // 削除する入力履歴
 }
 
+// 入力履歴の1行
+//
+// - Note: 読みと表記が同じで品詞IDだけが異なるエントリは1行にまとめられる (使用回数は合計、最終使用日は最新)
 message LearningHistoryEntry {
-    string reading = 1;
-    string word = 2;
-    uint32 lcid = 3;
-    uint32 rcid = 4;
-    uint32 count = 5;
-    // Unixエポックタイムからの経過日数
-    uint32 last_used_unix_day = 6;
+    string reading = 1;             // 読み
+    string word = 2;                // 表記
+    uint32 lcid = 3;                // 左側の品詞ID (まとめた行では公開しない)
+    uint32 rcid = 4;                // 右側の品詞ID (まとめた行では公開しない)
+    uint32 count = 5;               // 使用回数
+    uint32 last_used_unix_day = 6;  // 最後に使用した日 (Unixエポック (1970年1月1日) からの経過日数)
 }
 
+// GetLearningHistoryの結果
 message GetLearningHistoryResult {
-    repeated LearningHistoryEntry entries = 1;
-    uint32 total_count = 2;
+    repeated LearningHistoryEntry entries = 1;  // 指定したページの入力履歴
+    uint32 total_count = 2;                     // 絞り込み後の全件数
 }
 
+// DeleteLearningEntriesの結果
 message DeleteLearningEntriesResult {
-    uint32 deleted_count = 1;
+    uint32 deleted_count = 1;   // 削除した学習エントリの数
 }

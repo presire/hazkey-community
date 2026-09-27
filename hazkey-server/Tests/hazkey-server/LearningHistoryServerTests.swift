@@ -265,10 +265,10 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    // MARK: [community] 表記キーのマージ（読み+単語ごとに1行）
+    // MARK: 表記キーのマージ (読み + 単語ごとに1行)
 
-    /// 同じ（reading, word）でCIDが異なる行は、たとえば1回の確定における
-    /// 文節バイグラムと文字列全体のエントリを、countを合算した1つの履歴行へマージする。
+    /// 同じ (reading, word) でCIDが異なる行は、たとえば1回の確定における
+    /// 文節バイグラムと文字列全体のエントリを、countを合算した1つの履歴行へマージする
     func testHistoryMergesCidVariantsIntoSingleSurfaceRow() throws {
         try withTemporaryXDG { root in
             let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
@@ -288,8 +288,8 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    /// マージ済みの行を削除すると、要求キーにCIDがなくても（ダイアログはマージ済み行を送る）、
-    /// その表記のすべてのCIDバリアントを削除する。
+    /// マージ済みの行を削除すると、要求キーにCIDがなくても (ダイアログはマージ済み行を送る)、
+    /// その表記のすべてのCIDバリアントを削除する
     func testDeleteSurfaceRemovesAllCidVariants() throws {
         try withTemporaryXDG { root in
             let memoryURL = root.appendingPathComponent("memory", isDirectory: true)
@@ -324,8 +324,8 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    /// 保存済みエントリがない表記はスキップする。削除は表記キー単位のベストエフォートであり、
-    /// 未知またはすでに削除済みの行は、バッチ全体を失敗させず、削除件数0の成功を返す。
+    /// 保存済みエントリがない表記はスキップする
+    /// 削除は表記キー単位のベストエフォートであり、未知またはすでに削除済みの行は、バッチ全体を失敗させず、削除件数0の成功を返す
     func testUnknownSurfaceDeleteReturnsSuccessWithZeroCount() throws {
         try withTemporaryXDG { root in
             let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))
@@ -338,7 +338,7 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    // MARK: [community] DeleteCandidateLearningData
+    // MARK: DeleteCandidateLearningData
 
     private func getCandidatesRequest(isSuggest: Bool) -> Hazkey_RequestEnvelope {
         Hazkey_RequestEnvelope.with {
@@ -382,8 +382,8 @@ final class LearningHistoryServerTests: XCTestCase {
         return Int32(try XCTUnwrap(state.currentCandidateList?.indices.last))
     }
 
-    /// 1回の要求で同じ（reading, word）組の保存済みCIDバリアントをすべて削除する。
-    /// 再構築後のその単語の候補には学習注釈が付かず、学習メモリにもエントリが残らない。
+    /// 1回の要求で同じ (reading, word)組の保存済みCIDバリアントをすべて削除する
+    /// 再構築後のその単語の候補には学習注釈が付かず、学習メモリにもエントリが残らない
     func testDeleteCandidateLearningDataDeletesAllVariantEntriesAndPersists() throws {
         try withTemporaryXDG { _ in
             let state = try makeInputState("てすとてきご")
@@ -394,8 +394,8 @@ final class LearningHistoryServerTests: XCTestCase {
             seed([variant1, variant2], in: state)
             XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
 
-            // エンジンがシステム辞書から架空語を候補に出すかは不定のため、seedした学習に
-            // 裏付けられた候補を人工的に注入する（AcceptPredictionTestsのパターン）。
+            // エンジンがシステム辞書から架空語を候補に出すかは不定のため、
+            // seedした学習に裏付けられた候補を人工的に注入する (AcceptPredictionTestsのパターン)
             let index = try appendSyntheticCandidate(state, word: "テスト的語", ruby: "テストテキゴ")
 
             let response = try send(deleteCandidateRequest(index: index), to: state)
@@ -404,8 +404,7 @@ final class LearningHistoryServerTests: XCTestCase {
             XCTAssertEqual(response.deleteCandidateLearningDataResult.deletedCount, 2)
             let rebuiltMatches = response.deleteCandidateLearningDataResult.candidates.candidates
                 .filter { $0.text == "テスト的語" }
-            // 新しい再構築がZenzaiの有無を問わずその単語を再生成する場合でも、
-            // 再構築候補に学習注釈が付いてはならない。
+            // 新しい再構築がZenzaiの有無を問わずその単語を再生成する場合でも、再構築候補に学習注釈が付いてはならない
             XCTAssertTrue(rebuiltMatches.allSatisfy { !$0.hasLearningEntry_p })
             XCTAssertEqual(response.deleteCandidateLearningDataResult.hiragana, "てすとてきご")
 
@@ -414,7 +413,7 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    /// 一致する学習エントリがない候補は、「削除件数0」を通常の成功結果として返す。
+    /// 一致する学習エントリがない候補は、「削除件数0」を通常の成功結果として返す
     func testDeleteCandidateLearningDataOnUnlearnedCandidateReturnsZero() throws {
         try withTemporaryXDG { _ in
             let state = try makeInputState("みらぼご")
@@ -428,8 +427,8 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    /// 注釈フラグは削除と同じ照合規則に従う。学習済み候補は削除可能と表示し、
-    /// 通常の辞書候補には表示せず、削除後の再構築リストではフラグを消す。
+    /// 注釈フラグは削除と同じ照合規則に従う
+    /// 学習済み候補は削除可能と表示し、通常の辞書候補には表示せず、削除後の再構築リストではフラグを消す
     func testDeleteCandidateLearningDataUpdatesAnnotationFlags() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -474,8 +473,7 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
-    /// converter由来でない候補（日付providerなど）には学習の裏付けがないため、
-    /// エラーではなく「削除件数0」を返す。
+    /// converter由来でない候補 (日付provider等) には学習の裏付けがないため、エラーではなく「削除件数0」を返す
     func testDeleteCandidateLearningDataOnNonConverterCandidateReturnsZero() throws {
         try withTemporaryXDG { _ in
             let state = try makeInputState("きょう")
