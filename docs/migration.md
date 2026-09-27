@@ -58,7 +58,7 @@ v0.2.30-communityで、インストール先・実行ファイル名・ユーザ
 
 ## 関連ドキュメント
 
-- [README 上流版Hazkeyとの併存・データ移行](../README.md#上流版hazkeyとの併存データ移行)  
+- [README 上流版Hazkeyとの併存](../README.md#上流版hazkeyとの併存)  
 - [README 設定・環境のリファレンス](../README.md#設定環境のリファレンス)  
 - [トラブルシューティング](./troubleshooting.md)  
 - [v0.2.30-community Releaseノート](https://github.com/presire/hazkey-community/releases/tag/v0.2.30-community)  

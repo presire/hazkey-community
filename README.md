@@ -139,15 +139,43 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
 ## 以前のバージョンからのアップグレード
 
 v0.2.30-community で、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
-名称が **Hazkey Community** に統一されました。  
-v0.2.30-communityより前のバージョンからアップグレードする場合は、パッケージの入れ替えと設定の移行が必要です。  
+名称が**Hazkey Community**に統一されました。  
+v0.2.30-communityより前のバージョンからアップグレードする場合は、パッケージの入れ替えとデータの移行が必要です。  
 
 - パッケージ名が変更されたため、旧パッケージからの上書き更新はできません。  
   旧パッケージを削除してから、新しいパッケージをインストールしてください。  
 - 既存の設定・ユーザ辞書・ニューラル変換モデル・学習データは自動では引き継がれません。  
-  引き継ぐ場合は、[docs/migration.md](./docs/migration.md) の手順で1回だけ手動移行してください。  
-- 入力メソッドの登録名も変更されるため、インストール後にFcitx 5 / IBusを再起動し、  
-  あらためて **Hazkey Community** を追加し直してください。(下記「初回の有効化」参照)  
+  引き継ぐ場合は、下記「既存データの移行 (手動)」の手順で1回だけ手動移行してください。  
+- 入力メソッドの登録名も変更されるため、インストール後にFcitx 5 / IBusを再起動して、  
+  改めて、**Hazkey Community**を追加し直してください。(下記「初回の有効化」参照)  
+
+### 既存データの移行 (手動)
+
+名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
+引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
+手順の詳細は、[docs/migration.md](./docs/migration.md)も参照してください。  
+
+```sh
+# 実行内容の確認のみ (何も変更しない)
+# dry-runはサーバを終了しない
+/usr/share/hazkey-community/hazkey-community-migrate.sh --dry-run
+
+# 移行を実行する
+/usr/share/hazkey-community/hazkey-community-migrate.sh
+```
+
+- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
+  Hazkey Community側へ**コピー**します。  
+  旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
+- コピー後、Zenzaiモデルのシンボリックリンク (zenzai.gguf) と、config.json / env内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
+- 起動中のHazkey Community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
+  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey Communityで文字を入力しないでください。  
+- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
+  ファイルやシンボリックリンクを含むコピー先はスキップします。  
+  
+  `--force` オプションを指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
+- Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
+  移行後、Fcitx 5 / IBusを再起動し、入力メソッド**Hazkey Community**を追加してください。  
 
 <br>
 
@@ -187,7 +215,7 @@ v0.2.30-communityより前のバージョンからアップグレードする場
    
 3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から**Hazkey Community**を追加します。  
 4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkey Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
-5. 設定を変更する場合は、アプリメニューまたはターミナルから **hazkey-community-settings** を起動します。  
+5. 設定を変更する場合は、アプリケーションメニューまたはターミナルから **hazkey-community-settings** を起動します。  
    
    ```sh
    hazkey-community-settings
@@ -195,11 +223,11 @@ v0.2.30-communityより前のバージョンからアップグレードする場
 
 <br>
 
-## 上流版Hazkeyとの併存・データ移行
+## 上流版Hazkeyとの併存
 
 Hazkey Communityは、インストール先・実行ファイル名・ユーザデータのディレクトリ・ソケット名を上流版Hazkeyと分けているため、  
-上流版Hazkey (`fcitx5-hazkey` / `ibus-hazkey`) と同時にインストールできます。  
-入力メソッド名も別 (Fcitx 5: **Hazkey Community**、IBus: **Hazkey Community**) で、互いのサーバや設定には干渉しません。  
+上流版Hazkey (fcitx5-hazkey) と同時にインストールできます。  
+入力メソッド名も別 (Fcitx 5 / IBus: **Hazkey Community**) で、互いのサーバや設定には干渉しません。  
 
 | 用途 | 上流版Hazkey | Hazkey Community |
 |---|---|---|
@@ -210,46 +238,23 @@ Hazkey Communityは、インストール先・実行ファイル名・ユーザ�
 | ユーザデータ | `~/.config/hazkey/`<br>`~/.local/share/hazkey/`<br>`~/.local/state/hazkey/` | `~/.config/hazkey-community/`<br>`~/.local/share/hazkey-community/`<br>`~/.local/state/hazkey-community/` |
 | サーバソケット | `$XDG_RUNTIME_DIR/hazkey-server.<uid>.sock` | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
 
-> 実行ファイル名 `hazkey-community-server` は15文字を超えるため、`pgrep -x` / `pkill -x` (プロセス名の完全一致) では一致しません。  
+> 実行ファイル名"hazkey-community-server"は15文字を超えるため、`pgrep -x` / `pkill -x` (プロセス名の完全一致) では一致しません。  
 > サーバを終了する場合は、次のようにコマンドライン照合 (`-f`) を使用してください。  
 >
 > ```sh
 > pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 > ```
 
-### 既存データの移行 (手動)
-
-名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
-引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
-
-```sh
-# 実行内容の確認のみ (何も変更しない)
-# dry-runはサーバを終了しない
-/usr/share/hazkey-community/hazkey-community-migrate.sh --dry-run
-
-# 移行を実行する
-/usr/share/hazkey-community/hazkey-community-migrate.sh
-```
-
-- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
-  Hazkey Community側へ**コピー**します。  
-  旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
-- コピー後、Zenzaiモデルのシンボリックリンク (`zenzai.gguf`) と、`config.json` / `env` 内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
-- 起動中のHazkey Community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
-  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey Communityで文字を入力しないでください。  
-- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
-  ファイルやシンボリックリンクを含むコピー先はスキップします。  
-  
-  `--force` を指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
-- Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
-  移行後、Fcitx 5 / IBusを再起動し、入力メソッド **Hazkey Community** を追加してください。  
+上流版Hazkeyで使用していた設定・ユーザ辞書・ニューラル変換モデル・学習データをHazkey Communityへ引き継ぐ場合は、  
+上記「以前のバージョンからのアップグレード」内の「既存データの移行 (手動)」を参照してください。  
 
 <br>
 
 ## IBusフロントエンド (実験的)
 
-Fcitx 5と同じhazkey-community-serverを利用する実験的なIBusフロントエンド (`ibus-hazkey-community`) です。  
-GitHub Releasesのibus-hazkey-communityパッケージ (`.deb` / `.rpm`) で導入するのが手軽です。(上記「クイックスタート」参照)  
+Fcitx 5と同じhazkey-community-serverを利用する実験的なIBusフロントエンド (ibus-hazkey-community) です。  
+GitHub Releasesのibus-hazkey-communityパッケージ (DEB / RPM) で導入するのが手軽です。  
+(上記「クイックスタート」参照)  
 
 ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションを指定します。  
 (既定は**OFF**、**pkg-config ibus-1.0**が必要)  
@@ -271,7 +276,7 @@ component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-communit
 トランスポートはFcitx 5版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です。  
 (`hazkey-frontend-common/candidate_refresh_coalescer.h - hazkey::frontend::CandidateRefreshCoalescer`、30[ms]の立ち上がりエッジ型デバウンス)  
 
-IBus版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマのみGLib (`g_timeout_add`) のアダプタで駆動します。  
+IBus版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマのみGLib (g_timeout_add) のアダプタで駆動します。  
 
 > 立ち上がりエッジ型デバウンス (リーディングエッジ方式のデバウンス) とは  
 > デバウンスとは、短時間に連続して発生するイベントを1回にまとめる (間引く) 手法のことです。  
@@ -308,7 +313,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   サーバは単一スレッドでリクエストを直列処理するため、片方のZenzai推論中はもう片方の同期RPC応答が遅延し得ます。  
   (クライアントのread timeoutは最大10秒以内、機能的な破綻はありません)  
 - **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
-  ライブ変換トグル、文節境界調整 (`Shift+Left` / `Shift+Right`)、予測候補受入、学習データの個別削除、Zenzai トグル、  
+  ライブ変換トグル、文節境界調整 (`[Shift] + [Left]` / `[Shift] + [Right]`)、予測候補受入、学習データの個別削除、Zenzaiトグル、  
   `[F6]`〜`[F10]` と `[Ctrl] + [U]` / `[Ctrl] + [I]` / `[Ctrl] + [O]` / `[Ctrl] + [P]` / `[Ctrl] + [T]` の直接変換、  
   `[Alt]` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp / AuxDown) を含みます。  
   無変換キーはFcitx 5版と同様に、組成中に消費されるNOPです。(直接変換は行いません)  
@@ -332,7 +337,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   preedit・候補リスト・IBusProperty・補助テキストの更新はGLibメインループへ配送されて適用されます。  
   
   サーバが遅い間もキー入力処理は即座に戻り、応答到着後に表示へ反映されます。  
-  既存のread timeout (最大10秒)・response 上限2[MB]・再接続・read-throughキャッシュ無効化・RPC 順序は維持しています。  
+  既存のread timeout (最大10秒)・response 上限2[MB]・再接続・read-throughキャッシュ無効化・RPC順序は維持しています。  
   
   応答到着前に次のキーが入力された場合、consume / forwardの判定は直前の確定済み状態に基づくため、稀にサーバレイテンシ分だけ順序がずれることがあります。  
   (未処理と判明したキーは `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)  
@@ -364,7 +369,7 @@ Hazkey Communityが使用するファイルの場所と、サーバ起動時に�
 
 ### 環境変数ファイル `~/.config/hazkey-community/env`
 
-`hazkey-community-server` の起動時、ラッパースクリプトがこのファイルを `source` してサーバプロセスに引き継ぎます。  
+hazkey-community-serverの起動時、ラッパースクリプトがこのファイルを `source` してサーバプロセスに引き継ぎます。  
 1行1変数の `KEY=value` 形式 (`export` 不要、`#` 以降はコメント)  
 
 ファイルが存在しない場合は何も行われません。  
@@ -421,7 +426,7 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 | プロジェクト | 用途 |
 |---|---|
 | [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) | 本プロジェクトの上流<br>ドキュメント: [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs) |
-| [azooKey/AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) | 変換エンジン (本プロジェクトは、forkのhazkeyブランチを使用) |
+| [azooKey/AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) | 変換エンジン (本プロジェクトは、フォークのhazkeyブランチを使用) |
 | [ensan-hcl/azooKey](https://github.com/ensan-hcl/azooKey) | 動詞活用エンジンの移植元 |
 | [Miwa-Keita/zenz-v3.2-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf) / [zenz-v3.2-xsmall-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) / [zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) | ニューラル変換モデル (GGUF、zenz系) |
 | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) / [jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | ニューラル変換モデル (GGUF、Qwen3ベース、CC-BY-SA-4.0) |
