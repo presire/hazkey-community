@@ -6,13 +6,13 @@
  * 束縛中バリアントの決定とディスク状態の反映を担う
  */
 
-#include "zenzai_family_row.h"
-
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QStringList>
 #include <QVBoxLayout>
+#include "zenzai_family_row.h"
 
 namespace {
 
@@ -55,8 +55,7 @@ ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
         quantizationCombo_ = new QComboBox(this);
         quantizationCombo_->setObjectName(QStringLiteral("quant_") + family_.familyKey);
         for (const ZenzaiModelOption& variant : family_.variants) {
-            const QString label =
-                variant.quantLabel.isEmpty() ? variant.displayName : variant.quantLabel;
+            const QString label = variant.quantLabel.isEmpty() ? variant.displayName : variant.quantLabel;
             quantizationCombo_->addItem(label, variant.key);
         }
         controlsLayout->addWidget(quantizationCombo_);
@@ -71,8 +70,7 @@ ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
 
     controlsLayout->addStretch(1);
 
-    downloadButton_ =
-        new QPushButton(QCoreApplication::translate("MainWindow", "Download"), this);
+    downloadButton_ = new QPushButton(QCoreApplication::translate("MainWindow", "Download"), this);
     controlsLayout->addWidget(downloadButton_);
 
     deleteButton_ = new QPushButton(QCoreApplication::translate("MainWindow", "Delete"), this);
@@ -82,6 +80,7 @@ ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
         if (family_.variants.isEmpty()) return;
         emit downloadRequested(artifact().key);
     });
+
     connect(deleteButton_, &QPushButton::clicked, this, [this]() {
         if (family_.variants.isEmpty()) return;
         emit deleteRequested(artifact().key);
@@ -131,6 +130,7 @@ ZenzaiFamilyRow::ZenzaiFamilyRow(const ZenzaiModelFamily& family,
     }
 
     applyBoundVariant();
+    reserveRadioLabelWidth();
 }
 
 const ZenzaiModelFamily& ZenzaiFamilyRow::family() const { return family_; }
@@ -226,4 +226,30 @@ void ZenzaiFamilyRow::refreshState(bool downloadInProgress, const QString& activ
     downloadButton_->setEnabled(!downloaded && !downloadInProgress);
     deleteButton_->setVisible(downloaded);
     deleteButton_->setEnabled(downloaded && !downloadInProgress);
+}
+
+void ZenzaiFamilyRow::reserveRadioLabelWidth() {
+    if (!multiVariant()) {
+        return;
+    }
+
+    // 全バリアント×ダウンロード状態のラベルを実測し、最も幅の広い sizeHint を
+    // 最小幅として予約する 測定中のテキスト変更は最後に元へ戻すため表示には出ない
+    const QString savedText = radio_->text();
+    int maxWidth = 0;
+    for (const ZenzaiModelOption& variant : family_.variants) {
+        for (const bool downloaded : {false, true}) {
+            radio_->setText(ZenzaiModelManager::formatModelLabel(variant, downloaded));
+            maxWidth = qMax(maxWidth, radio_->sizeHint().width());
+        }
+    }
+    radio_->setText(savedText);
+    radio_->setMinimumWidth(maxWidth);
+}
+
+void ZenzaiFamilyRow::changeEvent(QEvent* event) {
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange) {
+        reserveRadioLabelWidth();
+    }
 }

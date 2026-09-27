@@ -16,7 +16,6 @@
 #include <QSet>
 #include <QString>
 #include <QWidget>
-
 #include "zenzai_models.h"
 
 /**
@@ -25,14 +24,15 @@
  *
  * @details 単一バリアント系列では従来どおりラジオボタンとダウンロード/削除ボタンだけを提示し、
  *          複数バリアント系列では量子化を選ぶQComboBoxを追加する
- *          選択中のバリアントは常にartifact()が返し、ラジオボタン・ダウンロードボタン・削除ボタンの
+ *
+ *          選択中のバリアントは常にartifact()が返して、ラジオボタン・ダウンロードボタン・削除ボタンの
  *          objectNameは選択中バリアントのキーに追従するため、キー起点の検索と互換である
- *          ダウンロード済みかどうかは構築時に渡された完全性スナップショットで判定し、
+ *          ダウンロード済みかどうかは構築時に渡された完全性スナップショットで判定して、
  *          ダイアログ表示中の状態更新もrefreshState()で同じスナップショットを使う
  *
- *          帰属情報 (author/licenseName/sourceUrl) を持つ系列では、説明の下に
- *          著作者・ライセンス・配布元へのリンクと「重みは同梱せず遠隔ダウンロードである」旨の
- *          帰属ラベルを追加する 帰属情報を持たない系列ではラベルを追加しない
+ *          帰属情報 (author/licenseName/sourceUrl) を持つ系列では、
+ *          説明の下に著作者・ライセンス・配布元へのリンクと「重みは同梱せず遠隔ダウンロードである」旨の帰属ラベルを追加する
+ *          帰属情報を持たない系列ではラベルを追加しない
  *
  *          コンストラクタに渡すfamilyは、このウィジェットより長く生存する必要がある
  *          (アプリケーションの固定カタログか、テスト側で保持した系列を想定する)
@@ -105,9 +105,31 @@ class ZenzaiFamilyRow : public QWidget {
     /** @brief 束縛するバリアントが変更された */
     void boundVariantChanged(const QString& key);
 
+   protected:
+    /**
+     * @brief フォント・スタイル変更時にラベル幅の予約を再計算する
+     *
+     * @details FontChange/StyleChange イベントで reserveRadioLabelWidth() を再実行し、
+     *          実行時のフォントやスタイルが変わっても最小幅が実ラベルに追従するようにする
+     *
+     * @param event 受信した変更イベント
+     */
+    void changeEvent(QEvent* event) override;
+
    private:
     /** @brief objectName、コンボ選択、表示状態を現在のバリアントへ反映する */
     void applyBoundVariant();
+
+    /**
+     * @brief 全バリアント×ダウンロード状態のラベルが収まるラジオボタンの最小幅を予約する
+     *
+     * @details 複数バリアント系列でのみ適用する 各バリアントのラベルについて
+     *          ダウンロード済み表示の有無の双方を formatModelLabel() で整形した sizeHint を測り、
+     *          最も幅の広い値をラジオボタンの最小幅に設定する
+     *          これによりダウンロード状態の変化でラベル幅が変わっても量子化コンボの位置が動かない
+     *          単一バリアント系列では何もしない
+     */
+    void reserveRadioLabelWidth();
 
     /** @brief 表示対象の系列への参照 呼び出し側が寿命を保証する */
     const ZenzaiModelFamily& family_;

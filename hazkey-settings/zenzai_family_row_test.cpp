@@ -14,10 +14,12 @@
 #include <QDir>
 #include <QFile>
 #include <QPixmap>
+#include <QRect>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QVBoxLayout>
 #include <QVector>
+#include <QWidget>
 
 #include "zenzai_family_row.h"
 #include "zenzai_models.h"
@@ -104,6 +106,8 @@ class ZenzaiFamilyRowTest : public QObject {
     void testRefreshStateUsesSnapshotWithoutDiskScan();
     /** @brief 実カタログから組んだダイアログが描画され、量子化切替で見た目が変わることを検証する */
     void testRealCatalogDialogRendersAndRebinds();
+    /** @brief ダウンロード状態の変化で量子化コンボの位置とサイズが不変であることを検証する */
+    void testQuantizationComboPositionStableAcrossDownloadStates();
 
    private:
     /**
@@ -590,6 +594,10 @@ void ZenzaiFamilyRowTest::testRealCatalogDialogRendersAndRebinds() {
     QVERIFY2(jinen->radioButton()->geometry().right() <
                  jinen->quantizationCombo()->x(),
              "the quantization combo must not overlap the model label");
+    // The combo's row-relative geometry is the stability baseline for the
+    // rebind and downloaded-state flips checked below.
+    const QRect comboBaseline(jinen->quantizationCombo()->mapTo(jinen, QPoint(0, 0)),
+                              jinen->quantizationCombo()->size());
     const QPixmap q5 = jinen->grab();
     QVERIFY(!q5.isNull());
     QVERIFY(q5.width() > 0 && q5.height() > 0);
@@ -619,10 +627,128 @@ void ZenzaiFamilyRowTest::testRealCatalogDialogRendersAndRebinds() {
     QVERIFY2(jinen->downloadButton()->objectName().contains(QStringLiteral("Q4_K_M")),
              "the download button must follow the bound quantization");
 
+    // Rebinding the quantization must not move the combo.
+    QCOMPARE(QRect(jinen->quantizationCombo()->mapTo(jinen, QPoint(0, 0)),
+                   jinen->quantizationCombo()->size()),
+             comboBaseline);
+
+    // Downloaded-state flips must not move the combo either.
+    const ZenzaiModelFamily& jinenFamily = jinen->family();
+    downloadedSnapshot.insert(jinenFamily.variants.at(3).key);
+    jinen->refreshState(false, QString());
+    dialog.layout()->activate();
+    QCoreApplication::processEvents();
+    QVERIFY2(jinen->radioButton()->text().contains(QStringLiteral("(downloaded)")),
+             "the flip must actually exercise the downloaded label form");
+    QCOMPARE(QRect(jinen->quantizationCombo()->mapTo(jinen, QPoint(0, 0)),
+                   jinen->quantizationCombo()->size()),
+             comboBaseline);
+    downloadedSnapshot.remove(jinenFamily.variants.at(3).key);
+    jinen->refreshState(false, QString());
+    dialog.layout()->activate();
+    QCoreApplication::processEvents();
+    QCOMPARE(QRect(jinen->quantizationCombo()->mapTo(jinen, QPoint(0, 0)),
+                   jinen->quantizationCombo()->size()),
+             comboBaseline);
+
     const QPixmap whole = dialog.grab();
     QVERIFY(whole.save(outDir + QStringLiteral("/dialog-all-families.png")));
 
     qInfo() << "Todo3 QA artifacts written to" << outDir;
+}
+
+void ZenzaiFamilyRowTest::testQuantizationComboPositionStableAcrossDownloadStates() {
+    // Only Q5_K_M (index 2) is committed to disk; the snapshot starts there.
+    commitMultiVariant(2);
+
+    const ZenzaiModelFamily family = makeMultiVariantFamily();
+    QWidget host;
+    QVBoxLayout* hostLayout = new QVBoxLayout(&host);
+    hostLayout->setContentsMargins(0, 0, 0, 0);
+    ZenzaiFamilyRow row(family, snapshotFor(family), &host);
+    hostLayout->addWidget(&row);
+    host.resize(720, 200);
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+
+    // The "(downloaded)" suffix changes the radio label width; the quantization
+    // combo must stay at the same row-relative position and size in every state.
+    auto settle = [&host]() {
+        host.layout()->activate();
+        QCoreApplication::processEvents();
+    };
+    auto comboRect = [&row]() {
+        QComboBox* combo = row.quantizationCombo();
+        return QRect(combo->mapTo(&row, QPoint(0, 0)), combo->size());
+    };
+    auto assertNonOverlap = [&row](int line) {
+        QVERIFY2(row.radioButton()->geometry().right() < row.quantizationCombo()->x(),
+                 qPrintable(QStringLiteral("radio must not overlap the combo (line %1)")
+                                .arg(line)));
+    };
+
+    const bool dump = qEnvironmentVariableIsSet("HAZKEY_QA_DUMP_GEOMETRY");
+    const QString outDir = QDir::tempPath() + QStringLiteral("/hazkey-combo-qa");
+    if (dump) {
+        QDir().mkpath(outDir);
+    }
+    auto grabState = [&](const QString& name) {
+        if (dump) {
+            row.grab().save(outDir + QStringLiteral("/row-%1.png").arg(name));
+        }
+    };
+
+    // (a) undownloaded f16: baseline.
+    row.setVariantIndex(0);
+    row.refreshState(false, QString());
+    settle();
+    const QRect baseline = comboRect();
+    assertNonOverlap(__LINE__);
+    QVERIFY(!row.radioButton()->text().contains(QStringLiteral("(downloaded)")));
+    grabState(QStringLiteral("a-f16-undownloaded"));
+
+    // (b) downloaded Q5_K_M: the radio label grows with the downloaded suffix.
+    row.setVariantIndex(2);
+    row.refreshState(false, QString());
+    settle();
+    QCOMPARE(comboRect(), baseline);
+    assertNonOverlap(__LINE__);
+    QVERIFY(row.radioButton()->text().contains(QStringLiteral("(downloaded)")));
+    grabState(QStringLiteral("b-q5-downloaded"));
+
+    // (c) undownloaded Q4_K_M.
+    row.setVariantIndex(3);
+    row.refreshState(false, QString());
+    settle();
+    QCOMPARE(comboRect(), baseline);
+    assertNonOverlap(__LINE__);
+    QVERIFY(!row.radioButton()->text().contains(QStringLiteral("(downloaded)")));
+    grabState(QStringLiteral("c-q4-undownloaded"));
+
+    // (d) snapshot-only change: Q4_K_M becomes downloaded without rebinding.
+    downloadedSnapshot.insert(family.variants.at(3).key);
+    row.refreshState(false, QString());
+    settle();
+    QCOMPARE(comboRect(), baseline);
+    assertNonOverlap(__LINE__);
+    QVERIFY(row.radioButton()->text().contains(QStringLiteral("(downloaded)")));
+    grabState(QStringLiteral("d-q4-downloaded-snapshot"));
+
+    // (e) and back to undownloaded.
+    downloadedSnapshot.remove(family.variants.at(3).key);
+    row.refreshState(false, QString());
+    settle();
+    QCOMPARE(comboRect(), baseline);
+    assertNonOverlap(__LINE__);
+    QVERIFY(!row.radioButton()->text().contains(QStringLiteral("(downloaded)")));
+    grabState(QStringLiteral("e-q4-undownloaded-again"));
+
+    // (f) download-in-progress lock must not move the combo either.
+    row.refreshState(true, QString());
+    settle();
+    QCOMPARE(comboRect(), baseline);
+    assertNonOverlap(__LINE__);
+    grabState(QStringLiteral("f-download-in-progress"));
 }
 
 QTEST_MAIN(ZenzaiFamilyRowTest)
