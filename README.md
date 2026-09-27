@@ -4,6 +4,12 @@
 [![Fcitx 5](https://img.shields.io/badge/Fcitx%205-support-blue)](https://fcitx-im.org/)
 [![IBus](https://img.shields.io/badge/IBus-experimental-orange)](https://github.com/ibus/ibus)
 
+<br>
+
+<p align="center">
+  <img src="./media/InputSample.gif" alt="Hazkey Communityの入力デモ" />
+</p>
+
 Hazkey Communityは、Linux向けデスクトップ環境のインプットメソッドフレームワーク[Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus)で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を変換エンジンに採用し、  
 オプションでニューラル変換 (Zenzai、llama.cppバックエンド、Vulkan GPU / CPU対応) を利用でき、標準のzenz系列に加えてQwen3ベースの**jinen-v2**モデルにも対応しています。  
