@@ -16,7 +16,7 @@ Hazkey Communityは、Linux向けデスクトップ環境のインプットメ�
 
 Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的なIBusフロントエンド (ibus-hazkey-community) を同梱します。  
 
-> IBus版をソースコードからビルドする場合は、CMakeで `ENABLE_IBUS` オプションが必要です。(デフォルトはOFF)  
+> IBus版をソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションが必要です。(デフォルトはOFF)  
 > バイナリパッケージは両フロントエンド分を頒布します。  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.32** です。  
@@ -48,13 +48,14 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 |---|---|
 | ユーザ辞書 (品詞・動詞活用対応) | TSV形式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) で単語を登録できる辞書<br>品詞 (固有名詞・人名・地名・動詞) を指定すると変換エンジンの接続コスト評価に品詞が反映される。<br>設定UIの辞書タブから追加・編集・インポート・エクスポートが可能 |
 | 動詞活用エンジン | azooKeyの `JapaneseConjugationBuilder` を移植<br>ユーザ辞書に登録した動詞から全活用形を自動生成し、五段活用・一段活用・サ行変格に対応 |
-| 文節境界調整 | 変換中に `Shift+Left` / `Shift+Right` で文節の境界を直接調整できる |
-| ライブ変換トグル | `Ctrl+Shift+L` (デフォルト、設定で変更可能) でライブ変換のON / OFFを即座に切替え<br>OFF時のモードは記憶され、アプリ間の切替をまたいで維持される |
+| 文節境界調整 | 変換中に `[Shift] + [Left]` / `[Shift] + [Right]` で文節の境界を直接調整できる |
+| ライブ変換トグル | `[Ctrl] + [Shift] + [L]` (デフォルト、設定で変更可能) でライブ変換のON / OFFを即座に切替え<br>OFF時のモードは記憶され、アプリ間の切替をまたいで維持される |
 | 予測候補の先頭表記固定 | サジェスト候補にカーソルを合わせて `F5` (変更可能) を押すと、その表記を先頭の固定表記として受理しつつ続きを入力できる |
 | 学習データの削除・履歴管理 | 候補フォーカス中に `Ctrl+D` (設定で変更可能、「候補学習削除ホットキー」) でその候補の学習データを削除<br>設定UIの「入力履歴データの管理」から入力履歴を選択して削除するダイアログも利用可能 |
 | Emoji 17直接変換 | Emoji 17.0辞書による絵文字の直接変換候補を追加 (設定UI「拡張絵文字」、デフォルトON)<br>通常変換の候補にのみ注入され、サジェスト・ライブ変換には混入しない |
 | 日本全国の地名辞書 | 都道府県・郡・市区町村・町域/大字のうち、変換エンジンが一発変換できない難読地名47,934件を組み込み辞書として収録 (設定UIの[変換]タブ「住所辞書」、デフォルトOFF)<br>一発変換できる地名は収録しないため、通常の変換候補の順位に影響しない |
 | 工学用語辞書 | 機械・電気・電子・情報工学、情報系サービス名、プログラム言語、データベース名、建築学、土木工学等の専門用語・名称のうち、変換エンジンが一発変換できないもの859件を組み込み辞書として収録 (設定UIの[変換]タブ「工学用語」、デフォルトOFF)<br>「住所辞書」とは独立にON / OFFできる<br>読み・表記の出典は SudachiDict (Apache-2.0) ほか ([hazkey-engineering-dictionary](https://github.com/presire/hazkey-engineering-dictionary) の NOTICE 参照) |
+| 誤字の訂正候補 | 読みに典型的な打ち間違いが含まれる場合、訂正した読みの変換候補を先頭候補のすぐ後ろに表示する (設定UIの[変換]タブ「誤字の訂正候補を表示」、デフォルトOFF)<br>通常変換と予測候補の両方に現れ、スコア比較と絞り込みを経て最大3件まで提示される<br>入力中 (preedit) の文字列は自動では書き換えず、訂正候補を選択したときだけその表記で確定する<br>文節が分かれる場合は、確定する先頭部分だけを訂正し、未変換の残りの読みはそのまま残す<br>対象は、かなの連打 (長音・小書き文字の連なりを含む)、読みに残ったローマ字、隣接キーや母音の打ち間違い、撥音「ん」の打ち忘れなど<br>注記はフロントエンドで異なる。Fcitx 5の最低要件は従来どおり 5.0.4 のままで、Fcitx 5.1.9以降は `*[訂正]*` の注記を斜体で表示し、5.1.8以前は候補自体は表示されるが注記は付かない。IBusは `*[訂正]*` (日本語訳) の注記を灰色で表示する (斜体にはしない) |
 | 候補ウィンドウのマウス選択 | 変換候補ウィンドウの候補をマウスクリックでも選択できる |
 | ニューラル変換設定の拡充 (Zenzai) | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、リッチ候補の候補一覧 / サジェスト個別切替、GUIからのニューラル変換モデル管理 (ダウンロード・有効化・削除) |
 | 複数のニューラル変換モデルに対応 (zenz / jinen-v2) | 標準の **zenz** 系列 (Apache-2.0 / CC-BY-SA-4.0) に加え、[togatogah](https://huggingface.co/togatogah) 氏が公開する Qwen3 ベースの **jinen-v2** (small / xsmall、量子化 `f16`/`Q8_0`/`Q5_K_M`/`Q4_K_M` を選択可、CC-BY-SA-4.0) に対応<br>設定UIの表記もモデルに依存しない「ニューラル変換」に統一<br>jinen系モデルはプロファイル・トピック・文体・好み (条件トークン) に対応しないため、有効化中は該当欄が自動的にグレーアウトされる |
@@ -69,7 +70,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 
 サポート対象環境では、ソースビルド不要でGitHub Releasesのパッケージをインストールできます。  
 
-1. [Releases ページ](https://github.com/presire/hazkey-community/releases) から最新版 (**v0.2.20-community**以降) を開きます。  
+1. [Releases ページ](https://github.com/presire/hazkey-community/releases)から最新版 (**v0.2.20-community**以降) を開きます。  
 2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
    パッケージは、Debian 13 / Ubuntu 26.04向けに `.deb`、Fedora 44 / openSUSE Leap 16 / Tumbleweed 向けに `.rpm` が頒布されます。  
    
@@ -79,7 +80,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
    両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)  
    
    - Debian / Ubuntu (`.deb`):  
-     両パッケージは共有ファイル (`hazkey-community-server` / `hazkey-community-settings` / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
+     両パッケージは共有ファイル (hazkey-community-server / hazkey-community-settings / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
      どちらの順に入れても共存できます。  
    - RPM (`.rpm`):  
      追加の宣言なしに共存できます。  
@@ -89,24 +90,27 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
    > **共有ファイルの扱い (Debian / Ubuntu)**:  
    > 両パッケージは `/usr/bin/hazkey-community-server` 等の共有ファイルを同じパスに含みます。  
    > dpkgは共有ファイルを「最後にインストールした側」の所有として扱うため、  
-   > 後から入れた側を `apt remove` / `dpkg -r` すると、残した側の共有ファイルも一緒に削除されます。  
+   > 後から入れた側を `apt remove` / `dpkg -r` コマンドを実行すると、残した側の共有ファイルも一緒に削除されます。  
    > 残す側のパッケージを再インストール (例: `sudo apt install --reinstall ./fcitx5-hazkey-community_*_amd64.deb`) すると復旧します。  
    > RPM (`.rpm`) では、片方を削除してももう片方が残っていれば共有ファイルは削除されません。  
 3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
    
    ```sh
-   # Fedora (使用するフレームワークのパッケージを指定。例は両方)
-   sudo dnf install ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
+   # Fedora (使用するフレームワークのパッケージを指定)
+   sudo dnf install ./fcitx5-hazkey-community-*.rpm
+   sudo dnf install ./ibus-hazkey-community-*.rpm
    
-   # openSUSE (使用するフレームワークのパッケージを指定。例は両方)
-   sudo zypper install ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
+   # openSUSE (使用するフレームワークのパッケージを指定)
+   sudo zypper install ./fcitx5-hazkey-community-*.rpm
+   sudo zypper install ./ibus-hazkey-community-*.rpm
    
-   # Debian / Ubuntu系 (使用するフレームワークのパッケージを指定。例は両方)
-   sudo apt install ./fcitx5-hazkey-community_*_amd64.deb ./ibus-hazkey-community_*_amd64.deb
+   # Debian / Ubuntu系 (使用するフレームワークのパッケージを指定)
+   sudo apt install ./fcitx5-hazkey-community_*_amd64.deb
+   sudo apt install ./ibus-hazkey-community_*_amd64.deb
    ```
    
 4. 使用しているフレームワークを再起動します。  
-   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` 等)  
+   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` コマンド等)  
 
 > インストール後、設定UI (hazkey-community-settings) と サーバ (hazkey-community-server) は同じバージョンで揃います。  
 > クライアントとサーバのバージョンが不一致になった場合は、hazkey-community-server が自動的に再起動されます。  
@@ -122,8 +126,8 @@ sha256sum -c SHA256SUMS
 ```
 
 RPMパッケージはGPG署名付きで頒布されています。(DEBは署名検証を行わないため不要です)  
-初回に1回だけ公開鍵 (`RPM-GPG-KEY-hazkey`、Releasesページから取得) を登録すると、  
-以降のdnf / zypperでのインストール時に署名警告が表示されなくなります。  
+初回に1回だけ公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を登録すると、  
+以降のdnf / zypperコマンドでのインストール時に署名警告が表示されなくなります。  
 
 ```sh
 # 公開鍵の登録 (初回のみ)
@@ -144,7 +148,7 @@ gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.
 
 ## 以前のバージョンからのアップグレード
 
-v0.2.30-community で、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
+v0.2.30-community以降で、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
 名称が**Hazkey Community**に統一されました。  
 v0.2.30-communityより前のバージョンからアップグレードする場合は、パッケージの入れ替えとデータの移行が必要です。  
 
@@ -414,16 +418,16 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 
 <br>
 
-## ソースからのビルド
+## ソースコードからのビルド
 
-ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md)にまとめています。  
+ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md)を参照してください。  
 
 <br>
 
 ## トラブルシューティング
 
 既知の問題と対処 (マルチGPU環境でのSIGILLクラッシュ、使用中のフレームワークが新しいバージョンを認識しない、サーバに接続できない等) は、  
-[docs/troubleshooting.md](./docs/troubleshooting.md) を参照してください。  
+[docs/troubleshooting.md](./docs/troubleshooting.md)を参照してください。  
 
 <br>
 
@@ -448,7 +452,7 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 Zenzaiモデルのライセンスは上記のモデル一覧を参照してください。  
 
 パッケージには、静的にリンクされるSwiftパッケージや同梱のllama.cppランタイム、各種辞書データ等、  
-サードパーティ製コンポーネントのライセンス表示を[ThirdPartyLicenses/](./ThirdPartyLicenses/)にまとめて同梱します。  
+サードパーティ製コンポーネントのライセンス表示を[ThirdPartyLicenses/](ThirdPartyLicenses)に同梱しています。  
 
 インストール後は、`/usr/share/hazkey-community/ThirdPartyLicenses/`に配置されます。  
 (動的にリンクされるQt 6 / Fcitx 5 / IBus / libprotobuf-lite / Vulkan等はパッケージ依存として供給されるため、同梱しません)  
