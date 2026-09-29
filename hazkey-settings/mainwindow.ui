@@ -817,7 +817,37 @@
             </layout>
            </item>
            <item>
-            <layout class="QHBoxLayout" name="specialConversionsActions">
+            <layout class="QHBoxLayout" name="typoCorrectionHeader">
+             <property name="topMargin">
+              <number>10</number>
+             </property>
+             <property name="bottomMargin">
+              <number>10</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="typoCorrectionHeaderLabel">
+               <property name="text">
+                <string>Typo Correction</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="typoCorrectionHeaderLine">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="typoCorrectionGrid">
              <property name="leftMargin">
               <number>20</number>
              </property>
@@ -828,32 +858,18 @@
               <number>20</number>
              </property>
              <property name="bottomMargin">
-              <number>20</number>
+              <number>10</number>
              </property>
-             <item>
-              <spacer name="horizontalSpacer">
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
+             <property name="spacing">
+              <number>12</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QCheckBox" name="useTypoCorrection">
+               <property name="toolTip">
+                <string>When the reading contains a typical typing mistake (e.g. a repeated key), shows the conversion of the corrected reading right after the first candidate, marked as a correction. The text being typed is not changed automatically.</string>
                </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>40</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-             <item>
-              <widget class="QPushButton" name="uncheckAllConversion">
                <property name="text">
-                <string>Uncheck All</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="checkAllConversion">
-               <property name="text">
-                <string>Check All</string>
+                <string>Show typo correction candidates</string>
                </property>
               </widget>
              </item>
@@ -867,12 +883,55 @@
              <property name="sizeHint" stdset="0">
               <size>
                <width>20</width>
-               <height>26</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-          </layout>
+                <height>26</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="specialConversionsActions">
+              <property name="leftMargin">
+               <number>20</number>
+              </property>
+              <property name="topMargin">
+               <number>10</number>
+              </property>
+              <property name="rightMargin">
+               <number>20</number>
+              </property>
+              <property name="bottomMargin">
+               <number>20</number>
+              </property>
+              <item>
+               <spacer name="horizontalSpacer">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QPushButton" name="uncheckAllConversion">
+                <property name="text">
+                 <string>Uncheck All</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="checkAllConversion">
+                <property name="text">
+                 <string>Check All</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
          </widget>
         </widget>
        </item>

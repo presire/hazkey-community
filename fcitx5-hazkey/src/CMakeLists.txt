@@ -22,6 +22,15 @@ if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.11")
         HAZKEY_HAS_SHOW_CUSTOM_IM_INFO=1)
 endif()
 
+# CandidateWord::setComment() は、Fcitx 5.1.9以降で利用できる
+# 5.1.8以前では、誤字の訂正候補の注記「*[訂正]*」を表示しない (候補自体は表示する)
+# ヘッダ専用のhazkey_candidate.hを使うテストにも同じ定義が必要なため、変数に保持する
+if(Fcitx5Core_VERSION VERSION_GREATER_EQUAL "5.1.9")
+    set(HAZKEY_CANDIDATE_COMMENT_DEFINITION HAZKEY_HAS_CANDIDATE_COMMENT=1)
+    target_compile_definitions(fcitx5-hazkey PRIVATE
+        ${HAZKEY_CANDIDATE_COMMENT_DEFINITION})
+endif()
+
 if(BUILD_TESTING)
     add_executable(live_convert_mode_test live_convert_mode_test.cpp live_convert_mode.cpp)
     target_link_libraries(live_convert_mode_test PRIVATE hazkey-frontend-common)
@@ -49,6 +58,8 @@ if(BUILD_TESTING)
         hazkey_candidate_selection_test.cpp hazkey_candidate.cpp)
     target_link_libraries(hazkey_candidate_selection_test PRIVATE
         Fcitx5::Core hazkey-frontend-common)
+    target_compile_definitions(hazkey_candidate_selection_test PRIVATE
+        ${HAZKEY_CANDIDATE_COMMENT_DEFINITION})
     target_compile_options(hazkey_candidate_selection_test PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
         $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)

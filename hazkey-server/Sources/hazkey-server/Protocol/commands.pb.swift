@@ -20,6 +20,11 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// 新しい入力 (組成) を開始する
+///
+/// 入力中のテキスト・候補リスト・Zenzai用の文脈・直接入力モードをリセットし、この接続の変換セッションも破棄する
+///
+/// - Note: 前回の組成で作った変換結果を再利用しないため、同じ読みでも新たに学習した候補が正しく反映される
 nonisolated struct Hazkey_Commands_NewComposingText: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -30,13 +35,18 @@ nonisolated struct Hazkey_Commands_NewComposingText: Sendable {
   init() {}
 }
 
+/// カーソルの左側にある文脈 (確定済みの文字列) を、Zenzaiの変換に使う文脈として設定する
+///
+/// - Note: 文脈を使うかどうかは、プロファイルの[zenzai_contextual_mode]で決まる
 nonisolated struct Hazkey_Commands_SetContext: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// カーソル周辺の文字列 (surrounding text)
   var context: String = String()
 
+  /// context内のカーソル位置 (文字数単位)、この位置より左側が文脈になる (範囲外は0〜文字数に丸められる)
   var anchor: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -44,11 +54,15 @@ nonisolated struct Hazkey_Commands_SetContext: Sendable {
   init() {}
 }
 
+/// 1文字を入力中テキストのカーソル位置へ挿入する
+///
+/// 直接入力モードではそのまま挿入し、通常の入力ではキーマップと入力テーブル (ローマ字・かな等) に従って変換する
 nonisolated struct Hazkey_Commands_InputChar: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 入力する文字 (先頭の1文字だけを使う)
   var text: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -56,20 +70,32 @@ nonisolated struct Hazkey_Commands_InputChar: Sendable {
   init() {}
 }
 
+/// 修飾キーの押下・解放をサーバへ通知する
+///
+/// [Shift]キーを単体で短く押して離すと、通常入力と直接入力 (英字) を切り替える
+///
+/// - Note: 500[ms]以上の長押しや、他のキーと組み合わせた場合は切り替えない
 nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 対象の修飾キー
   var modType: Hazkey_Commands_ModifierEvent.ModifierType = .unspecified
 
+  /// イベントの種類
   var eventType: Hazkey_Commands_ModifierEvent.EventType = .unspecified
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 対象の修飾キー
   nonisolated enum ModifierType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 未設定 (エラーとして扱う)
     case unspecified // = 0
+
+    /// [Shift]キー
     case shift // = 1
     case UNRECOGNIZED(Int)
 
@@ -101,11 +127,20 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
 
   }
 
+  /// 修飾キーのイベントの種類
   nonisolated enum EventType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 未設定 (エラーとして扱う)
     case unspecified // = 0
+
+    /// 押下した
     case press // = 1
+
+    /// 単体で押下したまま離した (短押しなら入力モードを切り替える)
     case release // = 2
+
+    /// 他のキーと組み合わせて離した (入力モードは切り替えない)
     case cancel // = 3
     case UNRECOGNIZED(Int)
 
@@ -146,11 +181,13 @@ nonisolated struct Hazkey_Commands_ModifierEvent: Sendable {
   init() {}
 }
 
+/// 入力中テキスト内でカーソルを移動する
 nonisolated struct Hazkey_Commands_MoveCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 移動量 (文字数単位、負の値で左、正の値で右へ移動する)
   var offset: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -158,11 +195,15 @@ nonisolated struct Hazkey_Commands_MoveCursor: Sendable {
   init() {}
 }
 
+/// 文節の区切り位置を調整し、調整後の候補を返す (既定のキーは[Shift] + [Left] / [Shift] + [Right])
+///
+/// - Note: 移動量は、先頭の1文字から入力中テキストの末尾までの範囲に丸められる
 nonisolated struct Hazkey_Commands_AdjustClauseBoundary: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 区切り位置の移動量 (文字数単位、負の値で短く、正の値で長くする)
   var offset: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -170,11 +211,17 @@ nonisolated struct Hazkey_Commands_AdjustClauseBoundary: Sendable {
   init() {}
 }
 
+/// 候補を選び、その候補がカバーする読みの分だけ確定する
+///
+/// 残りの読みは入力中テキストとして残り、続けて変換できる
+///
+/// - Note: 変換エンジンの候補を確定した場合は、学習データも更新する (ユーザ辞書・日付・かな数字・絵文字の候補は学習しない)
 nonisolated struct Hazkey_Commands_PrefixComplete: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 候補リスト内の対象候補の位置
   var index: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -182,15 +229,20 @@ nonisolated struct Hazkey_Commands_PrefixComplete: Sendable {
   init() {}
 }
 
-/// [community] Accept a prediction candidate as a fixed leading notation.
-/// Unlike PrefixComplete this does not commit: the candidate's remaining
-/// ruby is appended to the composing text and the accepted notation becomes
-/// the leading constraint of subsequent Zenzai conversions.
+/// 予測候補を、先頭部分の表記として固定する
+///
+/// 候補の読みのうち未入力の残りを入力中テキストに追加する
+///
+/// 固定した表記は、以降のZenzai変換で先頭に必ず来る表記として扱われる
+///
+/// - Note: 既定のホットキーは[F5]キー
+/// - Important: PrefixCompleteとは異なり、文字列をアプリケーションへ確定 (コミット) しない
 nonisolated struct Hazkey_Commands_AcceptPrediction: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 候補リスト内の対象候補の位置
   var index: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -198,14 +250,17 @@ nonisolated struct Hazkey_Commands_AcceptPrediction: Sendable {
   init() {}
 }
 
-/// [community] Delete the AzooKey learning-memory entries backing the focused
-/// candidate, then rebuild the candidate list. Matching covers every stored
-/// CID variant of the same (reading, surface) pair.
+/// フォーカス中の候補について、学習データ (AzooKeyの学習メモリ) を削除して、候補リストを作り直す
+///
+/// 読みと表記が同じであれば、品詞ID (CID) だけが異なる学習エントリも全て削除する
+///
+/// - Note: 既定のホットキーは[Ctrl] + [D]キー
 nonisolated struct Hazkey_Commands_DeleteCandidateLearningData: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 候補リスト内の対象候補の位置
   var index: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -213,13 +268,16 @@ nonisolated struct Hazkey_Commands_DeleteCandidateLearningData: Sendable {
   init() {}
 }
 
+/// DeleteCandidateLearningDataの結果
 nonisolated struct Hazkey_Commands_DeleteCandidateLearningDataResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 削除した学習エントリの数 (学習データを持たない候補では0)
   var deletedCount: UInt32 = 0
 
+  /// 削除後に作り直した候補リスト
   var candidates: Hazkey_Commands_CandidatesResult {
     get {_candidates ?? Hazkey_Commands_CandidatesResult()}
     set {_candidates = newValue}
@@ -229,6 +287,7 @@ nonisolated struct Hazkey_Commands_DeleteCandidateLearningDataResult: Sendable {
   /// Clears the value of `candidates`. Subsequent reads from it will return its default value.
   mutating func clearCandidates() {self._candidates = nil}
 
+  /// 入力中テキスト全体のひらがな
   var hiragana: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -238,6 +297,7 @@ nonisolated struct Hazkey_Commands_DeleteCandidateLearningDataResult: Sendable {
   fileprivate var _candidates: Hazkey_Commands_CandidatesResult? = nil
 }
 
+/// カーソルの左の1文字を削除する ([BackSpace]キー)
 nonisolated struct Hazkey_Commands_DeleteLeft: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -248,6 +308,7 @@ nonisolated struct Hazkey_Commands_DeleteLeft: Sendable {
   init() {}
 }
 
+/// カーソルの右の1文字を削除する ([Delete]キー)
 nonisolated struct Hazkey_Commands_DeleteRight: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -258,23 +319,39 @@ nonisolated struct Hazkey_Commands_DeleteRight: Sendable {
   init() {}
 }
 
+/// 入力中テキストを、指定した文字種へ変換して取得する
+///
+/// ファンクションキー ([F6]〜[F10]キー) や[Ctrl] + [U] / [I] / [O] / [P] / [T]キーによる直接変換で使う
 nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 取得する文字種
   var charType: Hazkey_Commands_GetComposingString.CharType = .hiragana
 
+  /// 現在表示中の文字列 (英字では、これと比べて小文字 → 大文字 → 先頭だけ大文字の順に切り替える)
   var currentPreedit: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 取得する文字種
   nonisolated enum CharType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// ひらがな
     case hiragana // = 0
+
+    /// 全角カタカナ
     case katakanaFull // = 1
+
+    /// 半角カタカナ
     case katakanaHalf // = 2
+
+    /// 全角英字
     case alphabetFull // = 3
+
+    /// 半角英字
     case alphabetHalf // = 4
     case UNRECOGNIZED(Int)
 
@@ -318,6 +395,9 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
   init() {}
 }
 
+/// 入力中のひらがなを、カーソルの前・カーソル上・カーソルの後の3つに分けて取得する
+///
+/// - Note: 補助表示を出すかどうかの判断はフロントエンドが行うため、サーバは設定に関係なく常に実際の値を返す
 nonisolated struct Hazkey_Commands_GetHiraganaWithCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -328,11 +408,13 @@ nonisolated struct Hazkey_Commands_GetHiraganaWithCursor: Sendable {
   init() {}
 }
 
+/// 入力中テキストの候補リストを取得する
 nonisolated struct Hazkey_Commands_GetCandidates: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// trueなら入力中に表示する予測候補 (サジェスト)、falseなら[Space]キー等による通常の変換候補
   var isSuggest: Bool = false
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -340,6 +422,7 @@ nonisolated struct Hazkey_Commands_GetCandidates: Sendable {
   init() {}
 }
 
+/// 現在の入力モード (通常 / 直接入力) を取得する
 nonisolated struct Hazkey_Commands_GetCurrentInputModeInfo: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -350,6 +433,9 @@ nonisolated struct Hazkey_Commands_GetCurrentInputModeInfo: Sendable {
   init() {}
 }
 
+/// 未保存の学習データをファイルへ保存する
+///
+/// - Note: 学習データは全ての接続で共有されるため、他の接続で入力した未保存の学習データも保存される
 nonisolated struct Hazkey_Commands_SaveLearningData: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -360,8 +446,11 @@ nonisolated struct Hazkey_Commands_SaveLearningData: Sendable {
   init() {}
 }
 
-/// [community] Toggle only the active profile's Zenzai enablement without
-/// resetting the current composition or candidate list.
+/// 現在のプロファイルのZenzai (ニューラル変換) の有効 / 無効だけを切り替える
+///
+/// 入力中のテキストや候補リストはリセットしない
+///
+/// - Note: 既定のホットキーは[Control] + [Alt] + [Z]キー
 nonisolated struct Hazkey_Commands_ToggleZenzai: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -372,11 +461,13 @@ nonisolated struct Hazkey_Commands_ToggleZenzai: Sendable {
   init() {}
 }
 
+/// ToggleZenzaiの結果
 nonisolated struct Hazkey_Commands_ToggleZenzaiResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 切り替え後にZenzaiが有効ならtrue
   var enabled: Bool = false
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -384,11 +475,13 @@ nonisolated struct Hazkey_Commands_ToggleZenzaiResult: Sendable {
   init() {}
 }
 
+/// 文字列の戻り値
 nonisolated struct Hazkey_Commands_Text: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 文字列
   var text: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -396,15 +489,19 @@ nonisolated struct Hazkey_Commands_Text: Sendable {
   init() {}
 }
 
+/// カーソル位置で3つに分けた文字列
 nonisolated struct Hazkey_Commands_TextWithCursor: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// カーソルより前の文字列 (フィールド名のtypoは互換性のため維持する)
   var beforeCursosr: String = String()
 
+  /// カーソル上の1文字 (カーソルが末尾にある場合は空)
   var onCursor: String = String()
 
+  /// カーソルより後の文字列
   var afterCursor: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -412,32 +509,43 @@ nonisolated struct Hazkey_Commands_TextWithCursor: Sendable {
   init() {}
 }
 
+/// 候補リスト
 nonisolated struct Hazkey_Commands_CandidatesResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 候補の一覧 (表示順)
   var candidates: [Hazkey_Commands_CandidatesResult.Candidate] = []
 
+  /// ライブ変換で入力中テキストの代わりに表示する文字列 (ライブ変換しない場合は空)
   var liveText: String = String()
 
+  /// live_textに対応する候補のcandidates内の位置 (無い場合は -1)
   var liveTextIndex: Int32 = 0
 
+  /// 1ページに表示する候補数 (予測候補を表示しない設定では 0)
   var pageSize: Int32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 1つの候補
   nonisolated struct Candidate: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
+    /// 候補の表記
     var text: String = String()
 
+    /// この候補でカバーされない残りの読み (ひらがな、読み全体をカバーする場合は空)
     var subHiragana: String = String()
 
-    /// [community] True when the AzooKey learning memory holds an entry
-    /// matching this candidate (shown as a "deletable" annotation).
+    /// この候補に一致する学習データがAzooKeyの学習メモリにある場合はtrue
+    ///
+    /// trueの候補にフォーカスすると、補助表示に[削除可]と表示され、学習データ削除ホットキーで削除できる
+    ///
+    /// - Note: 学習データ削除ホットキーの既定は[Ctrl] + [D]キー
     var hasLearningEntry_p: Bool {
       get {_hasLearningEntry_p ?? false}
       set {_hasLearningEntry_p = newValue}
@@ -447,21 +555,34 @@ nonisolated struct Hazkey_Commands_CandidatesResult: Sendable {
     /// Clears the value of `hasLearningEntry_p`. Subsequent reads from it will return its default value.
     mutating func clearHasLearningEntry_p() {self._hasLearningEntry_p = nil}
 
+    /// サーバが誤字の訂正案として生成した候補である
+    var isTypoCorrection: Bool {
+      get {_isTypoCorrection ?? false}
+      set {_isTypoCorrection = newValue}
+    }
+    /// Returns true if `isTypoCorrection` has been explicitly set.
+    var hasIsTypoCorrection: Bool {self._isTypoCorrection != nil}
+    /// Clears the value of `isTypoCorrection`. Subsequent reads from it will return its default value.
+    mutating func clearIsTypoCorrection() {self._isTypoCorrection = nil}
+
     var unknownFields = SwiftProtobuf.UnknownStorage()
 
     init() {}
 
     fileprivate var _hasLearningEntry_p: Bool? = nil
+    fileprivate var _isTypoCorrection: Bool? = nil
   }
 
   init() {}
 }
 
+/// AdjustClauseBoundaryの結果
 nonisolated struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 区切り位置を調整した後の候補リスト
   var candidates: Hazkey_Commands_CandidatesResult {
     get {_candidates ?? Hazkey_Commands_CandidatesResult()}
     set {_candidates = newValue}
@@ -471,6 +592,7 @@ nonisolated struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
   /// Clears the value of `candidates`. Subsequent reads from it will return its default value.
   mutating func clearCandidates() {self._candidates = nil}
 
+  /// 入力中テキスト全体のひらがな
   var hiragana: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -480,18 +602,25 @@ nonisolated struct Hazkey_Commands_ClauseBoundaryResult: Sendable {
   fileprivate var _candidates: Hazkey_Commands_CandidatesResult? = nil
 }
 
+/// 現在の入力モード
 nonisolated struct Hazkey_Commands_CurrentInputModeInfo: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 現在の入力モード
   var inputMode: Hazkey_Commands_CurrentInputModeInfo.InputMode = .normal
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 入力モードの種類
   nonisolated enum InputMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 通常の入力 (かな漢字変換を行う)
     case normal // = 0
+
+    /// 直接入力 (英字をそのまま入力する)
     case direct // = 1
     case UNRECOGNIZED(Int)
 
@@ -1181,7 +1310,7 @@ nonisolated extension Hazkey_Commands_CandidatesResult: SwiftProtobuf.Message, S
 
 nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Commands_CandidatesResult.protoMessageName + ".Candidate"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}sub_hiragana\0\u{3}has_learning_entry\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}sub_hiragana\0\u{3}has_learning_entry\0\u{3}is_typo_correction\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1192,6 +1321,7 @@ nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.
       case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.subHiragana) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self._hasLearningEntry_p) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self._isTypoCorrection) }()
       default: break
       }
     }
@@ -1211,6 +1341,9 @@ nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.
     try { if let v = self._hasLearningEntry_p {
       try visitor.visitSingularBoolField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._isTypoCorrection {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1218,6 +1351,7 @@ nonisolated extension Hazkey_Commands_CandidatesResult.Candidate: SwiftProtobuf.
     if lhs.text != rhs.text {return false}
     if lhs.subHiragana != rhs.subHiragana {return false}
     if lhs._hasLearningEntry_p != rhs._hasLearningEntry_p {return false}
+    if lhs._isTypoCorrection != rhs._isTypoCorrection {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

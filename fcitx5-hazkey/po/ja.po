@@ -20,6 +20,9 @@ msgstr "[直接入力]"
 msgid "削除可"
 msgstr "削除可"
 
+msgid "*[訂正]*"
+msgstr "*[訂正]*"
+
 msgid "[Press Tab to Select]"
 msgstr "[Tabキーで選択]"
 

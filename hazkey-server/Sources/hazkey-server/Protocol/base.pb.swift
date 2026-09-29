@@ -20,10 +20,17 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// リクエストの処理結果
 nonisolated enum Hazkey_StatusCode: SwiftProtobuf.Enum, Swift.CaseIterable {
   typealias RawValue = Int
+
+  /// 未設定 (通常は使われない)
   case unspecified // = 0
+
+  /// 成功
   case success // = 1
+
+  /// 失敗 (理由は、ResponseEnvelopeのerror_messageに入る)
   case failed // = 2
   case UNRECOGNIZED(Int)
 
@@ -58,13 +65,22 @@ nonisolated enum Hazkey_StatusCode: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+/// クライアントからhazkey-serverへ送るリクエストの共通の外枠
+///
+/// 1回のリクエストでは、payloadのうち1つのコマンドだけを指定する
+///
+/// フロントエンド (Fcitx 5 / IBus) と設定GUIは、UNIXドメインソケットで4バイト (ビッグエンディアン) の長さに続けてこのメッセージを送る
+///
+/// - Note: フィールド番号は、1〜99が入力・変換用のコマンド (hazkey.commands)、100以降が設定用のコマンド (hazkey.config)
 nonisolated struct Hazkey_RequestEnvelope: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 実行するコマンド (いずれか1つ)
   var payload: Hazkey_RequestEnvelope.OneOf_Payload? = nil
 
+  /// 新しい入力 (組成) を開始する
   var newComposingText: Hazkey_Commands_NewComposingText {
     get {
       if case .newComposingText(let v)? = payload {return v}
@@ -73,6 +89,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .newComposingText(newValue)}
   }
 
+  /// カーソル左側の文脈をZenzai用に設定する
   var setContext: Hazkey_Commands_SetContext {
     get {
       if case .setContext(let v)? = payload {return v}
@@ -81,6 +98,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .setContext(newValue)}
   }
 
+  /// 1文字を入力する
   var inputChar: Hazkey_Commands_InputChar {
     get {
       if case .inputChar(let v)? = payload {return v}
@@ -89,6 +107,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .inputChar(newValue)}
   }
 
+  /// 修飾キー ([Shift]) の押下・解放を通知する
   var modifierEvent: Hazkey_Commands_ModifierEvent {
     get {
       if case .modifierEvent(let v)? = payload {return v}
@@ -97,6 +116,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .modifierEvent(newValue)}
   }
 
+  /// 入力中テキスト内のカーソルを移動する
   var moveCursor: Hazkey_Commands_MoveCursor {
     get {
       if case .moveCursor(let v)? = payload {return v}
@@ -105,6 +125,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .moveCursor(newValue)}
   }
 
+  /// 候補を選び、その読みの分だけ確定する
   var prefixComplete: Hazkey_Commands_PrefixComplete {
     get {
       if case .prefixComplete(let v)? = payload {return v}
@@ -113,6 +134,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .prefixComplete(newValue)}
   }
 
+  /// カーソルの左の1文字を削除する
   var deleteLeft: Hazkey_Commands_DeleteLeft {
     get {
       if case .deleteLeft(let v)? = payload {return v}
@@ -121,6 +143,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .deleteLeft(newValue)}
   }
 
+  /// カーソルの右の1文字を削除する
   var deleteRight: Hazkey_Commands_DeleteRight {
     get {
       if case .deleteRight(let v)? = payload {return v}
@@ -129,6 +152,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .deleteRight(newValue)}
   }
 
+  /// 入力中テキストを指定の文字種で取得する
   var getComposingString: Hazkey_Commands_GetComposingString {
     get {
       if case .getComposingString(let v)? = payload {return v}
@@ -137,6 +161,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getComposingString(newValue)}
   }
 
+  /// 入力中のひらがなをカーソル位置で分割して取得する
   var getHiraganaWithCursor: Hazkey_Commands_GetHiraganaWithCursor {
     get {
       if case .getHiraganaWithCursor(let v)? = payload {return v}
@@ -145,6 +170,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getHiraganaWithCursor(newValue)}
   }
 
+  /// 変換候補または予測候補を取得する
   var getCandidates: Hazkey_Commands_GetCandidates {
     get {
       if case .getCandidates(let v)? = payload {return v}
@@ -153,6 +179,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getCandidates(newValue)}
   }
 
+  /// 現在の入力モード (通常 / 直接入力) を取得する
   var getCurrentInputMode: Hazkey_Commands_GetCurrentInputModeInfo {
     get {
       if case .getCurrentInputMode(let v)? = payload {return v}
@@ -161,6 +188,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getCurrentInputMode(newValue)}
   }
 
+  /// 未保存の学習データをファイルへ保存する
   var saveLearningData: Hazkey_Commands_SaveLearningData {
     get {
       if case .saveLearningData(let v)? = payload {return v}
@@ -169,6 +197,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .saveLearningData(newValue)}
   }
 
+  /// 文節の区切り位置を調整する
   var adjustClauseBoundary: Hazkey_Commands_AdjustClauseBoundary {
     get {
       if case .adjustClauseBoundary(let v)? = payload {return v}
@@ -177,6 +206,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .adjustClauseBoundary(newValue)}
   }
 
+  /// 予測候補を先頭部分の表記として固定する
   var acceptPrediction: Hazkey_Commands_AcceptPrediction {
     get {
       if case .acceptPrediction(let v)? = payload {return v}
@@ -185,6 +215,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .acceptPrediction(newValue)}
   }
 
+  /// フォーカス中の候補の学習データを削除する
   var deleteCandidateLearningData: Hazkey_Commands_DeleteCandidateLearningData {
     get {
       if case .deleteCandidateLearningData(let v)? = payload {return v}
@@ -193,6 +224,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .deleteCandidateLearningData(newValue)}
   }
 
+  /// Zenzaiの有効 / 無効を切り替える
   var toggleZenzai: Hazkey_Commands_ToggleZenzai {
     get {
       if case .toggleZenzai(let v)? = payload {return v}
@@ -201,6 +233,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .toggleZenzai(newValue)}
   }
 
+  /// 現在の設定を取得する
   var getConfig: Hazkey_Config_GetConfig {
     get {
       if case .getConfig(let v)? = payload {return v}
@@ -209,6 +242,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getConfig(newValue)}
   }
 
+  /// 設定を保存して適用する
   var setConfig: Hazkey_Config_SetConfig {
     get {
       if case .setConfig(let v)? = payload {return v}
@@ -217,6 +251,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .setConfig(newValue)}
   }
 
+  /// 既定のプロファイルを取得する
   var getDefaultProfile: Hazkey_Config_GetDefaultProfile {
     get {
       if case .getDefaultProfile(let v)? = payload {return v}
@@ -225,6 +260,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getDefaultProfile(newValue)}
   }
 
+  /// 現在のプロファイルの学習データを全て削除する
   var clearAllHistory_p: Hazkey_Config_ClearAllHistory {
     get {
       if case .clearAllHistory_p(let v)? = payload {return v}
@@ -233,6 +269,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .clearAllHistory_p(newValue)}
   }
 
+  /// Zenzaiのモデルを読み込み直す
   var reloadZenzaiModel: Hazkey_Config_ReloadZenzaiModel {
     get {
       if case .reloadZenzaiModel(let v)? = payload {return v}
@@ -241,6 +278,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .reloadZenzaiModel(newValue)}
   }
 
+  /// 入力履歴 (学習データ) の一覧を取得する
   var getLearningHistory: Hazkey_Config_GetLearningHistory {
     get {
       if case .getLearningHistory(let v)? = payload {return v}
@@ -249,6 +287,7 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
     set {payload = .getLearningHistory(newValue)}
   }
 
+  /// 指定した入力履歴を削除する
   var deleteLearningEntries: Hazkey_Config_DeleteLearningEntries {
     get {
       if case .deleteLearningEntries(let v)? = payload {return v}
@@ -259,30 +298,55 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 実行するコマンド (いずれか1つ)
   nonisolated enum OneOf_Payload: Equatable, Sendable {
+    /// 新しい入力 (組成) を開始する
     case newComposingText(Hazkey_Commands_NewComposingText)
+    /// カーソル左側の文脈をZenzai用に設定する
     case setContext(Hazkey_Commands_SetContext)
+    /// 1文字を入力する
     case inputChar(Hazkey_Commands_InputChar)
+    /// 修飾キー ([Shift]) の押下・解放を通知する
     case modifierEvent(Hazkey_Commands_ModifierEvent)
+    /// 入力中テキスト内のカーソルを移動する
     case moveCursor(Hazkey_Commands_MoveCursor)
+    /// 候補を選び、その読みの分だけ確定する
     case prefixComplete(Hazkey_Commands_PrefixComplete)
+    /// カーソルの左の1文字を削除する
     case deleteLeft(Hazkey_Commands_DeleteLeft)
+    /// カーソルの右の1文字を削除する
     case deleteRight(Hazkey_Commands_DeleteRight)
+    /// 入力中テキストを指定の文字種で取得する
     case getComposingString(Hazkey_Commands_GetComposingString)
+    /// 入力中のひらがなをカーソル位置で分割して取得する
     case getHiraganaWithCursor(Hazkey_Commands_GetHiraganaWithCursor)
+    /// 変換候補または予測候補を取得する
     case getCandidates(Hazkey_Commands_GetCandidates)
+    /// 現在の入力モード (通常 / 直接入力) を取得する
     case getCurrentInputMode(Hazkey_Commands_GetCurrentInputModeInfo)
+    /// 未保存の学習データをファイルへ保存する
     case saveLearningData(Hazkey_Commands_SaveLearningData)
+    /// 文節の区切り位置を調整する
     case adjustClauseBoundary(Hazkey_Commands_AdjustClauseBoundary)
+    /// 予測候補を先頭部分の表記として固定する
     case acceptPrediction(Hazkey_Commands_AcceptPrediction)
+    /// フォーカス中の候補の学習データを削除する
     case deleteCandidateLearningData(Hazkey_Commands_DeleteCandidateLearningData)
+    /// Zenzaiの有効 / 無効を切り替える
     case toggleZenzai(Hazkey_Commands_ToggleZenzai)
+    /// 現在の設定を取得する
     case getConfig(Hazkey_Config_GetConfig)
+    /// 設定を保存して適用する
     case setConfig(Hazkey_Config_SetConfig)
+    /// 既定のプロファイルを取得する
     case getDefaultProfile(Hazkey_Config_GetDefaultProfile)
+    /// 現在のプロファイルの学習データを全て削除する
     case clearAllHistory_p(Hazkey_Config_ClearAllHistory)
+    /// Zenzaiのモデルを読み込み直す
     case reloadZenzaiModel(Hazkey_Config_ReloadZenzaiModel)
+    /// 入力履歴 (学習データ) の一覧を取得する
     case getLearningHistory(Hazkey_Config_GetLearningHistory)
+    /// 指定した入力履歴を削除する
     case deleteLearningEntries(Hazkey_Config_DeleteLearningEntries)
 
   }
@@ -290,17 +354,26 @@ nonisolated struct Hazkey_RequestEnvelope: Sendable {
   init() {}
 }
 
+/// hazkey-serverからクライアントへ返すレスポンスの共通の外枠
+///
+/// 1つのリクエストに対して、必ず1つのレスポンスを返す
+///
+/// - Note: 戻り値を持たないコマンドでは、payloadは空のままstatusだけを返す
 nonisolated struct Hazkey_ResponseEnvelope: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 処理結果
   var status: Hazkey_StatusCode = .unspecified
 
+  /// 失敗時のエラーメッセージ (成功時は空)
   var errorMessage: String = String()
 
+  /// コマンドごとの戻り値 (いずれか1つ、または無し)
   var payload: Hazkey_ResponseEnvelope.OneOf_Payload? = nil
 
+  /// 文字列の戻り値 (GetComposingString)
   var text: String {
     get {
       if case .text(let v)? = payload {return v}
@@ -309,6 +382,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .text(newValue)}
   }
 
+  /// 候補リスト (GetCandidates)
   var candidates: Hazkey_Commands_CandidatesResult {
     get {
       if case .candidates(let v)? = payload {return v}
@@ -317,6 +391,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .candidates(newValue)}
   }
 
+  /// カーソル位置で分割したひらがな (GetHiraganaWithCursor)
   var textWithCursor: Hazkey_Commands_TextWithCursor {
     get {
       if case .textWithCursor(let v)? = payload {return v}
@@ -325,6 +400,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .textWithCursor(newValue)}
   }
 
+  /// 現在の入力モード (GetCurrentInputModeInfo)
   var currentInputModeInfo: Hazkey_Commands_CurrentInputModeInfo {
     get {
       if case .currentInputModeInfo(let v)? = payload {return v}
@@ -333,6 +409,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .currentInputModeInfo(newValue)}
   }
 
+  /// 文節調整後の候補 (AdjustClauseBoundary)
   var clauseBoundaryResult: Hazkey_Commands_ClauseBoundaryResult {
     get {
       if case .clauseBoundaryResult(let v)? = payload {return v}
@@ -341,6 +418,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .clauseBoundaryResult(newValue)}
   }
 
+  /// 学習データ削除の結果 (DeleteCandidateLearningData)
   var deleteCandidateLearningDataResult: Hazkey_Commands_DeleteCandidateLearningDataResult {
     get {
       if case .deleteCandidateLearningDataResult(let v)? = payload {return v}
@@ -349,6 +427,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .deleteCandidateLearningDataResult(newValue)}
   }
 
+  /// 切り替え後のZenzaiの状態 (ToggleZenzai)
   var toggleZenzaiResult: Hazkey_Commands_ToggleZenzaiResult {
     get {
       if case .toggleZenzaiResult(let v)? = payload {return v}
@@ -357,6 +436,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .toggleZenzaiResult(newValue)}
   }
 
+  /// 設定 (GetConfig / GetDefaultProfile)
   var currentConfig: Hazkey_Config_CurrentConfig {
     get {
       if case .currentConfig(let v)? = payload {return v}
@@ -365,6 +445,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .currentConfig(newValue)}
   }
 
+  /// 入力履歴の一覧 (GetLearningHistory)
   var getLearningHistoryResult: Hazkey_Config_GetLearningHistoryResult {
     get {
       if case .getLearningHistoryResult(let v)? = payload {return v}
@@ -373,6 +454,7 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .getLearningHistoryResult(newValue)}
   }
 
+  /// 入力履歴削除の結果 (DeleteLearningEntries)
   var deleteLearningEntriesResult: Hazkey_Config_DeleteLearningEntriesResult {
     get {
       if case .deleteLearningEntriesResult(let v)? = payload {return v}
@@ -381,23 +463,38 @@ nonisolated struct Hazkey_ResponseEnvelope: Sendable {
     set {payload = .deleteLearningEntriesResult(newValue)}
   }
 
-  /// Monotonic revision of the persisted configuration, bumped on every
-  /// successful SetConfig and carried by every response so frontends can
-  /// reload their cached profile as soon as it changes.
+  /// 保存済み設定のリビジョン番号 (単調増加)
+  ///
+  /// サーバは[set_config]が成功するたびに1加算し、全てのレスポンスにこの値を載せる
+  ///
+  /// フロントエンド (Fcitx 5 / IBus) は値の変化を検知すると、キャッシュしているプロファイルを再読込する
+  ///
+  /// - Note: これにより、[Hazkey Community 設定]画面で[適用]ボタンを押下した直後から、起動中のアプリケーションにも新しい設定が反映される
   var configRevision: UInt64 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// コマンドごとの戻り値 (いずれか1つ、または無し)
   nonisolated enum OneOf_Payload: Equatable, Sendable {
+    /// 文字列の戻り値 (GetComposingString)
     case text(String)
+    /// 候補リスト (GetCandidates)
     case candidates(Hazkey_Commands_CandidatesResult)
+    /// カーソル位置で分割したひらがな (GetHiraganaWithCursor)
     case textWithCursor(Hazkey_Commands_TextWithCursor)
+    /// 現在の入力モード (GetCurrentInputModeInfo)
     case currentInputModeInfo(Hazkey_Commands_CurrentInputModeInfo)
+    /// 文節調整後の候補 (AdjustClauseBoundary)
     case clauseBoundaryResult(Hazkey_Commands_ClauseBoundaryResult)
+    /// 学習データ削除の結果 (DeleteCandidateLearningData)
     case deleteCandidateLearningDataResult(Hazkey_Commands_DeleteCandidateLearningDataResult)
+    /// 切り替え後のZenzaiの状態 (ToggleZenzai)
     case toggleZenzaiResult(Hazkey_Commands_ToggleZenzaiResult)
+    /// 設定 (GetConfig / GetDefaultProfile)
     case currentConfig(Hazkey_Config_CurrentConfig)
+    /// 入力履歴の一覧 (GetLearningHistory)
     case getLearningHistoryResult(Hazkey_Config_GetLearningHistoryResult)
+    /// 入力履歴削除の結果 (DeleteLearningEntries)
     case deleteLearningEntriesResult(Hazkey_Config_DeleteLearningEntriesResult)
 
   }

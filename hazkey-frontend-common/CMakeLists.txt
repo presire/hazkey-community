@@ -36,6 +36,7 @@ add_library(hazkey-frontend-common STATIC
     hazkey_frontend_hooks.cpp
     serial_task_executor.cpp
     composing_cursor_view.cpp
+    candidate_annotation.cpp
 )
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")

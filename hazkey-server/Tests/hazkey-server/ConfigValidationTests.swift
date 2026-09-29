@@ -547,4 +547,23 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertTrue(normalizedEnabled.useEngineeringDictionary)
         XCTAssertTrue(normalizedEnabled.useEngineeringDictionaryEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingTypoCorrectionAndPreservesExplicitTrue() throws {
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearUseTypoCorrection()
+        XCTAssertFalse(missing.hasUseTypoCorrection)
+        XCTAssertFalse(missing.useTypoCorrectionEffective)
+
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.useTypoCorrection = true
+
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        XCTAssertTrue(normalizedMissing.hasUseTypoCorrection)
+        XCTAssertFalse(normalizedMissing.useTypoCorrection)
+        XCTAssertFalse(normalizedMissing.useTypoCorrectionEffective)
+        XCTAssertTrue(normalizedEnabled.useTypoCorrection)
+        XCTAssertTrue(normalizedEnabled.useTypoCorrectionEffective)
+    }
 }

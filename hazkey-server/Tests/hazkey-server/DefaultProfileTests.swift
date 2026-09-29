@@ -45,4 +45,13 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertTrue(profile.hasUseEngineeringDictionary)
         XCTAssertEqual(profile.useEngineeringDictionary, false)
     }
+
+    func testDefaultProfileDisablesTypoCorrection() throws {
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        XCTAssertTrue(profile.hasUseTypoCorrection)
+        XCTAssertFalse(profile.useTypoCorrection)
+        XCTAssertFalse(profile.useTypoCorrectionEffective)
+    }
 }

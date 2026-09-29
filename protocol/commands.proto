@@ -181,6 +181,9 @@ message CandidatesResult {
         //
         // - Note: 学習データ削除ホットキーの既定は[Ctrl] + [D]キー
         optional bool has_learning_entry = 3;
+
+        // サーバが誤字の訂正案として生成した候補である
+        optional bool is_typo_correction = 4;
     }
 
     repeated Candidate candidates = 1;  // 候補の一覧 (表示順)

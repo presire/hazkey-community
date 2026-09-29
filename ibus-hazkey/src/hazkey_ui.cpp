@@ -8,6 +8,7 @@
 
 #include "hazkey_ui.h"
 #include <algorithm>
+#include "candidate_annotation.h"
 
 // 理由は、hazkey_state.cppを参照:
 // IBUS_ATTR_TYPE_HINTマクロは IBus 1.5.33以降にのみ存在するため、無条件の下線に加えて利用可能な場合にだけ付与する
@@ -72,7 +73,27 @@ std::string joinAuxiliaryText(const std::string& auxUp,
     return auxUp + " " + auxDown;
 }
 
+/** @brief 訂正候補の注記の文字色 (灰色) */
+constexpr guint kTypoAnnotationColor = 0x808080;
+
 }  // namespace
+
+LookupDisplayText lookupDisplayText(const std::string& text,
+                                    bool isTypoCorrection,
+                                    const std::string& annotation,
+                                    int annotationAlignColumns) {
+    LookupDisplayText display;
+    display.text = text;
+    if (!isTypoCorrection || annotation.empty()) {
+        return display;
+    }
+    display.text +=
+        hazkey::frontend::annotationGap(text, annotationAlignColumns);
+    display.annotationStart = g_utf8_strlen(display.text.c_str(), -1);
+    display.text += annotation;
+    display.annotationEnd = g_utf8_strlen(display.text.c_str(), -1);
+    return display;
+}
 
 HazkeyUi::HazkeyUi(IBusEngine* engine) : engine_(engine) {}
 
@@ -164,7 +185,7 @@ void HazkeyUi::commitText(const std::string& text) {
     ibus_engine_commit_text(engine_, t);
 }
 
-void HazkeyUi::updateLookupTable(const std::vector<std::string>& candidates,
+void HazkeyUi::updateLookupTable(const std::vector<LookupCandidate>& candidates,
                                  int pageSize, int cursorIndex, int generation) {
     if (retired_) {
         return;
@@ -179,9 +200,27 @@ void HazkeyUi::updateLookupTable(const std::vector<std::string>& candidates,
     IBusLookupTable* table = ibus_lookup_table_new(
         static_cast<guint>(pageSize), 0, FALSE, FALSE);
     ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
+    const std::string annotation = tr("*[Correction]*");
+    // 訂正候補の注記を、最も長い訂正候補の表記の後ろで揃える
+    int annotationAlignColumns = 0;
     for (const auto& c : candidates) {
-        ibus_lookup_table_append_candidate(
-            table, ibus_text_new_from_string(c.c_str()));
+        if (c.isTypoCorrection) {
+            annotationAlignColumns =
+                std::max(annotationAlignColumns,
+                         hazkey::frontend::displayColumns(c.text));
+        }
+    }
+    for (const auto& c : candidates) {
+        const LookupDisplayText display = lookupDisplayText(
+            c.text, c.isTypoCorrection, annotation, annotationAlignColumns);
+        IBusText* t = ibus_text_new_from_string(display.text.c_str());
+        if (display.annotationEnd > display.annotationStart) {
+            ibus_text_append_attribute(
+                t, IBUS_ATTR_TYPE_FOREGROUND, kTypoAnnotationColor,
+                static_cast<guint>(display.annotationStart),
+                static_cast<guint>(display.annotationEnd));
+        }
+        ibus_lookup_table_append_candidate(table, t);
     }
     const int effectiveCursor = cursorIndex >= 0 ? cursorIndex : 0;
     const int pageStart = (effectiveCursor / pageSize) * pageSize;

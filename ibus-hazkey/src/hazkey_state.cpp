@@ -1028,6 +1028,7 @@ bool HazkeyState::applyCandidateResponse(
         cand.text = c.text();
         cand.subHiragana = c.sub_hiragana();
         cand.hasLearningEntry = c.has_learning_entry();
+        cand.isTypoCorrection = c.is_typo_correction();
         candidates_.push_back(std::move(cand));
     }
     pageSize_ = 0;
@@ -1469,10 +1470,10 @@ void HazkeyState::pushLookupTable() {
         });
         return;
     }
-    std::vector<std::string> texts;
+    std::vector<LookupCandidate> texts;
     texts.reserve(candidates_.size());
     for (const auto& c : candidates_) {
-        texts.push_back(c.text);
+        texts.push_back(LookupCandidate{c.text, c.isTypoCorrection});
     }
     const int pageSize = pageSize_;
     const int cursorIndex = cursorIndex_;

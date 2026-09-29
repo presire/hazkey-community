@@ -191,6 +191,11 @@ message Profile {
     //
     // - Note: 既定はOFF
     optional bool use_engineering_dictionary = 128;
+
+    // 誤字の訂正候補を変換候補に追加する
+    //
+    // - Note: 既定はOFF
+    optional bool use_typo_correction = 129;
 }
 
 // リクエスト用メッセージ

@@ -48,6 +48,7 @@ struct HazkeyCandidate {
     std::string text;               ///< 候補の表記
     std::string subHiragana;        ///< 末尾に残る読み
     bool hasLearningEntry = false;  ///< 学習エントリの有無
+    bool isTypoCorrection = false;  ///< 誤字の訂正候補か
 };
 
 /**

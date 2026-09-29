@@ -264,6 +264,8 @@ struct CheckboxDefaults {
     static constexpr bool ADDRESS_DICTIONARY = false;
     /** @brief 工学用語辞書を使用しない既定値 */
     static constexpr bool ENGINEERING_DICTIONARY = false;
+    /** @brief 誤字の訂正候補を表示しない既定値 */
+    static constexpr bool TYPO_CORRECTION = false;
     /** @brief 桁区切り数字変換を使用しない既定値 */
     static constexpr bool COMMA_SEPARATED_NUMBER = false;
     /** @brief カレンダー変換を使用しない既定値 */

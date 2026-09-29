@@ -26,12 +26,23 @@ HazkeyCandidateList::HazkeyCandidateList(
         ::hazkey::commands::CandidatesResult_Candidate>
         candidates)
     : CommonCandidateList() {
+    // 訂正候補の注記を、最も長い訂正候補の表記の後ろで揃える
+    int annotationAlignColumns = 0;
+    for (const auto& candidate : candidates) {
+        if (candidate.is_typo_correction()) {
+            annotationAlignColumns = std::max(
+                annotationAlignColumns,
+                hazkey::frontend::displayColumns(candidate.text()));
+        }
+    }
+
     // 候補項目が自身の位置を参照できるようにする
     int i = 0;
     for (const auto& candidate : candidates) {
         append(std::make_unique<HazkeyCandidateWord>(
             i, candidate,
-            [this](int globalIndex) { selectCandidate(globalIndex); }));
+            [this](int globalIndex) { selectCandidate(globalIndex); },
+            annotationAlignColumns));
         i++;
     }
 

@@ -259,6 +259,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("extendedEmojiConversion", ui_->extendedEmojiConversion->isChecked());
     state.insert("useAddressDict", ui_->useAddressDict->isChecked());
     state.insert("useEngineeringDict", ui_->useEngineeringDict->isChecked());
+    state.insert("useTypoCorrection", ui_->useTypoCorrection->isChecked());
     state.insert("commaSeparatedNumCoversion", ui_->commaSeparatedNumCoversion->isChecked());
     state.insert("calendarConversion", ui_->calendarConversion->isChecked());
     state.insert("timeConversion", ui_->timeConversion->isChecked());
@@ -426,6 +427,8 @@ void MainWindow::connectSignals() {
     connect(ui_->useAddressDict, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->useEngineeringDict, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->useTypoCorrection, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->commaSeparatedNumCoversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
@@ -816,6 +819,14 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->useEngineeringDict, useEngineeringDict,
                  ConfigDefs::CheckboxDefaults::ENGINEERING_DICTIONARY);
 
+    // 誤字の訂正候補は性能に影響するため、[全て選択]/[全て解除]の対象外とする
+    const bool useTypoCorrection =
+        currentProfile_->has_use_typo_correction()
+            ? currentProfile_->use_typo_correction()
+            : ConfigDefs::CheckboxDefaults::TYPO_CORRECTION;
+    SET_CHECKBOX(ui_->useTypoCorrection, useTypoCorrection,
+                 ConfigDefs::CheckboxDefaults::TYPO_CORRECTION);
+
     ui_->stopStoreNewHistory->setEnabled(currentProfile_->use_input_history());
     onUseZenzaiCustomWeightToggled(ui_->useZenzaiCustomWeight->isChecked());
 
@@ -963,6 +974,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->useAddressDict));
     currentProfile_->set_use_engineering_dictionary(
         GET_CHECKBOX_BOOL(ui_->useEngineeringDict));
+    currentProfile_->set_use_typo_correction(
+        GET_CHECKBOX_BOOL(ui_->useTypoCorrection));
 
     currentProfile_->set_submode_entry_point_chars(
         GET_LINEEDIT_STRING(ui_->submodeEntryPointChars));
@@ -2020,6 +2033,7 @@ void MainWindow::onCheckAllConversion() {
     ui_->relativeDateConversion->setChecked(true);
     ui_->useAddressDict->setChecked(true);
     ui_->useEngineeringDict->setChecked(true);
+    ui_->useTypoCorrection->setChecked(true);
 }
 
 void MainWindow::onUncheckAllConversion() {
@@ -2035,6 +2049,7 @@ void MainWindow::onUncheckAllConversion() {
     ui_->relativeDateConversion->setChecked(false);
     ui_->useAddressDict->setChecked(false);
     ui_->useEngineeringDict->setChecked(false);
+    ui_->useTypoCorrection->setChecked(false);
 }
 
 void MainWindow::onClearLearningData() {

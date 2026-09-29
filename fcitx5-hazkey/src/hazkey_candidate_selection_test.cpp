@@ -32,6 +32,79 @@ makeCandidatesWithLearningMetadata() {
     return candidates;
 }
 
+/** 訂正候補と通常候補を生成する */
+google::protobuf::RepeatedPtrField<
+    hazkey::commands::CandidatesResult_Candidate>
+makeCandidatesWithTypoCorrection() {
+    google::protobuf::RepeatedPtrField<
+        hazkey::commands::CandidatesResult_Candidate>
+        candidates;
+    candidates.Add()->set_text("しっっぱいした");
+    auto* corrected = candidates.Add();
+    corrected->set_text("失敗した");
+    corrected->set_is_typo_correction(true);
+    return candidates;
+}
+
+/** 訂正候補だけが注記「*[訂正]*」を持ち (注記部分のみ斜体)、表記は変わらない
+ *  (注記はFcitx 5.1.9以降のみ。それ以前は訂正フラグと表記だけを検証する) */
+void testTypoCorrectionCandidateHasComment() {
+    fcitx::HazkeyCandidateList candidates(makeCandidatesWithTypoCorrection());
+
+    const auto& ordinary = candidates.getCandidate(0);
+    const auto& corrected = candidates.getCandidate(1);
+
+    assert(!ordinary.isTypoCorrection());
+    assert(corrected.isTypoCorrection());
+#ifdef HAZKEY_HAS_CANDIDATE_COMMENT
+    assert(ordinary.comment().empty());
+    // 表記との間隔として、全角空白2個を注記の先頭に付ける
+    const auto& comment = corrected.comment();
+    assert(comment.toString() == "\u3000\u3000*[訂正]*");
+    // 間隔は通常書体、注記「*[訂正]*」だけが斜体
+    assert(comment.size() == 2);
+    assert(comment.stringAt(0) == "\u3000\u3000");
+    assert(!(comment.formatAt(0) & fcitx::TextFormatFlag::Italic));
+    assert(comment.stringAt(1) == "*[訂正]*");
+    assert(comment.formatAt(1) & fcitx::TextFormatFlag::Italic);
+#endif
+    assert(corrected.text().toString() == "失敗した");
+    assert(corrected.getPreedit().front() == "失敗した");
+}
+
+/** 複数の訂正候補の注記は、最も長い訂正候補の表記の後ろに揃う (通常候補の表記は揃える対象外) */
+void testTypoCorrectionCommentsAreAligned() {
+    google::protobuf::RepeatedPtrField<
+        hazkey::commands::CandidatesResult_Candidate>
+        data;
+    data.Add()->set_text("m違える");
+    for (const char* text : {"みちがえる", "間違える", "違える"}) {
+        auto* corrected = data.Add();
+        corrected->set_text(text);
+        corrected->set_is_typo_correction(true);
+    }
+    data.Add()->set_text("mちがえる");
+    fcitx::HazkeyCandidateList candidates(data);
+
+#ifdef HAZKEY_HAS_CANDIDATE_COMMENT
+    assert(candidates.getCandidate(0).comment().empty());
+    assert(candidates.getCandidate(1).comment().stringAt(0) == "\u3000\u3000");
+    assert(candidates.getCandidate(2).comment().stringAt(0) ==
+           "\u3000\u3000\u3000");
+    assert(candidates.getCandidate(3).comment().stringAt(0) ==
+           "\u3000\u3000\u3000\u3000");
+    assert(candidates.getCandidate(4).comment().empty());
+    for (int i = 1; i <= 3; ++i) {
+        const auto& comment = candidates.getCandidate(i).comment();
+        assert(hazkey::frontend::displayColumns(
+                   candidates.getCandidate(i).text().toString() +
+                   comment.stringAt(0)) == 14);
+        assert(comment.stringAt(1) == "*[訂正]*");
+    }
+#endif
+    assert(candidates.getCandidate(2).text().toString() == "間違える");
+}
+
 /** 複数ページと末尾の不完全ページで、有効なページ内位置を判定する */
 void testPageLocalIndexInRangeMultiPage() {
     using fcitx::HazkeyCandidateList;
@@ -147,6 +220,8 @@ int main() {
     testFinalPageEmptySlotIsNoOp();
     testFocusedListStaysSelectableAfterPaging();
     testUnfocusedListHasNoCursorAcrossPaging();
+    testTypoCorrectionCandidateHasComment();
+    testTypoCorrectionCommentsAreAligned();
 
     /** 学習情報の読み取り専用アクセスが候補メタデータを反映する */
     fcitx::HazkeyCandidateList candidatesWithLearningMetadata(

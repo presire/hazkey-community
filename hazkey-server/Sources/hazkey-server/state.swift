@@ -10,6 +10,19 @@ import SwiftUtils
 enum DisplayedCandidate {
     /// 変換エンジン (KanaKanjiConverter) が返した候補で、確定時に学習データを更新する
     case fromConverter(Candidate)
+    /// 誤字の訂正エンジンが生成した訂正候補
+    ///
+    /// 打ち間違いを読み替えて得た候補であり、元の入力の読みとは異なる読みを持つ
+    ///
+    /// 確定では元の入力の先頭 (originalPrefixCount文字) だけを消費し、残りの読みは組成に残す
+    ///
+    /// 学習は候補の出所に従い、ユーザ辞書由来のデータを含む場合は学習しない (fromConverterと同じ規則)
+    ///
+    /// - Parameters:
+    ///   - candidate: 変換エンジンが返した訂正後の候補
+    ///   - correctedReading: カタカナに正規化した訂正後の読み (学習の注釈と削除で使う)
+    ///   - originalPrefixCount: 確定で消費する元の入力の先頭文字数
+    case fromTypoCorrection(candidate: Candidate, correctedReading: String, originalPrefixCount: Int)
     /// 旧方式のユーザ辞書候補 (現在は生成されない)
     ///
     /// ユーザ辞書はimportDynamicUserDictionaryでエンジンに注入する方式へ移行したため、ユーザ辞書の単語は現在fromConverterとして届く
@@ -103,7 +116,9 @@ func learningHistoryMatches(query: String, reading: String, word: String) -> Boo
 struct CandidateLearningReadings {
     /// 候補の位置まで切り詰めた入力読み (通常変換の候補はこの読みで保存される)
     let prefixReading: String
-    /// 候補全体の読み (予測候補はこの読みで保存される。候補にdataが無い場合は空)
+    /// 候補全体の読み (予測候補はこの読みで保存される)
+    ///
+    /// 候補にdataが無い場合は空
     let fullRuby: String
 }
 
@@ -332,6 +347,9 @@ class HazkeySharedResources {
 
 // MARK: - 共有設定と学習
 
+/// 共有リソースの設定反映と学習データの管理をまとめた拡張
+///
+/// 設定の再読み込み・ニューラル変換モデルの再読み込みと、学習メモリの列挙・削除・永続化を提供する
 extension HazkeySharedResources {
     /// 設定の変更を共有リソースへ反映する
     ///
@@ -798,6 +816,28 @@ class HazkeyServerState {
     let conversionSessionID: KanaKanjiConverter.ConversionSessionID
     /// 変換セッションを解放済みかどうか (close()を冪等にするために使う)
     private var isClosed = false
+    /// 誤字の訂正案を1件ずつ独立に評価するための変換セッションID
+    ///
+    /// 訂正案は元の入力と読みが異なるため、主変換のセッション状態 (ラティスやニューラル変換キャッシュ) を汚さないよう別セッションで評価する
+    ///
+    /// 訂正案の数だけ遅延して確保し、この接続の切断時にまとめて解放する
+    private var typoCorrectionSessionIDs: [KanaKanjiConverter.ConversionSessionID] = []
+    /// 訂正を適用しない元の読みを一度だけ評価するための変換セッションID
+    ///
+    /// 訂正案は常にニューラル変換なしで評価するため、ニューラル変換が有効なときは同じ条件で測った基準値が必要になる
+    ///
+    /// 基準値は接続ごとに一度求めればよいため、必要になった時点で1つだけ確保する
+    private var typoBaselineSessionID: KanaKanjiConverter.ConversionSessionID?
+
+    /// テスト用: この接続が生成した訂正候補用セッションの数
+    ///
+    /// 設定OFF・トリガー無しの入力でセッションが生成されないことを検証する
+    var typoCorrectionSessionCount: Int {
+        typoCorrectionSessionIDs.count + (typoBaselineSessionID == nil ? 0 : 1)
+    }
+
+    /// 主変換がこの時間を超えた打鍵では誤字の訂正を省略する (テストでは短くして予算超過を再現する)
+    var typoTimeBudget: Duration = .milliseconds(TypoCorrector.typoTimeBudget)
 
     // MARK: 組成テキストと候補リスト
 
@@ -889,6 +929,18 @@ class HazkeyServerState {
         isClosed = true
         shared.unregisterConversionSession(conversionSessionID)
         converter.removeSession(conversionSessionID)
+        // 訂正用の補助セッションも主セッションと同様に解放する
+        // 解放漏れがあると変換エンジン内部にセッション状態が残り続ける
+        for id in typoCorrectionSessionIDs {
+            shared.unregisterConversionSession(id)
+            converter.removeSession(id)
+        }
+        typoCorrectionSessionIDs.removeAll()
+        if let id = typoBaselineSessionID {
+            shared.unregisterConversionSession(id)
+            converter.removeSession(id)
+            typoBaselineSessionID = nil
+        }
     }
 
     /// この接続の変換セッションを選んで処理を実行する
@@ -1185,6 +1237,23 @@ class HazkeyServerState {
             // 学習メモリはサーバ全体で共有するため、学習データを更新しなかった確定でdirtyフラグを消してはならない
             // 他の接続にある永続化待ちデータが失われる
             if learnsFromCandidate { learningDataNeedsCommit = true }
+        case .fromTypoCorrection(let correctedCandidate, _, let originalPrefixCount):
+            // 元の入力の先頭だけを消費し、訂正対象でない接尾辞は組成に残して変換可能なまま保つ
+            if originalPrefixCount < composingText.value.convertTarget.count {
+                composingText.value.prefixComplete(composingCount: .surfaceCount(originalPrefixCount))
+            } else {
+                composingText = ComposingTextBox()
+            }
+            let learnsFromCandidate = !correctedCandidate.data.contains {
+                $0.metadata.contains(.isFromUserDictionary)
+            }
+            // 訂正候補は主変換の組成と対応しないため、setCompletedDataは呼ばず学習だけを更新する
+            // 主変換の未確定のラティスは使わないため、組成を停止して次回の再変換に備える
+            _ = withConversionSession {
+                if learnsFromCandidate { converter.updateLearningData(correctedCandidate) }
+                converter.stopComposition()
+            }
+            if learnsFromCandidate { learningDataNeedsCommit = true }
         case .fromUserDict:
             // ユーザ辞書エントリは常に読み全体に一致するため、組成テキストを消去するだけでよい
             // 変換エンジンの学習ストアには追加しない
@@ -1284,8 +1353,9 @@ class HazkeyServerState {
         let clampedOffset = max(min(offset, maxForwardOffset), maxBackwardOffset)
         _ = composingText.value.moveCursorFromCursorPosition(count: clampedOffset)
 
+        // 文節境界の移動は打鍵ごとの処理ではなく、新しい読みでニューラル変換が走り時間予算を超えやすいため、時間予算を適用しない
         let (candidatesResult, serverCandidates) = makeCandidatesResult(
-            is_suggest: false)
+            is_suggest: false, appliesTypoTimeBudget: false)
         currentCandidateList = serverCandidates
 
         return Hazkey_ResponseEnvelope.with {
@@ -1456,15 +1526,19 @@ class HazkeyServerState {
     ///
     /// 1. 必要ならユーザ辞書を変換エンジンへ注入する
     /// 2. この接続の変換セッションで変換し、予測候補と変換候補を重複なく並べ、ライブ変換の表記を決める
-    /// 3. 削除可能の注釈を付ける
-    /// 4. 絵文字・相対日付・かな数字の候補を注入する
-    /// 5. 自動変換の設定に従ってライブ変換の表記を消して、ページの候補数を設定する
+    /// 3. 誤字の訂正候補のうち、基準を上回るものを先頭候補の直後へ挿入する
+    /// 4. 削除可能の注釈を付ける
+    /// 5. 絵文字・相対日付・かな数字の候補を注入する
+    /// 6. 自動変換の設定に従ってライブ変換の表記を消して、ページの候補数を設定する
     ///
-    /// - Parameter is_suggest: サジェスト (入力中の候補) の場合はtrue、変換 ([Space]キー等) の場合はfalse
+    /// - Parameters:
+    ///   - is_suggest: サジェスト (入力中の候補) の場合はtrue、変換 ([Space]キー等) の場合はfalse
+    ///   - appliesTypoTimeBudget: 主変換が時間予算 (TypoCorrector.typoTimeBudget) を超えた場合に誤字の訂正を省略するか
     /// - Returns: クライアントへ返す候補結果と、同じ位置に並んだサーバ側の候補リスト
     /// - Note: 絵文字とかな数字の候補は変換の場合だけ注入して、サジェストやライブ変換には混ぜない
     private func makeCandidatesResult(
-        is_suggest: Bool
+        is_suggest: Bool,
+        appliesTypoTimeBudget: Bool = true
     ) -> (Hazkey_Commands_CandidatesResult, [DisplayedCandidate]) {
         self.currentCandidateListIsSuggest = is_suggest
         let perfProbe = PerfProbe.shared
@@ -1574,6 +1648,7 @@ class HazkeyServerState {
         userDictionaryFinishedAt = perfProbe?.now()
 
         var candidatesResult = Hazkey_Commands_CandidatesResult()
+        let mainRequestStartedAt = ContinuousClock.now
         if zenzai == "on" {
             _ = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
         }
@@ -1588,6 +1663,7 @@ class HazkeyServerState {
             emptyResult.liveTextIndex = -1
             return (emptyResult, [])
         }
+        let mainRequestDurationMs = ContinuousClock.now - mainRequestStartedAt
         if zenzai == "on" {
             zenzaiInferenceNanoseconds = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
         }
@@ -1653,6 +1729,111 @@ class HazkeyServerState {
                 serverCandidates: &serverCandidates,
                 clientCandidates: &clientCandidates
             )
+        }
+
+        let profile = serverConfig.currentProfile
+        let inputReading = copiedComposingText.toHiragana()
+        let typoEligible = profile.useTypoCorrectionEffective
+            && !(is_suggest && profile.suggestionListMode == .suggestionListDisabled)
+            && inputReading.count <= TypoCorrector.maxReadingLength
+            && !copiedComposingText.input.contains(where: { $0.inputStyle == .direct })
+            && (!appliesTypoTimeBudget || mainRequestDurationMs <= typoTimeBudget)
+        if typoEligible {
+            let triggers = TypoCorrector.triggers(in: inputReading)
+            let variants = TypoCorrector.variants(of: copiedComposingText, triggers: triggers)
+            if !variants.isEmpty {
+                var correctionOptions = TypoCorrector.correctionOptions(from: options)
+                correctionOptions.N_best = 1
+                var evaluated: [(candidate: Candidate, reading: String, editCount: Int, adjustedValue: Double)] = []
+                // 訂正案ごとに専用セッションを遅延確保する
+                // 同じ接続での再変換では確保済みのセッションを再利用し、主変換とは別のラティスを保つ
+                for (index, variant) in variants.enumerated() {
+                    while typoCorrectionSessionIDs.count <= index {
+                        let id = converter.createSession()
+                        typoCorrectionSessionIDs.append(id)
+                        shared.registerConversionSession(id)
+                    }
+                    let result = try? converter.withSession(typoCorrectionSessionIDs[index]) {
+                        converter.requestCandidates(variant.composingText, options: correctionOptions)
+                    }
+                    if let candidate = result.flatMap({ TypoCorrector.bestExactMatch(in: $0.mainResults, readingLength: variant.reading.count) }) {
+                        evaluated.append((
+                            candidate, variant.reading, variant.editCount,
+                            Double(candidate.value) - TypoCorrector.penalty(editCount: variant.editCount)))
+                    }
+                }
+                // 訂正案は常にニューラル変換なしで評価するため、基準値も同じ条件で測る必要がある
+                // ニューラル変換が無効な主変換の結果はそのまま使えるが、有効な場合は専用セッションで元の読みを評価する
+                let baselineValue: Double?
+                if case .off = options.zenzaiMode {
+                    baselineValue = TypoCorrector.bestExactMatch(
+                        in: converted.mainResults, readingLength: hiraganaPreeditLen
+                    ).map { Double($0.value) }
+                } else {
+                    if typoBaselineSessionID == nil {
+                        let id = converter.createSession()
+                        typoBaselineSessionID = id
+                        shared.registerConversionSession(id)
+                    }
+                    baselineValue = typoBaselineSessionID.flatMap { id in
+                        (try? converter.withSession(id) {
+                            converter.requestCandidates(copiedComposingText, options: correctionOptions)
+                        }).flatMap { TypoCorrector.bestExactMatch(in: $0.mainResults, readingLength: hiraganaPreeditLen) }
+                            .map { Double($0.value) }
+                    }
+                }
+                // 基準を上回る訂正案を、スコアの高い順に最大 maxVariants 件まで先頭候補の直後へ並べる
+                // (mちがえる の「間違える」と「見違える」のように、読みの異なる訂正案はどれも利用者の意図になり得るため)
+                // 母音補完は1箇所で5通りを評価するため、表示件数は評価数ではなくここで制限する
+                let offered = baselineValue.map { baselineValue in
+                    evaluated
+                        .filter {
+                            TypoCorrector.shouldOffer(
+                                variantValue: Double($0.candidate.value), baselineValue: baselineValue,
+                                editCount: $0.editCount)
+                        }
+                        .sorted { $0.adjustedValue > $1.adjustedValue }
+                        .prefix(TypoCorrector.maxVariants)
+                } ?? []
+                // 完全な訂正 (読みにトリガーが残らないもの) が1つでも提示されるなら、まだトリガーが残る部分的な訂正は落とす
+                // 例: ちゃゃゃっっっと では ちゃっと が完全な訂正であり、ゃゃ が残る部分的な縮約は劣る
+                let preferred = TypoCorrector.competitive(
+                    TypoCorrector.preferringComplete(Array(offered), reading: { $0.reading }),
+                    adjustedValue: { $0.adjustedValue })
+                var insertionIndex = min(1, clientCandidates.count)
+                for correction in preferred where !appendedTexts.contains(correction.candidate.text) {
+                    let needsPushout = is_suggest && clientCandidates.count >= N_best
+                    let hasPushable = !needsPushout
+                        || clientCandidates.indices.contains {
+                            Int32($0) != candidatesResult.liveTextIndex && !clientCandidates[$0].isTypoCorrection
+                        }
+                    guard hasPushable else { break }
+                    appendedTexts.insert(correction.candidate.text)
+                    var client = Hazkey_Commands_CandidatesResult.Candidate()
+                    client.text = correction.candidate.text
+                    client.subHiragana = String(fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+                    client.isTypoCorrection = true
+                    clientCandidates.insert(client, at: insertionIndex)
+                    serverCandidates.insert(.fromTypoCorrection(
+                        candidate: correction.candidate, correctedReading: katakanaNormalized(correction.reading),
+                        originalPrefixCount: copiedComposingText.convertTarget.count), at: insertionIndex)
+                    annotationReadings.insert(CandidateLearningReadings(prefixReading: katakanaNormalized(correction.reading), fullRuby: katakanaNormalized(correction.reading)), at: insertionIndex)
+                    if Int32(insertionIndex) <= candidatesResult.liveTextIndex { candidatesResult.liveTextIndex += 1 }
+                    insertionIndex += 1
+                    // サジェストは候補数に上限があるため、挿入で押し出された末尾の非訂正・非ライブ候補を除去して上限を保つ
+                    if needsPushout,
+                        let removalIndex = clientCandidates.indices.reversed().first(where: {
+                            !clientCandidates[$0].isTypoCorrection && Int32($0) != candidatesResult.liveTextIndex
+                        })
+                    {
+                        clientCandidates.remove(at: removalIndex)
+                        serverCandidates.remove(at: removalIndex)
+                        annotationReadings.remove(at: removalIndex)
+                        if Int32(removalIndex) < candidatesResult.liveTextIndex { candidatesResult.liveTextIndex -= 1 }
+                        if removalIndex < insertionIndex { insertionIndex -= 1 }
+                    }
+                }
+            }
         }
 
         // ここで削除可能の注釈を付ける
@@ -1877,6 +2058,8 @@ class HazkeyServerState {
     ///
     /// 削除可能の注釈と同じ規則で照合するため、削除可能と表示された候補は必ず削除できる
     ///
+    /// 誤字の訂正候補も変換エンジン候補と同じく学習データを持てるため、訂正後の読みで照合して削除する
+    ///
     /// 候補リストは削除前と同じモード (サジェストまたは変換) で作り直す
     ///
     /// - Parameter candidateIndex: 候補リスト内の対象候補の位置
@@ -1894,7 +2077,19 @@ class HazkeyServerState {
         }
         // 学習エントリを持てるのは変換エンジン候補のみ
         // レガシーユーザ辞書/日付/かな数字/絵文字注入候補には学習データがないため、エラーではなく「削除なし」として返す
-        guard case .fromConverter(let candidate) = list[candidateIndex] else {
+        let candidate: Candidate
+        let candidateReadings: CandidateLearningReadings
+        switch list[candidateIndex] {
+        case .fromConverter(let value):
+            candidate = value
+            let fullHiraganaPreedit = composingText.value.toHiragana()
+            let requestHiraganaPreeditLen = candidateRequestText(is_suggest: currentCandidateListIsSuggest).toHiragana().count
+            candidateReadings = candidate.learningReadings(
+                truncatedTo: String(fullHiraganaPreedit.prefix(min(candidate.rubyCount, requestHiraganaPreeditLen))))
+        case .fromTypoCorrection(let value, let reading, _):
+            candidate = value
+            candidateReadings = CandidateLearningReadings(prefixReading: reading, fullRuby: reading)
+        default:
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .success
                 $0.deleteCandidateLearningDataResult = Hazkey_Commands_DeleteCandidateLearningDataResult.with {
@@ -1904,13 +2099,7 @@ class HazkeyServerState {
         }
 
         // appendCandidateと同じ式で候補の読みを算出する
-        let fullHiraganaPreedit = composingText.value.toHiragana()
-        let requestHiraganaPreeditLen = candidateRequestText(
-            is_suggest: currentCandidateListIsSuggest
-        ).toHiragana().count
-        let readings = candidate.learningReadings(
-            truncatedTo: String(
-                fullHiraganaPreedit.prefix(min(candidate.rubyCount, requestHiraganaPreeditLen))))
+        let readings = candidateReadings
 
         // CID違いをまたいで (reading, word) に一致するものを全て集める
         // 一致なし (未学習) は、正常な「削除なし」の結果であり、エラーではない

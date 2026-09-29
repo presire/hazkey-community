@@ -20,22 +20,33 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// 設定ファイルの名前とハッシュ値
+///
+/// - Note: 現在のサーバはこの値を使用せず、GetConfigでは常に空のリストを返す
 nonisolated struct Hazkey_Config_FileHash: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// ファイル名
   var name: String = String()
 
+  /// ファイル内容のSHA-256ハッシュ値
   var sha256Sum: String = String()
 
+  /// ファイルの種類
   var type: Hazkey_Config_FileHash.ConfigFileType = .configMain
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// 設定ファイルの種類
   nonisolated enum ConfigFileType: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 設定本体 (config.json)
     case configMain // = 0
+
+    /// 入力テーブル (TSV)
     case inputTable // = 1
     case UNRECOGNIZED(Int)
 
@@ -70,15 +81,21 @@ nonisolated struct Hazkey_Config_FileHash: Sendable {
   init() {}
 }
 
+/// 利用できるキーマップ (キー入力の置き換え規則)
+///
+/// 組み込みのキーマップ (全角数字・全角記号・日本語記号等) と、~/.config/hazkey-community/keymap/内のユーザ定義TSVファイルがある
 nonisolated struct Hazkey_Config_Keymap: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 表示名
   var name: String = String()
 
+  /// 組み込みのキーマップならtrue、ユーザ定義ならfalse
   var isBuiltIn: Bool = false
 
+  /// ファイル名 (組み込みではnameと同じ)
   var filename: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -86,15 +103,21 @@ nonisolated struct Hazkey_Config_Keymap: Sendable {
   init() {}
 }
 
+/// 利用できる入力テーブル (ローマ字・かな等の入力方式)
+///
+/// 組み込みの入力テーブル (Romaji / Kana) と、~/.config/hazkey-community/table/内のユーザ定義TSVファイルがある
 nonisolated struct Hazkey_Config_InputTable: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 表示名
   var name: String = String()
 
+  /// 組み込みの入力テーブルならtrue、ユーザ定義ならfalse
   var isBuiltIn: Bool = false
 
+  /// ファイル名 (組み込みではnameと同じ)
   var filename: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -102,13 +125,16 @@ nonisolated struct Hazkey_Config_InputTable: Sendable {
   init() {}
 }
 
+/// Zenzaiの推論に使えるバックエンドデバイス (CPU / Vulkan GPU)
 nonisolated struct Hazkey_Config_BackendDevice: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// デバイス名 (Profileの[zenzai_backend_device_name]に指定する値)
   var name: String = String()
 
+  /// 設定画面に表示する説明
   var desc: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -116,11 +142,17 @@ nonisolated struct Hazkey_Config_BackendDevice: Sendable {
   init() {}
 }
 
+/// 入力・変換の設定一式 (プロファイル)
+///
+/// 設定画面で編集し、SetConfigでサーバへ保存する
+///
+/// - Note: optionalのフィールドが欠けている場合は、サーバが既定値で補う
 nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 設定を保存したサーバのバージョン (現在は未使用)
   var serverVersion: String {
     get {_storage._serverVersion ?? String()}
     set {_uniqueStorage()._serverVersion = newValue}
@@ -130,16 +162,19 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `serverVersion`. Subsequent reads from it will return its default value.
   mutating func clearServerVersion() {_uniqueStorage()._serverVersion = nil}
 
+  /// プロファイル名 (既定は[Default])
   var profileName: String {
     get {_storage._profileName}
     set {_uniqueStorage()._profileName = newValue}
   }
 
+  /// プロファイルの識別子 (プロファイル別の学習データの保存先に使う)
   var profileID: String {
     get {_storage._profileID}
     set {_uniqueStorage()._profileID = newValue}
   }
 
+  /// 入力表示の設定に既定値を使う (現在は未使用)
   var useDefaultInputUiSettings: Bool {
     get {_storage._useDefaultInputUiSettings ?? false}
     set {_uniqueStorage()._useDefaultInputUiSettings = newValue}
@@ -149,6 +184,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultInputUiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultInputUiSettings() {_uniqueStorage()._useDefaultInputUiSettings = nil}
 
+  /// ライブ変換の動作
   var autoConvertMode: Hazkey_Config_Profile.AutoConvertMode {
     get {_storage._autoConvertMode ?? .unspecified}
     set {_uniqueStorage()._autoConvertMode = newValue}
@@ -158,6 +194,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `autoConvertMode`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertMode() {_uniqueStorage()._autoConvertMode = nil}
 
+  /// 補助表示の表示方法
   var auxTextMode: Hazkey_Config_Profile.AuxTextMode {
     get {_storage._auxTextMode ?? .unspecified}
     set {_uniqueStorage()._auxTextMode = newValue}
@@ -167,6 +204,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `auxTextMode`. Subsequent reads from it will return its default value.
   mutating func clearAuxTextMode() {_uniqueStorage()._auxTextMode = nil}
 
+  /// 入力中に表示する候補リストの内容
   var suggestionListMode: Hazkey_Config_Profile.SuggestionListMode {
     get {_storage._suggestionListMode ?? .unspecified}
     set {_uniqueStorage()._suggestionListMode = newValue}
@@ -176,6 +214,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `suggestionListMode`. Subsequent reads from it will return its default value.
   mutating func clearSuggestionListMode() {_uniqueStorage()._suggestionListMode = nil}
 
+  /// 入力中の候補リストにZenzaiの候補を使う (既定はfalse)
   var useRichSuggestion: Bool {
     get {_storage._useRichSuggestion ?? false}
     set {_uniqueStorage()._useRichSuggestion = newValue}
@@ -185,6 +224,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useRichSuggestion`. Subsequent reads from it will return its default value.
   mutating func clearUseRichSuggestion() {_uniqueStorage()._useRichSuggestion = nil}
 
+  /// 入力中の候補リストの表示数 (1〜10、既定は3)
   var numSuggestions: Int32 {
     get {_storage._numSuggestions ?? 0}
     set {_uniqueStorage()._numSuggestions = newValue}
@@ -194,6 +234,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `numSuggestions`. Subsequent reads from it will return its default value.
   mutating func clearNumSuggestions() {_uniqueStorage()._numSuggestions = nil}
 
+  /// ライブ変換を始める最小の文字数 (1〜10、既定は2)
   var autoConvertMinChars: Int32 {
     get {_storage._autoConvertMinChars ?? 0}
     set {_uniqueStorage()._autoConvertMinChars = newValue}
@@ -203,6 +244,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `autoConvertMinChars`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertMinChars() {_uniqueStorage()._autoConvertMinChars = nil}
 
+  /// 変換候補の設定に既定値を使う (現在は未使用)
   var useDefaultConversionUiSettings: Bool {
     get {_storage._useDefaultConversionUiSettings ?? false}
     set {_uniqueStorage()._useDefaultConversionUiSettings = newValue}
@@ -212,6 +254,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultConversionUiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultConversionUiSettings() {_uniqueStorage()._useDefaultConversionUiSettings = nil}
 
+  /// 変換候補の1ページあたりの表示数 (1〜10、既定は9)
   var numCandidatesPerPage: Int32 {
     get {_storage._numCandidatesPerPage ?? 0}
     set {_uniqueStorage()._numCandidatesPerPage = newValue}
@@ -221,6 +264,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `numCandidatesPerPage`. Subsequent reads from it will return its default value.
   mutating func clearNumCandidatesPerPage() {_uniqueStorage()._numCandidatesPerPage = nil}
 
+  /// 変換候補にZenzaiの候補を使う (既定はfalse)
   var useRichCandidates: Bool {
     get {_storage._useRichCandidates ?? false}
     set {_uniqueStorage()._useRichCandidates = newValue}
@@ -230,6 +274,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useRichCandidates`. Subsequent reads from it will return its default value.
   mutating func clearUseRichCandidates() {_uniqueStorage()._useRichCandidates = nil}
 
+  /// 入力履歴の設定に既定値を使う (現在は未使用)
   var useDefaultHistorySettings: Bool {
     get {_storage._useDefaultHistorySettings ?? false}
     set {_uniqueStorage()._useDefaultHistorySettings = newValue}
@@ -239,6 +284,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultHistorySettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultHistorySettings() {_uniqueStorage()._useDefaultHistorySettings = nil}
 
+  /// trueならプロファイルごとに学習データを分けて保存する (既定はfalse)
   var useProfileIndependentHistory: Bool {
     get {_storage._useProfileIndependentHistory ?? false}
     set {_uniqueStorage()._useProfileIndependentHistory = newValue}
@@ -248,6 +294,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useProfileIndependentHistory`. Subsequent reads from it will return its default value.
   mutating func clearUseProfileIndependentHistory() {_uniqueStorage()._useProfileIndependentHistory = nil}
 
+  /// 入力履歴を変換に使う (既定はtrue)
   var useInputHistory: Bool {
     get {_storage._useInputHistory ?? false}
     set {_uniqueStorage()._useInputHistory = newValue}
@@ -257,6 +304,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useInputHistory`. Subsequent reads from it will return its default value.
   mutating func clearUseInputHistory() {_uniqueStorage()._useInputHistory = nil}
 
+  /// trueなら新しい入力履歴を保存しない (既存の履歴は使う)
   var stopStoreNewHistory: Bool {
     get {_storage._stopStoreNewHistory ?? false}
     set {_uniqueStorage()._stopStoreNewHistory = newValue}
@@ -266,6 +314,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `stopStoreNewHistory`. Subsequent reads from it will return its default value.
   mutating func clearStopStoreNewHistory() {_uniqueStorage()._stopStoreNewHistory = nil}
 
+  /// 特殊変換の設定に既定値を使う (現在は未使用)
   var useDefaultSpecialConversionSettings: Bool {
     get {_storage._useDefaultSpecialConversionSettings ?? false}
     set {_uniqueStorage()._useDefaultSpecialConversionSettings = newValue}
@@ -275,6 +324,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultSpecialConversionSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultSpecialConversionSettings() {_uniqueStorage()._useDefaultSpecialConversionSettings = nil}
 
+  /// 特殊な変換候補の有効 / 無効
   var specialConversionMode: Hazkey_Config_Profile.SpecialConversionMode {
     get {_storage._specialConversionMode ?? Hazkey_Config_Profile.SpecialConversionMode()}
     set {_uniqueStorage()._specialConversionMode = newValue}
@@ -284,6 +334,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `specialConversionMode`. Subsequent reads from it will return its default value.
   mutating func clearSpecialConversionMode() {_uniqueStorage()._specialConversionMode = nil}
 
+  /// キーマップの設定に既定値を使う (現在は未使用)
   var useDefaultKeymapSettings: Bool {
     get {_storage._useDefaultKeymapSettings ?? false}
     set {_uniqueStorage()._useDefaultKeymapSettings = newValue}
@@ -293,11 +344,13 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultKeymapSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultKeymapSettings() {_uniqueStorage()._useDefaultKeymapSettings = nil}
 
+  /// 有効にしたキーマップ
   var enabledKeymaps: [Hazkey_Config_Profile.EnabledKeymap] {
     get {_storage._enabledKeymaps}
     set {_uniqueStorage()._enabledKeymaps = newValue}
   }
 
+  /// 入力テーブルの設定に既定値を使う (現在は未使用)
   var useDefaultTableSettings: Bool {
     get {_storage._useDefaultTableSettings ?? false}
     set {_uniqueStorage()._useDefaultTableSettings = newValue}
@@ -307,11 +360,13 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultTableSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultTableSettings() {_uniqueStorage()._useDefaultTableSettings = nil}
 
+  /// 有効にした入力テーブル (既定は[Romaji])
   var enabledTables: [Hazkey_Config_Profile.EnabledInputTable] {
     get {_storage._enabledTables}
     set {_uniqueStorage()._enabledTables = newValue}
   }
 
+  /// [Shift]キーと同時に入力すると直接入力モードに入る文字 (既定はA〜Zの大文字)
   var submodeEntryPointChars: String {
     get {_storage._submodeEntryPointChars ?? String()}
     set {_uniqueStorage()._submodeEntryPointChars = newValue}
@@ -321,6 +376,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `submodeEntryPointChars`. Subsequent reads from it will return its default value.
   mutating func clearSubmodeEntryPointChars() {_uniqueStorage()._submodeEntryPointChars = nil}
 
+  /// ライブ変換を切り替えるホットキー (既定は[Control] + [Shift] + [L]キー)
   var autoConvertHotkey: String {
     get {_storage._autoConvertHotkey ?? String()}
     set {_uniqueStorage()._autoConvertHotkey = newValue}
@@ -330,6 +386,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `autoConvertHotkey`. Subsequent reads from it will return its default value.
   mutating func clearAutoConvertHotkey() {_uniqueStorage()._autoConvertHotkey = nil}
 
+  /// ユーザ辞書を変換に使う
   var useUserDictionary: Bool {
     get {_storage._useUserDictionary ?? false}
     set {_uniqueStorage()._useUserDictionary = newValue}
@@ -339,6 +396,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useUserDictionary`. Subsequent reads from it will return its default value.
   mutating func clearUseUserDictionary() {_uniqueStorage()._useUserDictionary = nil}
 
+  /// Zenzaiの設定に既定値を使う (現在は未使用)
   var useDefaultZenzaiSettings: Bool {
     get {_storage._useDefaultZenzaiSettings ?? false}
     set {_uniqueStorage()._useDefaultZenzaiSettings = newValue}
@@ -348,6 +406,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useDefaultZenzaiSettings`. Subsequent reads from it will return its default value.
   mutating func clearUseDefaultZenzaiSettings() {_uniqueStorage()._useDefaultZenzaiSettings = nil}
 
+  /// Zenzaiを有効にする (既定はtrue)
   var zenzaiEnable: Bool {
     get {_storage._zenzaiEnable ?? false}
     set {_uniqueStorage()._zenzaiEnable = newValue}
@@ -357,6 +416,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiEnable`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiEnable() {_uniqueStorage()._zenzaiEnable = nil}
 
+  /// 1回の変換での推論回数の上限 (1〜100、既定は10)
   var zenzaiInferLimit: Int32 {
     get {_storage._zenzaiInferLimit ?? 0}
     set {_uniqueStorage()._zenzaiInferLimit = newValue}
@@ -366,6 +426,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiInferLimit`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiInferLimit() {_uniqueStorage()._zenzaiInferLimit = nil}
 
+  /// カーソル左側の文脈 (SetContext) を変換に使う (既定はtrue)
   var zenzaiContextualMode: Bool {
     get {_storage._zenzaiContextualMode ?? false}
     set {_uniqueStorage()._zenzaiContextualMode = newValue}
@@ -375,6 +436,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiContextualMode`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiContextualMode() {_uniqueStorage()._zenzaiContextualMode = nil}
 
+  /// [zenzai_weight_path]のモデルファイルを使う
   var useZenzaiCustomWeight: Bool {
     get {_storage._useZenzaiCustomWeight ?? false}
     set {_uniqueStorage()._useZenzaiCustomWeight = newValue}
@@ -384,6 +446,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useZenzaiCustomWeight`. Subsequent reads from it will return its default value.
   mutating func clearUseZenzaiCustomWeight() {_uniqueStorage()._useZenzaiCustomWeight = nil}
 
+  /// 任意のモデルファイル (GGUF) のパス
   var zenzaiWeightPath: String {
     get {_storage._zenzaiWeightPath ?? String()}
     set {_uniqueStorage()._zenzaiWeightPath = newValue}
@@ -393,6 +456,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiWeightPath`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiWeightPath() {_uniqueStorage()._zenzaiWeightPath = nil}
 
+  /// 推論に使うバックエンドデバイス名 (空の場合は[CPU])
   var zenzaiBackendDeviceName: String {
     get {_storage._zenzaiBackendDeviceName ?? String()}
     set {_uniqueStorage()._zenzaiBackendDeviceName = newValue}
@@ -402,6 +466,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiBackendDeviceName`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiBackendDeviceName() {_uniqueStorage()._zenzaiBackendDeviceName = nil}
 
+  /// 利用者のプロフィール
   var zenzaiProfile: String {
     get {_storage._zenzaiProfile ?? String()}
     set {_uniqueStorage()._zenzaiProfile = newValue}
@@ -411,6 +476,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiProfile`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiProfile() {_uniqueStorage()._zenzaiProfile = nil}
 
+  /// 入力する文章の話題
   var zenzaiTopic: String {
     get {_storage._zenzaiTopic ?? String()}
     set {_uniqueStorage()._zenzaiTopic = newValue}
@@ -420,6 +486,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiTopic`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiTopic() {_uniqueStorage()._zenzaiTopic = nil}
 
+  /// 文体
   var zenzaiStyle: String {
     get {_storage._zenzaiStyle ?? String()}
     set {_uniqueStorage()._zenzaiStyle = newValue}
@@ -429,6 +496,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiStyle`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiStyle() {_uniqueStorage()._zenzaiStyle = nil}
 
+  /// 変換の好み
   var zenzaiPreference: String {
     get {_storage._zenzaiPreference ?? String()}
     set {_uniqueStorage()._zenzaiPreference = newValue}
@@ -439,6 +507,8 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   mutating func clearZenzaiPreference() {_uniqueStorage()._zenzaiPreference = nil}
 
   /// フォーカス中の候補の学習データを削除するホットキー
+  ///
+  /// - Note: 既定は[Ctrl] + [D]キー
   var deleteLearningHotkey: String {
     get {_storage._deleteLearningHotkey ?? String()}
     set {_uniqueStorage()._deleteLearningHotkey = newValue}
@@ -448,6 +518,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `deleteLearningHotkey`. Subsequent reads from it will return its default value.
   mutating func clearDeleteLearningHotkey() {_uniqueStorage()._deleteLearningHotkey = nil}
 
+  /// 予測候補を先頭部分の表記として固定するホットキー (既定は[F5]キー)
   var acceptPredictionHotkey: String {
     get {_storage._acceptPredictionHotkey ?? String()}
     set {_uniqueStorage()._acceptPredictionHotkey = newValue}
@@ -457,6 +528,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `acceptPredictionHotkey`. Subsequent reads from it will return its default value.
   mutating func clearAcceptPredictionHotkey() {_uniqueStorage()._acceptPredictionHotkey = nil}
 
+  /// Zenzaiを切り替えるホットキー (既定は[Control] + [Alt] + [Z]キー)
   var zenzaiToggleHotkey: String {
     get {_storage._zenzaiToggleHotkey ?? String()}
     set {_uniqueStorage()._zenzaiToggleHotkey = newValue}
@@ -467,6 +539,8 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   mutating func clearZenzaiToggleHotkey() {_uniqueStorage()._zenzaiToggleHotkey = nil}
 
   /// 住所辞書 (日本全国の難読地名) を変換候補に使用する
+  ///
+  /// - Note: 既定はOFF
   var useAddressDictionary: Bool {
     get {_storage._useAddressDictionary ?? false}
     set {_uniqueStorage()._useAddressDictionary = newValue}
@@ -477,6 +551,8 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   mutating func clearUseAddressDictionary() {_uniqueStorage()._useAddressDictionary = nil}
 
   /// 工学用語辞書 (機械・電気・電子・情報・建築・土木等の専門用語) を変換候補に使用する
+  ///
+  /// - Note: 既定はOFF
   var useEngineeringDictionary: Bool {
     get {_storage._useEngineeringDictionary ?? false}
     set {_uniqueStorage()._useEngineeringDictionary = newValue}
@@ -486,13 +562,34 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useEngineeringDictionary`. Subsequent reads from it will return its default value.
   mutating func clearUseEngineeringDictionary() {_uniqueStorage()._useEngineeringDictionary = nil}
 
+  /// 誤字の訂正候補を変換候補に追加する
+  ///
+  /// - Note: 既定はOFF
+  var useTypoCorrection: Bool {
+    get {_storage._useTypoCorrection ?? false}
+    set {_uniqueStorage()._useTypoCorrection = newValue}
+  }
+  /// Returns true if `useTypoCorrection` has been explicitly set.
+  var hasUseTypoCorrection: Bool {_storage._useTypoCorrection != nil}
+  /// Clears the value of `useTypoCorrection`. Subsequent reads from it will return its default value.
+  mutating func clearUseTypoCorrection() {_uniqueStorage()._useTypoCorrection = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
+  /// ライブ変換 (入力中に変換結果を表示する機能) の動作
   nonisolated enum AutoConvertMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 未設定
     case unspecified // = 0
+
+    /// ライブ変換しない
     case autoConvertDisabled // = 1
+
+    /// 常にライブ変換する
     case autoConvertAlways // = 2
+
+    /// 読みが[auto_convert_min_chars]文字以上の場合だけライブ変換する (既定)
     case autoConvertForMultipleChars // = 3
     case UNRECOGNIZED(Int)
 
@@ -530,11 +627,20 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
+  /// 補助表示 (入力中のひらがなとカーソル位置) の表示方法
   nonisolated enum AuxTextMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 未設定 (カーソルが末尾にない場合だけ表示する扱い)
     case unspecified // = 0
+
+    /// 表示しない
     case auxTextDisabled // = 1
+
+    /// 常に表示する
     case auxTextShowAlways // = 2
+
+    /// カーソルが末尾にない場合だけ表示する (既定)
     case auxTextShowWhenCursorNotAtEnd // = 3
     case UNRECOGNIZED(Int)
 
@@ -572,11 +678,20 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
+  /// 入力中に表示する候補リスト (サジェスト) の内容
   nonisolated enum SuggestionListMode: SwiftProtobuf.Enum, Swift.CaseIterable {
     typealias RawValue = Int
+
+    /// 未設定
     case unspecified // = 0
+
+    /// 表示しない
     case suggestionListDisabled // = 1
+
+    /// 通常の変換結果を表示する
     case suggestionListShowNormalResults // = 2
+
+    /// 予測変換の結果を含めて表示する (既定)
     case suggestionListShowPredictiveResults // = 3
     case UNRECOGNIZED(Int)
 
@@ -614,11 +729,15 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
 
   }
 
+  /// 特殊な変換候補の有効 / 無効
+  ///
+  /// - Note: 既定では全て有効
   nonisolated struct SpecialConversionMode: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
+    /// 数字を3桁区切りにした候補 (1000 → 1,000)
     var commaSeparatedNumber: Bool {
       get {_commaSeparatedNumber ?? false}
       set {_commaSeparatedNumber = newValue}
@@ -628,6 +747,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `commaSeparatedNumber`. Subsequent reads from it will return its default value.
     mutating func clearCommaSeparatedNumber() {self._commaSeparatedNumber = nil}
 
+    /// メールアドレスのドメインの候補
     var mailDomain: Bool {
       get {_mailDomain ?? false}
       set {_mailDomain = newValue}
@@ -637,6 +757,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `mailDomain`. Subsequent reads from it will return its default value.
     mutating func clearMailDomain() {self._mailDomain = nil}
 
+    /// 和暦・西暦の変換候補
     var calendar: Bool {
       get {_calendar ?? false}
       set {_calendar = newValue}
@@ -646,6 +767,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `calendar`. Subsequent reads from it will return its default value.
     mutating func clearCalendar() {self._calendar = nil}
 
+    /// 時刻表記の候補
     var time: Bool {
       get {_time ?? false}
       set {_time = newValue}
@@ -655,6 +777,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `time`. Subsequent reads from it will return its default value.
     mutating func clearTime() {self._time = nil}
 
+    /// 英字の装飾文字の候補
     var romanTypography: Bool {
       get {_romanTypography ?? false}
       set {_romanTypography = newValue}
@@ -664,6 +787,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `romanTypography`. Subsequent reads from it will return its default value.
     mutating func clearRomanTypography() {self._romanTypography = nil}
 
+    /// Unicodeのコードポイント (U+XXXX) から文字への変換候補
     var unicodeCodepoint: Bool {
       get {_unicodeCodepoint ?? false}
       set {_unicodeCodepoint = newValue}
@@ -673,6 +797,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `unicodeCodepoint`. Subsequent reads from it will return its default value.
     mutating func clearUnicodeCodepoint() {self._unicodeCodepoint = nil}
 
+    /// Hazkeyのバージョン表記の候補
     var hazkeyVersion: Bool {
       get {_hazkeyVersion ?? false}
       set {_hazkeyVersion = newValue}
@@ -682,8 +807,11 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `hazkeyVersion`. Subsequent reads from it will return its default value.
     mutating func clearHazkeyVersion() {self._hazkeyVersion = nil}
 
-    /// 相対日付候補 (きょう -> 今日 + 2026年8月11日 + ...)
-    /// 有効時は、認識したトリガー語の漢字表記の後に整形した日付文字列を付加する
+    /// 相対日付候補を有効にする
+    ///
+    /// 有効時は、認識したトリガー語 (きょう、あした等) の漢字表記の後に、整形した日付文字列を候補として追加する
+    ///
+    /// - Note: 例えば、[きょう]を変換すると[今日]に続いて[2026年8月11日]等の候補が並ぶ
     var relativeDate: Bool {
       get {_relativeDate ?? false}
       set {_relativeDate = newValue}
@@ -693,6 +821,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `relativeDate`. Subsequent reads from it will return its default value.
     mutating func clearRelativeDate() {self._relativeDate = nil}
 
+    /// 半角カタカナの候補
     var halfwidthKatakana: Bool {
       get {_halfwidthKatakana ?? false}
       set {_halfwidthKatakana = newValue}
@@ -702,6 +831,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `halfwidthKatakana`. Subsequent reads from it will return its default value.
     mutating func clearHalfwidthKatakana() {self._halfwidthKatakana = nil}
 
+    /// Emoji 17の絵文字を通常の変換候補に加える (予測候補には加えない)
     var extendedEmoji: Bool {
       get {_extendedEmoji ?? false}
       set {_extendedEmoji = newValue}
@@ -727,11 +857,13 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _extendedEmoji: Bool? = nil
   }
 
+  /// プロファイルで有効にしたキーマップ
   nonisolated struct EnabledKeymap: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
+    /// 表示名
     var name: String {
       get {_name ?? String()}
       set {_name = newValue}
@@ -741,6 +873,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `name`. Subsequent reads from it will return its default value.
     mutating func clearName() {self._name = nil}
 
+    /// 組み込みのキーマップならtrue
     var isBuiltIn: Bool {
       get {_isBuiltIn ?? false}
       set {_isBuiltIn = newValue}
@@ -750,6 +883,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `isBuiltIn`. Subsequent reads from it will return its default value.
     mutating func clearIsBuiltIn() {self._isBuiltIn = nil}
 
+    /// ファイル名
     var filename: String {
       get {_filename ?? String()}
       set {_filename = newValue}
@@ -768,11 +902,13 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _filename: String? = nil
   }
 
+  /// プロファイルで有効にした入力テーブル
   nonisolated struct EnabledInputTable: Sendable {
     // SwiftProtobuf.Message conformance is added in an extension below. See the
     // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
     // methods supported on all messages.
 
+    /// 表示名
     var name: String {
       get {_name ?? String()}
       set {_name = newValue}
@@ -782,6 +918,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `name`. Subsequent reads from it will return its default value.
     mutating func clearName() {self._name = nil}
 
+    /// 組み込みの入力テーブルならtrue
     var isBuiltIn: Bool {
       get {_isBuiltIn ?? false}
       set {_isBuiltIn = newValue}
@@ -791,6 +928,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `isBuiltIn`. Subsequent reads from it will return its default value.
     mutating func clearIsBuiltIn() {self._isBuiltIn = nil}
 
+    /// ファイル名
     var filename: String {
       get {_filename ?? String()}
       set {_filename = newValue}
@@ -814,6 +952,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
+/// 現在の設定と、設定画面に必要な情報 (利用できるキーマップ・入力テーブル・デバイス等) を取得する
 nonisolated struct Hazkey_Config_GetConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -824,13 +963,18 @@ nonisolated struct Hazkey_Config_GetConfig: Sendable {
   init() {}
 }
 
+/// 設定を検証して保存し、サーバへ適用する
+///
+/// - Important: 保存の前に、未保存の学習データを旧プロファイルへ保存する (失敗した場合は設定を保存せずに中止する)
 nonisolated struct Hazkey_Config_SetConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 設定ファイルのハッシュ値 (現在は未使用)
   var fileHashes: [Hazkey_Config_FileHash] = []
 
+  /// 保存するプロファイル (先頭が現在のプロファイル)
   var profiles: [Hazkey_Config_Profile] = []
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -838,6 +982,7 @@ nonisolated struct Hazkey_Config_SetConfig: Sendable {
   init() {}
 }
 
+/// 既定のプロファイルを取得する (設定画面の[リセット]ボタンで使う)
 nonisolated struct Hazkey_Config_GetDefaultProfile: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -848,11 +993,13 @@ nonisolated struct Hazkey_Config_GetDefaultProfile: Sendable {
   init() {}
 }
 
+/// 現在のプロファイルの学習データを全て削除する
 nonisolated struct Hazkey_Config_ClearAllHistory: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 対象のプロファイルの識別子 (現在のサーバは現在のプロファイルを対象にする)
   var profileID: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -860,6 +1007,7 @@ nonisolated struct Hazkey_Config_ClearAllHistory: Sendable {
   init() {}
 }
 
+/// Zenzaiのモデルを読み込み直す (設定画面のモデル管理ダイアログで、モデルを切り替えた後に使う)
 nonisolated struct Hazkey_Config_ReloadZenzaiModel: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -870,29 +1018,41 @@ nonisolated struct Hazkey_Config_ReloadZenzaiModel: Sendable {
   init() {}
 }
 
+/// 現在の設定と、設定画面に必要な情報
 nonisolated struct Hazkey_Config_CurrentConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 設定ファイルのハッシュ値 (現在は常に空)
   var fileHashes: [Hazkey_Config_FileHash] = []
 
+  /// 保存されているプロファイル (先頭が現在のプロファイル)
   var profiles: [Hazkey_Config_Profile] = []
 
+  /// 利用できるキーマップ
   var availableKeymaps: [Hazkey_Config_Keymap] = []
 
+  /// 利用できる入力テーブル
   var availableTables: [Hazkey_Config_InputTable] = []
 
+  /// Zenzaiに使えるバックエンドデバイス
   var availableZenzaiBackendDevices: [Hazkey_Config_BackendDevice] = []
 
+  /// Zenzaiのモデルファイルが見つかった場合はtrue
   var zenzaiModelAvailable: Bool = false
 
+  /// 使用するモデルファイルのパス (見つからない場合は空)
   var zenzaiModelPath: String = String()
 
-  /// 隔離バックエンドプローブがクラッシュ・タイムアウト・エラー終了して、このセッションがCPU専用フォールバックで動作している場合はTrue
-  /// GPUアクセラレーションの無言の低下を防ぐため、GUIは"~/.config/hazkey/env"ファイルで単一ICDを固定する案内を表示する
+  /// GPUバックエンドの安全確認に失敗し、CPU専用で動作している場合はtrue
+  ///
+  /// 起動時に隔離した子プロセスでGPUバックエンド (Vulkan) の読み込みを試し、クラッシュ・タイムアウト・異常終了した場合に、このセッションはCPU専用のニューラル変換へフォールバックする
+  ///
+  /// - Note: GPUが使われないまま気付かれない事態を防ぐため、設定GUIは~/.config/hazkey-community/envファイルで単一のVulkan ICDを固定するよう案内を表示する
   var zenzaiGpuProbeFallback: Bool = false
 
+  /// サーバの設定ディレクトリ (通常は~/.config/hazkey-community)
   var xdgConfigHomePath: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -900,19 +1060,26 @@ nonisolated struct Hazkey_Config_CurrentConfig: Sendable {
   init() {}
 }
 
+/// 入力履歴 (学習データ) の一覧を、ページ単位で取得する (設定画面の入力履歴ダイアログで使う)
 nonisolated struct Hazkey_Config_GetLearningHistory: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 対象のプロファイルの識別子
   var profileID: String = String()
 
-  /// ページング前に読み・単語への部分一致を適用する
+  /// 読みまたは単語に部分一致する履歴だけに絞り込む検索文字列
+  ///
+  /// - Note: 絞り込みはページ分割 (offset / limit) より前に適用される
   var query: String = String()
 
+  /// 取得を始める位置 (先頭は0)
   var offset: UInt32 = 0
 
-  /// サーバ側で上限200にクランプされる
+  /// 1ページあたりの最大件数
+  ///
+  /// - Note: サーバ側で1〜200の範囲に丸められる
   var limit: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -920,17 +1087,22 @@ nonisolated struct Hazkey_Config_GetLearningHistory: Sendable {
   init() {}
 }
 
+/// 削除する入力履歴を指定するキー
 nonisolated struct Hazkey_Config_LearningEntryKey: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 読み
   var reading: String = String()
 
+  /// 表記
   var word: String = String()
 
+  /// 左側の品詞ID (現在の削除処理では使わず、読みと表記が同じ全ての品詞IDを削除する)
   var lcid: UInt32 = 0
 
+  /// 右側の品詞ID (同上)
   var rcid: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -938,13 +1110,18 @@ nonisolated struct Hazkey_Config_LearningEntryKey: Sendable {
   init() {}
 }
 
+/// 指定した入力履歴を削除する
+///
+/// - Note: 読みと表記が同じであれば、品詞IDだけが異なる学習エントリも全て削除する
 nonisolated struct Hazkey_Config_DeleteLearningEntries: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 対象のプロファイルの識別子
   var profileID: String = String()
 
+  /// 削除する入力履歴
   var entries: [Hazkey_Config_LearningEntryKey] = []
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -952,22 +1129,30 @@ nonisolated struct Hazkey_Config_DeleteLearningEntries: Sendable {
   init() {}
 }
 
+/// 入力履歴の1行
+///
+/// - Note: 読みと表記が同じで品詞IDだけが異なるエントリは1行にまとめられる (使用回数は合計、最終使用日は最新)
 nonisolated struct Hazkey_Config_LearningHistoryEntry: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 読み
   var reading: String = String()
 
+  /// 表記
   var word: String = String()
 
+  /// 左側の品詞ID (まとめた行では公開しない)
   var lcid: UInt32 = 0
 
+  /// 右側の品詞ID (まとめた行では公開しない)
   var rcid: UInt32 = 0
 
+  /// 使用回数
   var count: UInt32 = 0
 
-  /// Unixエポックタイムからの経過日数
+  /// 最後に使用した日 (Unixエポック (1970年1月1日) からの経過日数)
   var lastUsedUnixDay: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -975,13 +1160,16 @@ nonisolated struct Hazkey_Config_LearningHistoryEntry: Sendable {
   init() {}
 }
 
+/// GetLearningHistoryの結果
 nonisolated struct Hazkey_Config_GetLearningHistoryResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 指定したページの入力履歴
   var entries: [Hazkey_Config_LearningHistoryEntry] = []
 
+  /// 絞り込み後の全件数
   var totalCount: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -989,11 +1177,13 @@ nonisolated struct Hazkey_Config_GetLearningHistoryResult: Sendable {
   init() {}
 }
 
+/// DeleteLearningEntriesの結果
 nonisolated struct Hazkey_Config_DeleteLearningEntriesResult: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// 削除した学習エントリの数
   var deletedCount: UInt32 = 0
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1166,7 +1356,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1211,6 +1401,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _zenzaiToggleHotkey: String? = nil
     var _useAddressDictionary: Bool? = nil
     var _useEngineeringDictionary: Bool? = nil
+    var _useTypoCorrection: Bool? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1263,6 +1454,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _zenzaiToggleHotkey = source._zenzaiToggleHotkey
       _useAddressDictionary = source._useAddressDictionary
       _useEngineeringDictionary = source._useEngineeringDictionary
+      _useTypoCorrection = source._useTypoCorrection
     }
   }
 
@@ -1323,6 +1515,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 126: try { try decoder.decodeSingularStringField(value: &_storage._zenzaiToggleHotkey) }()
         case 127: try { try decoder.decodeSingularBoolField(value: &_storage._useAddressDictionary) }()
         case 128: try { try decoder.decodeSingularBoolField(value: &_storage._useEngineeringDictionary) }()
+        case 129: try { try decoder.decodeSingularBoolField(value: &_storage._useTypoCorrection) }()
         default: break
         }
       }
@@ -1461,6 +1654,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._useEngineeringDictionary {
         try visitor.visitSingularBoolField(value: v, fieldNumber: 128)
       } }()
+      try { if let v = _storage._useTypoCorrection {
+        try visitor.visitSingularBoolField(value: v, fieldNumber: 129)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1512,6 +1708,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._zenzaiToggleHotkey != rhs_storage._zenzaiToggleHotkey {return false}
         if _storage._useAddressDictionary != rhs_storage._useAddressDictionary {return false}
         if _storage._useEngineeringDictionary != rhs_storage._useEngineeringDictionary {return false}
+        if _storage._useTypoCorrection != rhs_storage._useTypoCorrection {return false}
         return true
       }
       if !storagesAreEqual {return false}

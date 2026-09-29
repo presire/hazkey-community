@@ -4,9 +4,11 @@
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/text.h>
+#include <fcitx-utils/i18n.h>
 #include <functional>
 #include <string>
 #include <vector>
+#include "candidate_annotation.h"
 #include "commands.pb.h"
 
 namespace fcitx {
@@ -27,14 +29,28 @@ class HazkeyCandidateWord : public CandidateWord {
     /// @param index 候補一覧内のグローバル位置
     /// @param data サーバから受け取った候補
     /// @param selectCandidate 選択位置を通知する関数
-    HazkeyCandidateWord(const int index, const hazkey::commands::CandidatesResult_Candidate data, std::function<void(int)> selectCandidate)
+    /// @param annotationAlignColumns 注記の位置を揃える表記の表示桁数 (一覧内の訂正候補の表記の最大桁数)
+    HazkeyCandidateWord(const int index, const hazkey::commands::CandidatesResult_Candidate data, std::function<void(int)> selectCandidate,
+                        int annotationAlignColumns = 0)
         : CandidateWord(Text(data.text())),
           index_(index),
           candidate_(std::move(data.text())),
           hiragana_(std::move(data.sub_hiragana())),
           hasLearningEntry_(data.has_learning_entry()),
+          isTypoCorrection_(data.is_typo_correction()),
           selectCandidate_(std::move(selectCandidate)) {
         setText(Text(data.text()));
+#ifdef HAZKEY_HAS_CANDIDATE_COMMENT
+        // 誤字の訂正候補には注記を付ける (確定・preeditには表記だけを使う)
+        // 表記との間隔は、一覧内の訂正候補で注記の位置が揃うように空白で埋めた後に全角空白2個で空け、翻訳文字列には含めない
+        // 注記の色は入力メソッドから指定できず、Fcitx 5のテーマ (CandidateCommentColor) に従う
+        // 注記「*[訂正]*」だけを斜体にする (classicui は斜体を描画し、Kimpanel 等は書式を捨てて文字列のみ表示する)
+        if (isTypoCorrection_) {
+            Text comment(hazkey::frontend::annotationGap(data.text(), annotationAlignColumns));
+            comment.append(_("*[訂正]*"), TextFormatFlag::Italic);
+            setComment(std::move(comment));
+        }
+#endif
     }
 
     /// ポインティングデバイスで候補が選択された時に呼び出される
@@ -44,6 +60,8 @@ class HazkeyCandidateWord : public CandidateWord {
     std::vector<std::string> getPreedit() const;
     /// 学習データを持つ候補かを返す
     bool hasLearningEntry() const { return hasLearningEntry_; }
+    /// 誤字の訂正候補かを返す
+    bool isTypoCorrection() const { return isTypoCorrection_; }
 
     // int correspondingCount() const { return corresponding_count_; }
 
@@ -52,6 +70,7 @@ class HazkeyCandidateWord : public CandidateWord {
     const std::string candidate_;                               ///< 候補の表記
     const std::string hiragana_;                                ///< 候補に対応するひらがな
     const bool hasLearningEntry_;                               ///< 学習データの有無
+    const bool isTypoCorrection_;                               ///< 誤字の訂正候補か
     const std::function<void(int)> selectCandidate_;            ///< 選択位置の通知先
     // const int corresponding_count_;
     // const std::vector<std::string> parts_;

@@ -698,6 +698,53 @@ void testForwardedKeyPairing() {
     std::cout << "[PASS] forwarded key press/release pairing\n";
 }
 
+/**
+ * @brief 候補テーブルの表示文字列と注記範囲を検証する
+ *
+ * 訂正候補だけが「表記 + 全角空白2個 + 注記」になり、注記の文字範囲 (UTF-8文字数) が注記部分を指す
+ *
+ * @internal 匿名名前空間内の実装専用テスト
+ */
+void testLookupDisplayText() {
+    using hazkey::ibus::lookupDisplayText;
+
+    // 通常候補は表記のままで注記なし
+    const auto ordinary = lookupDisplayText("しっっぱいした", false, "*[訂正]*");
+    assert(ordinary.text == "しっっぱいした");
+    assert(ordinary.annotationStart == ordinary.annotationEnd);
+
+    // 訂正候補は全角空白2個と注記を連結し、注記範囲は文字数で数える ("失敗した" 4文字 + 空白2文字 = 6)
+    const auto corrected = lookupDisplayText("失敗した", true, "*[訂正]*");
+    assert(corrected.text == "失敗した\u3000\u3000*[訂正]*");
+    assert(corrected.annotationStart == 6);
+    assert(corrected.annotationEnd == 12);
+
+    // ASCIIと多バイト文字の混在でも文字数で数える
+    const auto mixed = lookupDisplayText("Aあ", true, "*[Correction]*");
+    assert(mixed.text == "Aあ\u3000\u3000*[Correction]*");
+    assert(mixed.annotationStart == 4);
+    assert(mixed.annotationEnd == 18);
+
+    // 注記が空なら訂正候補でも表記のまま
+    const auto emptyAnnotation = lookupDisplayText("失敗した", true, "");
+    assert(emptyAnnotation.text == "失敗した");
+    assert(emptyAnnotation.annotationStart == emptyAnnotation.annotationEnd);
+
+    // 一覧内の最長の訂正候補 (8桁) に揃える: 「1回」(3桁) は全角空白2個 + EN SPACE で埋めてから間隔を空ける
+    const auto aligned = lookupDisplayText("1回", true, "*[訂正]*", 8);
+    assert(aligned.text == "1回\u3000\u3000\u2002\u3000\u3000*[訂正]*");
+    assert(aligned.annotationStart == 7);
+    assert(aligned.annotationEnd == 13);
+
+    // 最長の訂正候補自身と、揃える桁数より長い表記は全角空白2個のみ
+    assert(lookupDisplayText("間違える", true, "*[訂正]*", 8).text ==
+           "間違える\u3000\u3000*[訂正]*");
+    assert(lookupDisplayText("みちがえる", true, "*[訂正]*", 8).text ==
+           "みちがえる\u3000\u3000*[訂正]*");
+
+    std::cout << "[PASS] lookup display text and typo correction annotation range\n";
+}
+
 }  // namespace
 
 /**
@@ -727,6 +774,7 @@ int main() {
     testHomeEndConsumeDecision();
     testPauseModeRulesAreShared();
     testForwardedKeyPairing();
+    testLookupDisplayText();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

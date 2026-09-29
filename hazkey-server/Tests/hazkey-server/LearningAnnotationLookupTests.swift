@@ -8,6 +8,14 @@ import XCTest
 
 /// 「削除可能」候補注釈 (GitHub Issue #1) を支える読みキー単位のポイント照会と、同時に修正した隣接する学習メモリの正しさに関する2件のバグ
 final class LearningAnnotationLookupTests: XCTestCase {
+    /// 一時ディレクトリをXDGの設定・状態ディレクトリとして差し替えてテスト本体を実行する
+    ///
+    /// [XDG_CONFIG_HOME] と [XDG_STATE_HOME] を一時領域へ向ける
+    /// 実行後は元の値を復元し、一時ディレクトリを削除する
+    ///
+    /// - Parameter body: 一時ルートURLを受け取り、テスト本体を実行するクロージャ
+    /// - Returns: bodyが返した値
+    /// - Throws: ディレクトリ作成やbodyが投げたエラー
     private func withTemporaryXDG<T>(_ body: (URL) throws -> T) throws -> T {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "hazkey-annotation-lookup-tests-\(UUID().uuidString)", isDirectory: true)
@@ -35,6 +43,13 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return try body(root)
     }
 
+    /// リクエストをサーバのプロトコル処理へ通し、応答エンベロープを返す
+    ///
+    /// - Parameters:
+    ///   - request: 送信するリクエストエンベロープ
+    ///   - state: 処理を実行する接続セッション
+    /// - Returns: サーバが返した応答エンベロープ
+    /// - Throws: リクエストまたは応答のシリアライズに失敗した場合のエラー
     private func send(
         _ request: Hazkey_RequestEnvelope,
         to state: HazkeyServerState
@@ -43,6 +58,13 @@ final class LearningAnnotationLookupTests: XCTestCase {
             serializedBytes: ProtocolHandler(state: state).processProto(data: request.serializedData()))
     }
 
+    /// 学習メモリへ学習エントリを登録して永続化する
+    ///
+    /// 各要素を学習データとして取り込み、組成を停止してからコミットする
+    ///
+    /// - Parameters:
+    ///   - elements: 登録する学習エントリ
+    ///   - state: 学習メモリを共有する接続セッション
     private func seed(_ elements: [DicdataElement], in state: HazkeyServerState) {
         for element in elements {
             state.converter.updateLearningData(
@@ -58,6 +80,16 @@ final class LearningAnnotationLookupTests: XCTestCase {
     }
 
     @discardableResult
+    /// 指定した読みを1文字ずつ入力して候補取得を実行し、候補結果を返す
+    ///
+    /// 組成テキストを作り直してから、[getCandidates] を送信する
+    ///
+    /// - Parameters:
+    ///   - hiragana: 入力するひらがな読み
+    ///   - state: 入力と候補取得を行う接続セッション
+    ///   - isSuggest: サジェストとして取得する場合はtrue、通常変換の場合はfalse
+    /// - Returns: サーバが返した候補結果
+    /// - Throws: 送信や応答の解析に失敗した場合のエラー
     private func candidates(
         for hiragana: String,
         in state: HazkeyServerState,
@@ -76,10 +108,22 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return response.candidates
     }
 
+    /// 候補結果から指定した表記の候補を探し、削除可能の注釈の有無を返す
+    ///
+    /// - Parameters:
+    ///   - word: 探す候補の表記
+    ///   - result: 候補結果
+    /// - Returns: 該当候補の注釈 (見つからない場合はnil)
     private func annotated(_ word: String, in result: Hazkey_Commands_CandidatesResult) -> Bool? {
         result.candidates.first { $0.text == word }?.hasLearningEntry_p
     }
 
+    /// 履歴をプロファイル独立にするテスト用プロファイルを作る
+    ///
+    /// [useProfileIndependentHistory] を有効にし、名前とIDに指定値を使う
+    ///
+    /// - Parameter id: プロファイルの名前とID
+    /// - Returns: 既定設定を基にしたプロファイル
     private func profile(id: String) -> Hazkey_Config_Profile {
         var profile = HazkeyServerConfig.genDefaultConfig()
         profile.profileName = id
@@ -88,6 +132,14 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return profile
     }
 
+    /// 指定した順序のプロファイル一覧で設定を切り替える
+    ///
+    /// 一覧の先頭が現在のプロファイルになる
+    ///
+    /// - Parameters:
+    ///   - profiles: 適用するプロファイル一覧
+    ///   - state: 設定を適用する接続セッション
+    /// - Throws: 送信や応答の解析に失敗した場合のエラー
     private func switchProfiles(
         _ profiles: [Hazkey_Config_Profile],
         in state: HazkeyServerState
@@ -98,6 +150,11 @@ final class LearningAnnotationLookupTests: XCTestCase {
         XCTAssertEqual(response.status, .success)
     }
 
+    /// 学習履歴の総件数を取得する
+    ///
+    /// - Parameter state: 履歴を照会する接続セッション
+    /// - Returns: 学習履歴の総件数
+    /// - Throws: 送信や応答の解析に失敗した場合のエラー
     private func historyCount(in state: HazkeyServerState) throws -> UInt32 {
         let response = try send(
             .with {
@@ -128,6 +185,16 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return state
     }
 
+    /// 変換エンジン由来の候補だけが注釈の対象で、注入候補は未注釈であることを検証する
+    ///
+    /// wireの候補とサーバ側の候補リストが同数・同順であり、注入候補の表記が一致して注釈を持たないことを確認する
+    ///
+    /// - Parameters:
+    ///   - result: クライアントへ返した候補結果
+    ///   - state: サーバ側の候補リストを持つ接続セッション
+    ///   - file: 失敗を報告するソースファイル
+    ///   - line: 失敗を報告する行
+    /// - Throws: サーバ側の候補リストが取得できない場合のエラー
     private func assertOnlyConverterCandidatesAreAnnotated(
         _ result: Hazkey_Commands_CandidatesResult,
         in state: HazkeyServerState,
@@ -140,6 +207,8 @@ final class LearningAnnotationLookupTests: XCTestCase {
             let wire = result.candidates[index]
             switch entry {
             case .fromConverter(let candidate):
+                XCTAssertEqual(wire.text, candidate.text, file: file, line: line)
+            case .fromTypoCorrection(let candidate, _, _):
                 XCTAssertEqual(wire.text, candidate.text, file: file, line: line)
             case .fromUserDict(let word):
                 XCTAssertEqual(wire.text, word, file: file, line: line)
@@ -157,6 +226,12 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
+    /// サーバ側の候補リストから、述語に一致する候補の件数を数える
+    ///
+    /// - Parameters:
+    ///   - state: 候補リストを持つ接続セッション
+    ///   - predicate: 数える対象を判定する述語
+    /// - Returns: 述語に一致した候補の件数
     private func injectionCount(
         in state: HazkeyServerState,
         matching predicate: (DisplayedCandidate) -> Bool
@@ -272,6 +347,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
+    /// かな数字の注入が注釈の整列を崩さないことを検証する
+    ///
+    /// 漢数字由来の候補が注入されても、変換エンジン由来の候補は注釈の位置を保つ
     func testKanaNumberInjectionDoesNotDisturbAnnotationAlignment() throws {
         try withTemporaryXDG { root in
             let fixture = try writeEmojiFixture(
@@ -319,6 +397,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
+    /// 学習していない読みの候補には注釈が付かないことを検証する
+    ///
+    /// 履歴が空の状態で取得した候補は、いずれも未注釈である
     func testUnlearnedReadingIsNeverAnnotated() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -366,6 +447,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
+    /// 共有リソースを使う複数セッションが同じ注釈を観測することを検証する
+    ///
+    /// 一方のセッションで学習したエントリは、他方のセッションの候補にも同じように注釈される
     func testConcurrentSessionsObserveConsistentAnnotations() throws {
         try withTemporaryXDG { _ in
             let shared = HazkeySharedResources()
@@ -411,6 +495,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - バグB: 履歴を消去した後に復活するものがあってはならない
 
+    /// プロファイル独立履歴を消去した後に候補が復活しないことを検証する
+    ///
+    /// 確定で作った未永続化の学習は消去でdirtyフラグごと落ち、保存後も履歴と注釈が残らない
     func testClearProfileIndependentHistoryLeavesNothingToResurrect() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -433,6 +520,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
 
     // MARK: - バグC: 保留中の学習がプロファイル切替をまたいで漏れてはならない
 
+    /// 保留中の学習が別プロファイルのディレクトリへ漏れないことを検証する
+    ///
+    /// 切替をまたいだ未永続化の学習は切替先へ持ち越されず、切替元へ戻すと再び観測できる
     func testPendingLearningDoesNotLeakIntoNewProfileDirectory() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()

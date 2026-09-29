@@ -17,6 +17,44 @@
 namespace hazkey::ibus {
 
 /**
+ * @brief 候補テーブルへ渡す1件の候補
+ *
+ * 確定・preeditには表記 (text) だけを使い、注記は表示にだけ付ける
+ */
+struct LookupCandidate {
+    std::string text;               ///< 候補の表記
+    bool isTypoCorrection = false;  ///< 誤字の訂正候補なら、true
+};
+
+/**
+ * @brief 候補テーブルに表示する文字列と注記の文字範囲
+ *
+ * annotationStart == annotationEnd のときは注記なしである
+ */
+struct LookupDisplayText {
+    std::string text;           ///< 表示文字列 (表記、訂正候補は位置揃えの空白・全角空白2個・注記を連結)
+    glong annotationStart = 0;  ///< 注記の開始位置 (UTF-8文字数)
+    glong annotationEnd = 0;    ///< 注記の終了位置 (UTF-8文字数、排他的)
+};
+
+/**
+ * @brief 候補テーブルの表示文字列を組み立てる
+ *
+ * 訂正候補は「表記 + 位置揃えの空白 + 全角空白2個 + 注記」とし、注記部分の文字範囲を返す
+ * 通常候補、または注記が空の場合は表記をそのまま返す
+ *
+ * @param text 候補の表記
+ * @param isTypoCorrection 誤字の訂正候補なら、true
+ * @param annotation 注記 (翻訳済みの「*[訂正]*」)
+ * @param annotationAlignColumns 注記の位置を揃える表記の表示桁数 (一覧内の訂正候補の表記の最大桁数)
+ * @return 表示文字列と注記の文字範囲
+ */
+LookupDisplayText lookupDisplayText(const std::string& text,
+                                    bool isTypoCorrection,
+                                    const std::string& annotation,
+                                    int annotationAlignColumns = 0);
+
+/**
  * @class HazkeyUi
  * @brief 1つのIBus入力コンテキストに対するメインループ専用の描画エンドポイント
  *
@@ -91,12 +129,14 @@ class HazkeyUi {
      *
      * 後のクリックをこのスナップショットと突き合わせて解決するために世代番号で印を付ける
      *
-     * @param candidates 表示する候補文字列の一覧
+     * 訂正候補には灰色 (IBUS_ATTR_TYPE_FOREGROUND) の注記「*[訂正]*」を付ける (IBusには斜体の属性が無いため色のみ)
+     *
+     * @param candidates 表示する候補 (表記と訂正フラグ) の一覧
      * @param pageSize 1ページ当たりの表示件数
      * @param cursorIndex フォーカス中の候補の全体番号 (-1は未フォーカス)
      * @param generation この描画に付ける世代番号
      */
-    void updateLookupTable(const std::vector<std::string>& candidates,
+    void updateLookupTable(const std::vector<LookupCandidate>& candidates,
                            int pageSize, int cursorIndex, int generation);
     /**
      * @brief 候補テーブルを隠す

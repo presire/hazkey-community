@@ -20,6 +20,9 @@ msgstr ""
 msgid "削除可"
 msgstr ""
 
+msgid "*[訂正]*"
+msgstr ""
+
 msgid "[Press Tab to Select]"
 msgstr ""
 

@@ -36,6 +36,11 @@ msgstr ""
 msgid "Deletable"
 msgstr ""
 
+# Candidate window annotation for a typo correction candidate (shown in gray after the candidate text).
+# Keep the asterisks and the square brackets.
+msgid "*[Correction]*"
+msgstr ""
+
 msgid "あ"
 msgstr ""
 

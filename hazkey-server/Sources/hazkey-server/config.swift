@@ -445,6 +445,7 @@ class HazkeyServerConfig {
         newConf.useInputHistory = true
         newConf.useAddressDictionary = false
         newConf.useEngineeringDictionary = false
+        newConf.useTypoCorrection = false
         newConf.specialConversionMode = Hazkey_Config_Profile.SpecialConversionMode.with {
             $0.commaSeparatedNumber = true
             $0.mailDomain = true
@@ -724,6 +725,9 @@ class HazkeyServerConfig {
         }
         if !normalized.hasUseEngineeringDictionary {
             normalized.useEngineeringDictionary = defaults.useEngineeringDictionary
+        }
+        if !normalized.hasUseTypoCorrection {
+            normalized.useTypoCorrection = defaults.useTypoCorrection
         }
 
         try validateEnums(normalized)
@@ -1218,6 +1222,10 @@ extension Hazkey_Config_Profile {
     /// 旧設定または項目欠落時は既定の無効として扱う
     var useEngineeringDictionaryEffective: Bool {
         hasUseEngineeringDictionary ? useEngineeringDictionary : false
+    }
+
+    var useTypoCorrectionEffective: Bool {
+        hasUseTypoCorrection ? useTypoCorrection : false
     }
 }
 

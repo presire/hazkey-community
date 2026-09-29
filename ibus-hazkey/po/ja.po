@@ -26,6 +26,9 @@ msgstr "[直接入力]"
 msgid "Deletable"
 msgstr "削除可"
 
+msgid "*[Correction]*"
+msgstr "*[訂正]*"
+
 msgid "あ"
 msgstr "あ"
 
