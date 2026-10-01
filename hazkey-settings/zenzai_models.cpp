@@ -11,12 +11,14 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 
 namespace {
-// NOTE: 以下はGUIスレッド専用を前提とした単一スレッドキャッシュである
+// NOTE:
+// 以下はGUIスレッド専用を前提とした単一スレッドキャッシュである
 // スナップショット取得 (downloadedModelKeys/isModelDownloaded/calculateSHA256) と
-// 管理対象ファイルへの書き込み (ダウンロード完了・移行・削除) は全てGUIスレッドで走るため、
-// ロックは不要 他スレッドから呼ぶ場合は別途同期を導入すること
+// 管理対象ファイルへの書き込み (ダウンロード完了・移行・削除) は全てGUIスレッドで走るため、ロックは不要
+// 他スレッドから呼ぶ場合は別途同期を導入すること
 struct Sha256CacheEntry {
     qint64 size = -1;
     QDateTime lastModified;
@@ -99,13 +101,10 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
     /**
      * @brief アプリケーションが提供する固定モデル系列カタログ
      *
-     * @details 各エントリのURL、SHA256、表示サイズ、推奨フラグ、旧世代フラグ、期待バイト数は
-     *          アプリケーションデータ契約の一部であり、実行時には変更されない
-     *          先頭3件は単一バリアントのzenz系列 (推奨の現行small、小容量のxsmall、旧世代small) であり、
-     *          末尾2件はjinen-v2 small/xsmall系列 (各4量子化バリアント) である
+     * @details 各エントリのURL、SHA256、表示サイズ、推奨フラグ、旧世代フラグ、期待バイト数はアプリケーションデータ契約の一部であり、実行時には変更されない
+     *          先頭3件は単一バリアントのzenz系列 (推奨の現行small、小容量のxsmall、旧世代small) であり、末尾2件はjinen-v2 small/xsmall系列 (各4量子化バリアント) である
      *          zenz系列のexpectedBytesは0 (未知) で従来の動作を保つ
-     *          zenz系列の帰属フィールド (author/sourceUrl/licenseName/licenseUrl) は空のままで、
-     *          帰属を要求するjinen系列のみtogatogahとCC-BY-SA-4.0の情報を保持する
+     *          zenz系列の帰属フィールド (author/sourceUrl/licenseName/licenseUrl) は空のままで、帰属を要求するjinen系列のみtogatogahとCC-BY-SA-4.0の情報を保持する
      */
     static const QVector<ZenzaiModelFamily> families = {
         /** @brief 推奨される現行small系列 (単一バリアント、約74[MB]) */
@@ -131,6 +130,12 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
                     false,
                 },
             },
+            QString(), // 作成者 (帰属表示なしのため空)
+            QString(), // 配布元URL (帰属表示なしのため空)
+            QString(), // ライセンス名 (帰属表示なしのため空)
+            QString(), // ライセンスURL (帰属表示なしのため空)
+            true,      // 条件付け対応
+            true,      // 右文脈対応
         },
         /** @brief 小容量でCPU上の高速動作を意図したxsmall系列 (単一バリアント、約21[MB]) */
         {
@@ -155,6 +160,12 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
                     false,
                 },
             },
+            QString(), // 作成者 (帰属表示なしのため空)
+            QString(), // 配布元URL (帰属表示なしのため空)
+            QString(), // ライセンス名 (帰属表示なしのため空)
+            QString(), // ライセンスURL (帰属表示なしのため空)
+            true,      // 条件付け対応
+            true,      // 右文脈対応
         },
         /** @brief 旧世代との互換性を担うsmall系列 (単一バリアント、約74[MB]) */
         {
@@ -346,8 +357,7 @@ const QVector<ZenzaiModelOption>& availableZenzaiModels() {
     /**
      * @brief 系列カタログを平坦化したアーティファクト一覧
      *
-     * @details availableZenzaiModelFamilies()の各系列のvariantsを順に連結したもので、
-     *          従来の呼び出し側 (mainwindow.cpp等) との互換性を保つ
+     * @details availableZenzaiModelFamilies()の各系列のvariantsを順に連結したもので、従来の呼び出し側 (mainwindow.cpp等) との互換性を保つ
      *          先頭3件はzenz単一バリアントで従来と同一の順序・値である
      */
     static const QVector<ZenzaiModelOption> options = []() {
@@ -393,8 +403,38 @@ bool zenzaiModelSupportsConditioning(const QString& modelKey) {
     if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKey)) {
         return family->supportsConditioning;
     }
-    // カタログ外 (カスタム重み等) はファイル名で推定し、不明な場合は有効側に倒す
+    // カタログ外 (カスタム重み等) はファイル名で推定して、不明な場合は有効側に倒す
     return !isJinenModelPath(modelKey);
+}
+
+bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath) {
+    if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKeyOrPath)) {
+        return family->supportsRightContext;
+    }
+    // カタログ外 (カスタム重み等) はファイル名で世代を推定する
+    if (isJinenModelPath(modelKeyOrPath)) {
+        return false;
+    }
+
+    QString fileName = QFileInfo(modelKeyOrPath).fileName();
+    if (fileName.isEmpty()) {
+        fileName = modelKeyOrPath;
+    }
+    fileName = fileName.toLower();
+    if (fileName.endsWith(QStringLiteral(".gguf"))) {
+        fileName.chop(QStringLiteral(".gguf").size());
+    }
+
+    static const QRegularExpression versionPattern(
+        QStringLiteral("zenz-v(\\d+)(?:\\.(\\d+))?"));
+    const QRegularExpressionMatch match = versionPattern.match(fileName);
+    if (!match.hasMatch()) {
+        // 名前から世代を判別できないモデルは対応側に倒す
+        return true;
+    }
+    const int major = match.captured(1).toInt();
+    const int minor = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
+    return major > 3 || (major == 3 && minor >= 2);
 }
 
 QString ZenzaiModelManager::getZenzaiDir() {
@@ -461,13 +501,13 @@ bool ZenzaiModelManager::activateModel(const QString& key) {
 
     QString link = getSymlinkPath();
     QFileInfo info(link);
-    // Use isSymLink() to handle dangling symlinks.
+    // 存在しないリンク先を指す切れたシンボリックリンクも扱うため、isSymLink()で判定する
     if (info.isSymLink()) {
         if (!QFile::remove(link)) {
             return false;
         }
     } else if (info.exists()) {
-        // Never replace a regular legacy/custom file implicitly.
+        // 旧形式やカスタムの通常ファイルを暗黙に置き換えない
         return false;
     }
 
@@ -478,12 +518,12 @@ bool ZenzaiModelManager::activateModel(const QString& key) {
 bool ZenzaiModelManager::deactivateModel() {
     QString link = getSymlinkPath();
     QFileInfo info(link);
-    // Use isSymLink() to handle dangling symlinks.
+    // 存在しないリンク先を指す切れたシンボリックリンクも扱うため、isSymLink()で判定する
     if (info.isSymLink()) {
         return QFile::remove(link);
     }
-    // If it's a regular file, we don't deactivate it here to avoid accidental deletion
-    // of custom models. deactivateModel is intended for managed symlinks.
+    // 通常ファイルの場合はカスタムモデルの誤削除を避けるため手を付けない
+    // deactivateModelは管理対象シンボリックリンク専用である
     return !info.exists();
 }
 
@@ -494,7 +534,7 @@ bool ZenzaiModelManager::deleteModel(const QString& key) {
         return false;
     }
 
-    // If this model is active, remove the symlink first
+    // 有効化中のモデルなら先にシンボリックリンクを外す
     if (getActiveModelKey() == key) {
         deactivateModel();
     }
@@ -518,18 +558,19 @@ void ZenzaiModelManager::migrateLegacyModel(
         return;
     }
 
-    // It's a regular file. Check if it matches any known model.
+    // 通常ファイルの場合のみ対象とし、カタログ内の既知モデルと照合する
     QString sha = calculateSHA256(legacyPath);
     if (sha.isEmpty()) return;
 
     for (const auto& m : models) {
         if (m.sha256.compare(sha, Qt::CaseInsensitive) == 0) {
-            // Match found! Move it to models/ and symlink it.
+            // 一致あり
+            // models/へ移動してシンボリックリンク化する
             QDir().mkpath(getModelsDir());
             QString newPath = getModelPath(m.key);
             if (QFile::exists(newPath)) {
-                // Duplicate found in models/. 
-                // ONLY remove the legacy file if the existing managed file's SHA256 also matches.
+                // models/側に同名ファイルあり
+                // 移動先のSHA256も一致する場合のみ旧ファイルを削除する
                 QString existingSha = calculateSHA256(newPath);
                 if (existingSha.compare(m.sha256, Qt::CaseInsensitive) == 0) {
                     if (QFile::remove(legacyPath)) {
@@ -537,14 +578,14 @@ void ZenzaiModelManager::migrateLegacyModel(
                         activateModel(m.key);
                     }
                 } else {
-                    // Corrupt/mismatched existing managed file.
-                    // Leave legacy zenzai.gguf intact and return.
+                    // 移動先の管理対象ファイルが破損・不一致の場合
+                    // 旧形式のzenzai.ggufは残したまま何もせず戻る
                     return;
                 }
             } else {
                 if (QFile::rename(legacyPath, newPath)) {
                     invalidateCachedSHA256(legacyPath);
-                    // 移動後の実測statと既知のshaでキャッシュを更新し、直後の再ハッシュを避ける
+                    // 移動後の実測statと既知のSHAでキャッシュを更新して、直後の再ハッシュを避ける
                     const QFileInfo movedInfo(newPath);
                     if (movedInfo.exists() && movedInfo.isFile()) {
                         Sha256CacheEntry entry;
@@ -559,7 +600,8 @@ void ZenzaiModelManager::migrateLegacyModel(
             return;
         }
     }
-    // If no match, we leave it alone as per "unknown custom files are never deleted or overwritten without an explicit GUI confirmation"
+    // 一致なしの場合は手を付けない
+    // (不明なカスタムファイルはGUIでの明示的な確認なく削除・上書きしない方針のため)
 }
 
 QString ZenzaiModelManager::getActiveModelKey() {

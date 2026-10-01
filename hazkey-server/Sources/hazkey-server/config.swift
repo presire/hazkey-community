@@ -446,6 +446,7 @@ class HazkeyServerConfig {
         newConf.useAddressDictionary = false
         newConf.useEngineeringDictionary = false
         newConf.useTypoCorrection = false
+        newConf.zenzaiRightContext = false
         newConf.specialConversionMode = Hazkey_Config_Profile.SpecialConversionMode.with {
             $0.commaSeparatedNumber = true
             $0.mailDomain = true
@@ -729,6 +730,9 @@ class HazkeyServerConfig {
         if !normalized.hasUseTypoCorrection {
             normalized.useTypoCorrection = defaults.useTypoCorrection
         }
+        if !normalized.hasZenzaiRightContext {
+            normalized.zenzaiRightContext = defaults.zenzaiRightContext
+        }
 
         try validateEnums(normalized)
         try validateRange(normalized.numSuggestions, field: "numSuggestions", range: 1...10)
@@ -942,6 +946,37 @@ class HazkeyServerConfig {
             for: currentProfile, discoveredModelPath: getZenzaiModelPath())
     }
 
+    /// バージョン依存のZenzai v3モードを生成する純関数
+    ///
+    /// profile / topic / style / preferenceとleftSideContextの導出は、genZenzaiModeの従来式と同一
+    /// 右文脈フラグが無効のときは従来式と等しい値を返す
+    ///
+    /// - Parameters:
+    ///   - profile: 有効なプロファイル
+    ///   - leftContext: カーソル左側の文脈文字列
+    ///   - rightContext: カーソル右側の文脈文字列 (接続単位の保持値)
+    ///   - modelURL: 実体へ解決済みのモデルパス (nilは非対応扱い)
+    /// - Returns: 変換要求に渡すv3モードを返す
+    static func makeZenzaiV3DependentMode(
+        profile: Hazkey_Config_Profile,
+        leftContext: String,
+        rightContext: String,
+        modelURL: URL?
+    ) -> ConvertRequestOptions.ZenzaiV3DependentMode {
+        let supported = ZenzaiModelCapabilities.supportsRightContext(modelURL: modelURL)
+        let rightSideContext: String? =
+            (profile.zenzaiRightContextEffective && profile.zenzaiContextualMode && supported
+                && !rightContext.isEmpty) ? rightContext : nil
+        return ConvertRequestOptions.ZenzaiV3DependentMode(
+            profile: profile.zenzaiProfile,
+            topic: profile.zenzaiTopic,
+            style: profile.zenzaiStyle,
+            preference: profile.zenzaiPreference,
+            leftSideContext: profile.zenzaiContextualMode ? leftContext : nil,
+            rightSideContext: rightSideContext
+        )
+    }
+
     /// 変換要求用のニューラル変換モードを生成する
     ///
     /// 無効時や利用不可時は無効モードを返して、有効時は重みと推論上限と文脈付き条件を束ねる
@@ -952,10 +987,12 @@ class HazkeyServerConfig {
     ///
     /// - Parameters:
     ///   - leftContext: カーソル左側の文脈文字列
+    ///   - rightContext: カーソル右側の文脈文字列 (省略時は送らない)
     ///   - requestRichCandidates: リッチ候補要求の上書き (省略時は現設定を使用する)
     /// - Returns: 変換要求に渡すニューラル変換モードを返す
     func genZenzaiMode(
         leftContext: String,
+        rightContext: String = "",
         requestRichCandidates: Bool? = nil
     )
         -> ConvertRequestOptions.ZenzaiMode
@@ -980,13 +1017,11 @@ class HazkeyServerConfig {
                 requestRichCandidates: requestRichCandidates ?? currentProfile.useRichCandidates,
                 personalizationMode: nil,
                 versionDependentMode: .v3(
-                    ConvertRequestOptions.ZenzaiV3DependentMode.init(
-                        profile: currentProfile.zenzaiProfile,
-                        topic: currentProfile.zenzaiTopic,
-                        style: currentProfile.zenzaiStyle,
-                        preference: currentProfile.zenzaiPreference,
-                        leftSideContext: currentProfile.zenzaiContextualMode
-                            ? leftContext : nil
+                    Self.makeZenzaiV3DependentMode(
+                        profile: currentProfile,
+                        leftContext: leftContext,
+                        rightContext: rightContext,
+                        modelURL: zenzaiModelPath.resolvingSymlinksInPath()
                     )),
                 deviceConfig: createDeviceConfig(deviceName: deviceName)
             )
@@ -1226,6 +1261,10 @@ extension Hazkey_Config_Profile {
 
     var useTypoCorrectionEffective: Bool {
         hasUseTypoCorrection ? useTypoCorrection : false
+    }
+
+    var zenzaiRightContextEffective: Bool {
+        hasZenzaiRightContext ? zenzaiRightContext : false
     }
 }
 

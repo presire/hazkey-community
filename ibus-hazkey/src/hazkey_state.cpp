@@ -11,6 +11,7 @@
 #include "composing_cursor_view.h"
 #include "hazkey_frontend_hooks.h"
 #include "live_convert_mode.h"
+#include "surrounding_text_snapshot.h"
 
 // サポートするIBusの下限は、1.5.32 (Debian 13 Trixie / Fedora 44 / openSUSE Leap 16は、1.5.33 / 1.5.34を搭載)
 // パネルがpreedit選択範囲を独自スタイルで描画できるIBUS_ATTR_TYPE_HINTマクロは1.5.33以降にしか存在しないため、使用可能な場合にのみ適用する
@@ -1659,9 +1660,10 @@ void HazkeyState::updateLiveConvertProperty() {
 void HazkeyState::updateSurroundingText(const std::string& append) {
     if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
         hasSurroundingText_) {
-        const glong n = g_utf8_strlen(append.c_str(), -1);
-        server_.setContext(surroundingText_ + append,
-                           static_cast<int>(surroundingAnchor_ + n));
+        const auto snapshot = hazkey::frontend::buildSurroundingSnapshot(
+            surroundingText_, static_cast<int>(surroundingCursor_),
+            static_cast<int>(surroundingAnchor_), append);
+        server_.setContext(snapshot.text, snapshot.anchor);
     } else {
         server_.setContext("", 0);
     }
@@ -1669,6 +1671,7 @@ void HazkeyState::updateSurroundingText(const std::string& append) {
 
 void HazkeyState::clearSurroundingText() {
     surroundingText_.clear();
+    surroundingCursor_ = 0;
     surroundingAnchor_ = 0;
     hasSurroundingText_ = false;
 }
@@ -1759,13 +1762,13 @@ void HazkeyState::setCursorLocation(gint x, gint y, gint w, gint h) {
 
 void HazkeyState::setSurroundingText(const std::string& text, guint cursorIndex,
                                      guint anchorPos) {
-    (void)cursorIndex;
     if (!capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
         clearSurroundingText();
         return;
     }
     surroundingText_ = text;
     const glong textLength = g_utf8_strlen(surroundingText_.c_str(), -1);
+    surroundingCursor_ = std::min(cursorIndex, static_cast<guint>(textLength));
     surroundingAnchor_ = std::min(anchorPos, static_cast<guint>(textLength));
     hasSurroundingText_ = true;
 }

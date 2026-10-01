@@ -154,7 +154,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * 周囲テキスト非対応の場合は記録せず破棄する
      *
      * @param text カーソル周辺のテキスト
-     * @param cursorIndex カーソル位置で使用しない
+     * @param cursorIndex テキスト先頭からの文字単位カーソル位置
      * @param anchorPos テキスト先頭からの文字単位アンカー位置
      */
     void setSurroundingText(const std::string& text, guint cursorIndex,
@@ -837,6 +837,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
 
     // --- 周囲テキスト・ケーパビリティ・カーソル ---
     std::string surroundingText_;               ///< 記録済み周囲テキスト
+    guint surroundingCursor_ = 0;               ///< 周囲テキスト先頭からの文字単位カーソル位置
     guint surroundingAnchor_ = 0;               ///< 周囲テキスト先頭からの文字単位アンカー位置
     bool hasSurroundingText_ = false;           ///< 周囲テキストを保持中か
     guint caps_ = 0;                            ///< 通知済みIBusケーパビリティ集合

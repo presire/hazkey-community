@@ -253,6 +253,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("useRichCandidates", ui_->useRichCandidates->isChecked());
     state.insert("enableZenzai", ui_->enableZenzai->isChecked());
     state.insert("zenzaiContextualConversion", ui_->zenzaiContextualConversion->isChecked());
+    state.insert("zenzaiRightContext", ui_->zenzaiRightContext->isChecked());
     state.insert("useZenzaiCustomWeight", ui_->useZenzaiCustomWeight->isChecked());
     state.insert("useUserDict", ui_->useUserDict->isChecked());
     state.insert("halfwidthKatakanaConversion", ui_->halfwidthKatakanaConversion->isChecked());
@@ -419,6 +420,11 @@ void MainWindow::connectSignals() {
     connect(ui_->enableZenzai, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->zenzaiContextualConversion, &QCheckBox::toggled, this,
+            [this](bool) {
+                updateRightContextUi();
+                recomputeDirtyState();
+            });
+    connect(ui_->zenzaiRightContext, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->halfwidthKatakanaConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
@@ -458,6 +464,7 @@ void MainWindow::connectSignals() {
     connect(ui_->zenzaiWeightPath, &QLineEdit::textChanged, this,
             [this](const QString&) {
                 updateConditioningUi();
+                updateRightContextUi();
                 recomputeDirtyState();
             });
 
@@ -503,6 +510,7 @@ void MainWindow::onUseZenzaiCustomWeightToggled(bool enabled) {
     ui_->zenzaiWeightPath->setEnabled(customWeightEnabled);
     ui_->browseZenzaiWeightPath->setEnabled(customWeightEnabled);
     updateConditioningUi();
+    updateRightContextUi();
     recomputeDirtyState();
 }
 
@@ -541,6 +549,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
     if (currentConfig_.available_zenzai_backend_devices_size() <= 0) {
         ui_->enableZenzai->setEnabled(false);
         ui_->zenzaiContextualConversion->setEnabled(false);
+        ui_->zenzaiRightContext->setEnabled(false);
+        ui_->zenzaiRightContextLabel->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
         ui_->zenzaiTopic->setEnabled(false);
@@ -565,6 +575,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
     else if (!currentConfig_.zenzai_model_available()) {
         ui_->enableZenzai->setEnabled(false);
         ui_->zenzaiContextualConversion->setEnabled(false);
+        ui_->zenzaiRightContext->setEnabled(false);
+        ui_->zenzaiRightContextLabel->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
         ui_->zenzaiTopic->setEnabled(false);
@@ -591,6 +603,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
     else {
         ui_->enableZenzai->setEnabled(true);
         ui_->zenzaiContextualConversion->setEnabled(true);
+        ui_->zenzaiRightContext->setEnabled(true);
+        ui_->zenzaiRightContextLabel->setEnabled(true);
         ui_->zenzaiInferenceLimit->setEnabled(true);
         ui_->zenzaiUserPlofile->setEnabled(true);
         ui_->zenzaiTopic->setEnabled(true);
@@ -608,6 +622,9 @@ void MainWindow::updateZenzaiAvailabilityUi() {
 
         // 条件付け非対応モデル (Jinen系等) では条件4項目だけを追加で無効化する
         updateConditioningUi();
+
+        // 右文脈の対応可否と文脈変換の状態を反映する
+        updateRightContextUi();
 
         // チェックサム比較でモデルの更新要否を判定する
         // インストール済みモデルが既知の旧世代エントリ (例: zenz-v3.1) と一致した場合のみユーザに通知する
@@ -681,6 +698,42 @@ void MainWindow::updateConditioningUi() {
     ui_->zenzaiTopic->setToolTip(reason);
     ui_->zenzaiStyle->setToolTip(reason);
     ui_->zenzaiPreference->setToolTip(reason);
+}
+
+void MainWindow::updateRightContextUi() {
+    // AIタブ全体が無効な場合はupdateZenzaiAvailabilityUi()が全項目を無効化済み
+    if (!ui_->enableZenzai->isEnabled()) {
+        return;
+    }
+
+    const QString customPath   = ui_->zenzaiWeightPath->text().trimmed();
+    const bool useCustomWeight = ui_->useZenzaiCustomWeight->isChecked() && !customPath.isEmpty();
+
+    // カタログ外のカスタム重みはファイル名で推定する
+    const bool supported = useCustomWeight
+                               ? zenzaiModelSupportsRightContext(customPath)
+                               : zenzaiModelSupportsRightContext(ZenzaiModelManager::getActiveModelKey());
+
+    // 右文脈はモデル対応かつ「文脈変換を使用」がONのときだけ有効
+    // チェック状態は変更しない
+    const QString notSupportedReason = tr("Not supported by the active model.");
+    const bool contextualOn = ui_->zenzaiContextualConversion->isChecked();
+    const bool rightContextEnabled = supported && contextualOn;
+    QString rightContextTip;
+    if (!supported) {
+        rightContextTip = notSupportedReason;
+    } else if (!contextualOn) {
+        rightContextTip = tr("Requires contextual conversion.");
+    } else {
+        rightContextTip =
+            tr("Converts considering the text to the right of the cursor as well. "
+               "Requires a zenz-v3.2 or newer model, and only works while "
+               "\"Use contextual conversion\" is enabled.");
+    }
+    ui_->zenzaiRightContext->setEnabled(rightContextEnabled);
+    ui_->zenzaiRightContextLabel->setEnabled(rightContextEnabled);
+    ui_->zenzaiRightContext->setToolTip(rightContextTip);
+    ui_->zenzaiRightContextLabel->setToolTip(rightContextTip);
 }
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
@@ -765,6 +818,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->zenzaiContextualConversion,
                  currentProfile_->zenzai_contextual_mode(),
                  ConfigDefs::CheckboxDefaults::ZENZAI_CONTEXTUAL);
+    SET_CHECKBOX(ui_->zenzaiRightContext,
+                 currentProfile_->zenzai_right_context(),
+                 ConfigDefs::CheckboxDefaults::ZENZAI_RIGHT_CONTEXT);
     SET_CHECKBOX(ui_->useZenzaiCustomWeight,
                  currentProfile_->use_zenzai_custom_weight(),
                  ConfigDefs::CheckboxDefaults::USE_ZENZAI_CUSTOM_WEIGHT);
@@ -945,6 +1001,8 @@ bool MainWindow::saveCurrentConfig() {
     currentProfile_->set_zenzai_enable(GET_CHECKBOX_BOOL(ui_->enableZenzai));
     currentProfile_->set_zenzai_contextual_mode(
         GET_CHECKBOX_BOOL(ui_->zenzaiContextualConversion));
+    currentProfile_->set_zenzai_right_context(
+        GET_CHECKBOX_BOOL(ui_->zenzaiRightContext));
     currentProfile_->set_use_zenzai_custom_weight(
         GET_CHECKBOX_BOOL(ui_->useZenzaiCustomWeight));
     currentProfile_->set_use_user_dictionary(GET_CHECKBOX_BOOL(ui_->useUserDict));

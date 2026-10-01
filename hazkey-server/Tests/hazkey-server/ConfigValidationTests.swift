@@ -566,4 +566,98 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertTrue(normalizedEnabled.useTypoCorrection)
         XCTAssertTrue(normalizedEnabled.useTypoCorrectionEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingZenzaiRightContextAndPreservesExplicitTrue() throws {
+        // 前提: 右文脈フィールドがない旧プロファイルと、明示的に有効化するプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearZenzaiRightContext()
+        XCTAssertFalse(missing.hasZenzaiRightContext)
+        XCTAssertFalse(missing.zenzaiRightContextEffective)
+
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.zenzaiRightContext = true
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        // 検証: 欠落フィールドは無効が既定となり、明示的な有効化は保持される
+        XCTAssertTrue(normalizedMissing.hasZenzaiRightContext)
+        XCTAssertFalse(normalizedMissing.zenzaiRightContext)
+        XCTAssertFalse(normalizedMissing.zenzaiRightContextEffective)
+        XCTAssertTrue(normalizedEnabled.zenzaiRightContext)
+        XCTAssertTrue(normalizedEnabled.zenzaiRightContextEffective)
+    }
+
+    func testSavedZenzaiRightContextSurvivesReload() throws {
+        // 前提: 分離したXDG_CONFIG_HOME配下へ保存する設定
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.zenzaiRightContext = true
+
+        // 実行: 保存してconfig.jsonから読み直す
+        let config = HazkeyServerConfig()
+        try config.saveConfig([profile])
+        let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 明示的な有効化が往復後も保持される
+        XCTAssertTrue(reloaded.hasZenzaiRightContext)
+        XCTAssertTrue(reloaded.zenzaiRightContext)
+        XCTAssertTrue(reloaded.zenzaiRightContextEffective)
+    }
+
+    func testDecodingLegacyConfigWithoutZenzaiRightContextYieldsFalseWithoutError() throws {
+        // 前提: 右文脈フィールドを持たない旧config.json (未知フィールドを含む)
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+        let configDirectory = HazkeyServerConfig.getConfigDirectory()
+        try FileManager.default.createDirectory(
+            at: configDirectory, withIntermediateDirectories: true)
+        let configURL = configDirectory.appendingPathComponent("config.json")
+        try Data("""
+            [{"profileName": "Legacy", "unknownFutureField": 42}]
+            """.utf8).write(to: configURL)
+
+        // 実行: 保存済みconfig.jsonを復号する (ignoreUnknownFieldsは不変のまま)
+        let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 例外なく旧設定を読み込み、右文脈は既定の無効へ縮退する
+        XCTAssertEqual(profile.profileName, "Legacy")
+        XCTAssertFalse(profile.zenzaiRightContext)
+        XCTAssertFalse(profile.zenzaiRightContextEffective)
+    }
 }

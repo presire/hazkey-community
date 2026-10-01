@@ -70,6 +70,8 @@ private slots:
     void testJinenCatalogPresence();
     /** @brief 条件付け対応フラグとその判定フォールバックを検証する */
     void testConditioningSupport();
+    /** @brief 右文脈対応フラグとその判定フォールバックを検証する */
+    void testRightContextSupport();
     /** @brief カタログ検査結果がディスク変更まで不変であることを検証する */
     void testDownloadedModelKeysSnapshot();
     /** @brief 変更のないスナップショット再取得が再ハッシュしないことを検証する */
@@ -126,7 +128,7 @@ void ZenzaiModelManagementTest::testSHA256() {
     file.write("hello world");
     file.close();
     
-    // sha256 of "hello world"
+    // "hello world" のSHA256
     QString expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
     QCOMPARE(ZenzaiModelManager::calculateSHA256(testFile), expected);
 }
@@ -172,13 +174,14 @@ void ZenzaiModelManagementTest::testLegacyMigration() {
     QDir().mkpath(ZenzaiModelManager::getZenzaiDir());
     QString legacyPath = ZenzaiModelManager::getSymlinkPath();
     
-    // Create a legacy regular file with correct SHA
-    // We can't easily create a 74MB file with specific SHA here, 
-    // but we can mock the SHA by using a small file if we were to change the catalog.
-    // For testing, let's just use a dummy file and assume it doesn't match, 
-    // OR we can use a known small model if available.
-    // Actually, let's just test the logic by creating a file that DOES match one of our keys if we were to mock availableZenzaiModels.
-    // Since availableZenzaiModels is static, we'll just test that it DOES NOT migrate if SHA doesn't match.
+    // SHA256が一致する旧形式の通常ファイルを用意する
+    // 特定SHAを持つ74[MB]の実ファイルはここでは作れないため、
+    // カタログを差し替えれば小さいファイルでもSHA照合を模擬できる
+    // ここではダミーファイルで不一致の場合だけを確認する
+    // (小さい既知モデルがあればそれを使う手もある)
+    // 本来は availableZenzaiModels のいずれかのキーに一致するファイルで
+    // 移行可否の分岐を検証したいが、availableZenzaiModels は固定値のため、
+    // SHA不一致なら移行しないことだけを検証する
     
     QFile file(legacyPath);
     QVERIFY(file.open(QIODevice::WriteOnly));
@@ -189,7 +192,7 @@ void ZenzaiModelManagementTest::testLegacyMigration() {
     
     QFileInfo info(legacyPath);
     QVERIFY(info.exists());
-    QVERIFY(!info.isSymLink()); // Should NOT have migrated
+    QVERIFY(!info.isSymLink()); // 移行せず通常ファイルのままのはず
 }
 
 void ZenzaiModelManagementTest::testKnownLegacyMigration() {
@@ -245,7 +248,7 @@ void ZenzaiModelManagementTest::testKnownLegacyMigrationExisting() {
     QFileInfo info(legacyPath);
     QVERIFY(info.exists());
     QVERIFY(info.isSymLink());
-    // The legacy file should have been removed, and the existing model activated.
+    // 旧形式ファイルは削除され、既存の管理対象モデルが有効化されるはず
     QVERIFY(QFile::exists(modelPath));
 }
 
@@ -275,7 +278,7 @@ void ZenzaiModelManagementTest::testKnownLegacyMigrationExistingMismatched() {
     
     QFileInfo info(legacyPath);
     QVERIFY(info.exists());
-    QVERIFY(!info.isSymLink()); // Should NOT have migrated because existing managed file is mismatched
+    QVERIFY(!info.isSymLink()); // 移動先の管理対象ファイルが不一致のため移行しないはず
     QCOMPARE(ZenzaiModelManager::calculateSHA256(legacyPath), sha);
 }
 
@@ -303,15 +306,15 @@ void ZenzaiModelManagementTest::testDeletionMechanics() {
     
     ZenzaiModelManager::activateModel("model1");
     
-    // Delete inactive model
+    // 非アクティブなモデルを削除する
     QVERIFY(ZenzaiModelManager::deleteModel("model2"));
     QVERIFY(!QFile::exists(model2));
-    QVERIFY(QFile::exists(ZenzaiModelManager::getSymlinkPath())); // Active remains
+    QVERIFY(QFile::exists(ZenzaiModelManager::getSymlinkPath())); // 有効化中のリンクは残る
     
-    // Delete active model
+    // 有効化中のモデルを削除する
     QVERIFY(ZenzaiModelManager::deleteModel("model1"));
     QVERIFY(!QFile::exists(model1));
-    QVERIFY(!QFile::exists(ZenzaiModelManager::getSymlinkPath())); // Symlink removed
+    QVERIFY(!QFile::exists(ZenzaiModelManager::getSymlinkPath())); // シンボリックリンクも外れる
 }
 
 void ZenzaiModelManagementTest::testExplicitActivation() {
@@ -322,15 +325,15 @@ void ZenzaiModelManagementTest::testExplicitActivation() {
     QFile f1(model1); f1.open(QIODevice::WriteOnly); f1.write("m1"); f1.close();
     QFile f2(model2); f2.open(QIODevice::WriteOnly); f2.write("m2"); f2.close();
     
-    // Activate model1
+    // model1を有効化する
     QVERIFY(ZenzaiModelManager::activateModel("model1"));
     QCOMPARE(ZenzaiModelManager::getActiveModelKey(), QString("model1"));
     
-    // Switch to model2
+    // model2へ切り替える
     QVERIFY(ZenzaiModelManager::activateModel("model2"));
     QCOMPARE(ZenzaiModelManager::getActiveModelKey(), QString("model2"));
     
-    // Verify symlink target
+    // シンボリックリンクの指し先を確認する
     QFileInfo info(ZenzaiModelManager::getSymlinkPath());
     QCOMPARE(info.symLinkTarget(), model2);
 }
@@ -403,12 +406,12 @@ void ZenzaiModelManagementTest::testSha256CacheAvoidsRehash() {
     QVERIFY(first.contains(model.key));
     QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 1);
 
-    // Unchanged file: the second snapshot must be served from the stat cache.
+    // 変更なしのファイルは2回目の取得でstatキャッシュから返すこと
     const QSet<QString> second = ZenzaiModelManager::downloadedModelKeys(catalog);
     QCOMPARE(second, first);
     QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 1);
 
-    // Rewritten content (different size) must be detected and re-hashed.
+    // 内容を書き換えた場合 (サイズ違い) は検出して再ハッシュすること
     const QByteArray tampered = data + "x";
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
     file.write(tampered);
@@ -440,8 +443,8 @@ void ZenzaiModelManagementTest::testDeleteModelInvalidatesCache() {
     QVERIFY(ZenzaiModelManager::deleteModel(model.key));
     QVERIFY(!ZenzaiModelManager::downloadedModelKeys(catalog).contains(model.key));
 
-    // Redownload a same-size corrupt payload pinned to the original mtime:
-    // a stale cache entry would wrongly report "downloaded" here.
+    // 元の更新時刻に固定した同サイズの壊れたデータを再配置する
+    // キャッシュが残ったままだと誤って「ダウンロード済み」と判定されるケース
     QVERIFY(bad.size() == good.size());
     QVERIFY(bad != good);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -458,8 +461,8 @@ void ZenzaiModelManagementTest::testDeleteModelInvalidatesCache() {
 }
 
 void ZenzaiModelManagementTest::testJinenCatalogPresence() {
-    // Failing-first probe: jinen-v2 families must be registered in the catalog.
-    // 1. Families: exactly 5, in order.
+    // 先行失敗検出用: jinen-v2系列がカタログに登録されていること
+    // 1. 系列はちょうど5件で順序固定
     const QVector<ZenzaiModelFamily>& families = availableZenzaiModelFamilies();
     QCOMPARE(families.size(), 5);
     QCOMPARE(families[0].familyKey, QString("zenz-v3.2-small"));
@@ -470,7 +473,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
     QCOMPARE(families[3].displayName, QString("jinen-v2-small"));
     QCOMPARE(families[4].displayName, QString("jinen-v2-xsmall"));
 
-    // 2. Zenz single-variant families unchanged (byte-identical values).
+    // 2. zenzの単一バリアント系列は変更なし (値がバイト単位で一致)
     struct ExpectedZenz {
         const char* key;
         const char* displayName;
@@ -514,7 +517,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
                  qPrintable(QString("zenz variant %1 must have empty quantLabel").arg(v.key)));
     }
 
-    // 2b. Zenz families carry no attribution: the disclosure row is jinen-only.
+    // 2b. zenz系列は帰属情報を持たない。帰属表示行はjinen専用
     for (int i = 0; i < 3; ++i) {
         QVERIFY2(families[i].author.isEmpty(),
                  qPrintable(QString("zenz family %1 must not declare an author")
@@ -530,14 +533,14 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
                                 .arg(families[i].familyKey)));
     }
 
-    // 3. Flattened artifact catalog: exactly 11 entries in order.
+    // 3. 平坦化したアーティファクトカタログはちょうど11件で順序固定
     const QVector<ZenzaiModelOption>& models = availableZenzaiModels();
     QCOMPARE(models.size(), 11);
     QCOMPARE(models[0].key, QString("zenz-v3.2-small"));
     QCOMPARE(models[1].key, QString("zenz-v3.2-xsmall"));
     QCOMPARE(models[2].key, QString("zenz-v3.1-small"));
 
-    // 4. Jinen families: 4 variants each in documented quant order.
+    // 4. jinen系列は各4バリアントで量子化の順序固定
     struct ExpectedArtifact {
         const char* key;
         const char* repo;
@@ -566,8 +569,8 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
     QCOMPARE(families[3].variants.size(), 4);
     QCOMPARE(families[4].variants.size(), 4);
 
-    // 4b. Jinen families carry the CC-BY-SA-4.0 attribution the UI must disclose.
-    // author + source repository + license name + clickable license/source URLs.
+    // 4b. jinen系列はUI表示に必要なCC-BY-SA-4.0の帰属情報を保持する
+    // 作成者 + 配布元リポジトリ + ライセンス名 + クリック可能なライセンス/配布元URL
     struct ExpectedAttribution {
         const char* familyKey;
         const char* repo;
@@ -597,8 +600,8 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
                                 .arg(fam.familyKey)));
     }
 
-    // 4c. Every jinen variant URL lives under the family's attributed repository,
-    // so the displayed source link is the artifact's actual origin.
+    // 4c. 各jinenバリアントのURLは系列の帰属リポジトリ配下にあり、
+    // 表示上の配布元リンクが成果物の実際の取得元と一致すること
     for (int i = 3; i < 5; ++i) {
         for (const ZenzaiModelOption& v : families[i].variants) {
             QVERIFY2(v.url.startsWith(families[i].sourceUrl + QString("/resolve/")),
@@ -607,8 +610,8 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         }
     }
 
-    // Table-driven check over every field; failure message names the key.
-    // Also verifies uniqueness (no duplicate keys) and flattened order.
+    // 全項目を表駆動で検査する。失敗メッセージにはキー名を出す
+    // キーの一意性 (重複なし) と平坦化後の順序も合わせて検証する
     QSet<QString> seenKeys;
     for (const auto& m : models) {
         QVERIFY2(!seenKeys.contains(m.key),
@@ -622,7 +625,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         const QString key = QString::fromLatin1(e.key);
         const QString expectedUrl = QString("https://huggingface.co/%1/resolve/main/%2.gguf")
                                         .arg(QString::fromLatin1(e.repo), key);
-        // Family-local position: first 4 in small family, next 4 in xsmall.
+        // 系列内での位置: 前半4件はsmall系列、後半4件はxsmall系列
         const ZenzaiModelOption& famVariant =
             (i < 4) ? families[3].variants[i] : families[4].variants[i - 4];
         QVERIFY2(famVariant.key == key,
@@ -631,7 +634,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         QVERIFY2(famVariant.quantLabel == QString::fromLatin1(e.quant),
                  qPrintable(QString("quant label mismatch for %1: got %2, want %3")
                                 .arg(key, famVariant.quantLabel, QString::fromLatin1(e.quant))));
-        // Flattened catalog position: entries 3..10.
+        // 平坦化カタログ内での位置: 4件目から10件目 (0始まりで3..10)
         const ZenzaiModelOption& flat = models[3 + i];
         for (const ZenzaiModelOption* cand : {&famVariant, &flat}) {
             QVERIFY2(cand->key == key,
@@ -656,14 +659,14 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         }
     }
 
-    // 5. Artifact lookup by key.
+    // 5. キー指定でのアーティファクト検索
     const ZenzaiModelOption* found = findZenzaiModelByKey("jinen-v2-small-Q4_K_M");
     QVERIFY2(found != nullptr, "findZenzaiModelByKey must resolve jinen-v2-small-Q4_K_M");
     QCOMPARE(found->expectedBytes, qint64(72123008));
     QVERIFY(found->url.endsWith("/jinen-v2-small-Q4_K_M.gguf"));
     QCOMPARE(findZenzaiModelByKey("no-such-model-key"), nullptr);
 
-    // 6. Family accessor stability: repeated calls return the same data.
+    // 6. 系列取得の安定性: 繰り返し呼んでも同じ内容が返ること
     const QVector<ZenzaiModelFamily>& again = availableZenzaiModelFamilies();
     QCOMPARE(again.size(), families.size());
     QCOMPARE(again[4].variants.size(), 4);
@@ -671,7 +674,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
 }
 
 void ZenzaiModelManagementTest::testConditioningSupport() {
-    // 1. Catalog flags: 3 zenz families support conditioning, 2 jinen-v2 families do not.
+    // 1. カタログのフラグ: zenz3系列は条件付け対応、jinen-v2の2系列は非対応
     const QVector<ZenzaiModelFamily>& families = availableZenzaiModelFamilies();
     QVERIFY2(families[0].supportsConditioning, "zenz must support conditioning");
     QVERIFY2(families[1].supportsConditioning, "zenz-xsmall must support conditioning");
@@ -679,7 +682,7 @@ void ZenzaiModelManagementTest::testConditioningSupport() {
     QVERIFY2(!families[3].supportsConditioning, "jinen-v2-small must not support conditioning");
     QVERIFY2(!families[4].supportsConditioning, "jinen-v2-xsmall must not support conditioning");
 
-    // 2. Family lookup resolves both family keys and variant keys.
+    // 2. 系列検索は系列キーとバリアントキーの両方で解決できる
     const ZenzaiModelFamily* zenz = findZenzaiFamilyByKey("zenz-v3.2-small");
     QVERIFY2(zenz != nullptr, "findZenzaiFamilyByKey must resolve zenz-v3.2-small");
     QVERIFY(zenz->supportsConditioning);
@@ -689,22 +692,67 @@ void ZenzaiModelManagementTest::testConditioningSupport() {
     QVERIFY(!jinenVariant->supportsConditioning);
     QCOMPARE(findZenzaiFamilyByKey("no-such-model-key"), nullptr);
 
-    // 3. Catalog decision: zenz enabled, jinen variants disabled.
+    // 3. カタログ判定: zenzは有効、jinenバリアントは無効
     QVERIFY(zenzaiModelSupportsConditioning("zenz-v3.2-small"));
     QVERIFY(zenzaiModelSupportsConditioning("zenz-v3.1-small"));
     QVERIFY(!zenzaiModelSupportsConditioning("jinen-v2-small-Q4_K_M"));
     QVERIFY(!zenzaiModelSupportsConditioning("jinen-v2-xsmall-f16"));
 
-    // 4. Off-catalog fallback: jinen file names disabled, unknown stays enabled.
+    // 4. カタログ外の代替処理: jinenを含むファイル名は無効、不明な名前は有効のまま
     QVERIFY(!zenzaiModelSupportsConditioning("/path/to/jinen-v2-small-Q4_K_M.gguf"));
     QVERIFY(zenzaiModelSupportsConditioning("my-custom-model"));
     QVERIFY(zenzaiModelSupportsConditioning(QString()));
 
-    // 5. Path heuristic is case-insensitive on the file name part.
+    // 5. パス判定はファイル名部分で大文字小文字を区別しない
     QVERIFY(isJinenModelPath("JINEN-V2-SMALL.gguf"));
     QVERIFY(isJinenModelPath("/models/jinen-v2-xsmall-Q5_K_M.gguf"));
     QVERIFY(!isJinenModelPath("zenz-v3.2-small.gguf"));
     QVERIFY(!isJinenModelPath(QString()));
+}
+
+void ZenzaiModelManagementTest::testRightContextSupport() {
+    // 1. カタログのフラグ: zenz-v3.2の2系列のみ右文脈対応
+    const QVector<ZenzaiModelFamily>& families = availableZenzaiModelFamilies();
+    QCOMPARE(families.size(), 5);
+    QVERIFY2(families[0].supportsRightContext, "zenz-v3.2-small must support right context");
+    QVERIFY2(families[1].supportsRightContext, "zenz-v3.2-xsmall must support right context");
+    QVERIFY2(!families[2].supportsRightContext, "legacy zenz must not support right context");
+    QVERIFY2(!families[3].supportsRightContext, "jinen-v2-small must not support right context");
+    QVERIFY2(!families[4].supportsRightContext, "jinen-v2-xsmall must not support right context");
+
+    // 2. 系列キーでフラグを引けるため、順序変更があっても検査が壊れない
+    const ZenzaiModelFamily* v32Small = findZenzaiFamilyByKey("zenz-v3.2-small");
+    const ZenzaiModelFamily* v32Xsmall = findZenzaiFamilyByKey("zenz-v3.2-xsmall");
+    const ZenzaiModelFamily* v31Small = findZenzaiFamilyByKey("zenz-v3.1-small");
+    QVERIFY2(v32Small != nullptr, "findZenzaiFamilyByKey must resolve zenz-v3.2-small");
+    QVERIFY2(v32Xsmall != nullptr, "findZenzaiFamilyByKey must resolve zenz-v3.2-xsmall");
+    QVERIFY2(v31Small != nullptr, "findZenzaiFamilyByKey must resolve zenz-v3.1-small");
+    QVERIFY(v32Small->supportsRightContext);
+    QVERIFY(v32Xsmall->supportsRightContext);
+    QVERIFY(!v31Small->supportsRightContext);
+
+    // 3. 系列キーとバリアントキーでのカタログ判定
+    QVERIFY(zenzaiModelSupportsRightContext("zenz-v3.2-small"));
+    QVERIFY(zenzaiModelSupportsRightContext("zenz-v3.2-xsmall"));
+    QVERIFY(!zenzaiModelSupportsRightContext("zenz-v3.1-small"));
+    QVERIFY(!zenzaiModelSupportsRightContext("jinen-v2-small-Q5_K_M"));
+    QVERIFY(!zenzaiModelSupportsRightContext("jinen-v2-xsmall-Q4_K_M"));
+    QVERIFY(!zenzaiModelSupportsRightContext("jinen-v2-small-f16"));
+
+    // 4. カタログ外の代替処理: ファイル名から世代を推定する
+    QVERIFY(zenzaiModelSupportsRightContext("my-custom"));
+    QVERIFY(zenzaiModelSupportsRightContext("/x/y/ZENZ-V3.2-Foo.gguf"));
+    QVERIFY(!zenzaiModelSupportsRightContext("/x/y/zenz-v3.1-foo.gguf"));
+    QVERIFY(!zenzaiModelSupportsRightContext("zenz-v3-small.gguf"));
+    QVERIFY(!zenzaiModelSupportsRightContext("zenz-v2-small.gguf"));
+    QVERIFY(zenzaiModelSupportsRightContext("zenz-v4.0-small.gguf"));
+    QVERIFY(!zenzaiModelSupportsRightContext("/path/to/jinen-v2-small-Q4_K_M.gguf"));
+    QVERIFY(zenzaiModelSupportsRightContext("zenzai.gguf"));
+
+    // 5. 不正・境界値入力: 大文字の拡張子、カスタム重み、空キー
+    QVERIFY(zenzaiModelSupportsRightContext("ZENZ-V3.2-SMALL.GGUF"));
+    QVERIFY(zenzaiModelSupportsRightContext("my-custom-model.gguf"));
+    QVERIFY(zenzaiModelSupportsRightContext(QString()));
 }
 
 QTEST_MAIN(ZenzaiModelManagementTest)

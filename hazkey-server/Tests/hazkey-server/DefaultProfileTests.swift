@@ -54,4 +54,13 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertFalse(profile.useTypoCorrection)
         XCTAssertFalse(profile.useTypoCorrectionEffective)
     }
+
+    func testDefaultProfileDisablesZenzaiRightContext() throws {
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        XCTAssertTrue(profile.hasZenzaiRightContext)
+        XCTAssertFalse(profile.zenzaiRightContext)
+        XCTAssertFalse(profile.zenzaiRightContextEffective)
+    }
 }

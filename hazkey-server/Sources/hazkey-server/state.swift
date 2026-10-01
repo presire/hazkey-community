@@ -853,6 +853,10 @@ class HazkeyServerState {
     var currentCandidateListIsSuggest = false
     /// Zenzaiの左文脈 (カーソルより前にある周辺テキスト)
     var zenzaiLeftContext = ""
+    /// Zenzaiの右文脈 (カーソルより後にある周辺テキスト。先頭rightContextMaxCharacters文字まで)
+    var zenzaiRightContext = ""
+    /// 右文脈として保持する最大文字数 (キャラクター単位)
+    static let rightContextMaxCharacters = 40
 
     // MARK: [Shift]キーと直接入力モード
 
@@ -969,6 +973,7 @@ class HazkeyServerState {
         self.isShiftPressedAlone = false
         self.shiftPressedAt = nil
         self.zenzaiLeftContext = ""
+        self.zenzaiRightContext = ""
 
         NSLog("State configuration reinitialized successfully")
     }
@@ -1024,18 +1029,20 @@ class HazkeyServerState {
         try shared.forgetLearningEntries(keys)
     }
 
-    /// アプリケーションの周辺テキストから、Zenzaiの左文脈を設定する
+    /// アプリケーションの周辺テキストから、Zenzaiの左右の文脈を設定する
     ///
-    /// カーソル位置は周辺テキストの範囲内に丸める
+    /// カーソル位置は周辺テキストの符号点数に対する範囲へ丸める
     ///
     /// - Parameters:
     ///   - surroundingText: 周辺テキスト
-    ///   - anchorIndex: 周辺テキスト内のカーソル位置 (文字数)
+    ///   - anchorIndex: 周辺テキスト内のカーソル位置 (符号点数)
     /// - Returns: 常に.successを含むレスポンス
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
-        let clamped = max(0, min(anchorIndex, surroundingText.count))
-        if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(surroundingText.count)") }
-        zenzaiLeftContext = String(surroundingText.prefix(clamped))
+        let scalars = surroundingText.unicodeScalars
+        let clamped = max(0, min(anchorIndex, scalars.count))
+        if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(scalars.count)") }
+        zenzaiLeftContext = String(String.UnicodeScalarView(scalars.prefix(clamped)))
+        zenzaiRightContext = String(String(String.UnicodeScalarView(scalars.dropFirst(clamped))).prefix(Self.rightContextMaxCharacters))
         // Zenzaiモードは"makeCandidatesResult"で、この接続の"zenzaiLeftContext"からリクエストごとに計算する
         // その間に、"baseConvertRequestOptions.zenzaiMode"を読む箇所はないため、ここに保存しても使用されない
         return Hazkey_ResponseEnvelope.with {
@@ -1054,6 +1061,7 @@ class HazkeyServerState {
         composingText = ComposingTextBox()
         currentCandidateList = nil
         zenzaiLeftContext = ""
+        zenzaiRightContext = ""
         isSubInputMode = false
         isShiftPressedAlone = false
         shiftPressedAt = nil
@@ -1614,6 +1622,7 @@ class HazkeyServerState {
         options.requireJapanesePrediction = usePrediction ? .manualMix : .disabled
         options.zenzaiMode = serverConfig.genZenzaiMode(
             leftContext: zenzaiLeftContext,
+            rightContext: zenzaiRightContext,
             requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
                 for: serverConfig.currentProfile, isSuggestion: is_suggest)
         )

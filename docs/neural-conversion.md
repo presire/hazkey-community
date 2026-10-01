@@ -13,17 +13,18 @@ Zenzaiは、llama.cppをバックエンドとするオプションのニュー�
 ## モデルの選択
 
 Zenzaiモデルは、設定UIの[AI]タブにある[ニューラル変換モデルの管理]からダウンロード・有効化・削除できます。  
-ダウンロード時は、受信バイト数とSHA-256の両方が照合されます。転送が30秒間停止した場合はタイムアウトし、再試行またはキャンセルを選べます。  
+ダウンロード時は、受信バイト数とSHA-256の両方が照合されます。  
+転送が30秒間停止した場合はタイムアウトし、再試行またはキャンセルを選べます。  
 
 現在提供されているモデルは以下の通りです。  
 
 | モデル | サイズ | 特徴 | ライセンス |
 |---|---|---|---|
-| **zenz-v3.2-small** | 約 74 [MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
-| **zenz-v3.2-xsmall** | 約 21 [MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
-| zenz-v3.1-small | 約 74 [MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
-| jinen-v2-small | 約 69〜210 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
-| jinen-v2-xsmall | 約 25〜69 [MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
+| **zenz-v3.2-small** | 約74[MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
+| **zenz-v3.2-xsmall** | 約21[MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
+| zenz-v3.1-small | 約74[MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
+| jinen-v2-small | 約69〜210[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
+| jinen-v2-xsmall | 約25〜69[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
 
 新規利用は **zenz-v3.2-small** を推奨します。  
 CPU中心で使う・軽量重視の場合は **zenz-v3.2-xsmall** が適しています。  
@@ -50,7 +51,9 @@ jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する *
   ダウンロードしたGGUFは、固定カタログに記録した期待バイト数とSHA-256の両方に照合され、一致したアーティファクトだけが選択・削除の対象になります。  
 - **Qwen3 前提**:  
   jinen-v2はQwen3アーキテクチャのため、  
-  コンバータ依存 (`presire/AzooKeyKanaKanjiConverter`の`hazkey`ブランチ) に Qwen3 対応が焼き込み済みである必要があります。(`Package.resolved`が指すリビジョン以降)  
+  コンバータ依存 (`presire/AzooKeyKanaKanjiConverter`の`hazkey`ブランチ) に Qwen3 対応が焼き込み済みである必要があります。  
+  (`Package.resolved`が指すリビジョン以降)  
+  
   この対応は、GGUFの`general.architecture == "qwen3"`を検出した場合にのみ、NFKC正規化・BOS付与の無効化・条件トークン類の抑止を有効化し、  
   既存のzenz (GPT-2系) の前処理・BOS・条件トークンの動作は変更しません。  
 - **トークナイザ**:  
@@ -122,7 +125,9 @@ sudo apt install nvidia-kernel-dkms nvidia-driver nvidia-vulkan-icd vulkan-tools
 
 NVIDIAドライバは、GPU世代によって必要なパッケージや対応状況が異なります。  
 詳細は各ディストリビューションのドキュメントを参照してください。  
-([openSUSE](https://en.opensuse.org/SDB:NVIDIA_drivers)、[Fedora](https://rpmfusion.org/Howto/NVIDIA)、[Debian](https://wiki.debian.org/NvidiaGraphicsDrivers))  
+- [Fedora](https://rpmfusion.org/Howto/NVIDIA)  
+- [openSUSE](https://en.opensuse.org/SDB:NVIDIA_drivers)  
+- [Debian](https://wiki.debian.org/NvidiaGraphicsDrivers))  
 
 ## GPU / iGPUの最低要件と性能の目安
 
@@ -133,16 +138,16 @@ GPU/iGPUを使用するための最低ラインは、Vulkan 1.2以上に対応�
 GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要があります。  
 
 - Vulkan 1.2以上に対応したGPUまたはiGPUと、対応するVulkanドライバがインストールされていること  
-- hazkey-community-serverが `GGML_VULKAN=ON` でビルドされていること  
-- `vulkaninfo --summary` で対象デバイスが列挙されること  
-- フレームワーク再起動後、`hazkey-community-settings` の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
+- hazkey-community-serverが`GGML_VULKAN=ON`でビルドされていること  
+- `vulkaninfo --summary`コマンドで対象デバイスが列挙されること  
+- フレームワーク再起動後、[Hazkey Community 設定]画面の[AI]タブで対象デバイスがVulkanバックエンドとして表示され、選択できること  
 
 これらはVulkanバックエンドを利用できるかの確認条件であり、変換速度や安定性を保証するものではありません。  
 
 ### 一般的なVulkan対応例
 
 以下は、Vulkan 1.2以上に対応する構成の代表例です。  
-***hazkey-communityでZenzaiの動作を確認・認定した機種一覧ではなく、最低要件や推奨機種を示すものでもありません。***  
+***Hazkey CommunityでZenzaiの動作を確認・認定した機種一覧ではなく、最低要件や推奨機種を示すものでもありません。***  
 
 | 区分 | 型番・製品系列の例 |
 |---|---|
@@ -151,7 +156,11 @@ GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要
 | Intel iGPU | Intel UHD Graphics 630<br>UHD Graphics 730<br>UHD Graphics 770<br>Iris Xe Graphics |
 | AMD iGPU | Radeon Vega 8<br>Radeon 680M<br>Radeon 760M<br>Radeon 780M |
 
-Vulkan対応状況の確認には、[NVIDIA Vulkan Driver Support](https://developer.nvidia.com/vulkan-driver)、[Mesa RADV](https://docs.mesa3d.org/drivers/radv.html)、[Intel Supported APIs](https://www.intel.com/content/www/us/en/support/articles/000005524/graphics.html)、[Khronosの適合製品一覧](https://www.khronos.org/conformance/adopters/conformant-products)を参照してください。  
+Vulkan対応状況の確認には、下記のページを参照してください。  
+- [NVIDIA Vulkan Driver Support](https://developer.nvidia.com/vulkan-driver)  
+- [Mesa RADV](https://docs.mesa3d.org/drivers/radv.html)  
+- [Intel Supported APIs](https://www.intel.com/content/www/us/en/support/articles/000005524/graphics.html)  
+- [Khronosの適合製品一覧](https://www.khronos.org/conformance/adopters/conformant-products)  
 
 同じ型番でも、OS、Vulkanドライバの種類とバージョン、デスクトップ版・モバイル版・OEM版によって結果が異なります。  
 llama.cppの実行時のデバイス機能検査により、Vulkan 1.2対応のデバイスでも利用できない場合があります。  
@@ -162,13 +171,35 @@ iGPUはシステムメモリを共有するため、専用VRAMのGPUとは利用
 ### 性能について
 
 本リポジトリでは、特定のGPU型番・世代、GPU/iGPUの最低性能、VRAM容量、最低処理速度を定めていません。  
-モデルファイルのサイズ（約 21 [MB] / 約 74 [MB]）は、実行時に必要なVRAM容量を示すものではありません。  
+モデルファイルのサイズ（約21[MB] / 約74[MB]）は、実行時に必要なVRAM容量を示すものではありません。  
 
 GPU/iGPUの性能、専用メモリまたは共有メモリの空き容量、Vulkanドライバ、CPU、システムの負荷によって、変換速度や安定性は変わります。  
 ローエンドのGPU/iGPUではCPUより遅くなる場合もあるため、実際の環境でCPUバックエンドとVulkanバックエンドを比較し、  
 より速く安定して動作するバックエンドを選択してください。  
 
 GPU/iGPUが条件を満たさない場合や、GPU/iGPUよりCPUの方が適している場合でも、CPUバックエンドでZenzaiを使用できます。  
+
+## 右文脈 (カーソルより後ろのテキスト)
+
+カーソルより後ろにある周辺テキストをZenzaiへ渡し、文の途中で入力したときの変換精度を高める設定です。  
+[AI]タブの[右文脈を使用]にチェックを入れると有効になります。既定はOFFです。  
+
+- 対応モデルはzenz-v3.2以降です。zenz-v3.1以前とjinen-v2は非対応で、設定画面ではグレーアウトされ、サーバも右文脈を送りません。  
+- [文脈変換を使用]がONのときだけ働きます。OFFのままでは右文脈は使われません。  
+- 渡すのはカーソル直後から最大40文字までです。  
+- 選択範囲のテキストは除かれます。確定直後の文字は、カーソル位置へ挿入した形で扱います。  
+- モデル名から版を判別できないカスタムモデルは、設定に従って右文脈を送ります。  
+- 版の判定はサーバが解決後の実ファイル名で行います。  
+
+既知の制約:  
+
+- IBusでは、確定した直後の最初の打鍵で周辺テキストが古いままになることがあります。  
+- 設定画面のグレーアウトは、アクティブなモデルのキーまたはカスタム重みのファイル名で判定します。  
+  
+  `HAZKEY_ZENZAI_MODEL`で強制指定したモデルや、シンボリックリンクのカスタム重みでは、サーバ側の判定と食い違うことがあります。  
+  この場合もサーバは非対応モデルへ右文脈を送りません。  
+- アラインメント区切りは見送りました。(将来の課題)  
+  対応する設定はありません。  
 
 ## モデルの保存場所とアクティブモデル
 

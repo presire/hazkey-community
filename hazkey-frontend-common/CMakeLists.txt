@@ -36,6 +36,7 @@ add_library(hazkey-frontend-common STATIC
     hazkey_frontend_hooks.cpp
     serial_task_executor.cpp
     composing_cursor_view.cpp
+    surrounding_text_snapshot.cpp
     candidate_annotation.cpp
 )
 
@@ -161,6 +162,18 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_composing_cursor_view_test hazkey-proto-headers)
     add_test(NAME hazkey_composing_cursor_view_test
         COMMAND hazkey_composing_cursor_view_test)
+
+    # 両フロントエンドが共有する周辺テキストスナップショット生成規則のテスト
+    add_executable(hazkey_surrounding_snapshot_test
+        surrounding_text_snapshot_test.cpp)
+    target_link_libraries(hazkey_surrounding_snapshot_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_surrounding_snapshot_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_surrounding_snapshot_test hazkey-proto-headers)
+    add_test(NAME hazkey_surrounding_snapshot_test
+        COMMAND hazkey_surrounding_snapshot_test)
 
     # IBusのキー処理をブロックさせない非同期通信基盤のテスト
     add_executable(hazkey_frontend_async_test

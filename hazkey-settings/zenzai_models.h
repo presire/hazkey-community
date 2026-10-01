@@ -79,6 +79,14 @@ struct ZenzaiModelFamily {
      *          既定値はtrueで、不明な系列は有効側に倒す
      */
     bool supportsConditioning = true;
+    /**
+     * @brief Zenzaiの右文脈に対応するかどうか
+     *
+     * @details zenz-v3.2以降のzenz系列のみ対応する
+     *          zenz-v3.1以前とjinen-v2系は非対応で、対応する設定項目は設定UI上で無効化する
+     *          既定値はfalseで、不明な系列は無効側に倒す
+     */
+    bool supportsRightContext = false;
 };
 
 /**
@@ -127,6 +135,20 @@ const ZenzaiModelFamily* findZenzaiFamilyByKey(const QString& key);
  * @return 条件付けに対応する場合はtrue
  */
 bool zenzaiModelSupportsConditioning(const QString& modelKey);
+
+/**
+ * @brief 指定モデルがZenzaiの右文脈に対応するかどうかを返す
+ *
+ * @details カタログに登録された系列はそのsupportsRightContextを返す
+ *          未登録のキー (カスタム重み等) はファイル名から世代を推定し、
+ *          "jinen" を含む場合は非対応、"zenz-v<major>[.<minor>]" が3.2以上なら対応、
+ *          それ未満なら非対応、世代を判別できない場合は対応側に倒す
+ *          空文字列はアクティブモデル未確定として対応側に倒す
+ *
+ * @param modelKeyOrPath モデルキー、モデルファイル名、またはモデルファイルのパス
+ * @return 右文脈に対応する場合はtrue
+ */
+bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath);
 
 /**
  * @brief パスまたはファイル名がJinen系モデルを指すかどうかを返す
@@ -209,8 +231,7 @@ public:
     /**
      * @brief SHA256の実ハッシュ回数を返す (テスト専用)
      *
-     * @details calculateSHA256()のstatキャッシュをすり抜けて実際にファイルを
-     *          読み直した回数を数え、キャッシュヒット時は増えない
+     * @details calculateSHA256()のstatキャッシュをすり抜けて実際にファイルを読み直した回数を数え、キャッシュヒット時は増えない
      *          回帰テストの検証用であり、通常運用では使わない
      *
      * @return プロセス開始 (または最後のリセット) 以降の実ハッシュ回数

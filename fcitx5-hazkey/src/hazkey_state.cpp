@@ -2,7 +2,6 @@
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/log.h>
-#include <fcitx-utils/utf8.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/instance.h>
 #include <algorithm>
@@ -17,6 +16,7 @@
 #include "hazkey_engine.h"
 #include "hazkey_server_connector.h"
 #include "live_convert_mode.h"
+#include "surrounding_text_snapshot.h"
 
 namespace fcitx {
 
@@ -451,10 +451,11 @@ void HazkeyState::updateSurroundingText(std::string appendText) {
     if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
         ic_->surroundingText().isValid()) {
         auto& surroundingText = ic_->surroundingText();
-        // anchor()は文字数単位のためappendTextも文字数で加算する
-        engine_->server().setContext(
-            surroundingText.text() + appendText,
-            surroundingText.anchor() + utf8::lengthValidated(appendText));
+        // cursor() / anchor()は符号点単位のため、選択範囲の除去とappendの挿入を行い、符号点単位のアンカーを共通の純関数で求める
+        const auto snapshot = hazkey::frontend::buildSurroundingSnapshot(
+            surroundingText.text(), static_cast<int>(surroundingText.cursor()),
+            static_cast<int>(surroundingText.anchor()), appendText);
+        engine_->server().setContext(snapshot.text, snapshot.anchor);
     } else {
         engine_->server().setContext("", 0);
     }
