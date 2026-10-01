@@ -11,7 +11,9 @@
  */
 #include <cassert>
 #include <iostream>
+#include <string>
 #include <unordered_set>
+#include <vector>
 #include "composing_cursor_view.h"
 #include "hazkey_frontend.h"
 #include "hazkey_state.h"
@@ -745,6 +747,203 @@ void testLookupDisplayText() {
     std::cout << "[PASS] lookup display text and typo correction annotation range\n";
 }
 
+/**
+ * @brief 周辺テキスト待ちの判定条件を検証する
+ *
+ * フロントエンドはスペース・解放・Shift・修飾子付き・組成中・候補焦点中のキーで判定を依頼せず、
+ * プロファイル読込後は右文脈と周辺テキスト対応の報告がある場合だけ依頼する
+ * ワーカーは右文脈ON・周辺テキスト対応・未固定・未受信の全てを満たす入力可能キーだけを保留する
+ *
+ * @internal 匿名名前空間内の実装専用テスト
+ */
+void testSurroundingGateConditions() {
+    using hazkey::ibus::HazkeyFrontend;
+    using hazkey::ibus::HazkeyState;
+
+    // 未組成の入力可能キーは、プロファイル未読込なら設定が不明なため依頼し、読込後はヒントに従う
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, false, false));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, false));
+    // スペース・解放・Shift・修飾子付き・非入力キーは依頼しない
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_space, 0, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_RELEASE_MASK, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Shift_L, 0, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_CONTROL_MASK, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Return, 0, false, false, true, true));
+    // 組成中と候補焦点中は新しい組成ではないため依頼しない
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, true, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, true, true, true));
+
+    // ワーカーは全条件を満たすときだけ保留する
+    assert(HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, false));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_space, true, true, false, false));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_Return, true, true, false, false));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, false, true, false, false));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, false, false, false));
+    // 確定直後に退避・復元した固定内容を持つ組成は待たない
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, true, false));
+    // 周辺テキストを受信済みなら待たない
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, true));
+
+    std::cout << "[PASS] surrounding gate conditions\n";
+}
+
+/**
+ * @brief 周辺テキスト待ちの状態遷移と保持キューの順序を検証する
+ *
+ * 待機中に保持した操作は解決後に到着順で実行され、打ち切り時はキーだけを捨てる
+ * 古い世代のワーカー返答と期限タイマは無視され、判定中に届いた周辺テキストは返答時に直ちに解決させる
+ *
+ * @internal 匿名名前空間内の実装専用テスト
+ */
+void testSurroundingGateMachine() {
+    using Machine = hazkey::ibus::HazkeyFrontend::SurroundingGateMachine;
+    using Phase = Machine::Phase;
+    using Action = Machine::CheckAction;
+
+    std::vector<std::string> log;
+    auto op = [&log](const std::string& name) {
+        return [&log, name] { log.push_back(name); };
+    };
+
+    // 待機外の操作は直ちに実行する
+    {
+        Machine gate;
+        gate.submitOrHold(true, op("k1"));
+        assert(log == std::vector<std::string>{"k1"});
+        log.clear();
+    }
+
+    // 待機不要の返答: 判定中に保持した操作を到着順に実行する
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        assert(gate.phase() == Phase::Checking);
+        gate.submitOrHold(true, op("k2"));
+        gate.submitOrHold(false, op("cursor"));
+        assert(log.empty());
+        assert(gate.onChecked(g, false) == Action::Release);
+        assert(!gate.active());
+        gate.flush();
+        assert((log == std::vector<std::string>{"k2", "cursor"}));
+        log.clear();
+    }
+
+    // 待機して周辺テキストが届く: 解決後に保持分を到着順で実行し、期限タイマは無効になる
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        assert(gate.onChecked(g, true) == Action::Wait);
+        assert(gate.phase() == Phase::Waiting);
+        const uint64_t timer = gate.generation();
+        assert(gate.timeoutApplies(timer));
+        gate.submitOrHold(true, op("k2"));
+        gate.submitOrHold(true, op("k2-release"));
+        gate.submitOrHold(false, op("page"));
+        gate.submitOrHold(true, op("k3"));
+        assert(gate.onSurroundingArrived());
+        gate.resolve();
+        assert(!gate.timeoutApplies(timer));
+        log.push_back("resume-first");
+        gate.flush();
+        assert((log == std::vector<std::string>{"resume-first", "k2", "k2-release", "page", "k3"}));
+        log.clear();
+    }
+
+    // 期限切れ: 現在の世代のタイマだけが有効で、解決後は同じタイマも周辺テキストも解決を起こさない
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        assert(gate.onChecked(g, true) == Action::Wait);
+        const uint64_t timer = gate.generation();
+        assert(!gate.timeoutApplies(timer - 1));
+        assert(gate.timeoutApplies(timer));
+        gate.resolve();
+        assert(!gate.timeoutApplies(timer));
+        assert(!gate.onSurroundingArrived());
+    }
+
+    // 判定中に周辺テキストが届いた場合は、保留の返答で直ちに解決させる
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        assert(!gate.onSurroundingArrived());
+        assert(gate.onChecked(g, true) == Action::Resolve);
+        gate.resolve();
+        assert(!gate.active());
+    }
+    // 到着の記録は次の判定へ持ち越さない
+    {
+        Machine gate;
+        const uint64_t g1 = gate.beginCheck();
+        assert(!gate.onSurroundingArrived());
+        assert(gate.onChecked(g1, false) == Action::Release);
+        const uint64_t g2 = gate.beginCheck();
+        assert(gate.onChecked(g2, true) == Action::Wait);
+    }
+
+    // 打ち切り: 保持したキーは捨て、状態変更操作だけを到着順に実行する
+    // 打ち切り後に届いた古い返答と期限タイマは無視する
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        gate.submitOrHold(true, op("k2"));
+        gate.submitOrHold(false, op("setCursorLocation"));
+        gate.submitOrHold(true, op("k3"));
+        gate.submitOrHold(false, op("focusIn"));
+        gate.abort();
+        assert((log == std::vector<std::string>{"setCursorLocation", "focusIn"}));
+        log.clear();
+        assert(gate.onChecked(g, true) == Action::Ignore);
+        assert(!gate.active());
+        gate.submitOrHold(true, op("after"));
+        assert(log == std::vector<std::string>{"after"});
+        log.clear();
+    }
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        assert(gate.onChecked(g, true) == Action::Wait);
+        const uint64_t timer = gate.generation();
+        gate.abort();
+        assert(!gate.timeoutApplies(timer));
+    }
+
+    // 待機外の打ち切りは何もしない
+    {
+        Machine gate;
+        const uint64_t before = gate.generation();
+        gate.abort();
+        assert(gate.generation() == before);
+    }
+
+    // 廃止時の破棄: 保持した操作を一切実行しない
+    {
+        Machine gate;
+        gate.beginCheck();
+        gate.submitOrHold(false, op("enable"));
+        gate.submitOrHold(true, op("k2"));
+        gate.clear();
+        gate.flush();
+        assert(log.empty());
+        assert(!gate.active());
+    }
+
+    // 判定依頼の投入失敗: 待機を取り消し、保持分を到着順に実行する
+    {
+        Machine gate;
+        const uint64_t g = gate.beginCheck();
+        gate.submitOrHold(false, op("reset"));
+        gate.cancelCheck();
+        assert(!gate.active());
+        assert(log == std::vector<std::string>{"reset"});
+        assert(gate.onChecked(g, true) == Action::Ignore);
+        log.clear();
+    }
+
+    std::cout << "[PASS] surrounding gate state machine and held-op ordering\n";
+}
+
 }  // namespace
 
 /**
@@ -775,6 +974,8 @@ int main() {
     testPauseModeRulesAreShared();
     testForwardedKeyPairing();
     testLookupDisplayText();
+    testSurroundingGateConditions();
+    testSurroundingGateMachine();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

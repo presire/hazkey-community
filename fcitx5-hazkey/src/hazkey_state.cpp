@@ -292,7 +292,9 @@ void HazkeyState::preeditKeyEvent(
                 if (isDirectConversionMode_) {
                     flushPendingRefresh();
                     preedit_.commitPreedit();
+                    const auto carriedFreeze = surroundingFreeze_;
                     reset();
+                    surroundingFreeze_ = carriedFreeze;
                 }
                 // Zenzaiの左文脈を更新する
                 updateSurroundingText();
@@ -416,7 +418,11 @@ void HazkeyState::candidateKeyEvent(
                 flushPendingRefresh();
                 auto committedText = preedit_.text();
                 preedit_.commitPreedit();
+                // 確定直後のライブの周辺テキストは更新が遅れ、確定したpreeditを含んだままになる
+                // reset()が解除する前の固定内容を戻し、確定文字を積み重ねる
+                const auto carriedFreeze = surroundingFreeze_;
                 reset();
+                surroundingFreeze_ = carriedFreeze;
                 // 確定後もZenzaiの左文脈を最新に保つ
                 updateSurroundingText(committedText);
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
@@ -448,17 +454,25 @@ void HazkeyState::candidateCompleteHandler(
 
 /** @brief 入力先の周辺テキストをサーバへ反映する */
 void HazkeyState::updateSurroundingText(std::string appendText) {
-    if (ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
-        ic_->surroundingText().isValid()) {
+    const bool liveAvailable =
+        ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+        ic_->surroundingText().isValid();
+    // Kateなどは組成中のpreeditを周辺テキストへ含めて報告し、右文脈へ読みが混入してしまう
+    // 組成開始時の周辺テキストを組成が終わるまで使い続ける (固定済みならライブ値は参照されない)
+    // 組成開始時に未着の場合は空の内容で固定し、後から届くpreedit混入済みの値を採用しない
+    // cursor() / anchor()は符号点単位のため、選択範囲の除去とappendの挿入を行い、符号点単位のアンカーを共通の純関数で求める
+    std::string liveText;
+    int liveCursor = 0;
+    int liveAnchor = 0;
+    if (liveAvailable) {
         auto& surroundingText = ic_->surroundingText();
-        // cursor() / anchor()は符号点単位のため、選択範囲の除去とappendの挿入を行い、符号点単位のアンカーを共通の純関数で求める
-        const auto snapshot = hazkey::frontend::buildSurroundingSnapshot(
-            surroundingText.text(), static_cast<int>(surroundingText.cursor()),
-            static_cast<int>(surroundingText.anchor()), appendText);
-        engine_->server().setContext(snapshot.text, snapshot.anchor);
-    } else {
-        engine_->server().setContext("", 0);
+        liveText = surroundingText.text();
+        liveCursor = static_cast<int>(surroundingText.cursor());
+        liveAnchor = static_cast<int>(surroundingText.anchor());
     }
+    const auto snapshot = surroundingFreeze_.resolve(
+        liveText, liveCursor, liveAnchor, appendText);
+    engine_->server().setContext(snapshot.text, snapshot.anchor);
 }
 
 /** @brief サーバプロファイルからホットキーと表示設定を読み込む */
@@ -1056,6 +1070,7 @@ void HazkeyState::reset() {
     // reset()は、オブジェクト破棄なしに多数のキー処理やactivate() / deactivate()から呼ばれる
     // RAIIだけに頼らず保留中の更新を明示的に取り消す
     cancelPendingRefresh();
+    surroundingFreeze_.release();
     engine_->server().newComposingText();
     ic_->inputPanel().reset();
 }

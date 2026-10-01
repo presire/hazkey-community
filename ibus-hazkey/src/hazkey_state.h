@@ -21,6 +21,7 @@
 #include "hazkey_server_connector.h"
 #include "hazkey_ui.h"
 #include "serial_task_executor.h"
+#include "surrounding_text_snapshot.h"
 
 /**
  * @brief IBusフロントエンドの入力状態機械とUI描画を担う名前空間
@@ -97,9 +98,24 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * @param keyval IBusキーシンボル
      * @param keycode ハードウェアキーコードで使用しない
      * @param state IBusモディファイア状態
+     * @param surroundingGate 非nullなら周辺テキスト待ちの判定を行う
+     *        新しい組成の最初の入力で周辺テキストが未着なら、キーを処理せずにtrueを書き込みTRUEを返す
+     *        保留したキーはresumeGatedInput()で処理する
      * @return 消費した場合はTRUE
      */
-    gboolean processKeyEvent(guint keyval, guint keycode, guint state);
+    gboolean processKeyEvent(guint keyval, guint keycode, guint state,
+                             bool* surroundingGate = nullptr);
+    /**
+     * @brief 周辺テキスト待ちで保留した最初の入力を処理する
+     *
+     * 周辺テキストが届いた場合は、届いた内容で組成開始時の周辺テキストを固定する
+     * 期限切れの場合は空の内容で明示的に固定し、後から届くpreedit混入済みの値を採用しない
+     *
+     * @param keyval 保留したキーのIBusキーシンボル
+     * @param state 保留したキーのIBusモディファイア状態
+     * @param surroundingArrived 待機中に周辺テキストが届いた場合はtrue
+     */
+    void resumeGatedInput(guint keyval, guint state, bool surroundingArrived);
     /** @brief 組成を初期化しプロファイルを再読込してプロパティを再登録する */
     void focusIn();
     /**
@@ -298,6 +314,21 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
                                       guint capability);
 
     /**
+     * @brief 未組成で修飾子なしの入力を、周辺テキストの到着まで保留すべきか判定する
+     *
+     * @param keyval 判定対象のキー値
+     * @param rightContext [右文脈を使用]が有効ならtrue
+     * @param surroundingCapable クライアントが周辺テキストに対応するならtrue
+     * @param frozen 組成中の周辺テキストを既に固定済みならtrue
+     * @param hasSurroundingText 周辺テキストを受信済みならtrue
+     * @return 保留すべき場合はtrue
+     * @note テスト用に公開する
+     */
+    static bool shouldGateFirstInput(guint keyval, bool rightContext,
+                                     bool surroundingCapable, bool frozen,
+                                     bool hasSurroundingText);
+
+    /**
      * @brief FcitxのAuxUpとAuxDownの組をIBus単一補助テキスト枠へ結合する
      *
      * 両方が非空のときだけ半角空白1つで区切る
@@ -371,6 +402,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
         bool composing = false;         ///< 組成中か
         bool listFocused = false;       ///< 候補にフォーカス中か
         bool profileLoaded = false;     ///< サーバプロファイルを読込済みか
+        bool surroundingGate = false;   ///< 右文脈が有効で周辺テキストを使えるか (周辺テキスト待ちの候補)
         HotkeySpec liveConvert{};       ///< ライブ変換トグルホットキー
         HotkeySpec zenzaiToggle{};      ///< Zenzaiトグルホットキー
         HotkeySpec acceptPrediction{};  ///< 予測受入ホットキー
@@ -840,6 +872,8 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     guint surroundingCursor_ = 0;               ///< 周囲テキスト先頭からの文字単位カーソル位置
     guint surroundingAnchor_ = 0;               ///< 周囲テキスト先頭からの文字単位アンカー位置
     bool hasSurroundingText_ = false;           ///< 周囲テキストを保持中か
+    hazkey::frontend::CompositionSurroundingFreeze
+        surroundingFreeze_;                     ///< 組成開始時に固定した周囲テキスト (preedit混入の防止)
     guint caps_ = 0;                            ///< 通知済みIBusケーパビリティ集合
     bool capsKnown_ = false;                    ///< ケーパビリティ通知を受け取ったか
     gint cursorX_ = 0;                          ///< カーソルのX座標
@@ -856,6 +890,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
 
     // --- キャッシュ ---
     bool cachedZenzaiEnabled_ = false;          ///< 記録済みZenzai有効状態
+    bool cachedRightContext_ = false;           ///< 記録済みZenzai右文脈の有効状態
     ///< 記録済み自動変換モード
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ = hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;
     ///< 記録済み生ひらがな補助表示モード

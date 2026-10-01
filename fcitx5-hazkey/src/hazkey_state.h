@@ -12,6 +12,7 @@
 #include "hazkey_candidate.h"
 #include "hazkey_frontend_hooks.h"
 #include "hazkey_preedit.h"
+#include "surrounding_text_snapshot.h"
 
 namespace fcitx {
 
@@ -230,6 +231,8 @@ class HazkeyState : public InputContextProperty {
     // 入力・候補状態
     bool isClauseBoundaryAdjusting_ = false;  ///< 文節境界を調整中か
     bool isDirectConversionMode_ = false;     ///< 直接変換後の入力状態か
+    hazkey::frontend::CompositionSurroundingFreeze
+        surroundingFreeze_;  ///< 組成開始時に固定した周辺テキスト (preedit混入の防止)
     bool shiftPressedAlone_ = false;          ///< [Shift]単独押下を追跡中か
     int livePreeditIndex_ = -1;               ///< 表示中ライブ変換候補の番号
     bool currentListIsSuggest_ = false;       ///< 表示中リストが予測候補か

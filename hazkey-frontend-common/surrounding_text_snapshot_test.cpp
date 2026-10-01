@@ -23,6 +23,7 @@
 namespace {
 
 using hazkey::frontend::buildSurroundingSnapshot;
+using hazkey::frontend::CompositionSurroundingFreeze;
 using hazkey::frontend::SurroundingSnapshot;
 
 int checks = 0;    ///< 検証した条件の総数
@@ -172,12 +173,128 @@ void testMultibyteAppendAnchor() {
     expect("(h) multibyte append mid", mid, "abあcd", 3);
 }
 
+/**
+ * @brief (i) 組成開始時の周辺テキストが固定され、後から届くpreedit混入のライブ値に影響されないことを検証する
+ *
+ * Kateは組成中のpreeditを文書へ挿入して周辺テキストに含める
+ * カーソルはpreedit先頭にあるため、ライブ値の右側へ読みが混入する
+ * 固定後の送信内容は、組成開始時点の右文脈 (ここでは空) のままであることを確認する
+ */
+void testFreezeIgnoresPreeditContamination() {
+    CompositionSurroundingFreeze freeze;
+    expect("(i) first resolve uses live", freeze.resolve("こんにちは", 5, 5, ""),
+           "こんにちは", 5);
+    expect("(i) contaminated live ignored",
+           freeze.resolve("こんにちはあいそれはゆ", 5, 5, ""), "こんにちは", 5);
+    expect("(i) still frozen after more updates",
+           freeze.resolve("こんにちはあいそれはゆめ", 5, 5, ""), "こんにちは", 5);
+}
+
+/**
+ * @brief (j) 部分確定の追記が固定内容へ積み重なることを検証する
+ *
+ * 文節確定でappendした文字が固定内容のカーソル位置へ入り、以後の送信でも保持されることを確認する
+ */
+void testFreezeAccumulatesAppend() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    expect("(j) append inserts at frozen cursor",
+           freeze.resolve("無視される", 0, 0, "愛"), "今日は愛", 4);
+    expect("(j) append persists", freeze.resolve("無視される", 0, 0, ""),
+           "今日は愛", 4);
+}
+
+/**
+ * @brief (k) 右文脈が固定内容に保たれ、カーソルより後ろだけが右文脈として残ることを検証する
+ *
+ * 文中カーソルでの組成開始時の右側テキストが固定され、追記はカーソル位置へ入ることを確認する
+ */
+void testFreezeKeepsRightSide() {
+    CompositionSurroundingFreeze freeze;
+    expect("(k) mid cursor frozen", freeze.resolve("前後", 1, 1, ""), "前後", 1);
+    expect("(k) append keeps right side",
+           freeze.resolve("前ひらがな後", 1, 1, "X"), "前X後", 2);
+}
+
+/**
+ * @brief (l) 開始時の選択範囲が除去された状態で固定されることを検証する
+ *
+ * 選択範囲を除去した内容と、選択開始位置のカーソルで固定され、以後も選択が復活しないことを確認する
+ */
+void testFreezeRemovesSelection() {
+    CompositionSurroundingFreeze freeze;
+    expect("(l) selection removed at freeze",
+           freeze.resolve("あいうえお", 1, 3, ""), "あえお", 1);
+    expect("(l) selection does not return",
+           freeze.resolve("あいうえお", 1, 3, ""), "あえお", 1);
+}
+
+/**
+ * @brief (m) 解除後は次の組成開始時にライブ値を取り直すことを検証する
+ *
+ * release()後は未固定へ戻り、新しいライブ値で固定し直されることを確認する
+ */
+void testFreezeReleaseRecapturesLive() {
+    CompositionSurroundingFreeze freeze;
+    ++checks;
+    if (freeze.frozen()) {
+        ++failures;
+        std::cerr << "FAIL [(m) initially not frozen]\n";
+    }
+    freeze.resolve("古い", 2, 2, "");
+    ++checks;
+    if (!freeze.frozen()) {
+        ++failures;
+        std::cerr << "FAIL [(m) frozen after resolve]\n";
+    }
+    freeze.release();
+    ++checks;
+    if (freeze.frozen()) {
+        ++failures;
+        std::cerr << "FAIL [(m) not frozen after release]\n";
+    }
+    expect("(m) recaptures live after release",
+           freeze.resolve("新しい文", 4, 4, ""), "新しい文", 4);
+}
+
+/**
+ * @brief (n) コピーした固定状態を復元すると、リセットをまたいで引き継げることを検証する
+ *
+ * 確定直後に新しい組成を始める経路では、解除前の固定状態を戻して確定文字を追記する
+ * 戻した状態が、解除前と同じ内容で動くことを確認する
+ */
+void testFreezeCopyCarriesAcrossRelease() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    const CompositionSurroundingFreeze carried = freeze;
+    freeze.release();
+    freeze = carried;
+    expect("(n) carried freeze appends commit",
+           freeze.resolve("preedit混入", 0, 0, "愛"), "今日は愛", 4);
+}
+
+/**
+ * @brief (o) 組成開始時に周辺テキストが未着でも、空の内容で固定され後から届く混入値を採用しないことを検証する
+ *
+ * 初回の打鍵ではクライアントから周辺テキストが届いていないことがある
+ * その後にpreedit混入済みの値が届いても、右文脈へ読みが入らないことを確認する
+ */
+void testFreezeEmptyWhenLiveNotYetArrived() {
+    CompositionSurroundingFreeze freeze;
+    expect("(o) first resolve without live text", freeze.resolve("", 0, 0, ""),
+           "", 0);
+    expect("(o) late contaminated live ignored",
+           freeze.resolve("あ", 0, 0, ""), "", 0);
+    expect("(o) append still accumulates", freeze.resolve("あい", 0, 0, "愛"),
+           "愛", 1);
+}
+
 }  // namespace
 
 /**
  * @brief 全ての周辺テキストスナップショット検証を順に実行する
  *
- * (a)から(h)までの各条件を実行し、失敗が無ければ成功を報告して終了する
+ * (a)から(o)までの各条件を実行し、失敗が無ければ成功を報告して終了する
  */
 int main() {
     runCase("(a) tail cursor, no selection, no append", testTailCursorNoSelectionNoAppend);
@@ -188,6 +305,13 @@ int main() {
     runCase("(f) clamp out of range", testClampOutOfRange);
     runCase("(g) empty and invalid utf8", testEmptyAndInvalidUtf8);
     runCase("(h) multibyte append anchor", testMultibyteAppendAnchor);
+    runCase("(i) freeze ignores preedit contamination", testFreezeIgnoresPreeditContamination);
+    runCase("(j) freeze accumulates append", testFreezeAccumulatesAppend);
+    runCase("(k) freeze keeps right side", testFreezeKeepsRightSide);
+    runCase("(l) freeze removes selection", testFreezeRemovesSelection);
+    runCase("(m) freeze release recaptures live", testFreezeReleaseRecapturesLive);
+    runCase("(n) freeze copy carries across release", testFreezeCopyCarriesAcrossRelease);
+    runCase("(o) freeze empty when live not yet arrived", testFreezeEmptyWhenLiveNotYetArrived);
 
     std::cout << "surrounding_text_snapshot_test: " << checks << " checks, "
               << failures << " failures\n";

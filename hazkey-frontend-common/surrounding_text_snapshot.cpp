@@ -147,4 +147,23 @@ SurroundingSnapshot buildSurroundingSnapshot(const std::string& text, int cursor
     return {result, lo + static_cast<int>(appendPoints.size())};
 }
 
+SurroundingSnapshot CompositionSurroundingFreeze::resolve(
+    const std::string& liveText, int liveCursor, int liveAnchor,
+    const std::string& append) {
+    const SurroundingSnapshot snapshot =
+        frozen_ ? buildSurroundingSnapshot(text_, cursor_, cursor_, append)
+                : buildSurroundingSnapshot(liveText, liveCursor, liveAnchor,
+                                           append);
+    frozen_ = true;
+    text_ = snapshot.text;
+    cursor_ = snapshot.anchor;
+    return snapshot;
+}
+
+void CompositionSurroundingFreeze::release() {
+    frozen_ = false;
+    text_.clear();
+    cursor_ = 0;
+}
+
 }  // namespace hazkey::frontend

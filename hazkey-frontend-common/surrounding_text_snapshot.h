@@ -51,6 +51,50 @@ SurroundingSnapshot buildSurroundingSnapshot(const std::string& text, int cursor
                                               int anchor,
                                               const std::string& append);
 
+/**
+ * @brief 組成中の周辺テキストを、組成開始時点の内容に固定する
+ *
+ * Kateなどは、組成中のpreeditを文書へ実際に挿入して周辺テキストに含めて報告する
+ * カーソルはpreeditの先頭にあるため、そのまま送ると右文脈へ直前のpreedit (読みのひらがな) が混入し、
+ * Zenzaiが右文脈に引きずられて変換しなくなる
+ * 組成開始時にはpreeditが存在しないため、その時点の周辺テキストを組成が終わるまで使い続ける
+ *
+ * 初回のresolve()でライブの周辺テキストを取り込んで固定し、以後のresolve()は固定済みの内容へappendを積み重ねる
+ * 部分確定でappendした確定文字は、固定済みのカーソル位置へ挿入されて保持される
+ * 組成の終了時にrelease()を呼び、次の組成開始時にライブの周辺テキストを取り直す
+ *
+ * @note Fcitx 5、IBus、GLibの型を使わない純粋なクラスである
+ */
+class CompositionSurroundingFreeze {
+   public:
+    /**
+     * @brief 送信用スナップショットを求めて、組成が終わるまで固定する
+     *
+     * 固定済みならlive*引数は無視して固定済みの内容を使う
+     * 未固定ならlive*引数から求めた結果を固定する
+     * 固定内容は選択範囲を除去した後の文字列で、カーソルとアンカーは同じ位置になる
+     *
+     * @param liveText ライブの周辺テキスト(未固定のときだけ使う)
+     * @param liveCursor ライブのカーソル位置(符号点単位)
+     * @param liveAnchor ライブのアンカー位置(符号点単位)
+     * @param append カーソル位置へ挿入する確定文字列
+     * @return 送信用スナップショット
+     */
+    SurroundingSnapshot resolve(const std::string& liveText, int liveCursor,
+                                int liveAnchor, const std::string& append);
+
+    /** @brief 固定を解除する。組成の終了時に呼ぶ */
+    void release();
+
+    /** @brief 固定済みか */
+    bool frozen() const { return frozen_; }
+
+   private:
+    bool frozen_ = false;
+    std::string text_;
+    int cursor_ = 0;
+};
+
 }  // namespace hazkey::frontend
 
 #endif  // HAZKEY_SURROUNDING_TEXT_SNAPSHOT_H

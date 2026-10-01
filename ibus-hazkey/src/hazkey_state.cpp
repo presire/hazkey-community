@@ -213,6 +213,9 @@ HazkeyState::IngressSnapshot HazkeyState::ingressSnapshot() const {
     snapshot.composing = !preeditText_.empty() || listVisible_;
     snapshot.listFocused = listVisible_ && cursorIndex_ >= 0;
     snapshot.profileLoaded = serverProfileLoaded_;
+    snapshot.surroundingGate =
+        cachedRightContext_ &&
+        capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT);
     snapshot.liveConvert = liveConvertHotkey_;
     snapshot.zenzaiToggle = zenzaiToggleHotkey_;
     snapshot.acceptPrediction = acceptPredictionHotkey_;
@@ -362,7 +365,7 @@ std::string HazkeyState::joinAuxiliaryText(const std::string& auxUp,
 }
 
 gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
-                                      guint state) {
+                                      guint state, bool* surroundingGate) {
     (void)keycode;
     const gboolean isRelease = (state & IBUS_RELEASE_MASK) != 0;
     const gboolean shiftKey =
@@ -438,6 +441,17 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
     } else if (!composingText.empty()) {
         handled = preeditKeyEvent(keyval, state);
     } else {
+        // 組成開始時の周辺テキストが未着なら、固定する前にフロントエンドへ待機を依頼する
+        // 待機はメインループ側が持ち、このワーカーでは待たない (setSurroundingTextも同じワーカーに積まれるため)
+        if (surroundingGate != nullptr &&
+            shouldGateFirstInput(
+                keyval, cachedRightContext_,
+                capabilityIsAvailable(caps_, capsKnown_,
+                                      IBUS_CAP_SURROUNDING_TEXT),
+                surroundingFreeze_.frozen(), hasSurroundingText_)) {
+            *surroundingGate = true;
+            return TRUE;
+        }
         handled = noPreeditKeyEvent(keyval, state);
     }
 
@@ -445,6 +459,23 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
         updateAuxiliaryText();
     }
     return handled;
+}
+
+bool HazkeyState::shouldGateFirstInput(guint keyval, bool rightContext,
+                                       bool surroundingCapable, bool frozen,
+                                       bool hasSurroundingText) {
+    return keyval != IBUS_KEY_space && isInputableKey(keyval) && rightContext &&
+           surroundingCapable && !frozen && !hasSurroundingText;
+}
+
+void HazkeyState::resumeGatedInput(guint keyval, guint state,
+                                   bool surroundingArrived) {
+    if (!surroundingArrived) {
+        surroundingFreeze_.resolve("", 0, 0, "");
+    }
+    if (noPreeditKeyEvent(keyval, state)) {
+        updateAuxiliaryText();
+    }
 }
 
 gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
@@ -563,7 +594,9 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
     if (isInputableKey(keyval)) {
         if (isDirectConversionMode_) {
             commitPreedit();
+            const auto carriedFreeze = surroundingFreeze_;
             resetState();
+            surroundingFreeze_ = carriedFreeze;
         }
         updateSurroundingText();
         server_.inputChar(utf8FromKeyval(keyval));
@@ -695,7 +728,11 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         flushPendingRefresh();
         const std::string committed = preeditText_;
         commitPreedit();
+        // 確定直後のライブの周囲テキストは更新が遅れ、確定したpreeditを含んだままになる
+        // resetState()が解除する前の固定内容を戻し、確定文字を積み重ねる
+        const auto carriedFreeze = surroundingFreeze_;
         resetState();
+        surroundingFreeze_ = carriedFreeze;
         updateSurroundingText(committed);
         server_.inputChar(utf8FromKeyval(keyval));
         showPreeditCandidateList();
@@ -705,6 +742,7 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
 }
 
 void HazkeyState::loadServerProfile() {
+    cachedRightContext_ = false;
     const auto configOpt = server_.getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
         return;  // サーバ未準備、既定値を維持
@@ -720,6 +758,7 @@ void HazkeyState::loadServerProfile() {
         parseHotkey(profile.delete_learning_hotkey(), "Control+D");
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
+    cachedRightContext_ = profile.zenzai_right_context();
     updateZenzaiProperty(profile.zenzai_enable());
     updateLiveConvertProperty();
     using M = hazkey::config::Profile_AutoConvertMode;
@@ -1507,6 +1546,7 @@ void HazkeyState::resetState() {
     listVisible_ = false;
     currentListIsSuggest_ = false;
     preeditText_.clear();
+    surroundingFreeze_.release();
     clearLookupTable();
     hidePreedit();
     setAuxiliaryText("");
@@ -1658,15 +1698,17 @@ void HazkeyState::updateLiveConvertProperty() {
 }
 
 void HazkeyState::updateSurroundingText(const std::string& append) {
-    if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
-        hasSurroundingText_) {
-        const auto snapshot = hazkey::frontend::buildSurroundingSnapshot(
-            surroundingText_, static_cast<int>(surroundingCursor_),
-            static_cast<int>(surroundingAnchor_), append);
-        server_.setContext(snapshot.text, snapshot.anchor);
-    } else {
-        server_.setContext("", 0);
-    }
+    const bool liveAvailable =
+        capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
+        hasSurroundingText_;
+    // Kateなどは組成中のpreeditを周囲テキストへ含めて報告し、右文脈へ読みが混入してしまう
+    // 組成開始時の周囲テキストを組成が終わるまで使い続ける (固定済みならライブ値は参照されない)
+    // 組成開始時に未着の場合は空の内容で固定し、後から届くpreedit混入済みの値を採用しない
+    const auto snapshot = surroundingFreeze_.resolve(
+        liveAvailable ? surroundingText_ : std::string(),
+        liveAvailable ? static_cast<int>(surroundingCursor_) : 0,
+        liveAvailable ? static_cast<int>(surroundingAnchor_) : 0, append);
+    server_.setContext(snapshot.text, snapshot.anchor);
 }
 
 void HazkeyState::clearSurroundingText() {

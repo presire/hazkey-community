@@ -121,6 +121,16 @@ bool isCandidateHandledKey(guint keyval) {
     }
 }
 
+/**
+ * @brief 周辺テキスト待ちの期限タイマへ渡すデータ
+ *
+ * @internal 翻訳単位内の実装詳細
+ */
+struct SurroundingGateTimeout {
+    std::weak_ptr<HazkeyFrontend> frontend;  ///< 破棄済みのファサードには触れない
+    uint64_t generation = 0;                 ///< タイマ登録時の待機世代
+};
+
 }  // namespace
 
 HazkeyFrontend::HazkeyFrontend(IBusEngine* engine)
@@ -144,6 +154,7 @@ void HazkeyFrontend::retire() {
     // 排出待ちは投入済みタスクのみを待ち、下の区切られた反復は既に準備済みのソースだけを配送する
     retired_ = true;
     forwardedPressKeyvals_.clear();
+    gate_.clear();
     constexpr auto kRetireDrainTimeout = std::chrono::milliseconds(200);
     sharedExecutor().submit(
         [state = state_] { state->cancelPendingRefresh(); });
@@ -180,20 +191,29 @@ void HazkeyFrontend::enqueue(
     }
 }
 
-void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state, gboolean consume) {
+void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
+                                  gboolean consume, bool gateCheck) {
     auto self = shared_from_this();
     auto logic = state_;
     auto ui = ui_;
+    uint64_t generation = gate_.generation();
+    if (gateCheck) {
+        generation = gate_.beginCheck();
+        gatedKeyval_ = keyval;
+        gatedState_ = state;
+    }
     ++pendingOps_;
     const hazkey::frontend::SerialTaskExecutor::Token token =
         sharedExecutor().submit(
-            [self, logic, ui, keyval, keycode, state, consume] {
-                const gboolean handled =
-                    logic->processKeyEvent(keyval, keycode, state);
+            [self, logic, ui, keyval, keycode, state, consume, gateCheck,
+             generation] {
+                bool gated = false;
+                const gboolean handled = logic->processKeyEvent(
+                    keyval, keycode, state, gateCheck ? &gated : nullptr);
                 const auto snapshot = logic->ingressSnapshot();
                 hazkey::frontend::postToMainLoop(
                     [self, ui, snapshot, handled, consume, keyval, keycode,
-                     state] {
+                     state, gateCheck, gated, generation] {
                         self->applyIngress(snapshot);
                         if (self->pendingOps_ > 0) {
                             --self->pendingOps_;
@@ -208,13 +228,168 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state, gboo
                                 self->forwardedPressKeyvals_)) {
                             ui->forwardKeyEvent(keyval, keycode, state);
                         }
+                        if (gateCheck) {
+                            self->onSurroundingGateChecked(generation, gated);
+                        }
                     });
             });
     if (token == hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
         if (pendingOps_ > 0) {
             --pendingOps_;
         }
+        if (gateCheck) {
+            gate_.cancelCheck();
+        }
     }
+}
+
+void HazkeyFrontend::onSurroundingGateChecked(uint64_t generation, bool gated) {
+    if (retired_) {
+        return;
+    }
+    switch (gate_.onChecked(generation, gated)) {
+        case SurroundingGateMachine::CheckAction::Ignore:
+            return;
+        case SurroundingGateMachine::CheckAction::Release:
+            gate_.flush();
+            return;
+        case SurroundingGateMachine::CheckAction::Resolve:
+            resolveSurroundingGate(true);
+            return;
+        case SurroundingGateMachine::CheckAction::Wait:
+            break;
+    }
+    // enable時の取得要求に応答が無い場合があるため、待機の開始時に取り直す
+    ui_->requestSurroundingText();
+    g_timeout_add_full(
+        G_PRIORITY_DEFAULT, kSurroundingGateTimeoutMs,
+        &HazkeyFrontend::onSurroundingGateTimeout,
+        new SurroundingGateTimeout{weak_from_this(), gate_.generation()},
+        [](gpointer data) { delete static_cast<SurroundingGateTimeout*>(data); });
+}
+
+gboolean HazkeyFrontend::onSurroundingGateTimeout(gpointer data) {
+    const auto* timeout = static_cast<const SurroundingGateTimeout*>(data);
+    if (const auto self = timeout->frontend.lock()) {
+        if (!self->retired_ && self->gate_.timeoutApplies(timeout->generation)) {
+            self->resolveSurroundingGate(false);
+        }
+    }
+    return G_SOURCE_REMOVE;
+}
+
+void HazkeyFrontend::resolveSurroundingGate(bool surroundingArrived) {
+    gate_.resolve();
+    // 再開する最初の入力は必ず組成を開くため、保持していた後続キーを組成中として扱う
+    specComposing_ = true;
+    const guint keyval = gatedKeyval_;
+    const guint state = gatedState_;
+    enqueue([keyval, state, surroundingArrived](
+                const std::shared_ptr<HazkeyState>& s) {
+        s->resumeGatedInput(keyval, state, surroundingArrived);
+    });
+    gate_.flush();
+}
+
+void HazkeyFrontend::abortSurroundingGate() { gate_.abort(); }
+
+uint64_t HazkeyFrontend::SurroundingGateMachine::beginCheck() {
+    phase_ = Phase::Checking;
+    arrivedWhileChecking_ = false;
+    return ++generation_;
+}
+
+void HazkeyFrontend::SurroundingGateMachine::cancelCheck() {
+    if (phase_ != Phase::Checking) {
+        return;
+    }
+    phase_ = Phase::Idle;
+    ++generation_;
+    flush();
+}
+
+HazkeyFrontend::SurroundingGateMachine::CheckAction
+HazkeyFrontend::SurroundingGateMachine::onChecked(uint64_t generation,
+                                                  bool gated) {
+    if (phase_ != Phase::Checking || generation != generation_) {
+        return CheckAction::Ignore;
+    }
+    if (!gated) {
+        phase_ = Phase::Idle;
+        return CheckAction::Release;
+    }
+    if (arrivedWhileChecking_) {
+        return CheckAction::Resolve;
+    }
+    phase_ = Phase::Waiting;
+    return CheckAction::Wait;
+}
+
+bool HazkeyFrontend::SurroundingGateMachine::onSurroundingArrived() {
+    if (phase_ == Phase::Checking) {
+        arrivedWhileChecking_ = true;
+        return false;
+    }
+    return phase_ == Phase::Waiting;
+}
+
+bool HazkeyFrontend::SurroundingGateMachine::timeoutApplies(
+    uint64_t generation) const {
+    return phase_ == Phase::Waiting && generation == generation_;
+}
+
+void HazkeyFrontend::SurroundingGateMachine::submitOrHold(
+    bool isKey, std::function<void()> run) {
+    if (active()) {
+        held_.push_back(HeldOp{isKey, std::move(run)});
+        return;
+    }
+    run();
+}
+
+void HazkeyFrontend::SurroundingGateMachine::resolve() {
+    phase_ = Phase::Idle;
+    ++generation_;
+}
+
+void HazkeyFrontend::SurroundingGateMachine::flush() {
+    while (!active() && !held_.empty()) {
+        HeldOp op = std::move(held_.front());
+        held_.pop_front();
+        op.run();
+    }
+}
+
+void HazkeyFrontend::SurroundingGateMachine::abort() {
+    if (!active()) {
+        return;
+    }
+    phase_ = Phase::Idle;
+    ++generation_;
+    std::deque<HeldOp> held;
+    held.swap(held_);
+    for (auto& op : held) {
+        if (!op.isKey) {
+            op.run();
+        }
+    }
+}
+
+void HazkeyFrontend::SurroundingGateMachine::clear() {
+    phase_ = Phase::Idle;
+    ++generation_;
+    held_.clear();
+}
+
+bool HazkeyFrontend::isSurroundingGateCandidate(guint keyval, guint state,
+                                                bool composing, bool listFocused,
+                                                bool profileLoaded,
+                                                bool gateHint) {
+    return (state & IBUS_RELEASE_MASK) == 0 && keyval != IBUS_KEY_Shift_L &&
+           keyval != IBUS_KEY_Shift_R && keyval != IBUS_KEY_space &&
+           (state & kModifierPassthroughMask) == 0 &&
+           HazkeyState::isInputableKey(keyval) && !composing && !listFocused &&
+           (!profileLoaded || gateHint);
 }
 
 void HazkeyFrontend::applyIngress(
@@ -225,6 +400,7 @@ void HazkeyFrontend::applyIngress(
     specComposing_ = snapshot.composing;
     specListFocused_ = snapshot.listFocused;
     profileLoaded_ = snapshot.profileLoaded;
+    surroundingGateHint_ = snapshot.surroundingGate;
     liveConvert_ = snapshot.liveConvert;
     zenzaiToggle_ = snapshot.zenzaiToggle;
     acceptPrediction_ = snapshot.acceptPrediction;
@@ -331,8 +507,18 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     if (retired_) {
         return FALSE;
     }
+    // 周辺テキスト待ちの間は、解放と素通しを含む全キーを投機的に消費して保持し、待機の解決後に到着順で投入する
+    if (gate_.active()) {
+        gate_.submitOrHold(true, [this, keyval, keycode, state] {
+            enqueueKeyOp(keyval, keycode, state, TRUE);
+        });
+        return TRUE;
+    }
     const bool isRelease = (state & IBUS_RELEASE_MASK) != 0;
     const bool shiftKey = keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R;
+    const bool gateCandidate = isSurroundingGateCandidate(
+        keyval, state, specComposing_, specListFocused_, profileLoaded_,
+        surroundingGateHint_);
 
     // 未処理操作の残存中やサーバプロファイル (ひいては設定済みホットキー) 未読込中は、
     // 同期判定がワーカーの処理集合の上位集合である保証がないため (未修飾の独自ホットキーや、待機中キーがこれから焦点を当てる候補等)、
@@ -340,7 +526,7 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     // enqueueKeyOp()がワーカーの未処理分を順序どおりに転送する
     const bool barrier = pendingOps_ > 0 || !profileLoaded_;
     if (barrier) {
-        enqueueKeyOp(keyval, keycode, state, TRUE);
+        enqueueKeyOp(keyval, keycode, state, TRUE, gateCandidate);
         return TRUE;
     }
 
@@ -367,17 +553,20 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     in.acceptPrediction = acceptPrediction_;
     in.deleteLearning = deleteLearning_;
     const gboolean consume = decideConsumeKey(keyval, state, in);
-    enqueueKeyOp(keyval, keycode, state, consume);
+    enqueueKeyOp(keyval, keycode, state, consume, gateCandidate && consume);
     return consume;
 }
 
 void HazkeyFrontend::focusIn() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->focusIn(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->focusIn(); });
+    });
 }
 
 void HazkeyFrontend::focusOut() {
     if (retired_) return;
+    abortSurroundingGate();
     specComposing_ = false;
     specListFocused_ = false;
     forwardedPressKeyvals_.clear();
@@ -386,6 +575,7 @@ void HazkeyFrontend::focusOut() {
 
 void HazkeyFrontend::reset() {
     if (retired_) return;
+    abortSurroundingGate();
     specComposing_ = false;
     specListFocused_ = false;
     forwardedPressKeyvals_.clear();
@@ -394,11 +584,14 @@ void HazkeyFrontend::reset() {
 
 void HazkeyFrontend::enable() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->enable(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->enable(); });
+    });
 }
 
 void HazkeyFrontend::disable() {
     if (retired_) return;
+    abortSurroundingGate();
     specComposing_ = false;
     specListFocused_ = false;
     forwardedPressKeyvals_.clear();
@@ -407,8 +600,10 @@ void HazkeyFrontend::disable() {
 
 void HazkeyFrontend::setCapabilities(guint caps) {
     if (retired_) return;
-    enqueue([caps](const std::shared_ptr<HazkeyState>& s) {
-        s->setCapabilities(caps);
+    gate_.submitOrHold(false, [this, caps] {
+        enqueue([caps](const std::shared_ptr<HazkeyState>& s) {
+            s->setCapabilities(caps);
+        });
     });
 }
 
@@ -417,22 +612,20 @@ bool HazkeyFrontend::activateProperty(const gchar* propName,
     if (retired_ || propName == nullptr) {
         return false;
     }
+    // static領域の名前のみを捕獲するため、ワーカー跨ぎの捕獲でも安全である
+    const char* name = nullptr;
     if (g_strcmp0(propName, "InputMode") == 0) {
-        // static領域: ワーカー跨ぎの捕獲でも安全である。
-        enqueue([](const std::shared_ptr<HazkeyState>& s) {
-            s->activateProperty("InputMode", 0);
-        });
-        return true;
+        name = "InputMode";
+    } else if (g_strcmp0(propName, "Zenzai") == 0) {
+        name = "Zenzai";
+    } else if (g_strcmp0(propName, "LiveConvert") == 0) {
+        name = "LiveConvert";
     }
-    if (g_strcmp0(propName, "Zenzai") == 0) {
-        enqueue([](const std::shared_ptr<HazkeyState>& s) {
-            s->activateProperty("Zenzai", 0);
-        });
-        return true;
-    }
-    if (g_strcmp0(propName, "LiveConvert") == 0) {
-        enqueue([](const std::shared_ptr<HazkeyState>& s) {
-            s->activateProperty("LiveConvert", 0);
+    if (name != nullptr) {
+        gate_.submitOrHold(false, [this, name] {
+            enqueue([name](const std::shared_ptr<HazkeyState>& s) {
+                s->activateProperty(name, 0);
+            });
         });
         return true;
     }
@@ -442,8 +635,10 @@ bool HazkeyFrontend::activateProperty(const gchar* propName,
 
 void HazkeyFrontend::setCursorLocation(gint x, gint y, gint w, gint h) {
     if (retired_) return;
-    enqueue([x, y, w, h](const std::shared_ptr<HazkeyState>& s) {
-        s->setCursorLocation(x, y, w, h);
+    gate_.submitOrHold(false, [this, x, y, w, h] {
+        enqueue([x, y, w, h](const std::shared_ptr<HazkeyState>& s) {
+            s->setCursorLocation(x, y, w, h);
+        });
     });
 }
 
@@ -460,26 +655,39 @@ void HazkeyFrontend::setSurroundingText(IBusText* text, guint cursorIndex,
                 const std::shared_ptr<HazkeyState>& s) {
         s->setSurroundingText(surrounding, cursorIndex, anchorPos);
     });
+    // 周辺テキストの通知は保持せず、待機の解決に使う
+    // 判定中に届いた場合は、ワーカーが保留を返した時点で到着済みとして解決する
+    if (gate_.onSurroundingArrived()) {
+        resolveSurroundingGate(true);
+    }
 }
 
 void HazkeyFrontend::pageUp() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->pageUp(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->pageUp(); });
+    });
 }
 
 void HazkeyFrontend::pageDown() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->pageDown(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->pageDown(); });
+    });
 }
 
 void HazkeyFrontend::cursorUp() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->cursorUp(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->cursorUp(); });
+    });
 }
 
 void HazkeyFrontend::cursorDown() {
     if (retired_) return;
-    enqueue([](const std::shared_ptr<HazkeyState>& s) { s->cursorDown(); });
+    gate_.submitOrHold(false, [this] {
+        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->cursorDown(); });
+    });
 }
 
 void HazkeyFrontend::candidateClicked(guint index, guint button, guint state) {    (void)button;
@@ -499,8 +707,10 @@ void HazkeyFrontend::candidateClicked(guint index, guint button, guint state) { 
         return;
     }
     const int generation = snapshot.generation;
-    enqueue([global, generation](const std::shared_ptr<HazkeyState>& s) {
-        s->candidateClickedGlobal(global, generation);
+    gate_.submitOrHold(false, [this, global, generation] {
+        enqueue([global, generation](const std::shared_ptr<HazkeyState>& s) {
+            s->candidateClickedGlobal(global, generation);
+        });
     });
 }
 
