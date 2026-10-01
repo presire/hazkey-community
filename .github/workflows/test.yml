@@ -167,33 +167,24 @@ jobs:
           # vulkan-shaders-genは、最大16個のglslcサブプロセスを並列にフォークする
           # 制約のあるCIコンテナでは、プロセステーブル上限を超え、シェーダーシンボルが暗黙に欠落する可能性がある
           export GGML_VULKAN_SHADER_MAX_PARALLEL=1
-          # C++ライブラリ、実行ファイル、CTest登録済みテストバイナリを速度のため並列ビルドする
-          # (zenzai_model_management_test、zenzai_dialog_selection_test、zenzai_download_validation_test、
-          #  zenzai_family_row_test、keysequence_util_test、userdict_model_test、live_convert_mode_test、
-          #  hazkey_candidate_selection_test、hazkey_client_rpc_probe_test、hazkey_client_cache_test、
-          #  hazkey_client_config_revision_test、candidate_refresh_coalescer_test、
-          #  hazkey_client_transact_safety_test、hazkey_composing_cursor_view_test、
-          #  hazkey_frontend_async_test、ibus_hazkey_state_test、learninghistorydialog_test)
-          # learninghistorydialog_testは、Swiftサーバビルド (build_hazkey_server) にも依存するため、以下のステップで単一スレッドによりビルドする
+          # C++ライブラリと実行ファイルを速度のため並列ビルドする
           cmake --build build --target hazkey-settings --parallel
           cmake --build build --target fcitx5-hazkey --parallel
           cmake --build build --target ibus-engine-hazkey --parallel
-          cmake --build build --target zenzai_model_management_test --parallel
-          cmake --build build --target keysequence_util_test --parallel
-          cmake --build build --target userdict_model_test --parallel
-          cmake --build build --target live_convert_mode_test --parallel
-          cmake --build build --target hazkey_candidate_selection_test --parallel
-          cmake --build build --target hazkey_client_rpc_probe_test --parallel
-          cmake --build build --target hazkey_client_cache_test --parallel
-          cmake --build build --target hazkey_client_config_revision_test --parallel
-          cmake --build build --target candidate_refresh_coalescer_test --parallel
-          cmake --build build --target hazkey_client_transact_safety_test --parallel
-          cmake --build build --target hazkey_composing_cursor_view_test --parallel
-          cmake --build build --target hazkey_frontend_async_test --parallel
-          cmake --build build --target ibus_hazkey_state_test --parallel
-          cmake --build build --target zenzai_dialog_selection_test --parallel
-          cmake --build build --target zenzai_download_validation_test --parallel
-          cmake --build build --target zenzai_family_row_test --parallel
+          # CTest登録済みテストバイナリは、CTestの一覧からビルド対象を自動導出する
+          # テスト追加のたびに、ここへターゲットを手動で列挙する必要はない (列挙漏れによる"Not Run"を防ぐ)
+          # このリポジトリでは、add_test()のテスト名とビルドターゲット名が一致する
+          # learninghistorydialog_testは、Swiftサーバビルド (build_hazkey_server) にも依存するため、
+          # 以下のステップで単一スレッドによりビルドする
+          mapfile -t test_targets < <(
+            ctest --test-dir build -N |
+              sed -n 's/^ *Test *#[0-9]*: //p' |
+              grep -vx 'learninghistorydialog_test'
+          )
+          # 導出に失敗して、テストを1件もビルドせずに通過することを防ぐ
+          test "${#test_targets[@]}" -gt 0
+          printf 'CTest targets: %s\n' "${test_targets[*]}"
+          cmake --build build --target "${test_targets[@]}" --parallel
 
       - name: Build Swift server & learninghistorydialog_test (single-threaded)
         run: |
@@ -239,10 +230,10 @@ jobs:
           number_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
           number_source="${number_checkout}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift"
           number_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0003-fix-standalone-unit-japanese-number.patch"
-           if ! grep -q "hazkey-community patch" "${number_source}"; then
-             git -C "${number_checkout}" apply "${number_patch}"
-           fi
-           # user-dictionaryのリトライ保持修正 (旧patches/0006-zenzai-preserve-user-dictionary.patch) は、
-           # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない
-           # Swift Buildではテストランナーの推移的なllama/ggml共有ライブラリが既定の探索範囲外に置かれるため、-rpath-linkで推移パスを指定する
-           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}" -Xlinker "-rpath-link" -Xlinker "${LLAMA_LIB_DIR}"
+          if ! grep -q "hazkey-community patch" "${number_source}"; then
+            git -C "${number_checkout}" apply "${number_patch}"
+          fi
+          # user-dictionaryのリトライ保持修正 (旧patches/0006-zenzai-preserve-user-dictionary.patch) は、
+          # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない
+          # Swift Buildではテストランナーの推移的なllama/ggml共有ライブラリが既定の探索範囲外に置かれるため、-rpath-linkで推移パスを指定する
+          swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}" -Xlinker "-rpath-link" -Xlinker "${LLAMA_LIB_DIR}"
