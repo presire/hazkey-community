@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 import XCTest
 
 @testable import hazkey_server
@@ -727,6 +728,92 @@ final class RelativeDateProviderTests: XCTestCase {
             XCTAssertEqual(first[1], "2026-08-08")
             XCTAssertEqual(first[4], "2026年8月8日(土)")
         }
+    }
+
+    func testDatePrefixCompletionRetainsRightSideReading() throws {
+        try assertDatePrefixCompletion(prefix: "きょう", suffix: "はいいてんき")
+    }
+
+    func testDatePrefixCompletionAtCursorEndClearsComposition() throws {
+        try assertDatePrefixCompletion(prefix: "きょう", suffix: "")
+    }
+
+    private func assertDatePrefixCompletion(prefix: String, suffix: String) throws {
+        for pendingLearning in [false, true] {
+            try withTemporaryState { state in
+                XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+                for character in prefix + suffix {
+                    XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+                }
+                let response = state.getCandidates(is_suggest: false)
+                XCTAssertEqual(response.status, .success)
+                let result: Hazkey_Commands_CandidatesResult
+                if suffix.isEmpty {
+                    result = response.candidates
+                } else {
+                    let adjusted = state.adjustClauseBoundary(offset: -suffix.count)
+                    XCTAssertEqual(adjusted.status, .success)
+                    result = adjusted.clauseBoundaryResult.candidates
+                }
+                XCTAssertEqual(state.composingText.value.convertTargetCursorPosition, prefix.count)
+                XCTAssertEqual(state.composingText.value.toHiragana(), prefix + suffix)
+                let index = try XCTUnwrap(state.currentCandidateList?.firstIndex {
+                    if case .fromDateProvider = $0 { return true }
+                    return false
+                }, "Expected a relative-date candidate for \(prefix)")
+                let candidate = try XCTUnwrap(result.candidates.indices.contains(index)
+                    ? result.candidates[index] : nil)
+                XCTAssertEqual(candidate.subHiragana, suffix)
+                XCTAssertFalse(candidate.hasLearningEntry_p)
+
+                state.learningDataNeedsCommit = pendingLearning
+                XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
+
+                XCTAssertEqual(state.composingText.value.toHiragana(), suffix)
+                XCTAssertEqual(state.composingText.value.isEmpty, suffix.isEmpty)
+                XCTAssertEqual(state.learningDataNeedsCommit, pendingLearning)
+            }
+        }
+    }
+
+    private enum StateTestError: Error {
+        case environmentUpdateFailed(String)
+    }
+
+    private func withTemporaryState(_ body: (HazkeyServerState) throws -> Void) throws {
+        let root = try TestTempRoot.make()
+        let dictionary = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("azooKey_dictionary_storage/Dictionary", isDirectory: true)
+        let paths = [
+            "XDG_CONFIG_HOME": root.path,
+            "XDG_STATE_HOME": root.path,
+            "XDG_CACHE_HOME": root.path,
+            "XDG_DATA_HOME": root.path,
+            "HAZKEY_DICTIONARY": dictionary.path,
+        ]
+        let originalEnvironment = ProcessInfo.processInfo.environment
+        defer {
+            for variable in paths.keys {
+                if let value = originalEnvironment[variable] {
+                    setenv(variable, value, 1)
+                } else {
+                    unsetenv(variable)
+                }
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        for (variable, path) in paths {
+            guard setenv(variable, path, 1) == 0 else {
+                throw StateTestError.environmentUpdateFailed(variable)
+            }
+        }
+        let state = HazkeyServerState()
+        defer { state.close() }
+        state.serverConfig.currentProfile.zenzaiEnable = false
+        state.serverConfig.currentProfile.useTypoCorrection = false
+        state.serverConfig.currentProfile.specialConversionMode.relativeDate = true
+        try body(state)
     }
 
     // MARK: - ヘルパー

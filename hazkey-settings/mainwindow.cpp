@@ -254,6 +254,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("enableZenzai", ui_->enableZenzai->isChecked());
     state.insert("zenzaiContextualConversion", ui_->zenzaiContextualConversion->isChecked());
     state.insert("zenzaiRightContext", ui_->zenzaiRightContext->isChecked());
+    state.insert("zenzaiAlignmentSeparator", ui_->zenzaiAlignmentSeparator->isChecked());
     state.insert("useZenzaiCustomWeight", ui_->useZenzaiCustomWeight->isChecked());
     state.insert("useUserDict", ui_->useUserDict->isChecked());
     state.insert("halfwidthKatakanaConversion", ui_->halfwidthKatakanaConversion->isChecked());
@@ -426,6 +427,8 @@ void MainWindow::connectSignals() {
             });
     connect(ui_->zenzaiRightContext, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
+    connect(ui_->zenzaiAlignmentSeparator, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
     connect(ui_->halfwidthKatakanaConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->extendedEmojiConversion, &QCheckBox::toggled, this,
@@ -551,6 +554,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiContextualConversion->setEnabled(false);
         ui_->zenzaiRightContext->setEnabled(false);
         ui_->zenzaiRightContextLabel->setEnabled(false);
+        ui_->zenzaiAlignmentSeparator->setEnabled(false);
+        ui_->zenzaiAlignmentSeparatorLabel->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
         ui_->zenzaiTopic->setEnabled(false);
@@ -577,6 +582,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiContextualConversion->setEnabled(false);
         ui_->zenzaiRightContext->setEnabled(false);
         ui_->zenzaiRightContextLabel->setEnabled(false);
+        ui_->zenzaiAlignmentSeparator->setEnabled(false);
+        ui_->zenzaiAlignmentSeparatorLabel->setEnabled(false);
         ui_->zenzaiInferenceLimit->setEnabled(false);
         ui_->zenzaiUserPlofile->setEnabled(false);
         ui_->zenzaiTopic->setEnabled(false);
@@ -605,6 +612,8 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiContextualConversion->setEnabled(true);
         ui_->zenzaiRightContext->setEnabled(true);
         ui_->zenzaiRightContextLabel->setEnabled(true);
+        ui_->zenzaiAlignmentSeparator->setEnabled(true);
+        ui_->zenzaiAlignmentSeparatorLabel->setEnabled(true);
         ui_->zenzaiInferenceLimit->setEnabled(true);
         ui_->zenzaiUserPlofile->setEnabled(true);
         ui_->zenzaiTopic->setEnabled(true);
@@ -734,6 +743,19 @@ void MainWindow::updateRightContextUi() {
     ui_->zenzaiRightContextLabel->setEnabled(rightContextEnabled);
     ui_->zenzaiRightContext->setToolTip(rightContextTip);
     ui_->zenzaiRightContextLabel->setToolTip(rightContextTip);
+
+    // アラインメント区切りはモデルの厳格な対応判定だけで有効化する ("文脈変換を使用" には連動しない)
+    // チェック状態は変更しない
+    const bool separatorSupported = useCustomWeight
+                                        ? zenzaiModelSupportsAlignmentSeparator(customPath)
+                                        : zenzaiModelSupportsAlignmentSeparator(ZenzaiModelManager::getActiveModelKey());
+    const QString separatorTip = separatorSupported
+        ? tr("When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right), tells the converter where the cursor is and what follows it. Requires a zenz-v3.2 or newer model.")
+        : notSupportedReason;
+    ui_->zenzaiAlignmentSeparator->setEnabled(separatorSupported);
+    ui_->zenzaiAlignmentSeparatorLabel->setEnabled(separatorSupported);
+    ui_->zenzaiAlignmentSeparator->setToolTip(separatorTip);
+    ui_->zenzaiAlignmentSeparatorLabel->setToolTip(separatorTip);
 }
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
@@ -821,6 +843,9 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->zenzaiRightContext,
                  currentProfile_->zenzai_right_context(),
                  ConfigDefs::CheckboxDefaults::ZENZAI_RIGHT_CONTEXT);
+    SET_CHECKBOX(ui_->zenzaiAlignmentSeparator,
+                 currentProfile_->zenzai_alignment_separator(),
+                 ConfigDefs::CheckboxDefaults::ZENZAI_ALIGNMENT_SEPARATOR);
     SET_CHECKBOX(ui_->useZenzaiCustomWeight,
                  currentProfile_->use_zenzai_custom_weight(),
                  ConfigDefs::CheckboxDefaults::USE_ZENZAI_CUSTOM_WEIGHT);
@@ -1003,6 +1028,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->zenzaiContextualConversion));
     currentProfile_->set_zenzai_right_context(
         GET_CHECKBOX_BOOL(ui_->zenzaiRightContext));
+    currentProfile_->set_zenzai_alignment_separator(
+        GET_CHECKBOX_BOOL(ui_->zenzaiAlignmentSeparator));
     currentProfile_->set_use_zenzai_custom_weight(
         GET_CHECKBOX_BOOL(ui_->useZenzaiCustomWeight));
     currentProfile_->set_use_user_dictionary(GET_CHECKBOX_BOOL(ui_->useUserDict));

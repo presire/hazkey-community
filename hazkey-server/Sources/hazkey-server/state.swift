@@ -29,14 +29,16 @@ enum DisplayedCandidate {
     case fromUserDict(word: String)
     /// RelativeDateProviderが注入する相対日付候補
     ///
-    /// 確定時はfromUserDictと同様に組成テキストを消去し、学習しない
+    /// 確定時はカーソルまでの読み (composingCount) のみを消費して、右側の読みは組成に残す
     ///
-    /// 明確さと将来の拡張のため、別のケースとして保持する
-    case fromDateProvider(word: String)
+    /// 学習は行わず、共有の学習dirtyフラグも変更しない
+    case fromDateProvider(word: String, composingCount: ComposingCount)
     /// KanaNumberProviderが注入する特殊数値候補 (下付き・上付き・丸囲み・ローマ数字等)
     ///
-    /// 確定時はfromDateProviderと同様に組成テキストを消去して、学習しない
-    case fromKanaNumberProvider(word: String)
+    /// 確定時はカーソルまでの読み (composingCount) のみを消費して、右側の読みは組成に残す
+    ///
+    /// 学習は行わず、共有の学習dirtyフラグも変更しない
+    case fromKanaNumberProvider(word: String, composingCount: ComposingCount)
     /// EmojiCandidateProviderが注入するEmoji 17.0直接変換候補
     ///
     /// 確定時は一致した正規化クエリのprefix (composingCount) のみを消費して、後続の読みは組成に残す
@@ -828,6 +830,10 @@ class HazkeyServerState {
     ///
     /// 基準値は接続ごとに一度求めればよいため、必要になった時点で1つだけ確保する
     private var typoBaselineSessionID: KanaKanjiConverter.ConversionSessionID?
+    /// 区切り全文要求で読みを超えたために除外した候補の累計件数 (テストから観測する)
+    var droppedAlignmentCandidateCount = 0
+    /// 読み超過候補の除外をログへ出力済みかどうか (1接続につき1回だけ出す)
+    private var hasReportedOversizedAlignmentCandidates = false
 
     /// テスト用: この接続が生成した訂正候補用セッションの数
     ///
@@ -1266,14 +1272,14 @@ class HazkeyServerState {
             // ユーザ辞書エントリは常に読み全体に一致するため、組成テキストを消去するだけでよい
             // 変換エンジンの学習ストアには追加しない
             composingText = ComposingTextBox()
-        case .fromDateProvider:
-            // 日付プロバイダ候補は相対日付トリガーワード (きょう/きのう/...) の読み全体に一致し、計算した日付文字列を生成する
-            // 確定時は、".fromUserDict"と同様に、組成テキストを消去し学習ストアには追加しない
-            composingText = ComposingTextBox()
-        case .fromKanaNumberProvider:
-            // かな数字の特殊候補はかな数詞の読み全体に一致する
-            // 確定時は ".fromDateProvider"と同様に、組成テキストを消去し学習ストアには追加しない
-            composingText = ComposingTextBox()
+        case .fromDateProvider(_, let composingCount):
+            // 日付候補はカーソルまでの相対日付トリガーの読みだけを消費し、右側の読みを保持する
+            // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
+            composingText.value.prefixComplete(composingCount: composingCount)
+        case .fromKanaNumberProvider(_, let composingCount):
+            // かな数字候補はカーソルまでの数詞の読みだけを消費し、右側の読みを保持する
+            // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
+            composingText.value.prefixComplete(composingCount: composingCount)
         case .fromEmoji(_, let composingCount):
             // 絵文字直接変換候補は一致した正規化クエリのprefixだけを消費し、後続suffixは保持する
             // 変換エンジンの確定 / 学習APIには触れないため、共有dirtyフラグは変更しない (他の接続に永続化待ちの学習がある可能性がある)
@@ -1481,6 +1487,44 @@ class HazkeyServerState {
             : composingText.value
     }
 
+    /// アラインメント区切りのために、変換エンジンへ全文の組成テキストを渡すかどうかを判定する
+    ///
+    /// 全文を渡すのは、非サジェスト・Zenzai 有効・設定が適用可能・カーソルが読みの途中・組成の入力の末尾が文節区切り (右側に未確定のローマ字が無い) の時のみ
+    /// それ以外はカーソルまでの読みを渡す
+    ///
+    /// - Note: 設定の適用可否は、HazkeyServerConfig.alignmentSeparatorAppliesが1箇所で判定する
+    static func shouldSendFullReadingForAlignment(
+        fullText: ComposingText, isSuggest: Bool, zenzaiOn: Bool, alignmentApplies: Bool
+    ) -> Bool {
+        !isSuggest && zenzaiOn && alignmentApplies && !fullText.isAtEndIndex
+            && fullText.convertTargetCursorPosition > 0
+            && (fullText.input.last?.piece == .compositionSeparator)
+    }
+
+    /// 候補の読みが指定した長さを超えるものを除外する
+    ///
+    /// 全文の読みを変換エンジンへ渡した場合、全文に対応するかな候補が混入するため、
+    /// カーソルまでの読みに収まる候補だけを残す (再要求はしない)
+    ///
+    /// - Parameters:
+    ///   - candidates: 変換エンジンが返した候補
+    ///   - readingLength: カーソルまでの読みの文字数
+    /// - Returns: 範囲内の候補と、除外した件数を返す
+    static func candidatesWithinReading(
+        _ candidates: [Candidate], readingLength: Int
+    ) -> (kept: [Candidate], droppedCount: Int) {
+        var kept: [Candidate] = []
+        var droppedCount = 0
+        for candidate in candidates {
+            if candidate.rubyCount <= readingLength {
+                kept.append(candidate)
+            } else {
+                droppedCount += 1
+            }
+        }
+        return (kept, droppedCount)
+    }
+
     /// 学習メモリへの一括ポイント照会で、変換候補に削除可能の注釈 (has_learning_entry) を付ける
     ///
     /// 各候補の2種類の読みをまとめて照会して、いずれかが表記と一致すれば注釈を付ける
@@ -1627,6 +1671,22 @@ class HazkeyServerState {
                 for: serverConfig.currentProfile, isSuggestion: is_suggest)
         )
         let zenzai: String = if case .off = options.zenzaiMode { "off" } else { "on" }
+        let alignmentApplies = HazkeyServerConfig.alignmentSeparatorApplies(
+            profile: serverConfig.currentProfile,
+            modelURL: serverConfig.zenzaiModelPath?.resolvingSymlinksInPath())
+        let sendFullReading = Self.shouldSendFullReadingForAlignment(
+            fullText: composingText.value,
+            isSuggest: is_suggest,
+            zenzaiOn: zenzai == "on",
+            alignmentApplies: alignmentApplies)
+        if sendFullReading {
+            options.zenzaiMode = serverConfig.genZenzaiMode(
+                leftContext: zenzaiLeftContext,
+                rightContext: zenzaiRightContext,
+                requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
+                    for: serverConfig.currentProfile, isSuggestion: is_suggest),
+                sendsFullReadingForAlignment: true)
+        }
         userDictionaryStartedAt = perfProbe?.now()
         defer {
             if let candidateStartedAt, let userDictionaryStartedAt, let userDictionaryFinishedAt {
@@ -1662,8 +1722,9 @@ class HazkeyServerState {
             _ = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
         }
         guard
-            let converted = withConversionSession({
-                converter.requestCandidates(copiedComposingText, options: options)
+            var converted = withConversionSession({
+                converter.requestCandidates(
+                    sendFullReading ? composingText.value : copiedComposingText, options: options)
             })
         else {
             // セッションは接続終了時にのみ削除され、単一スレッドのサーバループが終了済みセッションで変換することもないが、
@@ -1679,6 +1740,21 @@ class HazkeyServerState {
         let fullHiraganaPreedit = composingText.value.toHiragana()
         let hiraganaPreedit = copiedComposingText.toHiragana()
         let hiraganaPreeditLen = hiraganaPreedit.count
+        if sendFullReading {
+            let main = Self.candidatesWithinReading(
+                converted.mainResults, readingLength: hiraganaPreeditLen)
+            let predictions = Self.candidatesWithinReading(
+                converted.predictionResults, readingLength: hiraganaPreeditLen)
+            converted.mainResults = main.kept
+            converted.predictionResults = predictions.kept
+            let droppedCount = main.droppedCount + predictions.droppedCount
+            droppedAlignmentCandidateCount += droppedCount
+            if droppedCount > 0 && !hasReportedOversizedAlignmentCandidates {
+                hasReportedOversizedAlignmentCandidates = true
+                NSLog(
+                    "[hazkey] dropped \(droppedCount) alignment candidates exceeding the cursor reading")
+            }
+        }
         var serverCandidates: [DisplayedCandidate] = []
         var clientCandidates: [Hazkey_Commands_CandidatesResult.Candidate] = []
 
@@ -1910,12 +1986,15 @@ class HazkeyServerState {
 
                         var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
                         clientCandidate.text = dateStr
-                        // 日付候補は読み全体を消費するため、subHiraganaは残りpreedit (トリガー完全一致なら空) とする
+                        // 日付候補はカーソルまでの読みだけを消費するため、subHiraganaは右側の残りpreeditとする
                         clientCandidate.subHiragana = String(
                             fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
 
                         let insertAt = kanjiIndex + 1 + insertedCount
-                        serverCandidates.insert(.fromDateProvider(word: dateStr), at: insertAt)
+                        serverCandidates.insert(
+                            .fromDateProvider(
+                                word: dateStr, composingCount: .surfaceCount(hiraganaPreeditLen)),
+                            at: insertAt)
                         clientCandidates.insert(clientCandidate, at: insertAt)
                         insertedCount += 1
                     }
@@ -1936,7 +2015,9 @@ class HazkeyServerState {
                         anchorClientCandidate.text = trigger.kanji
                         anchorClientCandidate.subHiragana = String(
                             fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
-                        serverCandidates.append(.fromDateProvider(word: trigger.kanji))
+                        serverCandidates.append(
+                            .fromDateProvider(
+                                word: trigger.kanji, composingCount: .surfaceCount(hiraganaPreeditLen)))
                         clientCandidates.append(anchorClientCandidate)
 
                         // 合成アンカーに続く日付文字列
@@ -1952,7 +2033,9 @@ class HazkeyServerState {
                             clientCandidate.text = dateStr
                             clientCandidate.subHiragana = String(
                                 fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
-                            serverCandidates.append(.fromDateProvider(word: dateStr))
+                            serverCandidates.append(
+                                .fromDateProvider(
+                                    word: dateStr, composingCount: .surfaceCount(hiraganaPreeditLen)))
                             clientCandidates.append(clientCandidate)
                         }
                     }
@@ -1995,7 +2078,9 @@ class HazkeyServerState {
                         clientCandidate.subHiragana = String(
                             fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
                         serverCandidates.insert(
-                            .fromKanaNumberProvider(word: text), at: insertAt + offset)
+                            .fromKanaNumberProvider(
+                                word: text, composingCount: .surfaceCount(hiraganaPreeditLen)),
+                            at: insertAt + offset)
                         clientCandidates.insert(clientCandidate, at: insertAt + offset)
                     }
 

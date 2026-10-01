@@ -151,6 +151,19 @@ bool zenzaiModelSupportsConditioning(const QString& modelKey);
 bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath);
 
 /**
+ * @brief 指定モデルがZenzaiのアラインメント区切りに対応するかどうかを返す
+ *
+ * @details カタログに登録された系列はそのsupportsRightContextを返す
+ *          未登録のキー (カスタム重み等) は右文脈と同じファイル名からの世代推定だが、
+ *          世代を判別できない場合は非対応側に倒す (右文脈とは逆)
+ *          空文字列はアクティブモデル未確定として非対応とする
+ *
+ * @param modelKeyOrPath モデルキー、モデルファイル名、またはモデルファイルのパス
+ * @return アラインメント区切りに対応する場合はtrue
+ */
+bool zenzaiModelSupportsAlignmentSeparator(const QString& modelKeyOrPath);
+
+/**
  * @brief パスまたはファイル名がJinen系モデルを指すかどうかを返す
  *
  * @details ファイル名部分に "jinen" を含むかどうかを大文字小文字を区別せず判定する

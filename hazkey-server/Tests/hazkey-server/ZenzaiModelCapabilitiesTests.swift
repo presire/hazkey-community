@@ -22,6 +22,20 @@ final class ZenzaiModelCapabilitiesTests: XCTestCase {
         Case(name: "ZENZ-V3.2-SMALL.GGUF", expected: true),
     ]
 
+    private let alignmentCases: [Case] = [
+        Case(name: "zenz-v3.2-small.gguf", expected: true),
+        Case(name: "zenz-v3.2-xsmall.gguf", expected: true),
+        Case(name: "zenz-v3.2-small", expected: true),
+        Case(name: "zenz-v4.0-small.gguf", expected: true),
+        Case(name: "zenz-v3.1-small.gguf", expected: false),
+        Case(name: "zenz-v3-small.gguf", expected: false),
+        Case(name: "zenz-v2-small.gguf", expected: false),
+        Case(name: "jinen-v2-small-Q5_K_M.gguf", expected: false),
+        Case(name: "my-custom.gguf", expected: false),
+        Case(name: "zenzai.gguf", expected: false),
+        Case(name: nil, expected: false),
+    ]
+
     func testSupportsRightContextTable() {
         for testCase in cases {
             let url: URL? = testCase.name.map { URL(fileURLWithPath: "/x/y/\($0)") }
@@ -30,6 +44,18 @@ final class ZenzaiModelCapabilitiesTests: XCTestCase {
                 actual,
                 testCase.expected,
                 "supportsRightContext(\(testCase.name ?? "nil")) should be \(testCase.expected)"
+            )
+        }
+    }
+
+    func testSupportsAlignmentSeparatorTable() {
+        for testCase in alignmentCases {
+            let url: URL? = testCase.name.map { URL(fileURLWithPath: "/x/y/\($0)") }
+            let actual = ZenzaiModelCapabilities.supportsAlignmentSeparator(modelURL: url)
+            XCTAssertEqual(
+                actual,
+                testCase.expected,
+                "supportsAlignmentSeparator(\(testCase.name ?? "nil")) should be \(testCase.expected)"
             )
         }
     }

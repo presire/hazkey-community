@@ -72,6 +72,8 @@ private slots:
     void testConditioningSupport();
     /** @brief 右文脈対応フラグとその判定フォールバックを検証する */
     void testRightContextSupport();
+    /** @brief アラインメント区切り対応の判定フォールバック (判別不能は非対応) を検証する */
+    void testAlignmentSeparatorSupport();
     /** @brief カタログ検査結果がディスク変更まで不変であることを検証する */
     void testDownloadedModelKeysSnapshot();
     /** @brief 変更のないスナップショット再取得が再ハッシュしないことを検証する */
@@ -753,6 +755,33 @@ void ZenzaiModelManagementTest::testRightContextSupport() {
     QVERIFY(zenzaiModelSupportsRightContext("ZENZ-V3.2-SMALL.GGUF"));
     QVERIFY(zenzaiModelSupportsRightContext("my-custom-model.gguf"));
     QVERIFY(zenzaiModelSupportsRightContext(QString()));
+}
+
+void ZenzaiModelManagementTest::testAlignmentSeparatorSupport() {
+    // 1. カタログ系列は supportsRightContext をそのまま返す
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("zenz-v3.2-small"));
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("zenz-v3.2-xsmall"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("zenz-v3.1-small"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("jinen-v2-small-Q5_K_M"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("jinen-v2-xsmall-Q4_K_M"));
+
+    // 2. カタログ外の代替処理: ファイル名から世代を推定する (右文脈と同じ規則)
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("zenz-v3.2-small.gguf"));
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("/x/y/ZENZ-V3.2-Foo.gguf"));
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("zenz-v4.0-small.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("/x/y/zenz-v3.1-foo.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("zenz-v3-small.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("zenz-v2-small.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("/path/to/jinen-v2-small-Q4_K_M.gguf"));
+
+    // 3. 判別不能は非対応側に倒す (右文脈とは逆)
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("my-custom"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("my-custom-model.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator("zenzai.gguf"));
+    QVERIFY(!zenzaiModelSupportsAlignmentSeparator(QString()));
+
+    // 4. 大文字拡張子でも v3.2 以降は対応
+    QVERIFY(zenzaiModelSupportsAlignmentSeparator("ZENZ-V3.2-SMALL.GGUF"));
 }
 
 QTEST_MAIN(ZenzaiModelManagementTest)

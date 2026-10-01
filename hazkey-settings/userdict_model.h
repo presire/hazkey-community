@@ -38,7 +38,7 @@ struct UserDictEntry {
 /**
  * @brief ユーザ辞書を正規形式のUTF-8 TSVとしてアトミックに保存する
  *
- * 先頭に "# reading<TAB>word<TAB>comment[<TAB>pos]\n" を出力し、各エントリを1行ずつLF終端で出力する
+ * 先頭に"# reading<TAB>word<TAB>comment[<TAB>pos]\n"を出力して、各エントリを1行ずつLF終端で出力する
  * posがnounまたは空の行では、空のコメント列とPOS列を省略する
  * その他のPOSの行では、コメントが空でも4列目のPOSを保持する
  * QSaveFileの直接書込フォールバックを無効にするため、全内容の書込・flush・commitが成功した場合だけ対象ファイルが置き換えられる
@@ -46,7 +46,7 @@ struct UserDictEntry {
  * @param path 保存先のファイルパス
  * @param entries 保存するユーザー辞書エントリの列
  * @return 保存がcommitまで成功した場合はtrue、
- *         ファイルを開けない場合やストリームエラーが発生した場合、またはcommitに失敗した場合はfalse
+ *         ファイルを開けない場合やストリームエラーが発生した場合、または、コミットに失敗した場合はfalse
  *         失敗時は保留中の書込を取り消し、既存ファイルを変更しない
  */
 bool writeUserDictionaryFile(const QString& path,

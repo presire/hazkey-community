@@ -447,6 +447,7 @@ class HazkeyServerConfig {
         newConf.useEngineeringDictionary = false
         newConf.useTypoCorrection = false
         newConf.zenzaiRightContext = false
+        newConf.zenzaiAlignmentSeparator = false
         newConf.specialConversionMode = Hazkey_Config_Profile.SpecialConversionMode.with {
             $0.commaSeparatedNumber = true
             $0.mailDomain = true
@@ -733,6 +734,9 @@ class HazkeyServerConfig {
         if !normalized.hasZenzaiRightContext {
             normalized.zenzaiRightContext = defaults.zenzaiRightContext
         }
+        if !normalized.hasZenzaiAlignmentSeparator {
+            normalized.zenzaiAlignmentSeparator = defaults.zenzaiAlignmentSeparator
+        }
 
         try validateEnums(normalized)
         try validateRange(normalized.numSuggestions, field: "numSuggestions", range: 1...10)
@@ -956,12 +960,14 @@ class HazkeyServerConfig {
     ///   - leftContext: カーソル左側の文脈文字列
     ///   - rightContext: カーソル右側の文脈文字列 (接続単位の保持値)
     ///   - modelURL: 実体へ解決済みのモデルパス (nilは非対応扱い)
+    ///   - sendsFullReadingForAlignment: 全文を送る場合に区切りを有効化する
     /// - Returns: 変換要求に渡すv3モードを返す
     static func makeZenzaiV3DependentMode(
         profile: Hazkey_Config_Profile,
         leftContext: String,
         rightContext: String,
-        modelURL: URL?
+        modelURL: URL?,
+        sendsFullReadingForAlignment: Bool = false
     ) -> ConvertRequestOptions.ZenzaiV3DependentMode {
         let supported = ZenzaiModelCapabilities.supportsRightContext(modelURL: modelURL)
         let rightSideContext: String? =
@@ -973,8 +979,22 @@ class HazkeyServerConfig {
             style: profile.zenzaiStyle,
             preference: profile.zenzaiPreference,
             leftSideContext: profile.zenzaiContextualMode ? leftContext : nil,
-            rightSideContext: rightSideContext
+            rightSideContext: rightSideContext,
+            enableAlignmentSeparator: sendsFullReadingForAlignment
+                && Self.alignmentSeparatorApplies(profile: profile, modelURL: modelURL)
         )
+    }
+
+    /// アラインメント区切り (U+EE08) をZenzai v3モードへ反映するかを判定する
+    ///
+    /// 区切りは組成中の読みの情報であり周辺テキストではないため、文脈変換設定には依存しない。
+    /// カーソル末尾での適用可否は全文送信判定が受け持つ。
+    static func alignmentSeparatorApplies(
+        profile: Hazkey_Config_Profile,
+        modelURL: URL?
+    ) -> Bool {
+        profile.zenzaiAlignmentSeparatorEffective
+            && ZenzaiModelCapabilities.supportsAlignmentSeparator(modelURL: modelURL)
     }
 
     /// 変換要求用のニューラル変換モードを生成する
@@ -989,11 +1009,13 @@ class HazkeyServerConfig {
     ///   - leftContext: カーソル左側の文脈文字列
     ///   - rightContext: カーソル右側の文脈文字列 (省略時は送らない)
     ///   - requestRichCandidates: リッチ候補要求の上書き (省略時は現設定を使用する)
+    ///   - sendsFullReadingForAlignment: 全文を送る場合に区切りを有効化する
     /// - Returns: 変換要求に渡すニューラル変換モードを返す
     func genZenzaiMode(
         leftContext: String,
         rightContext: String = "",
-        requestRichCandidates: Bool? = nil
+        requestRichCandidates: Bool? = nil,
+        sendsFullReadingForAlignment: Bool = false
     )
         -> ConvertRequestOptions.ZenzaiMode
     {
@@ -1021,7 +1043,8 @@ class HazkeyServerConfig {
                         profile: currentProfile,
                         leftContext: leftContext,
                         rightContext: rightContext,
-                        modelURL: zenzaiModelPath.resolvingSymlinksInPath()
+                        modelURL: zenzaiModelPath.resolvingSymlinksInPath(),
+                        sendsFullReadingForAlignment: sendsFullReadingForAlignment
                     )),
                 deviceConfig: createDeviceConfig(deviceName: deviceName)
             )
@@ -1265,6 +1288,10 @@ extension Hazkey_Config_Profile {
 
     var zenzaiRightContextEffective: Bool {
         hasZenzaiRightContext ? zenzaiRightContext : false
+    }
+
+    var zenzaiAlignmentSeparatorEffective: Bool {
+        hasZenzaiAlignmentSeparator ? zenzaiAlignmentSeparator : false
     }
 }
 

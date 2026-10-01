@@ -660,4 +660,98 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertFalse(profile.zenzaiRightContext)
         XCTAssertFalse(profile.zenzaiRightContextEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingZenzaiAlignmentSeparatorAndPreservesExplicitTrue() throws {
+        // 前提: アラインメント区切りフィールドがない旧プロファイルと、明示的に有効化するプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearZenzaiAlignmentSeparator()
+        XCTAssertFalse(missing.hasZenzaiAlignmentSeparator)
+        XCTAssertFalse(missing.zenzaiAlignmentSeparatorEffective)
+
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.zenzaiAlignmentSeparator = true
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        // 検証: 欠落フィールドは無効が既定となり、明示的な有効化は保持される
+        XCTAssertTrue(normalizedMissing.hasZenzaiAlignmentSeparator)
+        XCTAssertFalse(normalizedMissing.zenzaiAlignmentSeparator)
+        XCTAssertFalse(normalizedMissing.zenzaiAlignmentSeparatorEffective)
+        XCTAssertTrue(normalizedEnabled.zenzaiAlignmentSeparator)
+        XCTAssertTrue(normalizedEnabled.zenzaiAlignmentSeparatorEffective)
+    }
+
+    func testSavedZenzaiAlignmentSeparatorSurvivesReload() throws {
+        // 前提: 分離したXDG_CONFIG_HOME配下へ保存する設定
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.zenzaiAlignmentSeparator = true
+
+        // 実行: 保存してconfig.jsonから読み直す
+        let config = HazkeyServerConfig()
+        try config.saveConfig([profile])
+        let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 明示的な有効化が往復後も保持される
+        XCTAssertTrue(reloaded.hasZenzaiAlignmentSeparator)
+        XCTAssertTrue(reloaded.zenzaiAlignmentSeparator)
+        XCTAssertTrue(reloaded.zenzaiAlignmentSeparatorEffective)
+    }
+
+    func testDecodingLegacyConfigWithoutZenzaiAlignmentSeparatorYieldsFalseWithoutError() throws {
+        // 前提: アラインメント区切りフィールドを持たない旧config.json (未知フィールドを含む)
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+        let configDirectory = HazkeyServerConfig.getConfigDirectory()
+        try FileManager.default.createDirectory(
+            at: configDirectory, withIntermediateDirectories: true)
+        let configURL = configDirectory.appendingPathComponent("config.json")
+        try Data("""
+            [{"profileName": "Legacy", "unknownFutureField": 42}]
+            """.utf8).write(to: configURL)
+
+        // 実行: 保存済みconfig.jsonを復号する (ignoreUnknownFieldsは不変のまま)
+        let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 例外なく旧設定を読み込み、アラインメント区切りは既定の無効へ縮退する
+        XCTAssertEqual(profile.profileName, "Legacy")
+        XCTAssertFalse(profile.zenzaiAlignmentSeparator)
+        XCTAssertFalse(profile.zenzaiAlignmentSeparatorEffective)
+    }
 }

@@ -256,6 +256,8 @@ struct CheckboxDefaults {
     static constexpr bool ZENZAI_CONTEXTUAL = false;
     /** @brief Zenzaiの右文脈を使用しない既定値 */
     static constexpr bool ZENZAI_RIGHT_CONTEXT = false;
+    /** @brief Zenzaiのアラインメント区切りを使用しない既定値 */
+    static constexpr bool ZENZAI_ALIGNMENT_SEPARATOR = false;
     /** @brief Zenzaiのカスタム重みを使用しない既定値 */
     static constexpr bool USE_ZENZAI_CUSTOM_WEIGHT = false;
     /** @brief 半角カタカナ変換を使用しない既定値 */

@@ -63,4 +63,13 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertFalse(profile.zenzaiRightContext)
         XCTAssertFalse(profile.zenzaiRightContextEffective)
     }
+
+    func testDefaultProfileDisablesZenzaiAlignmentSeparator() throws {
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        XCTAssertTrue(profile.hasZenzaiAlignmentSeparator)
+        XCTAssertFalse(profile.zenzaiAlignmentSeparator)
+        XCTAssertFalse(profile.zenzaiAlignmentSeparatorEffective)
+    }
 }

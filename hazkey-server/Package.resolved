@@ -1,5 +1,5 @@
 {
-  "originHash" : "5150470cadea2e0fae3f28a772485b1e87ac70d5f91cccbc8933bda83d01d6e9",
+  "originHash" : "3348518f25d17b8cdaa908982c4a3a5086fa86c78cf93561d0dc43551feb2db5",
   "pins" : [
     {
       "identity" : "azookeykanakanjiconverter",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/presire/AzooKeyKanaKanjiConverter",
       "state" : {
         "branch" : "hazkey",
-        "revision" : "102357e9ffb8e94820a68e07c0323f150baee563"
+        "revision" : "c8ebd9ff496e10d95aa6fa1a909f1aa2709075b2"
       }
     },
     {

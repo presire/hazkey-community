@@ -2,8 +2,7 @@
  * @file zenzai_models.cpp
  * @brief Zenzaiモデルカタログとローカル管理処理の実装
  *
- * 固定カタログのメタデータを提供し、XDGのデータディレクトリ配下で
- * 管理対象モデルとアクティブモデル用シンボリックリンクを操作する
+ * 固定カタログのメタデータを提供して、XDGのデータディレクトリ配下で管理対象モデルとアクティブモデル用シンボリックリンクを操作する
  */
 
 #include "zenzai_models.h"
@@ -407,15 +406,10 @@ bool zenzaiModelSupportsConditioning(const QString& modelKey) {
     return !isJinenModelPath(modelKey);
 }
 
-bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath) {
-    if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKeyOrPath)) {
-        return family->supportsRightContext;
-    }
-    // カタログ外 (カスタム重み等) はファイル名で世代を推定する
-    if (isJinenModelPath(modelKeyOrPath)) {
-        return false;
-    }
-
+namespace {
+// ファイル名から"zenz-v<major>[.<minor>]"を拾う共通推定 (右文脈とアラインメント区切りで共有)
+// 拡張子 (.gguf) を除いた小文字名の部分一致で判定して、マッチしなければfalseを返す
+bool zenzVersionFromModelName(const QString& modelKeyOrPath, int& major, int& minor) {
     QString fileName = QFileInfo(modelKeyOrPath).fileName();
     if (fileName.isEmpty()) {
         fileName = modelKeyOrPath;
@@ -429,12 +423,52 @@ bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath) {
         QStringLiteral("zenz-v(\\d+)(?:\\.(\\d+))?"));
     const QRegularExpressionMatch match = versionPattern.match(fileName);
     if (!match.hasMatch()) {
+        return false;
+    }
+    major = match.captured(1).toInt();
+    minor = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
+    return true;
+}
+
+// 世代番号から v3.2 以降かどうかを判定する (右文脈・アラインメント区切り共通の閾値)
+bool zenzVersionIsV32OrNewer(int major, int minor) {
+    return major > 3 || (major == 3 && minor >= 2);
+}
+}  // namespace
+
+bool zenzaiModelSupportsRightContext(const QString& modelKeyOrPath) {
+    if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKeyOrPath)) {
+        return family->supportsRightContext;
+    }
+    // カタログ外 (カスタム重み等) はファイル名で世代を推定する
+    if (isJinenModelPath(modelKeyOrPath)) {
+        return false;
+    }
+
+    int major = 0;
+    int minor = 0;
+    if (!zenzVersionFromModelName(modelKeyOrPath, major, minor)) {
         // 名前から世代を判別できないモデルは対応側に倒す
         return true;
     }
-    const int major = match.captured(1).toInt();
-    const int minor = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
-    return major > 3 || (major == 3 && minor >= 2);
+    return zenzVersionIsV32OrNewer(major, minor);
+}
+
+bool zenzaiModelSupportsAlignmentSeparator(const QString& modelKeyOrPath) {
+    if (const ZenzaiModelFamily* family = findZenzaiFamilyByKey(modelKeyOrPath)) {
+        return family->supportsRightContext;
+    }
+    // カタログ外は右文脈と同じファイル名推定だが、判別不能は非対応側に倒す (右文脈とは逆)
+    if (isJinenModelPath(modelKeyOrPath)) {
+        return false;
+    }
+
+    int major = 0;
+    int minor = 0;
+    if (!zenzVersionFromModelName(modelKeyOrPath, major, minor)) {
+        return false;
+    }
+    return zenzVersionIsV32OrNewer(major, minor);
 }
 
 QString ZenzaiModelManager::getZenzaiDir() {

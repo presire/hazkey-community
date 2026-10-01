@@ -197,9 +197,14 @@ message Profile {
     // - Note: 既定はOFF
     optional bool use_typo_correction = 129;
 
-    // Zenzaiの右文脈 (カーソルの右側にある周辺テキスト、最大40文字) を変換に使う
+    // Zenzaiの右文脈 (カーソルの右側にある周辺テキスト、最大40文字) を変換に使用する
     // - Note: 既定はOFF。zenz-v3.2以降のモデルでのみ有効。「文脈変換を使用」(zenzai_contextual_mode) がOFFのときは無効
     optional bool zenzai_right_context = 130;
+
+    // Zenzaiのアラインメント区切り (U+EE08) を変換に使用する
+    // 組成中のカーソルが読みの途中にある通常変換 (文節境界の調整等) で、カーソル位置と残りの読みを変換器へ伝える
+    // - Note: 既定はOFF。zenz-v3.2以降のモデルでのみ有効。サジェスト (ライブ変換) には適用しない
+    optional bool zenzai_alignment_separator = 131;
 }
 
 // リクエスト用メッセージ

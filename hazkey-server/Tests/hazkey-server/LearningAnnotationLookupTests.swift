@@ -213,10 +213,10 @@ final class LearningAnnotationLookupTests: XCTestCase {
             case .fromUserDict(let word):
                 XCTAssertEqual(wire.text, word, file: file, line: line)
                 XCTAssertFalse(wire.hasLearningEntry_p, file: file, line: line)
-            case .fromDateProvider(let word):
+            case .fromDateProvider(let word, _):
                 XCTAssertEqual(wire.text, word, file: file, line: line)
                 XCTAssertFalse(wire.hasLearningEntry_p, file: file, line: line)
-            case .fromKanaNumberProvider(let word):
+            case .fromKanaNumberProvider(let word, _):
                 XCTAssertEqual(wire.text, word, file: file, line: line)
                 XCTAssertFalse(wire.hasLearningEntry_p, file: file, line: line)
             case .fromEmoji(let word, _):
@@ -363,7 +363,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
             XCTAssertFalse(generated.isEmpty)
             XCTAssertGreaterThan(
                 injectionCount(in: state) { entry in
-                    guard case .fromKanaNumberProvider(let word) = entry else { return false }
+                    guard case .fromKanaNumberProvider(let word, _) = entry else { return false }
                     return generated.contains(word)
                 },
                 0)

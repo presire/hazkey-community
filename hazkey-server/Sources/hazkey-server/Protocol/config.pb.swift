@@ -574,7 +574,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `useTypoCorrection`. Subsequent reads from it will return its default value.
   mutating func clearUseTypoCorrection() {_uniqueStorage()._useTypoCorrection = nil}
 
-  /// Zenzaiの右文脈 (カーソルの右側にある周辺テキスト、最大40文字) を変換に使う
+  /// Zenzaiの右文脈 (カーソルの右側にある周辺テキスト、最大40文字) を変換に使用する
   /// - Note: 既定はOFF。zenz-v3.2以降のモデルでのみ有効。「文脈変換を使用」(zenzai_contextual_mode) がOFFのときは無効
   var zenzaiRightContext: Bool {
     get {_storage._zenzaiRightContext ?? false}
@@ -584,6 +584,18 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   var hasZenzaiRightContext: Bool {_storage._zenzaiRightContext != nil}
   /// Clears the value of `zenzaiRightContext`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiRightContext() {_uniqueStorage()._zenzaiRightContext = nil}
+
+  /// Zenzaiのアラインメント区切り (U+EE08) を変換に使用する
+  /// 組成中のカーソルが読みの途中にある通常変換 (文節境界の調整等) で、カーソル位置と残りの読みを変換器へ伝える
+  /// - Note: 既定はOFF。zenz-v3.2以降のモデルでのみ有効。サジェスト (ライブ変換) には適用しない
+  var zenzaiAlignmentSeparator: Bool {
+    get {_storage._zenzaiAlignmentSeparator ?? false}
+    set {_uniqueStorage()._zenzaiAlignmentSeparator = newValue}
+  }
+  /// Returns true if `zenzaiAlignmentSeparator` has been explicitly set.
+  var hasZenzaiAlignmentSeparator: Bool {_storage._zenzaiAlignmentSeparator != nil}
+  /// Clears the value of `zenzaiAlignmentSeparator`. Subsequent reads from it will return its default value.
+  mutating func clearZenzaiAlignmentSeparator() {_uniqueStorage()._zenzaiAlignmentSeparator = nil}
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1367,7 +1379,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1414,6 +1426,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _useEngineeringDictionary: Bool? = nil
     var _useTypoCorrection: Bool? = nil
     var _zenzaiRightContext: Bool? = nil
+    var _zenzaiAlignmentSeparator: Bool? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1468,6 +1481,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _useEngineeringDictionary = source._useEngineeringDictionary
       _useTypoCorrection = source._useTypoCorrection
       _zenzaiRightContext = source._zenzaiRightContext
+      _zenzaiAlignmentSeparator = source._zenzaiAlignmentSeparator
     }
   }
 
@@ -1530,6 +1544,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 128: try { try decoder.decodeSingularBoolField(value: &_storage._useEngineeringDictionary) }()
         case 129: try { try decoder.decodeSingularBoolField(value: &_storage._useTypoCorrection) }()
         case 130: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiRightContext) }()
+        case 131: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiAlignmentSeparator) }()
         default: break
         }
       }
@@ -1674,6 +1689,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._zenzaiRightContext {
         try visitor.visitSingularBoolField(value: v, fieldNumber: 130)
       } }()
+      try { if let v = _storage._zenzaiAlignmentSeparator {
+        try visitor.visitSingularBoolField(value: v, fieldNumber: 131)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1727,6 +1745,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._useEngineeringDictionary != rhs_storage._useEngineeringDictionary {return false}
         if _storage._useTypoCorrection != rhs_storage._useTypoCorrection {return false}
         if _storage._zenzaiRightContext != rhs_storage._zenzaiRightContext {return false}
+        if _storage._zenzaiAlignmentSeparator != rhs_storage._zenzaiAlignmentSeparator {return false}
         return true
       }
       if !storagesAreEqual {return false}

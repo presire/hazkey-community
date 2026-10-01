@@ -478,7 +478,8 @@ final class LearningHistoryServerTests: XCTestCase {
         try withTemporaryXDG { _ in
             let state = try makeInputState("きょう")
             XCTAssertEqual(try send(getCandidatesRequest(isSuggest: false), to: state).status, .success)
-            state.currentCandidateList?.append(.fromDateProvider(word: "2026年9月8日"))
+            state.currentCandidateList?.append(
+                .fromDateProvider(word: "2026年9月8日", composingCount: .surfaceCount(0)))
             let index = Int32(try XCTUnwrap(state.currentCandidateList?.indices.last))
 
             let response = try send(deleteCandidateRequest(index: index), to: state)
