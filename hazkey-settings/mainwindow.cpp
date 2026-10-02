@@ -697,18 +697,25 @@ void MainWindow::updateConditioningUi() {
         supported = zenzaiModelSupportsConditioning(ZenzaiModelManager::getActiveModelKey());
     }
 
-    ui_->zenzaiUserPlofile->setEnabled(supported);
+    // ユーザープロファイルは条件付け非対応モデル (jinen系) でも常に編集できる
+    // 非対応モデルではサーバ側でプロファイルを左文脈の先頭 (末尾25文字) に折り込むため、無効化する代わりにツールチップでその挙動を説明する
+    ui_->zenzaiUserPlofile->setEnabled(true);
+    ui_->zenzaiUserProfileLabel->setEnabled(true);
+    const QString profileTip = supported
+                                   ? QString()
+                                   : tr("For this model, the profile is added to the beginning of the left context (last 25 characters).");
+    ui_->zenzaiUserPlofile->setToolTip(profileTip);
+    ui_->zenzaiUserProfileLabel->setToolTip(profileTip);
+
     ui_->zenzaiTopic->setEnabled(supported);
     ui_->zenzaiStyle->setEnabled(supported);
     ui_->zenzaiPreference->setEnabled(supported);
-    ui_->zenzaiUserProfileLabel->setEnabled(supported);
     ui_->zenzaiTopicLabel->setEnabled(supported);
     ui_->zenzaiStyleLabel->setEnabled(supported);
     ui_->zenzaiPreferenceLabel->setEnabled(supported);
 
     const QString reason = supported ? QString() : tr("Not supported by the active model.");
 
-    ui_->zenzaiUserPlofile->setToolTip(reason);
     ui_->zenzaiTopic->setToolTip(reason);
     ui_->zenzaiStyle->setToolTip(reason);
     ui_->zenzaiPreference->setToolTip(reason);

@@ -72,10 +72,11 @@ struct ZenzaiModelFamily {
     /** @brief ライセンス全文への絶対URL */
     QString licenseUrl;
     /**
-     * @brief プロファイル/話題/文体/好みの条件付けに対応するかどうか
+     * @brief 話題/文体/好みの条件付け (条件トークン) に対応するかどうか
      *
      * @details zenz系は条件トークン (U+EE03〜U+EE06) による条件付けに対応する
-     *          jinen-v2系は条件付けを持たず、対応する4項目は設定UI上で無効化する
+     *          jinen-v2系は条件トークンを持たず、話題 / 文体 / 好みは設定UI上で無効化する
+     *          ユーザープロファイルはjinen系でも入力でき、サーバ側で左文脈の先頭 (末尾25文字) に折り込まれる
      *          既定値はtrueで、不明な系列は有効側に倒す
      */
     bool supportsConditioning = true;
@@ -125,14 +126,14 @@ const ZenzaiModelOption* findZenzaiModelByKey(const QString& key);
 const ZenzaiModelFamily* findZenzaiFamilyByKey(const QString& key);
 
 /**
- * @brief 指定モデルの条件付け対応可否を返す
+ * @brief 指定モデルの話題/文体/好みの条件付け対応可否を返す
  *
- * @details カタログに登録された系列はそのsupportsConditioningを返し、
- *          未登録のキー (カスタム重み等) はファイル名に "jinen" を含む場合のみfalse、
- *          それ以外はtrueを返す (不明な場合は有効側に倒す)
+ * @details カタログに登録された系列はそのsupportsConditioningを返して、
+ *          未登録のキー (カスタム重み等) はファイル名に "jinen" を含む場合のみfalse、それ以外はtrueを返す (不明な場合は有効側に倒す)
+ *          falseでもユーザープロファイルは使用でき、サーバ側で左文脈の先頭 (末尾25文字) に折り込まれる
  *
  * @param modelKey モデルキーまたはモデルファイル名
- * @return 条件付けに対応する場合はtrue
+ * @return 条件トークンによる条件付けに対応する場合はtrue
  */
 bool zenzaiModelSupportsConditioning(const QString& modelKey);
 
