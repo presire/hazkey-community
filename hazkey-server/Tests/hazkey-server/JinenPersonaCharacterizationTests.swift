@@ -111,11 +111,15 @@ final class JinenPersonaCharacterizationTests: XCTestCase {
     ///
     /// 組成の作り直しから始めるため呼び出し前の組成内容に依存しない
     ///
+    /// 組成の作り直しは左文脈を消去するため、左文脈は作り直しの直後かつ文字の入力前に設定する
+    ///
     /// - Parameters:
     ///   - reading: 入力する読み
+    ///   - left: 左文脈 (空の場合は左文脈なし)
     ///   - state: 処理を受け持つ接続状態
-    private func typeReading(_ reading: String, to state: HazkeyServerState) {
+    private func typeReading(_ reading: String, left: String, to state: HazkeyServerState) {
         XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        state.zenzaiLeftContext = left
         for character in reading {
             XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
         }
@@ -139,9 +143,8 @@ final class JinenPersonaCharacterizationTests: XCTestCase {
         state.serverConfig.currentProfile.zenzaiProfile = profile
         state.serverConfig.currentProfile.zenzaiContextualMode = contextual
         state.serverConfig.currentProfile.useRichCandidates = rich
-        state.zenzaiLeftContext = left
         let started = Date()
-        typeReading(reading, to: state)
+        typeReading(reading, left: left, to: state)
         XCTAssertEqual(state.getCandidates(is_suggest: isSuggest).status, .success)
         let ms = Date().timeIntervalSince(started) * 1000
         let (top, count) = top5(in: state)
@@ -205,9 +208,8 @@ final class JinenPersonaCharacterizationTests: XCTestCase {
                     state.serverConfig.currentProfile.zenzaiProfile = profile
                     state.serverConfig.currentProfile.zenzaiContextualMode = true
                     state.serverConfig.currentProfile.useRichCandidates = false
-                    state.zenzaiLeftContext = leftContextText
                     let started = Date()
-                    typeReading(reading, to: state)
+                    typeReading(reading, left: leftContextText, to: state)
                     let resp = state.adjustClauseBoundary(offset: -5)
                     XCTAssertEqual(resp.status, .success)
                     let ms = Date().timeIntervalSince(started) * 1000
@@ -222,8 +224,7 @@ final class JinenPersonaCharacterizationTests: XCTestCase {
                     state.serverConfig.currentProfile.zenzaiProfile = profile
                     state.serverConfig.currentProfile.zenzaiContextualMode = true
                     state.serverConfig.currentProfile.useRichCandidates = false
-                    state.zenzaiLeftContext = leftContextText
-                    typeReading(reading, to: state)
+                    typeReading(reading, left: leftContextText, to: state)
                     XCTAssertEqual(state.getCandidates(is_suggest: true).status, .success)
                     let predictionIndex = (state.currentCandidateList ?? []).firstIndex {
                         if case .fromConverter(let candidate) = $0 {
