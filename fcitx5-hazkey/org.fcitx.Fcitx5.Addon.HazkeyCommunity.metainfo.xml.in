@@ -16,6 +16,7 @@
   <url type="bugtracker">https://github.com/presire/hazkey-community/issues</url>
   <url type="vcs-browser">https://github.com/presire/hazkey-community</url>
   <releases>
+    <release version="0.2.36" date="2026-10-03"/>
     <release version="0.2.35" date="2026-10-03"/>
     <release version="0.2.34" date="2026-10-02"/>
     <release version="0.2.33" date="2026-09-30"/>
