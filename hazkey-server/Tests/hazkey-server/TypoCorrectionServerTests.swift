@@ -135,6 +135,29 @@ final class TypoCorrectionServerTests: XCTestCase {
         return index
     }
 
+    /// 別の接続で読みを入力し、指定した表記の候補を確定して学習させる
+    ///
+    /// 学習は接続間で共有されるため、呼び出し元の接続の変換セッションに触れずに学習だけを加えられる
+    ///
+    /// - Parameters:
+    ///   - word: 確定する候補の表記
+    ///   - romaji: 入力するローマ字
+    ///   - shared: 学習を加える共有リソース
+    /// - Throws: 指定した表記の候補が無い場合はXCTUnwrapで失敗する
+    private func learn(_ word: String, romaji: String, shared: HazkeySharedResources) throws {
+        let learner = HazkeyServerState(shared: shared)
+        defer { learner.close() }
+        XCTAssertEqual(learner.createComposingTextInstanse().status, .success)
+        for character in romaji {
+            XCTAssertEqual(learner.inputChar(inputString: String(character)).status, .success)
+        }
+        let result = try candidates(learner, suggest: false)
+        let index = try XCTUnwrap(
+            result.candidates.firstIndex { $0.text == word && $0.subHiragana.isEmpty },
+            "\(result.candidates.map(\.text))")
+        XCTAssertEqual(learner.completePrefix(candidateIndex: index).status, .success)
+    }
+
     /// タイポ訂正候補がサジェストと通常変換の両モードで最良候補の直後に並ぶことを検証する
     ///
     /// 訂正された全体読みの変換が、フラグ付きの2番目の候補として提示されること
@@ -233,10 +256,11 @@ final class TypoCorrectionServerTests: XCTestCase {
     ///
     /// 予算超過で主変換から訂正が消えていても、境界を動かした接頭辞では訂正が提示されること
     func testClauseBoundaryAdjustmentIgnoresTheTypingTimeBudget() throws {
-        // Given: 新しい接頭辞をニューラル変換する場合のように、全ての主変換が時間予算を超える
+        // Given: 新しい接頭辞をニューラル変換する場合のように、全ての主変換が時間予算を超え、訂正案の評価に使える時間も無い
         let state = try state(reading: "mchigaeruneko")
         defer { state.close() }
         state.typoTimeBudget = .zero
+        state.typoEvaluationBudget = .zero
         XCTAssertFalse(try candidates(state, suggest: false).candidates.contains(where: \.isTypoCorrection))
 
         // When: Shift+Leftで境界をタイポ接頭辞の末尾まで動かす
@@ -516,6 +540,111 @@ final class TypoCorrectionServerTests: XCTestCase {
         XCTAssertGreaterThan(triggered.typoCorrectionSessionCount, 0)
         triggered.close()
         XCTAssertEqual(triggered.typoCorrectionSessionCount, 0)
+    }
+
+    /// 新しい組成の開始で訂正用セッションの変換結果も破棄されることを検証する
+    ///
+    /// 前の組成で評価した訂正案と同じ読みでも、その後に学習した表記が訂正候補に使われること
+    func testNewCompositionDiscardsCachedCorrectionLattices() throws {
+        // Given: 誤字のある入力で訂正案を評価し、訂正用セッションに変換結果が残っている
+        // 新しい組成の直後はラティスが冷えて主変換が時間予算を超え得るため、予算は十分に長くする (予算の検証は別のテストが担う)
+        let state = try state(reading: "shipppaishita")
+        defer { state.close() }
+        state.typoTimeBudget = .seconds(10)
+        state.typoEvaluationBudget = .seconds(10)
+        let before = try candidates(state, suggest: false)
+        let beforeIndex = try XCTUnwrap(correctionIndex(before))
+        XCTAssertEqual(before.candidates[beforeIndex].text, "失敗した")
+
+        // When: 訂正後の読みに既定とは異なる表記を学習し、同じ誤字を新しい組成として入力する
+        try learn("シッパイシタ", romaji: "shippaishita", shared: state.shared)
+        XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        for character in "shipppaishita" {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+        let after = try candidates(state, suggest: false)
+
+        // Then: 訂正候補には前の組成の変換結果ではなく、学習した表記が使われる
+        let afterIndex = try XCTUnwrap(correctionIndex(after))
+        XCTAssertEqual(after.candidates[afterIndex].text, "シッパイシタ")
+    }
+
+    /// 学習履歴の全消去で訂正用セッションの変換結果も破棄されることを検証する
+    ///
+    /// 同じ組成のまま候補を再生成しても、消去した学習の表記が訂正候補に残らないこと
+    func testClearingAllLearningDiscardsCachedCorrectionLattices() throws {
+        // Given: 訂正後の読みに既定とは異なる表記を学習し、その表記が訂正候補に使われている
+        // 全消去の直後はラティスが冷えて主変換が時間予算を超え得るため、予算は十分に長くする (予算の検証は別のテストが担う)
+        let state = try state(reading: "shipppaishita", enabled: false)
+        defer { state.close() }
+        state.typoTimeBudget = .seconds(10)
+        state.typoEvaluationBudget = .seconds(10)
+        try learn("シッパイシタ", romaji: "shippaishita", shared: state.shared)
+        state.serverConfig.currentProfile.useTypoCorrection = true
+        let learned = try candidates(state, suggest: false)
+        let learnedIndex = try XCTUnwrap(correctionIndex(learned))
+        XCTAssertEqual(learned.candidates[learnedIndex].text, "シッパイシタ")
+
+        // When: 学習履歴を全て消去し、同じ組成のまま候補を再生成する
+        XCTAssertEqual(state.clearProfileLearningData().status, .success)
+        let cleared = try candidates(state, suggest: false)
+
+        // Then: 訂正候補は消去した学習の表記を使わない
+        let clearedIndex = try XCTUnwrap(correctionIndex(cleared))
+        XCTAssertEqual(cleared.candidates[clearedIndex].text, "失敗した")
+    }
+
+    /// 打鍵時の訂正案の評価が時間予算で打ち切られることを検証する
+    ///
+    /// 評価に使える時間が無ければ訂正案の変換も訂正用セッションの確保も行わず、時間があれば同じ入力で訂正が提示されること
+    func testTypingTimeCorrectionStopsEvaluatingWhenTheEvaluationBudgetIsExhausted() throws {
+        // Given: 主変換は時間予算に収まるが、訂正案の評価に使える時間が残っていない
+        let state = try state(reading: "shipppaishita", enabled: false)
+        defer { state.close() }
+        state.serverConfig.currentProfile.useTypoCorrection = true
+        state.typoTimeBudget = .seconds(10)
+        state.typoEvaluationBudget = .zero
+
+        // When: 打鍵時の候補を生成する
+        let exhausted = try candidates(state, suggest: false)
+
+        // Then: 訂正案は1件も評価されず、訂正用セッションも確保されない
+        XCTAssertFalse(exhausted.candidates.contains(where: \.isTypoCorrection))
+        XCTAssertEqual(state.typoCorrectionSessionCount, 0)
+
+        // When: 評価に使える時間を戻して候補を再生成する
+        state.typoEvaluationBudget = .seconds(10)
+        let restored = try candidates(state, suggest: false)
+
+        // Then: 同じ入力で訂正が提示される
+        XCTAssertNotNil(correctionIndex(restored))
+    }
+
+    /// 打鍵時の訂正案の評価が、1件目を評価した後で時間予算に達した時点で打ち切られることを検証する
+    ///
+    /// 予算の判定は訂正案ごとに行うため、1件目の開始時に予算内なら1件目だけを評価し、評価した範囲の訂正を提示すること
+    func testTypingTimeCorrectionEvaluatesUntilTheBudgetRunsOutMidway() throws {
+        // Given: 訂正案が2件以上ある入力で、評価の開始時と1件目の開始時は予算内、2件目の開始時は予算超過になる時刻を返す
+        let state = try state(reading: "shipppaishita", enabled: false)
+        defer { state.close() }
+        let reading = state.composingText.value.toHiragana()
+        let variants = TypoCorrector.variants(
+            of: state.composingText.value, triggers: TypoCorrector.triggers(in: reading))
+        XCTAssertGreaterThanOrEqual(variants.count, 2)
+        XCTAssertEqual(variants.first?.reading, "しっぱいした")
+        state.serverConfig.currentProfile.useTypoCorrection = true
+        state.typoTimeBudget = .seconds(10)
+        state.typoEvaluationBudget = .milliseconds(500)
+        let origin = ContinuousClock.now
+        var elapsed: [Duration] = [.zero, .zero, .seconds(1)]
+        state.typoClock = { origin + (elapsed.count > 1 ? elapsed.removeFirst() : elapsed[0]) }
+
+        // When: 打鍵時の候補を生成する
+        let result = try candidates(state, suggest: false)
+
+        // Then: 訂正用セッションは1件目の分だけ確保され、1件目の訂正案から訂正が提示される
+        XCTAssertEqual(state.typoCorrectionSessionCount, 1)
+        XCTAssertEqual(result.candidates.filter(\.isTypoCorrection).map(\.text), ["失敗した"])
     }
 
     /// タイポ訂正を切り替えても主候補の並びが安定していることを検証する

@@ -20,6 +20,33 @@
 
 namespace fcitx {
 
+namespace {
+
+/** @brief 入力コンテキストから読み取ったライブの周辺テキスト */
+struct LiveSurroundingText {
+    bool available = false;  ///< 周辺テキストに対応し、値が有効か
+    std::string text;
+    int cursor = 0;          ///< 符号点単位のカーソル位置
+    int anchor = 0;          ///< 符号点単位のアンカー位置
+};
+
+/** @brief 周辺テキストに対応していて値が有効なら、ライブの周辺テキストを読み取る */
+LiveSurroundingText readLiveSurroundingText(InputContext* ic) {
+    LiveSurroundingText live;
+    live.available =
+        ic->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
+        ic->surroundingText().isValid();
+    if (live.available) {
+        const auto& surroundingText = ic->surroundingText();
+        live.text = surroundingText.text();
+        live.cursor = static_cast<int>(surroundingText.cursor());
+        live.anchor = static_cast<int>(surroundingText.anchor());
+    }
+    return live;
+}
+
+}  // namespace
+
 /** @brief 入力状態を初期化して、サーバ側の組成を開始する */
 HazkeyState::HazkeyState(HazkeyEngine* engine, InputContext* ic)
     : engine_(engine), ic_(ic), preedit_(HazkeyPreedit(ic)) {
@@ -137,15 +164,19 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
         case FcitxKey_space:
             if (key.states() == KeyState::Shift) {
                 ic_->commitString(" ");
+                // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
+                surroundingFreeze_.appendCommitted(" ");
                 reset();
             } else {
                 // Zenzaiの左文脈を最新に保つ
                 updateSurroundingText();
                 engine_->server().inputChar(" ");
-                ic_->commitString(engine_->server().getComposingText(
+                const std::string committed = engine_->server().getComposingText(
                     hazkey::commands::GetComposingString_CharType::
                         GetComposingString_CharType_HIRAGANA,
-                    ""));
+                    "");
+                ic_->commitString(committed);
+                surroundingFreeze_.appendCommitted(committed);
                 reset();
             }
             break;
@@ -159,6 +190,8 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
                 setHiraganaAUX();
             } else {
                 reset();
+                // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+                surroundingFreeze_.release();
                 return event.filter();
             }
             break;
@@ -177,15 +210,19 @@ void HazkeyState::preeditKeyEvent(
     auto keysym = key.sym();
 
     switch (keysym) {
-        case FcitxKey_Return:
+        case FcitxKey_Return: {
             // 古いpreeditではなく最新の組成を確定できるよう、保留中の更新を反映する
             flushPendingRefresh();
+            const std::string committed = preedit_.text();
             preedit_.commitPreedit();
             if (livePreeditIndex_ >= 0) {
                 engine_->server().completePrefix(livePreeditIndex_);
             }
+            // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
+            surroundingFreeze_.appendCommitted(committed);
             reset();
             break;
+        }
         case FcitxKey_BackSpace:
             engine_->server().deleteLeft();
             showPreeditCandidateList();
@@ -289,15 +326,19 @@ void HazkeyState::preeditKeyEvent(
                     }
                 }
             } else if (isInputableEvent(event)) {
+                std::string committedText;
                 if (isDirectConversionMode_) {
+                    // 直接変換の結果を確定してから続けて入力する
+                    // 候補フォーカス中の継続入力と同じく、確定した文字列を固定済みの周辺テキストへ積む
                     flushPendingRefresh();
+                    committedText = preedit_.text();
                     preedit_.commitPreedit();
                     const auto carriedFreeze = surroundingFreeze_;
                     reset();
                     surroundingFreeze_ = carriedFreeze;
                 }
                 // Zenzaiの左文脈を更新する
-                updateSurroundingText();
+                updateSurroundingText(committedText);
                 engine_->server().inputChar(Key::keySymToUTF8(keysym));
                 refreshAfterComposingEdit();
             }
@@ -454,24 +495,13 @@ void HazkeyState::candidateCompleteHandler(
 
 /** @brief 入力先の周辺テキストをサーバへ反映する */
 void HazkeyState::updateSurroundingText(std::string appendText) {
-    const bool liveAvailable =
-        ic_->capabilityFlags().test(CapabilityFlag::SurroundingText) &&
-        ic_->surroundingText().isValid();
-    // Kateなどは組成中のpreeditを周辺テキストへ含めて報告し、右文脈へ読みが混入してしまう
-    // 組成開始時の周辺テキストを組成が終わるまで使い続ける (固定済みならライブ値は参照されない)
-    // 組成開始時に未着の場合は空の内容で固定し、後から届くpreedit混入済みの値を採用しない
+    // Kate等のテキストエディタでは、組成中のpreeditを周辺テキストへ含めて報告して、右文脈へ読みが混入してしまう
+    // 組成開始時の周辺テキストを組成が終わるまで使用し続ける (固定済みならライブ値は参照されない)
+    //
+    // 組成開始時に未着の場合は空の内容で固定して、後から届くpreedit混入済みの値を採用しない
     // cursor() / anchor()は符号点単位のため、選択範囲の除去とappendの挿入を行い、符号点単位のアンカーを共通の純関数で求める
-    std::string liveText;
-    int liveCursor = 0;
-    int liveAnchor = 0;
-    if (liveAvailable) {
-        auto& surroundingText = ic_->surroundingText();
-        liveText = surroundingText.text();
-        liveCursor = static_cast<int>(surroundingText.cursor());
-        liveAnchor = static_cast<int>(surroundingText.anchor());
-    }
-    const auto snapshot = surroundingFreeze_.resolve(
-        liveText, liveCursor, liveAnchor, appendText);
+    const auto live = readLiveSurroundingText(ic_);
+    const auto snapshot = surroundingFreeze_.resolve(live.text, live.cursor, live.anchor, appendText);
     engine_->server().setContext(snapshot.text, snapshot.anchor);
 }
 
@@ -1028,8 +1058,7 @@ void HazkeyState::setCandidateCursorAUX(
     auto label = "[" + std::to_string(candidateList->globalCursorIndex() + 1) +
                  "/" + std::to_string(candidateList->totalSize()) + "]";
     ic_->inputPanel().setAuxUp(Text(label));
-    setAuxDownText(candidateList->getCandidate(candidateList->cursorIndex())
-                       .hasLearningEntry()
+    setAuxDownText(candidateList->getCandidate(candidateList->cursorIndex()).hasLearningEntry()
                        ? std::optional<std::string>(_("削除可"))
                        : std::nullopt);
 }
@@ -1070,7 +1099,10 @@ void HazkeyState::reset() {
     // reset()は、オブジェクト破棄なしに多数のキー処理やactivate() / deactivate()から呼ばれる
     // RAIIだけに頼らず保留中の更新を明示的に取り消す
     cancelPendingRefresh();
-    surroundingFreeze_.release();
+    // 確定直後のアプリの周辺テキストは確定を反映しておらず、Kateでは組成中のpreedit混入済みの値のままのことがある
+    // 固定内容 (確定文字を含む) を次の組成へ持ち越して、アプリが周辺テキストを報告し直したらライブ値を使用する
+    const auto live = readLiveSurroundingText(ic_);
+    surroundingFreeze_.finish(live.available, live.text, live.cursor, live.anchor);
     engine_->server().newComposingText();
     ic_->inputPanel().reset();
 }

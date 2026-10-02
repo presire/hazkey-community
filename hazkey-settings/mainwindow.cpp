@@ -624,6 +624,11 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         ui_->zenzaiStyleLabel->setEnabled(true);
         ui_->zenzaiPreferenceLabel->setEnabled(true);
         ui_->useZenzaiCustomWeight->setEnabled(true);
+        // 上の分岐で無効化したパス欄を、onUseZenzaiCustomWeightToggled() と同じ規則で戻す
+        // (モデル管理ダイアログでダウンロードした後の更新でも、チェックボックスの状態に合わせる)
+        const bool customWeightEnabled = ui_->useZenzaiCustomWeight->isChecked();
+        ui_->zenzaiWeightPath->setEnabled(customWeightEnabled);
+        ui_->browseZenzaiWeightPath->setEnabled(customWeightEnabled);
         ui_->zenzaiBackendDevice->setEnabled(true);
         ui_->zenzaiToggleHotkey->setEnabled(true);
         ui_->manageZenzaiModels->setEnabled(true);
@@ -900,7 +905,8 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->useEngineeringDict, useEngineeringDict,
                  ConfigDefs::CheckboxDefaults::ENGINEERING_DICTIONARY);
 
-    // 誤字の訂正候補は性能に影響するため、[全て選択]/[全て解除]の対象外とする
+    // 誤字の訂正候補 (既定OFF) も[全て選択]/[全て解除]の対象に含まれる
+    // (onCheckAllConversion() / onUncheckAllConversion() を参照)
     const bool useTypoCorrection =
         currentProfile_->has_use_typo_correction()
             ? currentProfile_->use_typo_correction()

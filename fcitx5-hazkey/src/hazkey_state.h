@@ -43,8 +43,14 @@ class HazkeyState : public InputContextProperty {
      *  @param keyEvent Fcitx 5から受け取ったイベント
      */
     void keyEvent(KeyEvent& keyEvent);
-    /** @brief 組成・候補表示・保留中の表示更新を初期状態へ戻す */
+    /** @brief 組成・候補表示・保留中の表示更新を初期状態へ戻す
+     *  @note 組成中に固定した周辺テキストは、確定直後の次の組成へ持ち越す
+     */
     void reset();
+    /** @brief 確定時から持ち越した周辺テキストを捨てる
+     *  @note フォーカス移動やアプリケーションからのリセット要求等、入力先が変わり得る時に呼ぶ
+     */
+    void discardSurroundingCarry() { surroundingFreeze_.release(); }
 
     /** @brief サーバプロファイルのキャッシュを破棄する
      *  @note 次のキーイベントでプロファイルを再取得する

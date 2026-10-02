@@ -449,13 +449,13 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="1130"/>
-        <location filename="mainwindow.cpp" line="2222"/>
+        <location filename="mainwindow.cpp" line="2228"/>
         <source>Romaji</source>
         <translation>ローマ字</translation>
     </message>
     <message>
         <location filename="mainwindow.ui" line="1135"/>
-        <location filename="mainwindow.cpp" line="2191"/>
+        <location filename="mainwindow.cpp" line="2197"/>
         <source>JIS Kana</source>
         <translation>JISかな</translation>
     </message>
@@ -598,7 +598,7 @@
     <message>
         <location filename="mainwindow.ui" line="1911"/>
         <location filename="mainwindow.ui" line="1918"/>
-        <location filename="mainwindow.cpp" line="738"/>
+        <location filename="mainwindow.cpp" line="743"/>
         <source>Converts considering the text to the right of the cursor as well. Requires a zenz-v3.2 or newer model, and only works while &quot;Use contextual conversion&quot; is enabled.</source>
         <translation>カーソルの右側にある文章も考慮して変換します。zenz-v3.2以降のモデルが必要で、「文脈変換を使用」が有効なときのみ動作します。</translation>
     </message>
@@ -610,7 +610,7 @@
     <message>
         <location filename="mainwindow.ui" line="1928"/>
         <location filename="mainwindow.ui" line="1935"/>
-        <location filename="mainwindow.cpp" line="753"/>
+        <location filename="mainwindow.cpp" line="758"/>
         <source>When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right), tells the converter where the cursor is and what follows it. Requires a zenz-v3.2 or newer model.</source>
         <translation>カーソルより前の部分だけを変換するとき (Shift+Left/Rightで文節の区切りを移動した後など) に、カーソルの位置と後ろの読みを変換器へ伝えます。zenz-v3.2以降のモデルが必要です。</translation>
     </message>
@@ -676,7 +676,7 @@
     </message>
     <message>
         <location filename="mainwindow.ui" line="2057"/>
-        <location filename="mainwindow.cpp" line="2325"/>
+        <location filename="mainwindow.cpp" line="2331"/>
         <source>Manage neural conversion models</source>
         <translation>ニューラル変換モデルの管理</translation>
     </message>
@@ -752,10 +752,10 @@
     </message>
     <message>
         <location filename="mainwindow.cpp" line="215"/>
-        <location filename="mainwindow.cpp" line="2970"/>
-        <location filename="mainwindow.cpp" line="2975"/>
-        <location filename="mainwindow.cpp" line="2984"/>
-        <location filename="mainwindow.cpp" line="2991"/>
+        <location filename="mainwindow.cpp" line="2976"/>
+        <location filename="mainwindow.cpp" line="2981"/>
+        <location filename="mainwindow.cpp" line="2990"/>
+        <location filename="mainwindow.cpp" line="2997"/>
         <source>Configuration Error</source>
         <translation>設定エラー</translation>
     </message>
@@ -770,48 +770,48 @@
         <translation>&lt;b&gt;警告:&lt;/b&gt; ニューラル変換サポートがインストールされていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="998"/>
-        <location filename="mainwindow.cpp" line="2142"/>
-        <location filename="mainwindow.cpp" line="2160"/>
-        <location filename="mainwindow.cpp" line="2168"/>
-        <location filename="mainwindow.cpp" line="2430"/>
-        <location filename="mainwindow.cpp" line="2508"/>
-        <location filename="mainwindow.cpp" line="2570"/>
-        <location filename="mainwindow.cpp" line="2633"/>
+        <location filename="mainwindow.cpp" line="1004"/>
+        <location filename="mainwindow.cpp" line="2148"/>
+        <location filename="mainwindow.cpp" line="2166"/>
+        <location filename="mainwindow.cpp" line="2174"/>
+        <location filename="mainwindow.cpp" line="2436"/>
+        <location filename="mainwindow.cpp" line="2514"/>
+        <location filename="mainwindow.cpp" line="2576"/>
+        <location filename="mainwindow.cpp" line="2639"/>
         <source>Error</source>
         <translation>エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="998"/>
-        <location filename="mainwindow.cpp" line="2142"/>
-        <location filename="mainwindow.cpp" line="2168"/>
+        <location filename="mainwindow.cpp" line="1004"/>
+        <location filename="mainwindow.cpp" line="2148"/>
+        <location filename="mainwindow.cpp" line="2174"/>
         <source>No configuration profile loaded.</source>
         <translation>設定プロファイルが読み込まれていません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1110"/>
-        <location filename="mainwindow.cpp" line="1114"/>
+        <location filename="mainwindow.cpp" line="1116"/>
+        <location filename="mainwindow.cpp" line="1120"/>
         <source>Save Error</source>
         <translation>保存エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1110"/>
+        <location filename="mainwindow.cpp" line="1116"/>
         <source>Failed to save configuration: %1</source>
         <translation>設定の保存に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1114"/>
+        <location filename="mainwindow.cpp" line="1120"/>
         <source>An unknown error occurred while saving configuration.</source>
         <translation>設定の保存中に不明なエラーが発生しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2225"/>
+        <location filename="mainwindow.cpp" line="2231"/>
         <source>Kana</source>
         <translation>かな</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1169"/>
-        <location filename="mainwindow.cpp" line="1413"/>
+        <location filename="mainwindow.cpp" line="1175"/>
+        <location filename="mainwindow.cpp" line="1419"/>
         <source>[not found]</source>
         <translation>[見つかりません]</translation>
     </message>
@@ -822,15 +822,15 @@
         <translation>リセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3087"/>
-        <location filename="mainwindow.cpp" line="3170"/>
-        <location filename="mainwindow.cpp" line="3177"/>
-        <location filename="mainwindow.cpp" line="3217"/>
-        <location filename="mainwindow.cpp" line="3240"/>
-        <location filename="mainwindow.cpp" line="3272"/>
-        <location filename="mainwindow.cpp" line="3305"/>
-        <location filename="mainwindow.cpp" line="3319"/>
-        <location filename="mainwindow.cpp" line="3323"/>
+        <location filename="mainwindow.cpp" line="3093"/>
+        <location filename="mainwindow.cpp" line="3176"/>
+        <location filename="mainwindow.cpp" line="3183"/>
+        <location filename="mainwindow.cpp" line="3223"/>
+        <location filename="mainwindow.cpp" line="3246"/>
+        <location filename="mainwindow.cpp" line="3278"/>
+        <location filename="mainwindow.cpp" line="3311"/>
+        <location filename="mainwindow.cpp" line="3325"/>
+        <location filename="mainwindow.cpp" line="3329"/>
         <source>User Dictionary</source>
         <translation>単語登録</translation>
     </message>
@@ -845,17 +845,17 @@
         <translation>モデルをダウンロード</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="654"/>
+        <location filename="mainwindow.cpp" line="659"/>
         <source>The current model is not the latest version.</source>
         <translation>現在のモデルは最新バージョンではありません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="667"/>
+        <location filename="mainwindow.cpp" line="672"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; GPU acceleration was disabled because the Vulkan driver check crashed or timed out (often caused by mixed GPU vendors). Neural conversion runs on the CPU for this session. To restore GPU acceleration, set VK_DRIVER_FILES in ~/.config/hazkey-community/env to a single driver file and restart the input method.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; Vulkanドライバーの確認がクラッシュまたはタイムアウトしたため (GPUベンダーの混在が原因のことが多い)、GPUアクセラレーションを無効化しました。このセッションのニューラル変換はCPUで動作します。GPUアクセラレーションを復元するには、~/.config/hazkey-community/env の VK_DRIVER_FILES に単一のドライバーファイルを設定し、入力メソッドを再起動してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="655"/>
+        <location filename="mainwindow.cpp" line="660"/>
         <source>Download Update</source>
         <translation>更新をダウンロード</translation>
     </message>
@@ -865,7 +865,7 @@
         <translation>推奨: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2300"/>
+        <location filename="mainwindow.cpp" line="2306"/>
         <source>No neural conversion models are configured.</source>
         <translation>ニューラル変換モデルが設定されていません。</translation>
     </message>
@@ -906,134 +906,134 @@
         <translation>Jinen v2 xsmallモデル。量子化を選択してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1165"/>
-        <location filename="mainwindow.cpp" line="1195"/>
-        <location filename="mainwindow.cpp" line="1279"/>
-        <location filename="mainwindow.cpp" line="1409"/>
-        <location filename="mainwindow.cpp" line="1439"/>
-        <location filename="mainwindow.cpp" line="1523"/>
+        <location filename="mainwindow.cpp" line="1171"/>
+        <location filename="mainwindow.cpp" line="1201"/>
+        <location filename="mainwindow.cpp" line="1285"/>
+        <location filename="mainwindow.cpp" line="1415"/>
+        <location filename="mainwindow.cpp" line="1445"/>
+        <location filename="mainwindow.cpp" line="1529"/>
         <source>[built-in]</source>
         <translation>[内蔵]</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1636"/>
-        <location filename="mainwindow.cpp" line="1637"/>
-        <location filename="mainwindow.cpp" line="1638"/>
-        <location filename="mainwindow.cpp" line="1758"/>
-        <location filename="mainwindow.cpp" line="1759"/>
-        <location filename="mainwindow.cpp" line="1760"/>
+        <location filename="mainwindow.cpp" line="1642"/>
+        <location filename="mainwindow.cpp" line="1643"/>
+        <location filename="mainwindow.cpp" line="1644"/>
+        <location filename="mainwindow.cpp" line="1764"/>
+        <location filename="mainwindow.cpp" line="1765"/>
+        <location filename="mainwindow.cpp" line="1766"/>
         <source>Disabled in Kana mode</source>
         <translation>かなモードでは無効</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1931"/>
+        <location filename="mainwindow.cpp" line="1937"/>
         <source>&lt;b&gt;Warning:&lt;/b&gt; Current settings can only be edited in Advanced mode.</source>
         <translation>&lt;b&gt;警告:&lt;/b&gt; 現在の設定は詳細設定モードでのみ編集できます。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1934"/>
+        <location filename="mainwindow.cpp" line="1940"/>
         <source>Reset Input Style</source>
         <translation>入力スタイルをリセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2147"/>
+        <location filename="mainwindow.cpp" line="2153"/>
         <source>Clear Input History</source>
         <translation>入力履歴を削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2148"/>
+        <location filename="mainwindow.cpp" line="2154"/>
         <source>Are you sure you want to clear all input history data? This action cannot be undone.</source>
         <translation>この操作は取り消せません。本当に履歴を削除しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2157"/>
+        <location filename="mainwindow.cpp" line="2163"/>
         <source>Success</source>
         <translation>成功</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2157"/>
+        <location filename="mainwindow.cpp" line="2163"/>
         <source>Input history has been cleared successfully.</source>
         <translation>入力履歴が削除されました</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2160"/>
+        <location filename="mainwindow.cpp" line="2166"/>
         <source>Failed to clear input history. Please check your connection to the hazkey-community-server.</source>
         <translation>入力履歴の削除に失敗しました。hazkey-serverとの接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2194"/>
+        <location filename="mainwindow.cpp" line="2200"/>
         <source>Japanese Symbol</source>
         <translation>日本語用記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2197"/>
+        <location filename="mainwindow.cpp" line="2203"/>
         <source>Fullwidth Period</source>
         <translation>全角ピリオド</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2200"/>
+        <location filename="mainwindow.cpp" line="2206"/>
         <source>Fullwidth Comma</source>
         <translation>全角カンマ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2203"/>
+        <location filename="mainwindow.cpp" line="2209"/>
         <source>Fullwidth Number</source>
         <translation>全角数字</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2206"/>
+        <location filename="mainwindow.cpp" line="2212"/>
         <source>Fullwidth Symbol</source>
         <translation>全角記号</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2209"/>
+        <location filename="mainwindow.cpp" line="2215"/>
         <source>Fullwidth Space</source>
         <translation>全角スペース</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2300"/>
-        <location filename="mainwindow.cpp" line="2472"/>
-        <location filename="mainwindow.cpp" line="2769"/>
-        <location filename="mainwindow.cpp" line="2788"/>
-        <location filename="mainwindow.cpp" line="2802"/>
-        <location filename="mainwindow.cpp" line="2815"/>
-        <location filename="mainwindow.cpp" line="2826"/>
-        <location filename="mainwindow.cpp" line="2837"/>
-        <location filename="mainwindow.cpp" line="2923"/>
-        <location filename="mainwindow.cpp" line="2931"/>
-        <location filename="mainwindow.cpp" line="2944"/>
+        <location filename="mainwindow.cpp" line="2306"/>
+        <location filename="mainwindow.cpp" line="2478"/>
+        <location filename="mainwindow.cpp" line="2775"/>
+        <location filename="mainwindow.cpp" line="2794"/>
+        <location filename="mainwindow.cpp" line="2808"/>
+        <location filename="mainwindow.cpp" line="2821"/>
+        <location filename="mainwindow.cpp" line="2832"/>
+        <location filename="mainwindow.cpp" line="2843"/>
+        <location filename="mainwindow.cpp" line="2929"/>
+        <location filename="mainwindow.cpp" line="2937"/>
+        <location filename="mainwindow.cpp" line="2950"/>
         <source>Download Error</source>
         <translation>ダウンロードエラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2473"/>
-        <location filename="mainwindow.cpp" line="2570"/>
-        <location filename="mainwindow.cpp" line="2803"/>
+        <location filename="mainwindow.cpp" line="2479"/>
+        <location filename="mainwindow.cpp" line="2576"/>
+        <location filename="mainwindow.cpp" line="2809"/>
         <source>Selected neural conversion model is no longer available.</source>
         <translation>選択されたニューラル変換モデルは利用できなくなりました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2549"/>
+        <location filename="mainwindow.cpp" line="2555"/>
         <source>Downloading neural conversion model...</source>
         <translation>ニューラル変換モデルをダウンロード中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2549"/>
+        <location filename="mainwindow.cpp" line="2555"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2647"/>
+        <location filename="mainwindow.cpp" line="2653"/>
         <source>Downloading neural conversion model... %1 MB received</source>
         <translation>ニューラル変換モデルをダウンロード中... %1 MB 受信済み</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2661"/>
+        <location filename="mainwindow.cpp" line="2667"/>
         <source>Downloading neural conversion model... %1 MB / %2 MB</source>
         <translation>ニューラル変換モデルをダウンロード中... %1 MB / %2 MB</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2816"/>
+        <location filename="mainwindow.cpp" line="2822"/>
         <source>Downloaded file verification failed. Size mismatch.
 Expected: %1 bytes
 Got: %2 bytes</source>
@@ -1042,7 +1042,7 @@ Got: %2 bytes</source>
 取得値: %2 バイト</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2827"/>
+        <location filename="mainwindow.cpp" line="2833"/>
         <source>Downloaded file verification failed. Checksum mismatch.
 Expected: %1
 Got: %2</source>
@@ -1051,26 +1051,26 @@ Got: %2</source>
 取得値: %2</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2769"/>
-        <location filename="mainwindow.cpp" line="2788"/>
-        <location filename="mainwindow.cpp" line="2837"/>
-        <location filename="mainwindow.cpp" line="2924"/>
+        <location filename="mainwindow.cpp" line="2775"/>
+        <location filename="mainwindow.cpp" line="2794"/>
+        <location filename="mainwindow.cpp" line="2843"/>
+        <location filename="mainwindow.cpp" line="2930"/>
         <source>Failed to save model file: %1</source>
         <translation>モデルファイルの保存に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="735"/>
+        <location filename="mainwindow.cpp" line="740"/>
         <source>Requires contextual conversion.</source>
         <translation>文脈変換が必要です。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2880"/>
-        <location filename="mainwindow.cpp" line="2885"/>
+        <location filename="mainwindow.cpp" line="2886"/>
+        <location filename="mainwindow.cpp" line="2891"/>
         <source>Download Complete</source>
         <translation>ダウンロード完了</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2932"/>
+        <location filename="mainwindow.cpp" line="2938"/>
         <source>The download stalled and timed out.
 Do you want to retry the download?
 Details: %1</source>
@@ -1079,172 +1079,172 @@ Details: %1</source>
 詳細: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2950"/>
+        <location filename="mainwindow.cpp" line="2956"/>
         <source>Reset Configuration</source>
         <translation>設定をリセット</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2951"/>
+        <location filename="mainwindow.cpp" line="2957"/>
         <source>Resetting will discard any unsaved changes. Continue?</source>
         <translation>リセットすると、保存されていない変更は失われます。続行しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2960"/>
+        <location filename="mainwindow.cpp" line="2966"/>
         <source>Connection Error</source>
         <translation>接続エラー</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2961"/>
+        <location filename="mainwindow.cpp" line="2967"/>
         <source>Failed to connect to server.</source>
         <translation>サーバーへの接続に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2970"/>
+        <location filename="mainwindow.cpp" line="2976"/>
         <source>Failed to load default configuration from server.</source>
         <translation>サーバーからデフォルト設定を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2985"/>
+        <location filename="mainwindow.cpp" line="2991"/>
         <source>Failed to access profile.</source>
         <translation>プロファイルへのアクセスに失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2992"/>
+        <location filename="mainwindow.cpp" line="2998"/>
         <source>Failed to update UI.</source>
         <translation>UIの更新に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2997"/>
+        <location filename="mainwindow.cpp" line="3003"/>
         <source>Reset Complete</source>
         <translation>リセット完了</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2997"/>
+        <location filename="mainwindow.cpp" line="3003"/>
         <source>Configuration has been reset to defaults. Apply or OK to save.</source>
         <translation>設定をデフォルトにリセットしました。保存するには「適用」または「OK」を押してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3233"/>
+        <location filename="mainwindow.cpp" line="3239"/>
         <source>Import User Dictionary</source>
         <translation>ユーザー辞書をインポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3234"/>
-        <location filename="mainwindow.cpp" line="3314"/>
+        <location filename="mainwindow.cpp" line="3240"/>
+        <location filename="mainwindow.cpp" line="3320"/>
         <source>Tab-separated files (*.tsv *.txt);;All files (*)</source>
         <translation>タブ区切りファイル (*.tsv *.txt);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3240"/>
+        <location filename="mainwindow.cpp" line="3246"/>
         <source>Failed to open user dictionary file: %1</source>
         <translation>ユーザー辞書ファイルを開けませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3272"/>
+        <location filename="mainwindow.cpp" line="3278"/>
         <source>No valid user dictionary entries were found.</source>
         <translation>有効なユーザー辞書エントリが見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3306"/>
+        <location filename="mainwindow.cpp" line="3312"/>
         <source>Imported %1 new and updated %2 entries; skipped %3 malformed rows.</source>
         <translation>%1 件を追加し、%2 件を更新しました。不正な行 %3 件をスキップしました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3313"/>
+        <location filename="mainwindow.cpp" line="3319"/>
         <source>Export User Dictionary</source>
         <translation>ユーザー辞書をエクスポート</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3319"/>
+        <location filename="mainwindow.cpp" line="3325"/>
         <source>Failed to export user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートできませんでした: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3323"/>
+        <location filename="mainwindow.cpp" line="3329"/>
         <source>Exported user dictionary to %1</source>
         <translation>ユーザー辞書をエクスポートしました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2945"/>
+        <location filename="mainwindow.cpp" line="2951"/>
         <source>Failed to download neural conversion model: %1</source>
         <translation>ニューラル変換モデルのダウンロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2633"/>
+        <location filename="mainwindow.cpp" line="2639"/>
         <source>Failed to delete model.</source>
         <translation>モデルの削除に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2395"/>
+        <location filename="mainwindow.cpp" line="2401"/>
         <source>OK</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2880"/>
+        <location filename="mainwindow.cpp" line="2886"/>
         <source>The downloaded model is now selected. Click OK to activate it.</source>
         <translation>ダウンロードされたモデルが選択されました。OKを押して有効化してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2886"/>
+        <location filename="mainwindow.cpp" line="2892"/>
         <source>Neural conversion model has been downloaded successfully.
 Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>ニューラル変換モデルが正常にダウンロードされました。
 「ニューラル変換モデルの管理」を開いて有効化してください。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2975"/>
+        <location filename="mainwindow.cpp" line="2981"/>
         <source>The default configuration must contain exactly one profile.</source>
         <translation>デフォルト設定にはプロファイルが1つだけ含まれている必要があります。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3040"/>
+        <location filename="mainwindow.cpp" line="3046"/>
         <source>Reading</source>
         <translation>よみ</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3040"/>
-        <location filename="mainwindow.cpp" line="3129"/>
+        <location filename="mainwindow.cpp" line="3046"/>
+        <location filename="mainwindow.cpp" line="3135"/>
         <source>Word</source>
         <translation>単語</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3040"/>
-        <location filename="mainwindow.cpp" line="3130"/>
+        <location filename="mainwindow.cpp" line="3046"/>
+        <location filename="mainwindow.cpp" line="3136"/>
         <source>Comment</source>
         <translation>コメント</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3087"/>
+        <location filename="mainwindow.cpp" line="3093"/>
         <source>Failed to save user dictionary to %1</source>
         <translation>ユーザー辞書を %1 に保存できませんでした</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3128"/>
+        <location filename="mainwindow.cpp" line="3134"/>
         <source>Reading (hiragana)</source>
         <translation>よみ (ひらがな)</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3171"/>
+        <location filename="mainwindow.cpp" line="3177"/>
         <source>Reading and Word must not be empty.</source>
         <translation>「よみ」と「単語」は空にできません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3178"/>
+        <location filename="mainwindow.cpp" line="3184"/>
         <source>Tab and newline characters are not allowed.</source>
         <translation>タブ文字と改行文字は使用できません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3190"/>
+        <location filename="mainwindow.cpp" line="3196"/>
         <source>Add Word</source>
         <translation>単語を追加</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3203"/>
+        <location filename="mainwindow.cpp" line="3209"/>
         <source>Edit Word</source>
         <translation>単語を編集</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3218"/>
+        <location filename="mainwindow.cpp" line="3224"/>
         <source>Delete &quot;%1&quot; → &quot;%2&quot;?</source>
         <translation>「%1」→「%2」を削除しますか?</translation>
     </message>
@@ -1269,22 +1269,22 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>固有名詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3040"/>
+        <location filename="mainwindow.cpp" line="3046"/>
         <source>品詞</source>
         <translation>品詞</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3127"/>
+        <location filename="mainwindow.cpp" line="3133"/>
         <source>動詞: 読みの末尾から活用形を自動生成します</source>
         <translation>動詞: 読みの末尾から活用形を自動生成します</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3143"/>
+        <location filename="mainwindow.cpp" line="3149"/>
         <source>活用形を自動生成します（読みの末尾から判定）</source>
         <translation>活用形を自動生成します（読みの末尾から判定）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="3131"/>
+        <location filename="mainwindow.cpp" line="3137"/>
         <source>Part of Speech</source>
         <translation>品詞</translation>
     </message>
@@ -1294,12 +1294,12 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>（ダウンロード済み）</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2576"/>
+        <location filename="mainwindow.cpp" line="2582"/>
         <source>Delete Model</source>
         <translation>モデルを削除</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2577"/>
+        <location filename="mainwindow.cpp" line="2583"/>
         <source>Are you sure you want to delete the model &quot;%1&quot;?</source>
         <translation>モデル「%1」を削除してもよろしいですか？</translation>
     </message>
@@ -1329,55 +1329,55 @@ Open &quot;Manage neural conversion models&quot; to activate it.</source>
         <translation>上記の配布元から必要時にダウンロードされます。モデルの重みはHazkey Communityに同梱されません。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2488"/>
+        <location filename="mainwindow.cpp" line="2494"/>
         <source>Preserve Custom Model</source>
         <translation>カスタムモデルの保存</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2489"/>
+        <location filename="mainwindow.cpp" line="2495"/>
         <source>A custom neural conversion model &quot;zenzai.gguf&quot; already exists.
 Do you want to preserve it before downloading a new one?</source>
         <translation>カスタムニューラル変換モデル「zenzai.gguf」が既に存在します。
 新しいモデルをダウンロードする前に、これを保存しますか？</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2508"/>
+        <location filename="mainwindow.cpp" line="2514"/>
         <source>Failed to preserve custom model.</source>
         <translation>カスタムモデルの保存に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2430"/>
+        <location filename="mainwindow.cpp" line="2436"/>
         <source>Failed to activate model.</source>
         <translation>モデルの有効化に失敗しました。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2328"/>
+        <location filename="mainwindow.cpp" line="2334"/>
         <source>Select a downloaded model to use, or download a new one:</source>
         <translation>使用するダウンロード済みモデルを選択するか、新しいモデルをダウンロードしてください：</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2305"/>
+        <location filename="mainwindow.cpp" line="2311"/>
         <source>Checking downloaded neural conversion models...</source>
         <translation>ダウンロード済みのニューラル変換モデルを確認中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2409"/>
+        <location filename="mainwindow.cpp" line="2415"/>
         <source>Loading neural conversion model...</source>
         <translation>ニューラル変換モデルを読み込み中...</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2423"/>
+        <location filename="mainwindow.cpp" line="2429"/>
         <source>Neural Conversion Model Warning</source>
         <translation>ニューラル変換モデルの警告</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="2424"/>
+        <location filename="mainwindow.cpp" line="2430"/>
         <source>The selected model is active, but neural conversion could not finish loading it.</source>
         <translation>選択したモデルは有効ですが、ニューラル変換は読み込みを完了できませんでした。</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="704"/>
-        <location filename="mainwindow.cpp" line="728"/>
+        <location filename="mainwindow.cpp" line="709"/>
+        <location filename="mainwindow.cpp" line="733"/>
         <source>Not supported by the active model.</source>
         <translation>有効なモデルでは対応していません。</translation>
     </message>

@@ -367,7 +367,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     guint gatedState_ = 0;         ///< 保留した最初の入力の修飾子状態
 
     // 転送済み押下
-    // 押下をアプリへ転送済みで、まだ解放を転送していないkeyval (shouldForwardUnhandledKey参照)
+    // 押下をアプリケーションへ転送済み (FALSEを返してフレームワークが転送した押下を含む) で、まだ解放を転送していないkeyval
+    // (shouldForwardUnhandledKey参照)
     std::unordered_set<guint> forwardedPressKeyvals_;
 };
 

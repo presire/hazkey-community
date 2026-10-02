@@ -212,7 +212,9 @@ HazkeyState::IngressSnapshot HazkeyState::ingressSnapshot() const {
     IngressSnapshot snapshot;
     snapshot.composing = !preeditText_.empty() || listVisible_;
     snapshot.listFocused = listVisible_ && cursorIndex_ >= 0;
-    snapshot.profileLoaded = serverProfileLoaded_;
+    // 設定変更を観測済みで未再読込の場合は、未読込として扱う
+    // 古い右文脈の設定で、フロントエンドが周辺テキスト待ちの要否を決めないようにする
+    snapshot.profileLoaded = serverProfileLoaded_ && !server_.configChangePending();
     snapshot.surroundingGate =
         cachedRightContext_ &&
         capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT);
@@ -437,6 +439,10 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
     } else if ((state & (IBUS_CONTROL_MASK | IBUS_MOD1_MASK |
                          IBUS_SUPER_MASK | IBUS_HYPER_MASK | IBUS_META_MASK |
                          IBUS_MOD4_MASK)) != 0) {
+        if (composingText.empty()) {
+            // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+            surroundingFreeze_.release();
+        }
         return FALSE;
     } else if (!composingText.empty()) {
         handled = preeditKeyEvent(keyval, state);
@@ -483,12 +489,16 @@ gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
     if (keyval == IBUS_KEY_space) {
         if (shift) {
             commitText(" ");
+            // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
+            surroundingFreeze_.appendCommitted(" ");
             resetState();
         } else {
             updateSurroundingText();
             server_.inputChar(" ");
-            commitText(server_.getComposingText(
-                hazkey::commands::GetComposingString_CharType_HIRAGANA, ""));
+            const std::string committed = server_.getComposingText(
+                hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
+            commitText(committed);
+            surroundingFreeze_.appendCommitted(committed);
             resetState();
         }
         return TRUE;
@@ -501,6 +511,8 @@ gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
         scheduleCandidateRefresh(/*isSuggest=*/true);
         return TRUE;
     }
+    // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+    surroundingFreeze_.release();
     return FALSE;
 }
 
@@ -509,13 +521,19 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
     switch (keyval) {
         case IBUS_KEY_Return:
         case IBUS_KEY_KP_Enter:
-        case IBUS_KEY_ISO_Enter:
+        case IBUS_KEY_ISO_Enter: {
+            // 保留中の更新を反映してから、確定する文字列を取る
+            flushPendingRefresh();
+            const std::string committed = preeditText_;
             commitPreedit();
             if (livePreeditIndex_ >= 0) {
                 server_.completePrefix(livePreeditIndex_);
             }
+            // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
+            surroundingFreeze_.appendCommitted(committed);
             resetState();
             return TRUE;
+        }
         case IBUS_KEY_BackSpace:
             server_.deleteLeft();
             showPreeditCandidateList();
@@ -592,13 +610,18 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
             break;
     }
     if (isInputableKey(keyval)) {
+        std::string committed;
         if (isDirectConversionMode_) {
+            // 直接変換の結果を確定してから続けて入力する
+            // 候補フォーカス中の継続入力と同じく、確定した文字列を固定済みの周辺テキストへ積む
+            flushPendingRefresh();
+            committed = preeditText_;
             commitPreedit();
             const auto carriedFreeze = surroundingFreeze_;
             resetState();
             surroundingFreeze_ = carriedFreeze;
         }
-        updateSurroundingText();
+        updateSurroundingText(committed);
         server_.inputChar(utf8FromKeyval(keyval));
         refreshAfterComposingEdit();
         return TRUE;
@@ -1546,7 +1569,13 @@ void HazkeyState::resetState() {
     listVisible_ = false;
     currentListIsSuggest_ = false;
     preeditText_.clear();
-    surroundingFreeze_.release();
+    // 確定直後のアプリの周辺テキストは確定を反映しておらず、Kateでは組成中のpreedit混入済みの値のままのことがある
+    // 固定内容 (確定文字を含む) を次の組成へ持ち越し、アプリが周辺テキストを報告し直したらライブ値を使う
+    surroundingFreeze_.finish(
+        capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
+            hasSurroundingText_,
+        surroundingText_, static_cast<int>(surroundingCursor_),
+        static_cast<int>(surroundingAnchor_));
     clearLookupTable();
     hidePreedit();
     setAuxiliaryText("");
@@ -1720,6 +1749,8 @@ void HazkeyState::clearSurroundingText() {
 
 void HazkeyState::focusIn() {
     resetState();
+    // フォーカスが移った先では、確定時から持ち越した周辺テキストを使わない
+    surroundingFreeze_.release();
     invalidateServerProfile();
     registerProperties();
 }
@@ -1740,6 +1771,7 @@ void HazkeyState::reset() {
 
 void HazkeyState::enable() {
     resetState();
+    surroundingFreeze_.release();
     registerProperties();
     if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
         postUi([](HazkeyUi& ui) { ui.requestSurroundingText(); });

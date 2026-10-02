@@ -4,7 +4,7 @@ import XCTest
 
 @testable import hazkey_server
 
-/// アラインメント区切りの送信判定と読み超過候補の除外を固定する
+/// アラインメント区切りの送信判定と読み超過候補の除外、変換エンジンへ渡す組成テキストを固定する
 ///
 /// モデルを読み込まない純関数テスト。全文を変換エンジンへ渡すのは、非サジェスト・Zenzai 有効・設定が適用可能・カーソル途中・末尾が文節区切りの時のみ
 /// それ以外は、カーソルまでの読みを渡す
@@ -176,5 +176,32 @@ final class ZenzaiAlignmentRequestTests: XCTestCase {
             candidates, readingLength: 3)
         XCTAssertEqual(result.kept.map(\.text), ["日本", "にほ"])
         XCTAssertEqual(result.droppedCount, 2)
+    }
+
+    // MARK: - (d) 変換エンジンへ渡す組成テキスト
+
+    /// (d1) サジェストでカーソルが途中の場合は、読み全体をカーソル末尾で渡す (Zenzai のプロンプトとラティスを一致させる)
+    func testSuggestRequestTextMovesMidCursorToEnd() {
+        let text = Self.midCursorText(reading: "にほんご", moveLeft: -2, withSeparator: true)
+        let request = HazkeyServerState.candidateRequestText(for: text, isSuggest: true)
+        XCTAssertTrue(request.isAtEndIndex)
+        XCTAssertEqual(request.toHiragana(), "にほんご")
+        XCTAssertEqual(request.input.count, text.input.count)
+    }
+
+    /// (d2) 変換でカーソルが途中の場合は、カーソルまでの読みを渡す
+    func testConversionRequestTextUsesPrefixForMidCursor() {
+        let text = Self.midCursorText(reading: "にほんご", moveLeft: -2, withSeparator: true)
+        let request = HazkeyServerState.candidateRequestText(for: text, isSuggest: false)
+        XCTAssertEqual(request.toHiragana(), "にほ")
+    }
+
+    /// (d3) カーソルが末尾の場合は、サジェストでも変換でも組成テキストをそのまま渡す
+    func testRequestTextAtEndIsUnchanged() {
+        let text = Self.midCursorText(reading: "にほんご", moveLeft: 0, withSeparator: true)
+        for isSuggest in [true, false] {
+            let request = HazkeyServerState.candidateRequestText(for: text, isSuggest: isSuggest)
+            XCTAssertEqual(request, text)
+        }
     }
 }

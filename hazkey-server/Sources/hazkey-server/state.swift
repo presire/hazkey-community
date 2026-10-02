@@ -505,7 +505,7 @@ extension HazkeySharedResources {
 
     /// 現在のプロファイルの学習データを消去する
     ///
-    /// 変換エンジンの学習メモリとdirtyフラグをリセットして、[プロファイル非依存の入力履歴]が無効の場合は、プロファイル専用の学習ディレクトリも作り直す
+    /// 変換エンジンの学習メモリとdirtyフラグ、全接続の変換セッションのキャッシュをリセットして、[プロファイル非依存の入力履歴]が無効の場合は、プロファイル専用の学習ディレクトリも作り直す
     ///
     /// - Returns: 成功時は.success、ディレクトリの削除・作成に失敗した場合は、.failedを含むレスポンス
     func clearProfileLearningData() -> Hazkey_ResponseEnvelope {
@@ -514,6 +514,13 @@ extension HazkeySharedResources {
         // どちらの分岐でも変換エンジンの状態とフラグをリセットする
         converter.resetMemory()
         learningDataNeedsCommit = false
+        // 学習メモリを消去しても、各セッションのラティス (およびZenzaiのdraft/メモ化制約) は消去前の学習エントリを含んだまま再利用される
+        // 個別の削除 (forgetLearningEntries(_:)) と同じく、全接続中セッションの変換キャッシュを破棄する
+        for id in liveConversionSessionIDs {
+            do { try converter.withSession(id) { converter.stopComposition() } }
+            catch { NSLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
+        }
+        converter.purgeZenzaiMemoizationCache()
         if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
             let memoryDirectory = serverConfig.memoryDirectory()
             do {
@@ -844,6 +851,10 @@ class HazkeyServerState {
 
     /// 主変換がこの時間を超えた打鍵では誤字の訂正を省略する (テストでは短くして予算超過を再現する)
     var typoTimeBudget: Duration = .milliseconds(TypoCorrector.typoTimeBudget)
+    /// 打鍵時に訂正案の評価へ使える時間で、超えたら残りの訂正案を評価しない (テストでは短くして評価の打ち切りを再現する)
+    var typoEvaluationBudget: Duration = .milliseconds(TypoCorrector.typoTimeBudget)
+    /// 訂正案の評価の打ち切りに使う現在時刻 (テストでは差し替えて、評価の途中で予算を超える時刻列を再現する)
+    var typoClock: () -> ContinuousClock.Instant = { ContinuousClock.now }
 
     // MARK: 組成テキストと候補リスト
 
@@ -1060,7 +1071,7 @@ class HazkeyServerState {
 
     /// 新しい組成を開始する
     ///
-    /// 組成テキスト・候補リスト・Zenzaiの左文脈・直接入力モードを初期化して、この接続の変換セッションのキャッシュを破棄する
+    /// 組成テキスト・候補リスト・Zenzaiの左文脈・直接入力モードを初期化して、この接続の変換セッション (誤字の訂正用の補助セッションを含む) のキャッシュを破棄する
     ///
     /// - Returns: 常に.successを含むレスポンス
     func createComposingTextInstanse() -> Hazkey_ResponseEnvelope {
@@ -1074,6 +1085,11 @@ class HazkeyServerState {
         // 新しい組成の開始時にこの接続の変換セッションを破棄して、同じ入力でも前の組成のラティスを再利用して新たに学習した候補が隠れないようにする
         // 1つの組成内での逐次変換ではセッションを引き続き再利用する
         _ = withConversionSession { converter.stopComposition() }
+        // 誤字の訂正案を評価する補助セッションも、同じ理由で破棄する
+        for id in typoCorrectionSessionIDs + [typoBaselineSessionID].compactMap({ $0 }) {
+            do { try converter.withSession(id) { converter.stopComposition() } }
+            catch { NSLog("[hazkey] Failed to reset typo correction session \(id): \(error)") }
+        }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -1479,12 +1495,31 @@ class HazkeyServerState {
     /// 変換でカーソルが末尾に無い場合は、カーソルまでの読み (文節の境界まで) を変換する
     ///
     /// - Parameter is_suggest: サジェストの場合はtrue、変換の場合はfalse
-    /// - Returns: サジェストまたはカーソルが末尾の場合は組成テキスト全体、それ以外はカーソルまでの組成テキスト
+    /// - Returns: HazkeyServerState.candidateRequestText(for:isSuggest:)の結果
     func candidateRequestText(is_suggest: Bool) -> ComposingText {
-        let usePrefixTarget = !is_suggest && !composingText.value.isAtEndIndex
-        return usePrefixTarget
-            ? composingText.value.prefixToCursorPosition()
-            : composingText.value
+        Self.candidateRequestText(for: composingText.value, isSuggest: is_suggest)
+    }
+
+    /// 組成テキストから、変換エンジンへ渡す組成テキストを作る
+    ///
+    /// サジェスト (ライブ変換) は読み全体を変換するため、カーソルが途中にあっても末尾へ移した写しを返す
+    /// カーソルが途中のまま渡すと、Zenzai は全文を区切りなしで評価する一方、ラティスはカーソルまでになり、プロンプトと候補が対応しない
+    ///
+    /// - Parameters:
+    ///   - text: 現在の組成テキスト
+    ///   - isSuggest: サジェストの場合はtrue、変換の場合はfalse
+    /// - Returns: サジェストの場合はカーソルを末尾に置いた組成テキスト全体、変換でカーソルが途中の場合はカーソルまでの組成テキスト、それ以外は組成テキスト全体
+    static func candidateRequestText(for text: ComposingText, isSuggest: Bool) -> ComposingText {
+        if text.isAtEndIndex {
+            return text
+        }
+        if !isSuggest {
+            return text.prefixToCursorPosition()
+        }
+        var whole = text
+        _ = whole.moveCursorFromCursorPosition(
+            count: whole.convertTarget.count - whole.convertTargetCursorPosition)
+        return whole
     }
 
     /// アラインメント区切りのために、変換エンジンへ全文の組成テキストを渡すかどうかを判定する
@@ -1585,7 +1620,7 @@ class HazkeyServerState {
     ///
     /// - Parameters:
     ///   - is_suggest: サジェスト (入力中の候補) の場合はtrue、変換 ([Space]キー等) の場合はfalse
-    ///   - appliesTypoTimeBudget: 主変換が時間予算 (TypoCorrector.typoTimeBudget) を超えた場合に誤字の訂正を省略するか
+    ///   - appliesTypoTimeBudget: 主変換が時間予算 (TypoCorrector.typoTimeBudget) を超えた場合に誤字の訂正を省略し、訂正案の評価も時間予算で打ち切るか
     /// - Returns: クライアントへ返す候補結果と、同じ位置に並んだサーバ側の候補リスト
     /// - Note: 絵文字とかな数字の候補は変換の場合だけ注入して、サジェストやライブ変換には混ぜない
     private func makeCandidatesResult(
@@ -1830,9 +1865,14 @@ class HazkeyServerState {
                 var correctionOptions = TypoCorrector.correctionOptions(from: options)
                 correctionOptions.N_best = 1
                 var evaluated: [(candidate: Candidate, reading: String, editCount: Int, adjustedValue: Double)] = []
+                let evaluationStartedAt = typoClock()
                 // 訂正案ごとに専用セッションを遅延確保する
                 // 同じ接続での再変換では確保済みのセッションを再利用し、主変換とは別のラティスを保つ
                 for (index, variant) in variants.enumerated() {
+                    // 訂正案の数は入力の長さとトリガーの数に応じて増えるため、打鍵時は評価に使う時間も予算で打ち切る
+                    if appliesTypoTimeBudget && typoClock() - evaluationStartedAt >= typoEvaluationBudget {
+                        break
+                    }
                     while typoCorrectionSessionIDs.count <= index {
                         let id = converter.createSession()
                         typoCorrectionSessionIDs.append(id)
@@ -1850,7 +1890,9 @@ class HazkeyServerState {
                 // 訂正案は常にニューラル変換なしで評価するため、基準値も同じ条件で測る必要がある
                 // ニューラル変換が無効な主変換の結果はそのまま使えるが、有効な場合は専用セッションで元の読みを評価する
                 let baselineValue: Double?
-                if case .off = options.zenzaiMode {
+                if evaluated.isEmpty {
+                    baselineValue = nil
+                } else if case .off = options.zenzaiMode {
                     baselineValue = TypoCorrector.bestExactMatch(
                         in: converted.mainResults, readingLength: hiraganaPreeditLen
                     ).map { Double($0.value) }
@@ -1939,6 +1981,7 @@ class HazkeyServerState {
                     guard !appendedTexts.contains(item.text) else { continue }
                     appendedTexts.insert(item.text)
                     // 一致した正規化クエリの長さを、残りpreeditと同じ候補のprefix確定の両方に使用する
+                    // 長さはかなの文字数のため、キー入力の要素数 (ローマ字入力では一致しない) ではなく表層の文字数で確定する
                     let matchedCount = item.query.count
                     let remaining = String(
                         fullHiraganaPreedit.dropFirst(min(matchedCount, fullHiraganaPreedit.count)))
@@ -1947,7 +1990,7 @@ class HazkeyServerState {
                     clientCandidate.subHiragana = remaining
                     serverCandidates.append(
                         .fromEmoji(
-                            word: item.text, composingCount: .inputCount(matchedCount)))
+                            word: item.text, composingCount: .surfaceCount(matchedCount)))
                     clientCandidates.append(clientCandidate)
                 }
             }

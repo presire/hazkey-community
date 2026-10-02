@@ -1,4 +1,4 @@
-/**
+    /**
  * @file surrounding_text_snapshot.cpp
  * @brief 周辺テキストの送信スナップショット生成を実装する
  *
@@ -147,23 +147,88 @@ SurroundingSnapshot buildSurroundingSnapshot(const std::string& text, int cursor
     return {result, lo + static_cast<int>(appendPoints.size())};
 }
 
+bool CompositionSurroundingFreeze::liveLagsBehindCarry(
+    const std::string& liveText, int liveCursor, int liveAnchor) const {
+    if (liveCursor != liveAnchor || liveText == text_) {
+        return false;
+    }
+    std::vector<std::string> livePoints;
+    std::vector<std::string> carriedPoints;
+    if (!splitCodePoints(liveText, &livePoints) ||
+        !splitCodePoints(text_, &carriedPoints)) {
+        return false;
+    }
+    const int liveLeftCount =
+        std::clamp(liveCursor, 0, static_cast<int>(livePoints.size()));
+    if (liveLeftCount < baseCursor_ || liveLeftCount >= cursor_) {
+        return false;
+    }
+    return std::equal(livePoints.begin(), livePoints.begin() + liveLeftCount,
+                      carriedPoints.begin());
+}
+
 SurroundingSnapshot CompositionSurroundingFreeze::resolve(
     const std::string& liveText, int liveCursor, int liveAnchor,
     const std::string& append) {
+    // 持ち越し中でも、アプリケーションが終了後に周辺テキストを報告し直していれば、新しいライブ値を優先する
+    const bool useStored =
+        state_ == State::Frozen ||
+        (state_ == State::Carried &&
+         ((liveText == carriedLiveText_ && liveCursor == carriedLiveCursor_ &&
+           liveAnchor == carriedLiveAnchor_) ||
+          liveLagsBehindCarry(liveText, liveCursor, liveAnchor)));
     const SurroundingSnapshot snapshot =
-        frozen_ ? buildSurroundingSnapshot(text_, cursor_, cursor_, append)
-                : buildSurroundingSnapshot(liveText, liveCursor, liveAnchor,
-                                           append);
-    frozen_ = true;
+        useStored ? buildSurroundingSnapshot(text_, cursor_, cursor_, append)
+                  : buildSurroundingSnapshot(liveText, liveCursor, liveAnchor,
+                                             append);
+    if (!useStored) {
+        baseCursor_ =
+            buildSurroundingSnapshot(liveText, liveCursor, liveAnchor, "").anchor;
+    }
+    state_ = State::Frozen;
     text_ = snapshot.text;
     cursor_ = snapshot.anchor;
+    carriedLiveText_.clear();
+    carriedLiveCursor_ = 0;
+    carriedLiveAnchor_ = 0;
     return snapshot;
 }
 
+void CompositionSurroundingFreeze::appendCommitted(
+    const std::string& committed) {
+    if (state_ == State::Idle || committed.empty()) {
+        return;
+    }
+    const SurroundingSnapshot snapshot =
+        buildSurroundingSnapshot(text_, cursor_, cursor_, committed);
+    text_ = snapshot.text;
+    cursor_ = snapshot.anchor;
+}
+
+void CompositionSurroundingFreeze::finish(bool liveAvailable,
+                                          const std::string& liveText,
+                                          int liveCursor, int liveAnchor) {
+    if (!liveAvailable) {
+        release();
+        return;
+    }
+    if (state_ == State::Idle) {
+        return;
+    }
+    state_ = State::Carried;
+    carriedLiveText_ = liveText;
+    carriedLiveCursor_ = liveCursor;
+    carriedLiveAnchor_ = liveAnchor;
+}
+
 void CompositionSurroundingFreeze::release() {
-    frozen_ = false;
+    state_ = State::Idle;
     text_.clear();
     cursor_ = 0;
+    baseCursor_ = 0;
+    carriedLiveText_.clear();
+    carriedLiveCursor_ = 0;
+    carriedLiveAnchor_ = 0;
 }
 
 }  // namespace hazkey::frontend

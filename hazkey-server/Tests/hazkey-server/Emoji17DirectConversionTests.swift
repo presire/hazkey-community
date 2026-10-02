@@ -310,6 +310,66 @@ final class Emoji17DirectConversionTests: XCTestCase {
         XCTAssertFalse(state.learningDataNeedsCommit)
     }
 
+    func testPrefixCompletionClearsRomajiComposingForEmoji() throws {
+        // 前提: 絵文字の読みをローマ字で入力する
+        // キー入力の要素数 (b,a,r,e,e の5つ) と、かなの文字数 (ばれえ の3文字) が一致しない
+        let state = try makeState(fixtureURL: validFixtureURL())
+        XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        for character in "baree" {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+        XCTAssertEqual(state.composingText.value.toHiragana(), Self.zwjReading)
+        XCTAssertEqual(state.getCandidates(is_suggest: false).status, .success)
+        let index = try XCTUnwrap(state.currentCandidateList?.firstIndex(where: {
+            if case .fromEmoji(let word, _) = $0 { return word == Self.zwjEmoji }
+            return false
+        }))
+
+        // 実行: 絵文字候補を接頭辞確定する
+        XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
+
+        // 検証: 読みの全てを消費し、かなを残さない
+        XCTAssertEqual(state.composingText.value.toHiragana(), "")
+    }
+
+    func testPrefixCompletionRetainsOnlySuffixForRomajiEmoji() throws {
+        // 前提: 絵文字の読みと接尾辞をローマ字で入力し、カーソルを読みの末尾へ移して接頭辞だけを変換する
+        let suffix = "きょう"
+        let state = try makeState(fixtureURL: validFixtureURL())
+        XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        for character in "bareekyou" {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+        XCTAssertEqual(state.composingText.value.toHiragana(), Self.zwjReading + suffix)
+        XCTAssertEqual(state.moveCursor(offset: -suffix.count).status, .success)
+        let response = state.getCandidates(is_suggest: false)
+        XCTAssertEqual(response.status, .success)
+        guard case .candidates(let result)? = response.payload else {
+            XCTFail("Expected candidates response")
+            return
+        }
+        let index = try XCTUnwrap(state.currentCandidateList?.firstIndex(where: {
+            if case .fromEmoji(let word, _) = $0 { return word == Self.zwjEmoji }
+            return false
+        }))
+        XCTAssertEqual(result.candidates[index].subHiragana, suffix)
+
+        // 実行: 絵文字候補を接頭辞確定する
+        XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
+
+        // 検証: 絵文字の読みだけを消費し、候補の subHiragana と同じ接尾辞が残る
+        XCTAssertEqual(state.composingText.value.toHiragana(), suffix)
+        XCTAssertEqual(state.composingText.value.input.count, "kyou".count)
+
+        // 実行: 残った接尾辞の後ろへ続けて入力する
+        for character in "ni" {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+
+        // 検証: 接尾辞のローマ字入力は壊れず、追加した入力が末尾へつながる
+        XCTAssertEqual(state.composingText.value.toHiragana(), suffix + "に")
+    }
+
     // MARK: - 非学習動作
 
     func testEmojiCandidatesAreNotLearned() throws {

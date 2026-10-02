@@ -270,7 +270,7 @@ void HazkeyServerConnector::connectServer() {
     constexpr int ATTEMPT_TRY_START_FORCE = 3;
 
     constexpr int MAX_RETRIES = 8;
-    constexpr int RETRY_INTERVAL_MS = 150;
+    constexpr int RETRY_INTERVAL_MS = 250;
 
     int attempt;
     for (attempt = 0; attempt < MAX_RETRIES; ++attempt) {
@@ -369,14 +369,19 @@ void HazkeyServerConnector::invalidateCache() {
 /**
  * @brief 1回のRPCを送受信する
  * @param send_data 送信するリクエスト
+ * @param tryConnect falseなら接続とサーバ起動を試みない
  * @return パース済みの応答、通信またはパース失敗時はstd::nullopt
  */
 std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
-    const hazkey::RequestEnvelope& send_data) {
+    const hazkey::RequestEnvelope& send_data, bool tryConnect) {
     ClientPerfMeasurement perfMeasurement(send_data);
     std::lock_guard<std::mutex> lock(transact_mutex);
 
     if (sock_ == -1) {
+        if (!tryConnect) {
+            HAZKEY_LOG_INFO() << "Socket not connected. Aborting transact without reconnecting.";
+            return std::nullopt;
+        }
         HAZKEY_LOG_INFO() << "Socket not connected, attempting to connect...";
         connectServer();
         if (sock_ == -1) {
@@ -398,26 +403,30 @@ std::optional<hazkey::ResponseEnvelope> HazkeyServerConnector::transact(
     // フレーム長を書き込む
     uint32_t writeLen = htonl(msg.size());
     if (!writeAll(sock_, &writeLen, 4)) {
-        HAZKEY_LOG_INFO()
-            << "Failed to communicate with server while writing data length. "
-               "reconnecting to hazkey-community-server...";
         close(sock_);
         sock_ = -1;
-        connectServer();
-        // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
-        invalidateCache();
+        if (tryConnect) {
+            HAZKEY_LOG_INFO()
+                << "Failed to communicate with server while writing data length. "
+                   "reconnecting to hazkey-community-server...";
+            connectServer();
+            // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
+            invalidateCache();
+        }
         return std::nullopt;
     }
 
     // protobuf本体を書き込む
     if (!writeAll(sock_, msg.c_str(), msg.size())) {
-        HAZKEY_LOG_INFO() << "Failed to communicate with server while writing data. "
-                        "reconnecting to hazkey-community-server...";
         close(sock_);
         sock_ = -1;
-        connectServer();
-        // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
-        invalidateCache();
+        if (tryConnect) {
+            HAZKEY_LOG_INFO() << "Failed to communicate with server while writing data. "
+                            "reconnecting to hazkey-community-server...";
+            connectServer();
+            // 再接続後は、サーバ再起動の可能性があるためキャッシュを破棄する
+            invalidateCache();
+        }
         return std::nullopt;
     }
 
@@ -908,12 +917,15 @@ std::optional<bool> HazkeyServerConnector::toggleZenzai() {
     return responseVal.toggle_zenzai_result().enabled();
 }
 
-/** @brief 保留中の学習データを保存する */
-void HazkeyServerConnector::saveLearningData() {
+/**
+ * @brief 保留中の学習データを保存する
+ * @param tryConnect falseなら未接続時にサーバを起動しない
+ */
+void HazkeyServerConnector::saveLearningData(bool tryConnect) {
     invalidateCache();
     hazkey::RequestEnvelope request;
     request.mutable_save_learning_data();
-    auto response = transact(request);
+    auto response = transact(request, tryConnect);
     if (response == std::nullopt) {
         HAZKEY_LOG_ERROR() << "Error while transacting saveLearningData().";
         return;

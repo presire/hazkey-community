@@ -531,6 +531,14 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     }
 
     if (isRelease || shiftKey) {
+        // FALSEを返したキーはフレームワークがアプリへ転送する
+        // 押下を記録して、後続の解放がバリア中に消費されてもenqueueKeyOp()が転送して対にする
+        // (設定変更を観測した[Shift]押下の直後は、解放がバリアに入る)
+        if (isRelease) {
+            forwardedPressKeyvals_.erase(keyval);
+        } else {
+            forwardedPressKeyvals_.insert(keyval);
+        }
         enqueue([keyval, keycode, state](const std::shared_ptr<HazkeyState>& s) {
             s->processKeyEvent(keyval, keycode, state);
         });
@@ -553,12 +561,18 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     in.acceptPrediction = acceptPrediction_;
     in.deleteLearning = deleteLearning_;
     const gboolean consume = decideConsumeKey(keyval, state, in);
+    if (!consume) {
+        // 押下の処理が終わる前に解放が来るとバリアに入るため、フレームワーク転送した押下も記録する
+        forwardedPressKeyvals_.insert(keyval);
+    }
     enqueueKeyOp(keyval, keycode, state, consume, gateCandidate && consume);
     return consume;
 }
 
 void HazkeyFrontend::focusIn() {
     if (retired_) return;
+    // ワーカーのfocusIn()がプロファイルを破棄するため、その要約が届く前のキーも未読込として扱う
+    profileLoaded_ = false;
     gate_.submitOrHold(false, [this] {
         enqueue([](const std::shared_ptr<HazkeyState>& s) { s->focusIn(); });
     });

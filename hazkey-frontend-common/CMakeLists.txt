@@ -175,6 +175,18 @@ if(BUILD_TESTING)
     add_test(NAME hazkey_surrounding_snapshot_test
         COMMAND hazkey_surrounding_snapshot_test)
 
+    # 両フロントエンドが共有する候補の注記の桁揃え (表示桁数) のテスト
+    add_executable(hazkey_candidate_annotation_test
+        candidate_annotation_test.cpp)
+    target_link_libraries(hazkey_candidate_annotation_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_candidate_annotation_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_candidate_annotation_test hazkey-proto-headers)
+    add_test(NAME hazkey_candidate_annotation_test
+        COMMAND hazkey_candidate_annotation_test)
+
     # IBusのキー処理をブロックさせない非同期通信基盤のテスト
     add_executable(hazkey_frontend_async_test
         hazkey_frontend_async_test.cpp)

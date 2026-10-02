@@ -8,8 +8,7 @@
 
 // 共通の周辺テキストスナップショット生成規則を検証する
 //
-// 位置の単位は符号点であり、カーソルとアンカーの大小関係から選択範囲を除去して
-// 追記文字をカーソル位置へ挿入し、アンカーを追記文字の符号点数だけ進める
+// 位置の単位は符号点であり、カーソルとアンカーの大小関係から選択範囲を除去して、追記文字をカーソル位置へ挿入し、アンカーを追記文字の符号点数だけ進める
 //
 // 不正なUTF-8や空文字列は周辺テキスト無しと同じ扱いになることを確認する
 // hazkey-community-server、ソケット、フロントエンドのツールキットは使用しない
@@ -48,7 +47,7 @@ void expect(const std::string& label, const SurroundingSnapshot& got,
 /**
  * @brief 検証一件を実行し、その間に失敗が無ければ合格を報告する
  *
- * 検証名と条件の対応を出力へ残し、失敗時は不合格として報告する
+ * 検証名と条件の対応を出力へ残して、失敗時は不合格として報告する
  */
 void runCase(const char* name, void (*body)()) {
     const int before = failures;
@@ -61,9 +60,9 @@ void runCase(const char* name, void (*body)()) {
 }
 
 /**
- * @brief (a) 末尾カーソルかつ選択なしかつ追記なしでは入力と同一であることを検証する
+ * @brief (a) 末尾カーソルかつ選択なしかつ追記なしでは、入力と同一であることを検証する
  *
- * 追記が空でカーソルとアンカーが末尾を指すとき、生成結果が入力の全文とアンカーをそのまま返すことを確認する
+ * 追記が空でカーソルとアンカーが末尾を指す時、生成結果が入力の全文とアンカーをそのまま返すことを確認する
  */
 void testTailCursorNoSelectionNoAppend() {
     const auto kana = buildSurroundingSnapshot("あいうえお", 5, 5, "");
@@ -74,9 +73,9 @@ void testTailCursorNoSelectionNoAppend() {
 }
 
 /**
- * @brief (b) 末尾カーソルへ追記すると末尾へ連結されアンカーが1進むことを検証する
+ * @brief (b) 末尾カーソルへ追記すると末尾へ連結され、アンカーが1進むことを検証する
  *
- * 今日の送信内容(textとappendの連結、anchorとappend符号点数の加算)と一致することを確認する
+ * 送信内容 (textとappendの連結、anchorとappend符号点数の加算) と一致することを確認する
  */
 void testTailCursorAppend() {
     const auto ascii = buildSurroundingSnapshot("abc", 3, 3, "X");
@@ -115,7 +114,7 @@ void testSelectionRemoved() {
 /**
  * @brief (e) 結合絵文字の内部を分割しないことを検証する
  *
- * ZWJで結合した家族絵文字(5符号点)の直後をカーソルとするとき、左に絵文字全体が残り右に後続が残ることを確認する
+ * ZWJで結合した家族絵文字 (5符号点) の直後をカーソルとする時、左に絵文字全体が残り右に後続が残ることを確認する
  */
 void testZwjEmojiSplit() {
     // 👨 ZWJ 👩 ZWJ 👧 はUTF-8で5符号点
@@ -147,7 +146,7 @@ void testClampOutOfRange() {
 /**
  * @brief (g) 空文字列と不正UTF-8が空スナップショットを返すことを検証する
  *
- * 空入力と不正バイトを含む入力の双方で周辺テキスト無しと同じ結果になることを確認する
+ * 空入力と不正バイトを含む入力の双方で、周辺テキスト無しと同じ結果になることを確認する
  */
 void testEmptyAndInvalidUtf8() {
     const auto empty = buildSurroundingSnapshot("", 0, 0, "");
@@ -163,7 +162,7 @@ void testEmptyAndInvalidUtf8() {
 /**
  * @brief (h) マルチバイトの追記でアンカーが符号点数だけ進むことを検証する
  *
- * 3バイト1符号点のかなを追記したとき、バイト数ではなく符号点数でアンカーが進むことを確認する
+ * 3バイト1符号点のかなを追記した時、バイト数ではなく符号点数でアンカーが進むことを確認する
  */
 void testMultibyteAppendAnchor() {
     const auto got = buildSurroundingSnapshot("ab", 2, 2, "あ");
@@ -289,12 +288,146 @@ void testFreezeEmptyWhenLiveNotYetArrived() {
            "愛", 1);
 }
 
+/**
+ * @brief (p) 確定後にアプリが周辺テキストを報告し直す前は、確定文字を含む固定内容を次の組成へ持ち越すことを検証する
+ *
+ * Kateは組成中のpreeditを周辺テキストへ含めて報告し、確定直後のライブ値はその混入済みの値のまま残る
+ * 次の組成がその値で固定されると、右文脈へ直前の読みが入り、確定した語が左文脈から抜ける
+ */
+void testFinishCarriesCommittedTextWhileLiveIsStale() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    freeze.appendCommitted("愛");
+    freeze.finish(true, "今日はあい", 3, 3);
+    ++checks;
+    if (freeze.frozen()) {
+        ++failures;
+        std::cerr << "FAIL [(p) carried state is not frozen]\n";
+    }
+    expect("(p) stale live uses carried commit",
+           freeze.resolve("今日はあい", 3, 3, ""), "今日は愛", 4);
+    expect("(p) next resolve stays frozen",
+           freeze.resolve("今日はあいう", 3, 3, ""), "今日は愛", 4);
+}
+
+/**
+ * @brief (q) 確定後にアプリが周辺テキストを報告し直していれば、持ち越しより新しいライブ値を使うことを検証する
+ */
+void testFinishPrefersFreshLive() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "愛");
+    freeze.finish(true, "今日はあい", 3, 3);
+    expect("(q) fresh live text wins",
+           freeze.resolve("今日は愛。", 5, 5, ""), "今日は愛。", 5);
+
+    CompositionSurroundingFreeze moved;
+    moved.resolve("今日は", 3, 3, "愛");
+    moved.finish(true, "今日は愛", 4, 4);
+    expect("(q) moved cursor wins", moved.resolve("今日は愛", 1, 1, ""), "今日は愛",
+           1);
+}
+
+/**
+ * @brief (r) ライブの周辺テキストが利用できない時は持ち越さないことを検証する
+ *
+ * 周辺テキストに非対応のアプリで確定文字を積み続けないため
+ */
+void testFinishWithoutLiveDropsCarry() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("", 0, 0, "愛");
+    freeze.finish(false, "", 0, 0);
+    expect("(r) no carry without live", freeze.resolve("", 0, 0, ""), "", 0);
+}
+
+/**
+ * @brief (s) release()は持ち越しも捨て、未固定のappendCommitted()は何もしないことを検証する
+ */
+void testReleaseDropsCarryAndIdleAppendIsNoop() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    freeze.appendCommitted("愛");
+    freeze.finish(true, "今日はあい", 3, 3);
+    freeze.release();
+    expect("(s) release drops carry", freeze.resolve("今日はあい", 3, 3, ""),
+           "今日はあい", 3);
+
+    CompositionSurroundingFreeze idle;
+    idle.appendCommitted("愛");
+    idle.finish(true, "今日は", 3, 3);
+    expect("(s) idle append and finish are no-ops",
+           idle.resolve("今日は", 3, 3, ""), "今日は", 3);
+}
+
+/**
+ * @brief (t) 確定より前に生成されて遅れて届いたpreedit混入済みの値は、終了時点のライブ値と違っても持ち越しを使うことを検証する
+ *
+ * Kateのpreedit混入済みの値はカーソルがpreeditの先頭にあり、カーソルより左に確定した語を含まない
+ */
+void testDelayedContaminatedLiveUsesCarry() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    freeze.appendCommitted("愛");
+    freeze.finish(true, "今日はあ", 3, 3);
+    expect("(t) delayed contaminated live uses carry",
+           freeze.resolve("今日はあい", 3, 3, ""), "今日は愛", 4);
+
+    CompositionSurroundingFreeze chained;
+    chained.resolve("今日は", 3, 3, "");
+    chained.appendCommitted("愛");
+    chained.finish(true, "今日はあ", 3, 3);
+    chained.resolve("今日はあ", 3, 3, "");
+    chained.appendCommitted("上");
+    chained.finish(true, "今日は愛う", 4, 4);
+    expect("(t) delayed live after a chain of commits uses carry",
+           chained.resolve("今日は愛うえ", 4, 4, ""), "今日は愛上", 5);
+}
+
+/**
+ * @brief (u) 持ち越し中に[Shift] + [Space]で積んだ空白を、記録したライブ値の更新後も保つことを検証する
+ */
+void testCarriedAppendSurvivesFinish() {
+    CompositionSurroundingFreeze freeze;
+    freeze.resolve("今日は", 3, 3, "");
+    freeze.appendCommitted("愛");
+    freeze.finish(true, "今日はあ", 3, 3);
+    freeze.appendCommitted(" ");
+    freeze.finish(true, "今日は愛", 4, 4);
+    expect("(u) carried space survives refreshed stamp",
+           freeze.resolve("今日は愛", 4, 4, ""), "今日は愛 ", 5);
+}
+
+/**
+ * @brief (v) 確定を反映した値・選択範囲のある値・固定時より左が短い値は、ライブ値を使うことを検証する
+ */
+void testLiveThatIsNotLaggingWins() {
+    CompositionSurroundingFreeze moved;
+    moved.resolve("今日は", 3, 3, "");
+    moved.appendCommitted("愛");
+    moved.finish(true, "今日はあい", 3, 3);
+    expect("(v) cursor moved inside reflected commit",
+           moved.resolve("今日は愛", 3, 3, ""), "今日は愛", 3);
+
+    CompositionSurroundingFreeze selected;
+    selected.resolve("今日は", 3, 3, "");
+    selected.appendCommitted("愛");
+    selected.finish(true, "今日はあい", 3, 3);
+    expect("(v) selection uses live",
+           selected.resolve("今日はです", 3, 5, ""), "今日は", 3);
+
+    CompositionSurroundingFreeze shorter;
+    shorter.resolve("今日は", 3, 3, "");
+    shorter.appendCommitted("愛");
+    shorter.finish(true, "今日はあい", 3, 3);
+    expect("(v) left shorter than freeze base uses live",
+           shorter.resolve("今日", 2, 2, ""), "今日", 2);
+}
+
 }  // namespace
 
 /**
  * @brief 全ての周辺テキストスナップショット検証を順に実行する
  *
- * (a)から(o)までの各条件を実行し、失敗が無ければ成功を報告して終了する
+ * (a)から(v)までの各条件を実行し、失敗が無ければ成功を報告して終了する
  */
 int main() {
     runCase("(a) tail cursor, no selection, no append", testTailCursorNoSelectionNoAppend);
@@ -312,6 +445,13 @@ int main() {
     runCase("(m) freeze release recaptures live", testFreezeReleaseRecapturesLive);
     runCase("(n) freeze copy carries across release", testFreezeCopyCarriesAcrossRelease);
     runCase("(o) freeze empty when live not yet arrived", testFreezeEmptyWhenLiveNotYetArrived);
+    runCase("(p) finish carries committed text while live is stale", testFinishCarriesCommittedTextWhileLiveIsStale);
+    runCase("(q) finish prefers fresh live", testFinishPrefersFreshLive);
+    runCase("(r) finish without live drops carry", testFinishWithoutLiveDropsCarry);
+    runCase("(s) release drops carry and idle append is noop", testReleaseDropsCarryAndIdleAppendIsNoop);
+    runCase("(t) delayed contaminated live uses carry", testDelayedContaminatedLiveUsesCarry);
+    runCase("(u) carried append survives finish", testCarriedAppendSurvivesFinish);
+    runCase("(v) live that is not lagging wins", testLiveThatIsNotLaggingWins);
 
     std::cout << "surrounding_text_snapshot_test: " << checks << " checks, "
               << failures << " failures\n";

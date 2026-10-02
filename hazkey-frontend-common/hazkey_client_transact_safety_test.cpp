@@ -10,6 +10,9 @@
 //
 // 検証Aは読取タイムアウト後にソケットを破棄して、遅れて届いた応答を次の新規接続で解釈しないことを確認する
 // 検証Bは1度も成功していない接続では、4回目の接続試行で強制再起動して、成功直後は競合待機時間内で抑止し、時間経過後に再開することを確認する
+// 検証Cは再接続しない保存が、サーバの停止後に接続もサーバ起動も試みないことを確認する
+// 検証Dは要求長と要求本体の書込失敗のそれぞれで、再接続しない送信が接続し直さないことを確認する
+// 検証Eは再接続しない保存でも、接続中なら保存要求を送ることを確認する
 //
 // 隔離したXDG_RUNTIME_DIRにプロセス内AF_UNIX模擬サーバを作り、テスト専用フックを使用する
 // 実際のhazkey-community-serverを起動せず、既定の10秒読取待機も使用しない
@@ -28,12 +31,14 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
+#include "hazkey_frontend_hooks.h"
 #include "hazkey_server_connector.h"
 
 #define CHECK(cond)                                                        \
@@ -161,6 +166,45 @@ class DelayableFakeServer {
         delaysMs_[connIndex] = delayMs;
     }
 
+    /**
+     * @brief 指定接続を要求長の受信直後に閉じる
+     *
+     * 要求本体を読まずに閉じて、クライアントが要求本体の書込中に切断を検出する状況を作る
+     */
+    void setCloseAfterLength(int connIndex) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        closeAfterLength_.insert(connIndex);
+    }
+
+    /** @brief 受け付けた接続の数を返す */
+    int connectionCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return connCount_;
+    }
+
+    /** @brief 受信した要求の種別を受信順に返す */
+    std::vector<hazkey::RequestEnvelope::PayloadCase> receivedPayloads() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return receivedPayloads_;
+    }
+
+    /**
+     * @brief 閉じた接続が指定数に達するまで待つ
+     *
+     * 応答後に閉じた接続へ書き込む検証で、書込の前に相手の切断を確定させる
+     * @return 2秒以内に達した場合はtrue
+     */
+    bool waitForClosedConnections(int count) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (closedConnections_.load() < count) {
+            if (std::chrono::steady_clock::now() >= deadline) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return true;
+    }
+
    private:
     /**
      * @brief 待受け循環で順次接続を受け付ける
@@ -182,6 +226,7 @@ class DelayableFakeServer {
                 workers_.emplace_back([this, clientFd, connIndex] {
                     serveClient(clientFd, connIndex);
                     close(clientFd);
+                    ++closedConnections_;
                 });
             }
         }
@@ -195,6 +240,10 @@ class DelayableFakeServer {
     void serveClient(int fd, int connIndex) {
         uint32_t networkLength = 0;
         if (!readAll(fd, &networkLength, sizeof(networkLength))) return;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (closeAfterLength_.count(connIndex) != 0) return;
+        }
         const uint32_t length = ntohl(networkLength);
         std::string wire(length, '\0');
         if (!readAll(fd, wire.data(), wire.size())) return;
@@ -204,6 +253,7 @@ class DelayableFakeServer {
         int delayMs = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            receivedPayloads_.push_back(request.payload_case());
             auto it = delaysMs_.find(connIndex);
             if (it != delaysMs_.end()) delayMs = it->second;
         }
@@ -238,7 +288,10 @@ class DelayableFakeServer {
     std::vector<int> clientFds_;        ///< 接続中記述子の一覧
     std::vector<std::thread> workers_;  ///< 接続別作業スレッドの一覧
     std::map<int, int> delaysMs_;       ///< 接続番号別の応答遅延設定
+    std::set<int> closeAfterLength_;    ///< 要求長の受信直後に閉じる接続番号
+    std::vector<hazkey::RequestEnvelope::PayloadCase> receivedPayloads_;  ///< 受信順の要求種別
     int connCount_ = 0;                 ///< 受付順の接続番号
+    std::atomic<int> closedConnections_{0};  ///< 閉じた接続の数
     std::atomic<bool> stop_{false};     ///< 受付停止フラグ
 };
 
@@ -403,6 +456,173 @@ void forceRestartWindowGatesRecentSuccess() {
     std::filesystem::remove_all(root);
 }
 
+/**
+ * @brief 再接続しない保存がサーバ停止後にサーバを起動しないことを検証する
+ *
+ * Fcitx終了時の保存はセッション終了のSIGTERM後に呼ばれ得るため、切断を検出しても接続とサーバ起動を試みてはならない
+ * 同じ切断状態で通常の保存は起動を要求することも確かめて、起動フックによる観測が有効であることを保証する
+ */
+void saveWithoutReconnectNeverStartsServer() {
+    char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-C-XXXXXX";
+    char* directory = mkdtemp(directoryTemplate);
+    CHECK(directory != nullptr);
+    const std::string root(directory);
+    const std::string socketPath = root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+    CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
+    HazkeyServerConnector::setTestReadTimeoutSeconds(1);
+
+    std::vector<SpawnCall> calls;
+    HazkeyServerConnector::setTestStartServerHook([&calls](bool force) { calls.push_back({force}); });
+
+    std::unique_ptr<HazkeyServerConnector> connector;
+    {
+        // 接続済みの状態を作ってから模擬サーバを破棄して、サーバが先に停止した終了時の状況を再現する
+        DelayableFakeServer server(socketPath);
+        connector = std::make_unique<HazkeyServerConnector>();
+        const auto response = connector->transact(makeCandidatesRequest());
+        CHECK(response.has_value());
+    }
+
+    // 書込失敗と読取失敗のどちらで切断を検出しても、2回目は未接続の経路を通る
+    connector->saveLearningData(/*tryConnect=*/false);
+    connector->saveLearningData(/*tryConnect=*/false);
+    CHECK(calls.empty());
+
+    // 同じ未接続状態で、通常の保存は再接続してサーバ起動を要求する
+    connector->saveLearningData();
+    CHECK(!calls.empty());
+
+    HazkeyServerConnector::clearTestHooks();
+    std::filesystem::remove_all(root);
+    std::cout << "[PASS] save without reconnect never starts hazkey-server "
+                 "after the server has stopped"
+              << std::endl;
+}
+
+/**
+ * @brief 書込失敗の分岐ごとに、再接続しない送信が接続し直さないことを検証する
+ *
+ * 要求長の書込失敗と要求本体の書込失敗を別々に起こす
+ * 再接続する送信では、記録の文言で通った分岐を確かめて、再接続することを確認する
+ * 再接続しない送信では、次の送信も未接続のまま失敗して、要求がサーバへ届かないことを確認する
+ */
+void writeFailureBranchesHonorTryConnect() {
+    char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-D-XXXXXX";
+    char* directory = mkdtemp(directoryTemplate);
+    CHECK(directory != nullptr);
+    const std::string root(directory);
+    const std::string socketPath = root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+    CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
+    HazkeyServerConnector::setTestReadTimeoutSeconds(1);
+
+    std::vector<SpawnCall> calls;
+    HazkeyServerConnector::setTestStartServerHook([&calls](bool force) { calls.push_back({force}); });
+    std::vector<std::string> logs;
+    hazkey::frontend::setLogSink(
+        [&logs](hazkey::frontend::LogLevel, const std::string& message) { logs.push_back(message); });
+    const auto logged = [&logs](const std::string& needle) {
+        for (const auto& message : logs) {
+            if (message.find(needle) != std::string::npos) return true;
+        }
+        return false;
+    };
+
+    hazkey::RequestEnvelope saveRequest;
+    saveRequest.mutable_save_learning_data();
+    // 要求本体をソケットの送信バッファより大きくして、本体を書き切る前に相手の切断を検出させる
+    hazkey::RequestEnvelope largeRequest;
+    largeRequest.mutable_set_context()->set_context(std::string(4 * 1024 * 1024, 'a'));
+
+    for (const bool tryConnect : {false, true}) {
+        {
+            // 1回応答して閉じた接続へ書き込み、要求長の書込で失敗させる
+            DelayableFakeServer server(socketPath);
+            auto connector = std::make_unique<HazkeyServerConnector>();
+            CHECK(connector->transact(makeCandidatesRequest()).has_value());
+            CHECK(server.waitForClosedConnections(1));
+            logs.clear();
+
+            CHECK(!connector->transact(saveRequest, tryConnect).has_value());
+            CHECK(!logged("Successfully wrote data"));
+            CHECK(logged("writing data length") == tryConnect);
+
+            // 再接続した場合だけ、次の再接続しない送信が届く
+            CHECK(connector->transact(saveRequest, false).has_value() == tryConnect);
+            CHECK(server.connectionCount() == (tryConnect ? 2 : 1));
+            const auto payloads = server.receivedPayloads();
+            CHECK(payloads.size() == (tryConnect ? 2u : 1u));
+            CHECK(payloads.front() == hazkey::RequestEnvelope::kGetCandidates);
+            CHECK(!tryConnect || payloads.back() == hazkey::RequestEnvelope::kSaveLearningData);
+            connector.reset();
+        }
+        {
+            // 要求長だけを読んで閉じる接続へ大きな要求を書き込み、要求本体の書込で失敗させる
+            DelayableFakeServer server(socketPath);
+            server.setCloseAfterLength(1);
+            auto connector = std::make_unique<HazkeyServerConnector>();
+            logs.clear();
+
+            CHECK(!connector->transact(largeRequest, tryConnect).has_value());
+            CHECK(!logged("Successfully wrote data"));
+            CHECK(!logged("writing data length"));
+            CHECK(logged("writing data.") == tryConnect);
+
+            CHECK(connector->transact(saveRequest, false).has_value() == tryConnect);
+            CHECK(server.connectionCount() == (tryConnect ? 2 : 1));
+            const auto payloads = server.receivedPayloads();
+            CHECK(payloads.size() == (tryConnect ? 1u : 0u));
+            CHECK(!tryConnect || payloads.front() == hazkey::RequestEnvelope::kSaveLearningData);
+            connector.reset();
+        }
+    }
+    CHECK(calls.empty());
+
+    hazkey::frontend::setLogSink(nullptr);
+    HazkeyServerConnector::clearTestHooks();
+    std::filesystem::remove_all(root);
+    std::cout << "[PASS] write failures reconnect only when tryConnect is true, "
+                 "for both the length and the body branch"
+              << std::endl;
+}
+
+/**
+ * @brief 再接続しない保存でも、接続中なら保存要求を送ることを検証する
+ *
+ * 再接続しない指定は未接続時の接続とサーバ起動だけを止めて、接続中の保存は止めないことを確認する
+ */
+void saveWithoutReconnectStillSendsOnLiveConnection() {
+    char directoryTemplate[] = "/tmp/hazkey-transact-safety-test-E-XXXXXX";
+    char* directory = mkdtemp(directoryTemplate);
+    CHECK(directory != nullptr);
+    const std::string root(directory);
+    const std::string socketPath = root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+    CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
+    HazkeyServerConnector::setTestReadTimeoutSeconds(1);
+
+    std::vector<SpawnCall> calls;
+    HazkeyServerConnector::setTestStartServerHook([&calls](bool force) { calls.push_back({force}); });
+
+    {
+        DelayableFakeServer server(socketPath);
+        auto connector = std::make_unique<HazkeyServerConnector>();
+
+        connector->saveLearningData(/*tryConnect=*/false);
+
+        const auto payloads = server.receivedPayloads();
+        CHECK(payloads.size() == 1u);
+        CHECK(payloads.front() == hazkey::RequestEnvelope::kSaveLearningData);
+        CHECK(server.connectionCount() == 1);
+        connector.reset();
+    }
+    CHECK(calls.empty());
+
+    HazkeyServerConnector::clearTestHooks();
+    std::filesystem::remove_all(root);
+    std::cout << "[PASS] save without reconnect still sends the save request "
+                 "on a live connection"
+              << std::endl;
+}
+
 }  // namespace
 
 /**
@@ -417,6 +637,9 @@ int main() {
     lateResponseNeverParsedAfterTimeout();
     forceRestartStillFiresForNeverSuccessfulConnector();
     forceRestartWindowGatesRecentSuccess();
+    saveWithoutReconnectNeverStartsServer();
+    writeFailureBranchesHonorTryConnect();
+    saveWithoutReconnectStillSendsOnLiveConnection();
 
     std::cout
         << "[PASS] hazkey_client_transact_safety_test: all scenarios green"

@@ -12,8 +12,10 @@ constexpr std::string_view kFullWidthSpace = "\u3000";
 constexpr std::string_view kHalfWidthSpace = "\u2002";
 
 bool isZeroWidth(char32_t c) {
-    return (c >= 0x0300 && c <= 0x036F) || (c >= 0x200B && c <= 0x200F) ||
-           (c >= 0x3099 && c <= 0x309A) || (c >= 0xFE00 && c <= 0xFE0F) ||
+    return (c >= 0x0300 && c <= 0x036F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+           (c >= 0x1DC0 && c <= 0x1DFF) || (c >= 0x200B && c <= 0x200F) ||
+           (c >= 0x20D0 && c <= 0x20FF) || (c >= 0x3099 && c <= 0x309A) ||
+           (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xFE20 && c <= 0xFE2F) ||
            (c >= 0xE0100 && c <= 0xE01EF);
 }
 

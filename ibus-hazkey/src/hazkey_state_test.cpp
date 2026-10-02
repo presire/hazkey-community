@@ -8,19 +8,41 @@
  *
  * IBusデーモン、エンジンインスタンス、hazkey-serverは不要:
  * 純粋なstatic写像だけを実行するため、実行中のセッションを妨げることはない
+ * 周辺テキストの配線テストと転送の対応付けテストだけは、一時ディレクトリの模擬サーバに接続する (XDG_RUNTIME_DIRを差し替える)
+ * 転送の対応付けテストは、IBusデーモンの代わりにsocketpairのピア間D-Bus接続へ実際のIBusEngineを置く
  */
+#include <arpa/inet.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <atomic>
 #include <cassert>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <thread>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include "composing_cursor_view.h"
 #include "hazkey_frontend.h"
+#include "hazkey_frontend_hooks.h"
 #include "hazkey_state.h"
 #include "live_convert_mode.h"
+#include "serial_task_executor.h"
 
 namespace {
 
+using hazkey::ibus::HazkeyFrontend;
 using hazkey::ibus::HazkeyState;
 
 /**
@@ -944,6 +966,528 @@ void testSurroundingGateMachine() {
     std::cout << "[PASS] surrounding gate state machine and held-op ordering\n";
 }
 
+/**
+ * @brief 周辺テキストの配線テスト用の模擬サーバ
+ *
+ * 共有コネクタが接続するUNIXソケットで待ち受け、入力 (a / i / u) をかなに変換して返す
+ * 「あい」だけを「愛」へ変換し、ライブ変換の表示に使わせる
+ * set_contextで受け取った周辺テキストを記録し、設定のリビジョンと右文脈の設定は外から切り替える
+ */
+class SurroundingFakeServer {
+   public:
+    explicit SurroundingFakeServer(std::string path) : path_(std::move(path)) {
+        listenFd_ = socket(AF_UNIX, SOCK_STREAM, 0);
+        assert(listenFd_ >= 0);
+        sockaddr_un address{};
+        address.sun_family = AF_UNIX;
+        strncpy(address.sun_path, path_.c_str(), sizeof(address.sun_path) - 1);
+        assert(bind(listenFd_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+        assert(listen(listenFd_, 4) == 0);
+        thread_ = std::thread([this] { serve(); });
+    }
+
+    ~SurroundingFakeServer() {
+        stop_ = true;
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+        close(listenFd_);
+        unlink(path_.c_str());
+    }
+
+    void setRightContext(bool enabled) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        rightContext_ = enabled;
+    }
+
+    void setRevision(uint64_t revision) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        revision_ = revision;
+    }
+
+    std::optional<std::pair<std::string, int>> lastContext() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (contexts_.empty()) {
+            return std::nullopt;
+        }
+        return contexts_.back();
+    }
+
+   private:
+    bool waitReadable(int fd) {
+        while (!stop_) {
+            pollfd pfd{fd, POLLIN, 0};
+            const int ready = poll(&pfd, 1, 50);
+            if (ready > 0) {
+                return true;
+            }
+            if (ready < 0 && errno != EINTR) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    bool readAll(int fd, void* data, size_t size) {
+        auto* bytes = static_cast<char*>(data);
+        size_t offset = 0;
+        while (offset < size) {
+            if (!waitReadable(fd)) {
+                return false;
+            }
+            const ssize_t count = read(fd, bytes + offset, size - offset);
+            if (count <= 0) {
+                return false;
+            }
+            offset += static_cast<size_t>(count);
+        }
+        return true;
+    }
+
+    static bool writeAll(int fd, const void* data, size_t size) {
+        const auto* bytes = static_cast<const char*>(data);
+        size_t offset = 0;
+        while (offset < size) {
+            const ssize_t count = write(fd, bytes + offset, size - offset);
+            if (count <= 0) {
+                return false;
+            }
+            offset += static_cast<size_t>(count);
+        }
+        return true;
+    }
+
+    void serve() {
+        while (waitReadable(listenFd_)) {
+            const int clientFd = accept(listenFd_, nullptr, nullptr);
+            if (clientFd < 0) {
+                continue;
+            }
+            while (true) {
+                uint32_t networkLength = 0;
+                if (!readAll(clientFd, &networkLength, sizeof(networkLength))) {
+                    break;
+                }
+                std::string wire(ntohl(networkLength), '\0');
+                if (!readAll(clientFd, wire.data(), wire.size())) {
+                    break;
+                }
+                hazkey::RequestEnvelope request;
+                assert(request.ParseFromString(wire));
+                std::string reply;
+                assert(respond(request).SerializeToString(&reply));
+                const uint32_t replyLength = htonl(static_cast<uint32_t>(reply.size()));
+                if (!writeAll(clientFd, &replyLength, sizeof(replyLength)) ||
+                    !writeAll(clientFd, reply.data(), reply.size())) {
+                    break;
+                }
+            }
+            close(clientFd);
+        }
+    }
+
+    std::string kana(bool katakana) const {
+        std::string out;
+        for (const char c : romaji_) {
+            switch (c) {
+                case 'a': out += katakana ? "ア" : "あ"; break;
+                case 'i': out += katakana ? "イ" : "い"; break;
+                case 'u': out += katakana ? "ウ" : "う"; break;
+                default: out += c; break;
+            }
+        }
+        return out;
+    }
+
+    hazkey::ResponseEnvelope respond(const hazkey::RequestEnvelope& request) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        hazkey::ResponseEnvelope response;
+        response.set_status(hazkey::SUCCESS);
+        response.set_config_revision(revision_);
+        switch (request.payload_case()) {
+            case hazkey::RequestEnvelope::kNewComposingText:
+            case hazkey::RequestEnvelope::kPrefixComplete:
+                romaji_.clear();
+                break;
+            case hazkey::RequestEnvelope::kSetContext:
+                contexts_.emplace_back(request.set_context().context(),
+                                       request.set_context().anchor());
+                break;
+            case hazkey::RequestEnvelope::kInputChar:
+                romaji_ += request.input_char().text();
+                break;
+            case hazkey::RequestEnvelope::kGetComposingString:
+                response.set_text(kana(request.get_composing_string().char_type() ==
+                                       hazkey::commands::GetComposingString_CharType_KATAKANA_FULL));
+                break;
+            case hazkey::RequestEnvelope::kGetHiraganaWithCursor:
+                response.mutable_text_with_cursor()->set_beforecursosr(kana(false));
+                break;
+            case hazkey::RequestEnvelope::kGetCandidates: {
+                const std::string hiragana = kana(false);
+                const std::string converted = hiragana == "あい" ? "愛" : hiragana;
+                auto* candidates = response.mutable_candidates();
+                candidates->add_candidates()->set_text(converted);
+                candidates->set_live_text(converted);
+                candidates->set_live_text_index(0);
+                candidates->set_page_size(0);
+                break;
+            }
+            case hazkey::RequestEnvelope::kGetCurrentInputMode:
+                response.mutable_current_input_mode_info()->set_input_mode(
+                    hazkey::commands::CurrentInputModeInfo_InputMode_NORMAL);
+                break;
+            case hazkey::RequestEnvelope::kGetConfig: {
+                auto* profile = response.mutable_current_config()->add_profiles();
+                profile->set_auto_convert_mode(
+                    hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS);
+                profile->set_zenzai_right_context(rightContext_);
+                break;
+            }
+            default:
+                break;
+        }
+        return response;
+    }
+
+    std::string path_;
+    int listenFd_ = -1;
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+    std::mutex mutex_;
+    std::string romaji_;
+    std::vector<std::pair<std::string, int>> contexts_;
+    bool rightContext_ = true;
+    uint64_t revision_ = 1;
+};
+
+/**
+ * @brief ワーカーとして、状態機械の操作を共有executor上で実行して待つ
+ *
+ * 遅延リフレッシュも同じexecutorに積まれるため、本番と同じ単一スレッドで動かす
+ */
+void runOnWorker(hazkey::frontend::SerialTaskExecutor& executor, const std::function<void()>& task) {
+    executor.submit(task);
+    executor.drainAndWait();
+}
+
+void typeKey(hazkey::frontend::SerialTaskExecutor& executor, const std::shared_ptr<HazkeyState>& state,
+             guint keyval) {
+    runOnWorker(executor, [&] {
+        state->processKeyEvent(keyval, 0, 0);
+        state->processKeyEvent(keyval, 0, IBUS_RELEASE_MASK);
+    });
+}
+
+void expectLastContext(SurroundingFakeServer& server, const std::string& text, int anchor) {
+    const auto context = server.lastContext();
+    assert(context.has_value());
+    if (context->first != text || context->second != anchor) {
+        std::cerr << "  set_context: got (" << context->first << ", " << context->second << "), want ("
+                  << text << ", " << anchor << ")\n";
+    }
+    assert(context->first == text);
+    assert(context->second == anchor);
+}
+
+/**
+ * @brief 確定と直接変換の後に続けて入力したときの周辺テキストと、設定変更後の待機判定を検証する
+ *
+ * 模擬サーバに接続した実際のHazkeyStateをワーカー上で動かし、サーバへ送られたset_contextを確かめる
+ *
+ * - [Return]で確定した直後、アプリが組成中の (preeditを含む) 周辺テキストしか報告していない間は、
+ *   組成開始時に固定した内容へ確定した文字列を足したものを送る (組成中の読みを右文脈へ混ぜない)
+ * - アプリが確定後の周辺テキストを報告した後は、その新しい内容を使う
+ * - 直接変換 ([F7]) の確定後に続けて入力すると、確定した文字列を固定済みの内容へ追記する
+ * - 確定前に生成された組成中の値が確定後に遅れて届いても、確定した文字列を含む内容を使う
+ * - 持ち越し中に[Shift]+[Space]で確定した空白は、アプリが空白の前までしか反映していなくても残る
+ * - サーバの設定変更を観測して未再読込の間は、要約がプロファイルを未読込として報告し、
+ *   フロントエンドが周辺テキスト待ちを依頼できる
+ */
+void testSurroundingTextWiring() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-surrounding-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    {
+        SurroundingFakeServer server(socketPath);
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT | IBUS_CAP_LOOKUP_TABLE |
+                                   IBUS_CAP_FOCUS | IBUS_CAP_PROPERTY | IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+            state->setSurroundingText("今日は", 3, 3);
+        });
+
+        // [Return]で確定した直後も、アプリは組成中の内容 (preedit「あい」を含む) を報告したまま
+        typeKey(executor, state, IBUS_KEY_a);
+        expectLastContext(server, "今日は", 3);
+        runOnWorker(executor, [&] { state->setSurroundingText("今日はあい", 3, 3); });
+        typeKey(executor, state, IBUS_KEY_i);
+        expectLastContext(server, "今日は", 3);
+        typeKey(executor, state, IBUS_KEY_Return);
+        typeKey(executor, state, IBUS_KEY_u);
+        expectLastContext(server, "今日は愛", 4);
+        typeKey(executor, state, IBUS_KEY_Escape);
+
+        // アプリが確定後の周辺テキストを報告した後は、新しい内容を使う
+        runOnWorker(executor, [&] { state->setSurroundingText("今日は愛です", 4, 4); });
+        typeKey(executor, state, IBUS_KEY_u);
+        expectLastContext(server, "今日は愛です", 4);
+        typeKey(executor, state, IBUS_KEY_Escape);
+
+        // 直接変換 ([F7]) で確定してから続けて入力すると、確定した文字列を追記する
+        runOnWorker(executor, [&] { state->setSurroundingText("今日は", 3, 3); });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_i);
+        typeKey(executor, state, IBUS_KEY_F7);
+        typeKey(executor, state, IBUS_KEY_u);
+        expectLastContext(server, "今日はアイ", 5);
+        typeKey(executor, state, IBUS_KEY_Escape);
+
+        // 確定前に生成された組成中の値が確定後に遅れて届いても、確定した文字列を含む内容を使う
+        typeKey(executor, state, IBUS_KEY_BackSpace);
+        runOnWorker(executor, [&] { state->setSurroundingText("今日は", 3, 3); });
+        typeKey(executor, state, IBUS_KEY_a);
+        runOnWorker(executor, [&] { state->setSurroundingText("今日はあ", 3, 3); });
+        typeKey(executor, state, IBUS_KEY_i);
+        typeKey(executor, state, IBUS_KEY_Return);
+        runOnWorker(executor, [&] { state->setSurroundingText("今日はあい", 3, 3); });
+        typeKey(executor, state, IBUS_KEY_u);
+        expectLastContext(server, "今日は愛", 4);
+        typeKey(executor, state, IBUS_KEY_Escape);
+
+        // 持ち越し中に[Shift]+[Space]で確定した空白は、アプリが空白の前までしか反映していなくても残る
+        runOnWorker(executor, [&] {
+            state->processKeyEvent(IBUS_KEY_space, 0, IBUS_SHIFT_MASK);
+            state->processKeyEvent(IBUS_KEY_space, 0, IBUS_SHIFT_MASK | IBUS_RELEASE_MASK);
+            state->setSurroundingText("今日は愛", 4, 4);
+        });
+        typeKey(executor, state, IBUS_KEY_u);
+        expectLastContext(server, "今日は愛 ", 5);
+        typeKey(executor, state, IBUS_KEY_Escape);
+
+        // 右文脈をOFFで読み込んだ後、設定でONにする
+        server.setRightContext(false);
+        runOnWorker(executor, [&] { state->invalidateServerProfile(); });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_Escape);
+        auto snapshot = state->ingressSnapshot();
+        assert(snapshot.profileLoaded);
+        assert(!snapshot.surroundingGate);
+        server.setRightContext(true);
+        server.setRevision(2);
+        // [Shift]の押下はプロファイルを再読込する前にサーバと通信し、新しいリビジョンを観測する
+        runOnWorker(executor, [&] { state->processKeyEvent(IBUS_KEY_Shift_L, 0, 0); });
+        snapshot = state->ingressSnapshot();
+        assert(!snapshot.composing);
+        assert(hazkey::ibus::HazkeyFrontend::isSurroundingGateCandidate(
+            IBUS_KEY_i, 0, snapshot.composing, snapshot.listFocused, snapshot.profileLoaded,
+            snapshot.surroundingGate));
+        runOnWorker(executor, [&] { state->processKeyEvent(IBUS_KEY_Shift_L, 0, IBUS_RELEASE_MASK); });
+
+        runOnWorker(executor, [&] { state->focusOut(); });
+        executor.shutdown();
+    }
+    rmdir(root);
+    std::cout << "surrounding text wiring: OK\n";
+}
+
+/**
+ * @brief エンジンがアプリへ転送したキー (ForwardKeyEventシグナル) を記録する
+ *
+ * D-Busのフィルタはワーカースレッドで呼ばれるため、記録は排他する
+ */
+class ForwardedKeyRecorder {
+   public:
+    struct Event {
+        guint keyval;
+        guint keycode;
+        guint state;
+    };
+
+    static GDBusMessage* filter(GDBusConnection*, GDBusMessage* message, gboolean incoming,
+                                gpointer data) {
+        if (incoming && g_dbus_message_get_message_type(message) == G_DBUS_MESSAGE_TYPE_SIGNAL &&
+            g_strcmp0(g_dbus_message_get_member(message), "ForwardKeyEvent") == 0) {
+            Event event{};
+            g_variant_get(g_dbus_message_get_body(message), "(uuu)", &event.keyval,
+                          &event.keycode, &event.state);
+            auto* self = static_cast<ForwardedKeyRecorder*>(data);
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            self->events_.push_back(event);
+        }
+        return message;
+    }
+
+    std::vector<Event> events() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return events_;
+    }
+
+   private:
+    std::mutex mutex_;
+    std::vector<Event> events_;
+};
+
+bool pumpMainLoopUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+        while (g_main_context_iteration(nullptr, FALSE)) {
+        }
+        if (done()) {
+            return true;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return false;
+        }
+        g_usleep(1000);
+    }
+}
+
+void settleFrontend() {
+    pumpMainLoopUntil([] { return false; }, std::chrono::milliseconds(200));
+}
+
+void sendKey(HazkeyFrontend& frontend, guint keyval, guint keycode) {
+    frontend.processKeyEvent(keyval, keycode, 0);
+    settleFrontend();
+    frontend.processKeyEvent(keyval, keycode, IBUS_RELEASE_MASK);
+    settleFrontend();
+}
+
+/**
+ * @brief フレームワークに転送させた押下の解放が、バリアで消費されてもアプリへ届くことを検証する
+ *
+ * IBusデーモンは使わず、socketpairで結んだピア間D-Bus接続の片側に実際のIBusEngineを置き、
+ * 他方でエンジンが送るForwardKeyEventシグナルを受け取る
+ *
+ * - 設定変更を観測した[Shift]押下の後、ワーカーはプロファイル未読込を報告し、解放はバリアで消費される
+ *   押下はFALSEを返してフレームワークが転送済みのため、解放も転送して対にする
+ * - 消費しない押下の処理が終わる前に来た解放 (未処理操作の残存によるバリア) も同じく転送する
+ */
+void testFrontendForwardsReleaseOfFrameworkForwardedPress() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-forward-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    // 共有コネクタは前のテストの切断済みソケットへ一度書き込んでから再接続する
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    ibus_init();
+    int fds[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    GDBusConnection* connections[2] = {nullptr, nullptr};
+    for (int i = 0; i < 2; ++i) {
+        GError* error = nullptr;
+        GSocket* socket = g_socket_new_from_fd(fds[i], &error);
+        assert(socket != nullptr);
+        GSocketConnection* stream = g_socket_connection_factory_create_connection(socket);
+        g_object_unref(socket);
+        gchar* guid = i == 0 ? g_dbus_generate_guid() : nullptr;
+        g_dbus_connection_new(
+            G_IO_STREAM(stream), guid,
+            i == 0 ? G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_SERVER
+                   : G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT,
+            nullptr, nullptr,
+            [](GObject*, GAsyncResult* result, gpointer data) {
+                *static_cast<GDBusConnection**>(data) = g_dbus_connection_new_finish(result, nullptr);
+            },
+            &connections[i]);
+        g_free(guid);
+        g_object_unref(stream);
+    }
+    assert(pumpMainLoopUntil([&] { return connections[0] != nullptr && connections[1] != nullptr; },
+                             std::chrono::milliseconds(5000)));
+
+    ForwardedKeyRecorder recorder;
+    const guint filterId =
+        g_dbus_connection_add_filter(connections[1], &ForwardedKeyRecorder::filter, &recorder, nullptr);
+    IBusEngine* engine =
+        ibus_engine_new("hazkey-test", "/org/freedesktop/IBus/Engine/1", connections[0]);
+    assert(engine != nullptr);
+    hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
+        auto* heapTask = new std::function<void()>(std::move(task));
+        g_idle_add_full(
+            G_PRIORITY_DEFAULT,
+            [](gpointer data) -> gboolean {
+                (*static_cast<std::function<void()>*>(data))();
+                return G_SOURCE_REMOVE;
+            },
+            heapTask, [](gpointer data) { delete static_cast<std::function<void()>*>(data); });
+    });
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        auto frontend = std::make_shared<HazkeyFrontend>(engine);
+        frontend->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                  IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS | IBUS_CAP_PROPERTY);
+        frontend->focusIn();
+        settleFrontend();
+        // 最初の入力でプロファイルを読み込む
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_Escape, 9);
+        assert(recorder.events().empty());
+
+        // 設定の適用後、[Shift]押下の通信が新しいリビジョンを観測する
+        server.setRevision(7);
+        assert(frontend->processKeyEvent(IBUS_KEY_Shift_L, 50, 0) == FALSE);
+        settleFrontend();
+        assert(frontend->processKeyEvent(IBUS_KEY_Shift_L, 50, IBUS_SHIFT_MASK | IBUS_RELEASE_MASK) ==
+               TRUE);
+        const bool shiftReleaseForwarded =
+            pumpMainLoopUntil([&] { return recorder.events().size() >= 1; }, std::chrono::milliseconds(1000));
+        if (!shiftReleaseForwarded) {
+            std::cerr << "  [Shift] release consumed by the barrier was not forwarded\n";
+        }
+        assert(shiftReleaseForwarded);
+        auto events = recorder.events();
+        assert(events[0].keyval == IBUS_KEY_Shift_L);
+        assert(events[0].keycode == 50);
+        assert(events[0].state == (IBUS_SHIFT_MASK | IBUS_RELEASE_MASK));
+
+        // プロファイルを読み直してから、消費しない押下の直後 (処理の完了前) に解放する
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_Escape, 9);
+        assert(frontend->processKeyEvent(IBUS_KEY_Left, 113, 0) == FALSE);
+        assert(frontend->processKeyEvent(IBUS_KEY_Left, 113, IBUS_RELEASE_MASK) == TRUE);
+        const bool leftReleaseForwarded =
+            pumpMainLoopUntil([&] { return recorder.events().size() >= 2; }, std::chrono::milliseconds(1000));
+        if (!leftReleaseForwarded) {
+            std::cerr << "  [Left] release consumed by the pending-operation barrier was not forwarded\n";
+        }
+        assert(leftReleaseForwarded);
+        settleFrontend();
+        events = recorder.events();
+        assert(events.size() == 2);
+        assert(events[1].keyval == IBUS_KEY_Left);
+        assert(events[1].keycode == 113);
+        assert(events[1].state == IBUS_RELEASE_MASK);
+
+        frontend->focusOut();
+        settleFrontend();
+        frontend->retire();
+    }
+    hazkey::frontend::setMainLoopPoster(nullptr);
+    g_dbus_connection_remove_filter(connections[1], filterId);
+    g_object_unref(engine);
+    for (GDBusConnection* connection : connections) {
+        g_dbus_connection_close_sync(connection, nullptr, nullptr);
+        g_object_unref(connection);
+    }
+    rmdir(root);
+    std::cout << "frontend forwards release of framework-forwarded press: OK\n";
+}
+
 }  // namespace
 
 /**
@@ -976,6 +1520,8 @@ int main() {
     testLookupDisplayText();
     testSurroundingGateConditions();
     testSurroundingGateMachine();
+    testSurroundingTextWiring();
+    testFrontendForwardsReleaseOfFrameworkForwardedPress();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

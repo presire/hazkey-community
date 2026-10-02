@@ -1,7 +1,5 @@
 #include "hazkey_engine.h"
-
 #include <fcitx-utils/macros.h>
-
 #include "hazkey_server_connector.h"
 #include "hazkey_state.h"
 #include "hazkey_constants.h"
@@ -54,6 +52,7 @@ void HazkeyEngine::activate([[maybe_unused]] const InputMethodEntry &entry,
     auto inputContext = event.inputContext();
     auto state = inputContext->propertyFor(&factory_);
     state->reset();
+    state->discardSurroundingCarry();
     state->invalidateServerProfile();
     inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
@@ -71,6 +70,7 @@ void HazkeyEngine::deactivate([[maybe_unused]] const InputMethodEntry &entry,
     }
 
     state->reset();
+    state->discardSurroundingCarry();
 
     if (hadVisiblePreedit) {
         inputContext->updatePreedit();
@@ -92,6 +92,8 @@ void HazkeyEngine::reset([[maybe_unused]] const InputMethodEntry &entry,
     bool hadVisiblePreedit = hasVisiblePreedit(inputContext);
 
     state->reset();
+    // アプリケーションがカーソル移動等でリセットを要求した時は、確定時から持ち越した周辺テキストを使用しない
+    state->discardSurroundingCarry();
 
     if (hadVisiblePreedit) {
         inputContext->updatePreedit();
@@ -123,8 +125,11 @@ void HazkeyEngine::reloadConfig() {
 }
 
 /// Fcitx終了時の学習データ保存を依頼する
+///
+/// save()はセッション終了時にSIGTERMを受けた後にも呼ばれる
+/// ここでサーバを起動すると、新しいサーバはSIGTERMを受け取らずに停止タイムアウトまで残り、ログアウトを妨げるため再接続しない
 void HazkeyEngine::save() {
-    server_.saveLearningData();
+    server_.saveLearningData(/*tryConnect=*/false);
 }
 
 FCITX_ADDON_FACTORY(HazkeyEngineFactory);

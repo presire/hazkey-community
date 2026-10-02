@@ -211,6 +211,18 @@ jobs:
           cmake --build build --target hazkey-settings fcitx5-hazkey fcitx5-hazkey-community-translation hazkey-addon.conf.in-fmt hazkey-im.conf.in-fmt org.fcitx.Fcitx5.Addon.HazkeyCommunity.metainfo.xml.in-fmt ibus-engine-hazkey ibus-hazkey-translations build_hazkey_server --parallel 1
           DESTDIR=/work/workdir cmake --install build
 
+          # 配布物ELFのデバッグ情報除去:
+          # ステージングツリーの全ELF (実行ファイル・共有ライブラリ) からデバッグ情報だけを除去する
+          # 上流版のHazkey (7ka-Hiira/hazkey f1d0acc) は完全にstripするが、クラッシュ時のバックトレースで関数名を読めるように、シンボル表は残す
+          # fileコマンドはコンテナに無い場合があるため、先頭4バイトのELFマジックで判定する
+          find /work/workdir/usr -type f -exec sh -c '
+            for _f do
+              if [ "$(head -c 4 "$_f" | od -An -c | tr -d " \n")" = "177ELF" ]; then
+                strip --strip-debug "$_f"
+              fi
+            done
+          ' sh {} +
+
           # Emoji 17.0ステージングinstallアサーション: E17アセットがステージングツリーに存在し、E16アセットが存在しないこと
           test -f /work/workdir/usr/share/hazkey-community/emoji_all_E17.0.txt
           test ! -e /work/workdir/usr/share/hazkey-community/emoji_all_E16.0.txt

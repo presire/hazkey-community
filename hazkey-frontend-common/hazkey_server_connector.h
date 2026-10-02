@@ -107,6 +107,7 @@ class HazkeyServerConnector {
      * @brief 1回のRPCを単一接続上で送受信する
      *
      * @param send_data 送信する要求封筒
+     * @param tryConnect falseなら未接続時も書き込み失敗時も接続とサーバ起動を試みない
      * @return 送受信とパースに成功した場合は、パース済みの応答
      *         接続、送信、受信、またはパースに失敗した場合は、std::nullopt
      *         サーバ処理の失敗応答はそのまま返す
@@ -123,7 +124,7 @@ class HazkeyServerConnector {
      *          サーバ処理が失敗していても通信は成功とみなす
      */
     std::optional<hazkey::ResponseEnvelope> transact(
-        const hazkey::RequestEnvelope& send_data);
+        const hazkey::RequestEnvelope& send_data, bool tryConnect = true);
 
     /**
      * @brief 指定種別の編集中文字列を取得する
@@ -284,6 +285,17 @@ class HazkeyServerConnector {
     bool consumeConfigChanged();
 
     /**
+     * @brief 未消費の設定変更通知があるかを、消費せずに返す
+     *
+     * @return 前回消費後にリビジョンが変わっていればtrue
+     * @details 通知は残るため、次のconsumeConfigChanged()がtrueを返す
+     *          入力処理の外で、プロファイルが古くなったかを判断する場合に使用する
+     */
+    bool configChangePending() const {
+        return configChanged_.load();
+    }
+
+    /**
      * @brief 最終観測リビジョンを返す
      *
      * @return 最後に受信した設定リビジョン
@@ -332,9 +344,10 @@ class HazkeyServerConnector {
     /**
      * @brief 学習データを保存する
      *
+     * @param tryConnect falseなら未接続時にサーバを起動せず保存を諦める
      * @details 送信前に読み取りキャッシュを無効化する
      */
-    void saveLearningData();
+    void saveLearningData(bool tryConnect = true);
 
     /**
      * @brief 予約された候補要素の宣言
