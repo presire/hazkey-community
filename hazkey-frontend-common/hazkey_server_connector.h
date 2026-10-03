@@ -252,6 +252,7 @@ class HazkeyServerConnector {
      * @param context 文脈文字列
      * @param anchor 文脈内の基準位置
      * @details 送信前に読み取りキャッシュを無効化する
+     *          この接続で最後に送信に成功した内容と同じで、接続が生きている場合は送信を省く
      */
     void setContext(std::string context, int anchor);
 
@@ -501,6 +502,9 @@ class HazkeyServerConnector {
      std::optional<hazkey::commands::CandidatesResult> cachedCandidatesSuggest_;          ///< サジェスト候補のキャッシュ
      std::optional<hazkey::commands::CandidatesResult> cachedCandidatesFull_;             ///< 全文候補のキャッシュ
      std::optional<bool> cachedInputModeDirect_;                                          ///< 直接入力かどうかのキャッシュ
+
+     // 周辺文脈
+     std::optional<std::pair<std::string, int>> lastSentContext_;                         ///< この接続で最後に送信に成功した文脈と基準位置 (組成開始・設定保存・再接続で破棄)
 
      // 試験用フック
      static inline int testReadTimeoutSeconds_ = 0;                                       ///< 読み取りタイムアウトで0以下は製品既定の10秒を使う

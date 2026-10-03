@@ -1019,22 +1019,77 @@ class HazkeyServerConfig {
     )
         -> ConvertRequestOptions.ZenzaiMode
     {
+        genZenzaiMode(
+            snapshot: makeZenzaiRequestSnapshot(),
+            leftContext: leftContext,
+            rightContext: rightContext,
+            requestRichCandidates: requestRichCandidates,
+            sendsFullReadingForAlignment: sendsFullReadingForAlignment)
+    }
+
+    /// 1回の変換要求で使うニューラル変換の解決結果
+    enum ZenzaiRequestSnapshot {
+        /// ニューラル変換を使わない (無効・利用不可・モデルなしのいずれか)
+        case off
+        /// ニューラル変換を使う (モデルパスは実体へ解決済み)
+        case on(resolvedModelURL: URL, deviceConfig: ZenzaiDeviceConfig)
+    }
+
+    /// 1回の変換要求で使うニューラル変換の解決結果を作る
+    ///
+    /// モデルのリンク解決とバックエンドデバイスの列挙を、ここで1回だけ行う
+    ///
+    /// 管理下モデルのリンク切替へ要求ごとに追従させるため、結果は要求をまたいで保持しないこと
+    ///
+    /// ニューラル変換を使わない場合は、リンク解決もデバイス列挙も行わない
+    ///
+    /// - Returns: 要求1回分のスナップショットを返す
+    func makeZenzaiRequestSnapshot() -> ZenzaiRequestSnapshot {
+        guard zenzaiAvailable, let zenzaiModelPath = zenzaiModelPath, currentProfile.zenzaiEnable
+        else {
+            return .off
+        }
         let deviceName =
             currentProfile.zenzaiBackendDeviceName.isEmpty
             ? "CPU" : currentProfile.zenzaiBackendDeviceName
+        // 変換エンジンは読み込み済みモデルをプロセス全体のレジストリに保持して、重みパス文字列をキーにしている
+        // (SharedZenzModelCache.cacheKey(path:deviceConfig:))
+        //
+        // 管理下のzenzai.ggufシンボリックリンクをそのまま渡すと、リンク先を切り替えても以前のモデルを供給し続けるため、
+        // [Hazkey Community設定]画面でのモデル切替がサーバ再起動後まで反映されない
+        //
+        // ここでリンクを実体に解決することにより、キーが実ファイルを追跡するようにする
+        // なお、zenzaiModelPath自体は意図的に管理下シンボリックリンクのままにしている
+        // (CurrentConfig.zenzai_model_pathとそのテストが依存しているため)
+        return .on(
+            resolvedModelURL: zenzaiModelPath.resolvingSymlinksInPath(),
+            deviceConfig: createDeviceConfig(deviceName: deviceName))
+    }
 
-        if zenzaiAvailable, let zenzaiModelPath = zenzaiModelPath, currentProfile.zenzaiEnable {
-            // 変換エンジンは読み込み済みモデルをプロセス全体のレジストリに保持して、重みパス文字列をキーにしている
-            // (SharedZenzModelCache.cacheKey(path:deviceConfig:))
-            //
-            // 管理下のzenzai.ggufシンボリックリンクをそのまま渡すと、リンク先を切り替えても以前のモデルを供給し続けるため、
-            // [Hazkey Community設定]画面でのモデル切替がサーバ再起動後まで反映されない
-            //
-            // ここでリンクを実体に解決することにより、キーが実ファイルを追跡するようにする
-            // なお、zenzaiModelPath自体は意図的に管理下シンボリックリンクのままにしている
-            // (CurrentConfig.zenzai_model_pathとそのテストが依存しているため)
+    /// スナップショットから変換要求用のニューラル変換モードを生成する
+    ///
+    /// 同じ要求の中で判定とモード生成に同じスナップショットを使い、リンク解決とデバイス列挙の重複を避ける
+    ///
+    /// - Parameters:
+    ///   - snapshot: makeZenzaiRequestSnapshot()で作った、この要求のスナップショット
+    ///   - leftContext: カーソル左側の文脈文字列
+    ///   - rightContext: カーソル右側の文脈文字列 (省略時は送らない)
+    ///   - requestRichCandidates: リッチ候補要求の上書き (省略時は現設定を使用する)
+    ///   - sendsFullReadingForAlignment: 全文を送る場合に区切りを有効化する
+    /// - Returns: 変換要求に渡すニューラル変換モードを返す
+    func genZenzaiMode(
+        snapshot: ZenzaiRequestSnapshot,
+        leftContext: String,
+        rightContext: String = "",
+        requestRichCandidates: Bool? = nil,
+        sendsFullReadingForAlignment: Bool = false
+    ) -> ConvertRequestOptions.ZenzaiMode {
+        switch snapshot {
+        case .off:
+            return ConvertRequestOptions.ZenzaiMode.off
+        case .on(let resolvedModelURL, let deviceConfig):
             return ConvertRequestOptions.ZenzaiMode.on(
-                weight: zenzaiModelPath.resolvingSymlinksInPath(),
+                weight: resolvedModelURL,
                 inferenceLimit: Int(currentProfile.zenzaiInferLimit),
                 requestRichCandidates: requestRichCandidates ?? currentProfile.useRichCandidates,
                 personalizationMode: nil,
@@ -1043,13 +1098,11 @@ class HazkeyServerConfig {
                         profile: currentProfile,
                         leftContext: leftContext,
                         rightContext: rightContext,
-                        modelURL: zenzaiModelPath.resolvingSymlinksInPath(),
+                        modelURL: resolvedModelURL,
                         sendsFullReadingForAlignment: sendsFullReadingForAlignment
                     )),
-                deviceConfig: createDeviceConfig(deviceName: deviceName)
+                deviceConfig: deviceConfig
             )
-        } else {
-            return ConvertRequestOptions.ZenzaiMode.off
         }
     }
 

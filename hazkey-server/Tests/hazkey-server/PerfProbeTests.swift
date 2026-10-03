@@ -36,6 +36,65 @@ final class PerfProbeTests: XCTestCase {
         try writeEvidence(named: "task-2-failure.txt", lines: run.rawLines)
     }
 
+    func testCountsIdenticalCandidateRequestsAndDuplicateSetContext() throws {
+        let temporaryRoot = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        for name in ["runtime", "data", "config", "cache"] {
+            try FileManager.default.createDirectory(
+                at: temporaryRoot.appendingPathComponent(name, isDirectory: true),
+                withIntermediateDirectories: true)
+        }
+        let evidenceURL = temporaryRoot.appendingPathComponent("evidence.jsonl")
+        let process = try startServer(root: temporaryRoot, evidenceURL: evidenceURL)
+        defer {
+            process.terminate()
+            process.waitUntilExit()
+        }
+        let socketPath = temporaryRoot.appendingPathComponent(
+            "runtime/hazkey-community-server.\(getuid()).sock").path
+        TestTempRoot.requireFitsInSunPath(socketPath)
+        try waitForSocket(at: socketPath)
+        let client = try EnvelopeClient(socketPath: socketPath)
+        defer { client.close() }
+        try setDeterministicProfile(client: client, zenzaiEnabled: false)
+
+        func send(_ build: (inout Hazkey_RequestEnvelope) -> Void) throws {
+            var request = Hazkey_RequestEnvelope()
+            build(&request)
+            XCTAssertEqual(try client.send(request).status, .success)
+        }
+        func setContext(_ text: String, _ anchor: Int32) throws {
+            try send { $0.setContext = .with { $0.context = text; $0.anchor = anchor } }
+        }
+        func getCandidates(isSuggest: Bool) throws {
+            try send { $0.getCandidates = .with { $0.isSuggest = isSuggest } }
+        }
+
+        try send { $0.newComposingText = Hazkey_Commands_NewComposingText() }
+        try setContext("前の文", 3)
+        try setContext("前の文", 3)
+        try setContext("前の文", 2)
+        try send { $0.inputChar = .with { $0.text = "か" } }
+        try getCandidates(isSuggest: false)
+        try getCandidates(isSuggest: false)
+        try getCandidates(isSuggest: true)
+        try send { $0.inputChar = .with { $0.text = "な" } }
+        try getCandidates(isSuggest: true)
+        try send { $0.newComposingText = Hazkey_Commands_NewComposingText() }
+        try setContext("前の文", 2)
+
+        let events = try String(contentsOf: evidenceURL, encoding: .utf8)
+            .split(separator: "\n")
+            .map { try parseJSONLine(String($0)) }
+        func counter(_ type: String, _ name: String) -> [Int?] {
+            events.filter { $0["type"] as? String == type }
+                .map { ($0["counters"] as? [String: Int])?[name] }
+        }
+        XCTAssertEqual(counter("setContext", "set_context_duplicate"), [0, 1, 0, 0])
+        XCTAssertEqual(counter("getCandidates", "identical_request"), [0, 1, 0, 0])
+        XCTAssertEqual(counter("getCandidates", "zenzai_inference_count"), [nil, nil, nil, nil])
+    }
+
     private var packageRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

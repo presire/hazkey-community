@@ -1,4 +1,5 @@
 import Foundation
+import KanaKanjiConverterModule
 
 /// テスト専用のリクエスト計測シンク
 ///
@@ -35,6 +36,8 @@ final class PerfProbe: @unchecked Sendable {
     private var stages: [String: Double] = [:]
     /// 直近に記録したZenzai動作モード
     private var zenzai: String?
+    /// 回数の集計 (1要求分。空の場合は証跡に書かない)
+    private var counters: [String: Int] = [:]
 
     /// 証跡ファイルを開く
     ///
@@ -112,6 +115,7 @@ final class PerfProbe: @unchecked Sendable {
         lock.lock()
         stages = [:]
         zenzai = nil
+        counters = [:]
         lock.unlock()
         return RequestMeasurement(type: type, startedAt: now())
     }
@@ -142,7 +146,8 @@ final class PerfProbe: @unchecked Sendable {
         userDictionaryFinishedAt: UInt64,
         candidateStartedAt: UInt64,
         zenzai: String,
-        zenzaiInferenceNanoseconds: UInt64? = nil
+        zenzaiInferenceNanoseconds: UInt64? = nil,
+        zenzaiCounters: ZenzInferencePerfCounters? = nil
     ) {
         let finishedAt = now()
         lock.lock()
@@ -151,8 +156,51 @@ final class PerfProbe: @unchecked Sendable {
         if let zenzaiInferenceNanoseconds {
             stages["zenzai_inference_ms"] = Double(zenzaiInferenceNanoseconds) / 1_000_000
         }
+        if let zenzaiCounters {
+            stages["zenzai_draft_ms"] = Double(zenzaiCounters.draftNanoseconds) / 1_000_000
+            stages["zenzai_vocab_scan_ms"] = Double(zenzaiCounters.vocabScanNanoseconds) / 1_000_000
+            stages["zenzai_rich_inference_ms"] = Double(zenzaiCounters.richInferenceNanoseconds) / 1_000_000
+            counters.merge(Self.counterValues(zenzaiCounters)) { _, new in new }
+        }
         self.zenzai = zenzai
         lock.unlock()
+    }
+
+    /// 回数を1要求分の集計に記録する (同じ名前は上書きする)
+    ///
+    /// - Parameters:
+    ///   - name: 証跡のcountersに書くキー
+    ///   - value: 回数
+    func recordCount(_ name: String, _ value: Int) {
+        lock.lock()
+        counters[name] = value
+        lock.unlock()
+    }
+
+    /// Zenzaiの推論の内訳を証跡のキーへ対応付ける
+    private static func counterValues(_ counters: ZenzInferencePerfCounters) -> [String: Int] {
+        [
+            "zenzai_inference_count": counters.inferenceCount,
+            "zenzai_fed_tokens": counters.fedTokenCount,
+            "zenzai_reused_tokens": counters.reusedTokenCount,
+            "zenzai_evaluation_count": counters.evaluationCount,
+            "zenzai_redraft_count": counters.redraftCount,
+            "zenzai_retry_count": counters.retryCount,
+            "zenzai_draft_count": counters.draftCount,
+            "zenzai_alternative_draft_count": counters.alternativeDraftCount,
+            "zenzai_evaluation_cache_hit": counters.evaluationCacheHitCount,
+            "zenzai_evaluation_cache_miss": counters.evaluationCacheMissCount,
+            "zenzai_resolved_conversion_cache_hit": counters.resolvedConversionCacheHitCount,
+            "zenzai_resolved_conversion_cache_miss": counters.resolvedConversionCacheMissCount,
+            "zenzai_draft_cache_hit": counters.draftConversionCacheHitCount,
+            "zenzai_draft_cache_miss": counters.draftConversionCacheMissCount,
+            "zenzai_prompt_token_cache_hit": counters.promptTokenCacheHitCount,
+            "zenzai_prompt_token_cache_miss": counters.promptTokenCacheMissCount,
+            "zenzai_rich_inference_count": counters.richInferenceCount,
+            "zenzai_rich_fed_tokens": counters.richFedTokenCount,
+            "zenzai_rich_reused_tokens": counters.richReusedTokenCount,
+            "zenzai_rich_fully_reused_count": counters.richFullyReusedCount,
+        ]
     }
 
     /// 1件分の証跡をJSON1行で書き込む
@@ -175,6 +223,9 @@ final class PerfProbe: @unchecked Sendable {
         ]
         if let zenzai {
             event["zenzai"] = zenzai
+        }
+        if !counters.isEmpty {
+            event["counters"] = counters
         }
         guard let data = try? JSONSerialization.data(withJSONObject: event, options: [.sortedKeys]) else {
             return

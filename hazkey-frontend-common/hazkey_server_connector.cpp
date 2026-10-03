@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -257,10 +258,22 @@ bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
 }
 
 /**
+ * @brief 待たずに、接続先の切断・エラー・未読データの有無を調べる
+ * @param fd 調べる接続記述子
+ * @return 切断・エラー・未読データのいずれかがあればtrue
+ * @details 要求を送っていない間にサーバから届くものはないため、未読データも異常として扱う
+ */
+static bool peerClosedOrPending(int fd) {
+    pollfd pfd{fd, POLLIN | POLLRDHUP, 0};
+    return poll(&pfd, 1, 0) != 0;
+}
+
+/**
  * @brief サーバへの非ブロッキング接続を確立する
  * @details 接続失敗時は、通常起動または必要に応じた強制再起動を試みる
  */
 void HazkeyServerConnector::connectServer() {
+    lastSentContext_.reset();  // 新しい接続のサーバ側セッションは文脈を持たない
     std::string socket_path = getSocketPath();
 
     // 通常起動は最初の失敗後に1回だけ試す
@@ -805,6 +818,14 @@ HazkeyServerConnector::deleteCandidateLearningData(int index) {
  */
 void HazkeyServerConnector::setContext(std::string context, int anchor) {
     invalidateCache();
+    // 接続が切れている場合は省かずに送り、従来どおりこの送信で切断を検出して再接続する
+    // 省くと、直後のinputChar等が切断の検出で失われる (transactは再送しない)
+    if (lastSentContext_ && lastSentContext_->first == context &&
+        lastSentContext_->second == anchor && sock_ != -1 &&
+        !peerClosedOrPending(sock_)) {
+        return;
+    }
+    lastSentContext_.reset();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_set_context();
     props->set_context(context);
@@ -820,12 +841,14 @@ void HazkeyServerConnector::setContext(std::string context, int anchor) {
                            << responseVal.error_message();
         return;
     }
+    lastSentContext_.emplace(std::move(context), anchor);
     return;
 }
 
 /** @brief 現在の組成を破棄して新しい組成を始める */
 void HazkeyServerConnector::newComposingText() {
     invalidateCache();
+    lastSentContext_.reset();  // サーバは組成の開始時に文脈を消す
     hazkey::RequestEnvelope request;
     request.mutable_new_composing_text();
     auto response = transact(request);
@@ -969,6 +992,7 @@ std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerCon
 bool HazkeyServerConnector::setServerConfig(
     const hazkey::config::CurrentConfig& config) {
     invalidateCache();
+    lastSentContext_.reset();  // サーバは設定の再初期化で文脈を消す
     hazkey::RequestEnvelope request;
     auto* sc = request.mutable_set_config();
     *sc->mutable_profiles() = config.profiles();

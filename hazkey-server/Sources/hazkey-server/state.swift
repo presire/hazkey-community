@@ -874,6 +874,18 @@ class HazkeyServerState {
     var zenzaiRightContext = ""
     /// 右文脈として保持する最大文字数 (キャラクター単位)
     static let rightContextMaxCharacters = 40
+    /// 計測用: 変換要求の結果を左右する入力 (学習データと辞書の状態は含まない)
+    private struct CandidateRequestSignature: Equatable {
+        let composingText: ComposingText
+        let isSuggest: Bool
+        let leftContext: String
+        let rightContext: String
+        let configRevision: UInt64
+    }
+    /// 計測用: 前回の変換要求の内容 (HAZKEY_PERF_EVIDENCE 設定時のみ記録し、同じ内容の要求を数える)
+    private var previousCandidateRequest: CandidateRequestSignature?
+    /// 計測用: 最後に受け取った周辺テキスト (HAZKEY_PERF_EVIDENCE 設定時のみ記録し、重複したsetContextを数える。文脈を消すときに破棄する)
+    private var lastSurroundingContext: (text: String, anchorIndex: Int)?
 
     // MARK: [Shift]キーと直接入力モード
 
@@ -991,6 +1003,7 @@ class HazkeyServerState {
         self.shiftPressedAt = nil
         self.zenzaiLeftContext = ""
         self.zenzaiRightContext = ""
+        self.lastSurroundingContext = nil
 
         NSLog("State configuration reinitialized successfully")
     }
@@ -1060,6 +1073,13 @@ class HazkeyServerState {
         if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(scalars.count)") }
         zenzaiLeftContext = String(String.UnicodeScalarView(scalars.prefix(clamped)))
         zenzaiRightContext = String(String(String.UnicodeScalarView(scalars.dropFirst(clamped))).prefix(Self.rightContextMaxCharacters))
+        if let perfProbe = PerfProbe.shared {
+            let isDuplicate = lastSurroundingContext.map {
+                $0.text == surroundingText && $0.anchorIndex == anchorIndex
+            } ?? false
+            perfProbe.recordCount("set_context_duplicate", isDuplicate ? 1 : 0)
+            lastSurroundingContext = (surroundingText, anchorIndex)
+        }
         // Zenzaiモードは"makeCandidatesResult"で、この接続の"zenzaiLeftContext"からリクエストごとに計算する
         // その間に、"baseConvertRequestOptions.zenzaiMode"を読む箇所はないため、ここに保存しても使用されない
         return Hazkey_ResponseEnvelope.with {
@@ -1079,6 +1099,7 @@ class HazkeyServerState {
         currentCandidateList = nil
         zenzaiLeftContext = ""
         zenzaiRightContext = ""
+        lastSurroundingContext = nil
         isSubInputMode = false
         isShiftPressedAlone = false
         shiftPressedAt = nil
@@ -1633,6 +1654,7 @@ class HazkeyServerState {
         var userDictionaryStartedAt = candidateStartedAt
         var userDictionaryFinishedAt = candidateStartedAt
         var zenzaiInferenceNanoseconds: UInt64?
+        var zenzaiCounters: ZenzInferencePerfCounters?
         // 既にレスポンスへ出力した表記
         // 変換エンジンは、predictionResultsとmainResultsの各配列内では個別に重複排除するが、両配列間では同じ表記が重なることがある
         // (ユーザ辞書の単語が自身の最良ノードの予測としても現れる等)
@@ -1699,29 +1721,31 @@ class HazkeyServerState {
                 == Hazkey_Config_Profile.SuggestionListMode.suggestionListShowPredictiveResults
 
         options.requireJapanesePrediction = usePrediction ? .manualMix : .disabled
-        options.zenzaiMode = serverConfig.genZenzaiMode(
-            leftContext: zenzaiLeftContext,
-            rightContext: zenzaiRightContext,
-            requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
-                for: serverConfig.currentProfile, isSuggestion: is_suggest)
-        )
-        let zenzai: String = if case .off = options.zenzaiMode { "off" } else { "on" }
-        let alignmentApplies = HazkeyServerConfig.alignmentSeparatorApplies(
-            profile: serverConfig.currentProfile,
-            modelURL: serverConfig.zenzaiModelPath?.resolvingSymlinksInPath())
+        // モデルのリンク解決とデバイス列挙は、この要求の中で1回だけ行う
+        let zenzaiSnapshot = serverConfig.makeZenzaiRequestSnapshot()
+        let zenzai: String
+        let alignmentApplies: Bool
+        switch zenzaiSnapshot {
+        case .off:
+            zenzai = "off"
+            alignmentApplies = false
+        case .on(let resolvedModelURL, _):
+            zenzai = "on"
+            alignmentApplies = HazkeyServerConfig.alignmentSeparatorApplies(
+                profile: serverConfig.currentProfile, modelURL: resolvedModelURL)
+        }
         let sendFullReading = Self.shouldSendFullReadingForAlignment(
             fullText: composingText.value,
             isSuggest: is_suggest,
             zenzaiOn: zenzai == "on",
             alignmentApplies: alignmentApplies)
-        if sendFullReading {
-            options.zenzaiMode = serverConfig.genZenzaiMode(
-                leftContext: zenzaiLeftContext,
-                rightContext: zenzaiRightContext,
-                requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
-                    for: serverConfig.currentProfile, isSuggestion: is_suggest),
-                sendsFullReadingForAlignment: true)
-        }
+        options.zenzaiMode = serverConfig.genZenzaiMode(
+            snapshot: zenzaiSnapshot,
+            leftContext: zenzaiLeftContext,
+            rightContext: zenzaiRightContext,
+            requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
+                for: serverConfig.currentProfile, isSuggestion: is_suggest),
+            sendsFullReadingForAlignment: sendFullReading)
         userDictionaryStartedAt = perfProbe?.now()
         defer {
             if let candidateStartedAt, let userDictionaryStartedAt, let userDictionaryFinishedAt {
@@ -1730,11 +1754,22 @@ class HazkeyServerState {
                     userDictionaryFinishedAt: userDictionaryFinishedAt,
                     candidateStartedAt: candidateStartedAt,
                     zenzai: zenzai,
-                    zenzaiInferenceNanoseconds: zenzaiInferenceNanoseconds)
+                    zenzaiInferenceNanoseconds: zenzaiInferenceNanoseconds,
+                    zenzaiCounters: zenzaiCounters)
             }
         }
 
         let copiedComposingText = candidateRequestText(is_suggest: is_suggest)
+        if let perfProbe {
+            let request = CandidateRequestSignature(
+                composingText: composingText.value,
+                isSuggest: is_suggest,
+                leftContext: zenzaiLeftContext,
+                rightContext: zenzaiRightContext,
+                configRevision: serverConfig.configRevision)
+            perfProbe.recordCount("identical_request", request == previousCandidateRequest ? 1 : 0)
+            previousCandidateRequest = request
+        }
 
         // ユーザ辞書を変換エンジンに注入して、各エントリが指定品詞 (CID) の接続コスト順位付けに参加するようにする
         // 注入自体はインスタンス単位 (全接続で共有) の処理なので、変換セッション外で実行する
@@ -1755,6 +1790,7 @@ class HazkeyServerState {
         let mainRequestStartedAt = ContinuousClock.now
         if zenzai == "on" {
             _ = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
+            _ = ZenzInferencePerf.shared.consumeCounters()
         }
         guard
             var converted = withConversionSession({
@@ -1771,6 +1807,7 @@ class HazkeyServerState {
         let mainRequestDurationMs = ContinuousClock.now - mainRequestStartedAt
         if zenzai == "on" {
             zenzaiInferenceNanoseconds = ZenzInferencePerf.shared.consumeElapsedNanoseconds()
+            zenzaiCounters = ZenzInferencePerf.shared.consumeCounters()
         }
         let fullHiraganaPreedit = composingText.value.toHiragana()
         let hiraganaPreedit = copiedComposingText.toHiragana()

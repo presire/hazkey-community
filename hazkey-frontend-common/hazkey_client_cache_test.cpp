@@ -551,6 +551,47 @@ void reconnectInvalidates(FakeServer& server, HazkeyServerConnector& connector) 
 }
 
 /**
+ * @brief 同じ周辺文脈の再送信を省き、省いても読取キャッシュは無効化することを検証する
+ *
+ * 組成開始・設定保存・切断の後は同じ内容でも送り直し、切断直後の文脈送信が切断を検出して、続く入力が失われないことを確認する
+ */
+void setContextSkipsDuplicates(FakeServer& server,
+                               HazkeyServerConnector& connector) {
+    server.resetCounts();
+    connector.newComposingText();
+    connector.setContext("ctx", 1);
+    const auto h1 = connector.getComposingHiraganaWithCursor();
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 1);
+    const auto h2 = connector.getComposingHiraganaWithCursor();
+    CHECK(countOf(server.counts(), "get_hiragana_with_cursor") == 2);
+    CHECK(h2.toString() != h1.toString());
+
+    connector.setContext("ctx", 2);
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 3);
+
+    connector.newComposingText();
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 4);
+
+    hazkey::config::CurrentConfig config;
+    connector.setServerConfig(config);
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 5);
+
+    server.dropClient();
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 5);
+    connector.inputChar("い");
+    CHECK(countOf(server.counts(), "input_char") == 1);
+    connector.setContext("ctx", 1);
+    CHECK(countOf(server.counts(), "set_context") == 6);
+    std::cout << "[PASS] setContext skips duplicates and resends after reset"
+              << std::endl;
+}
+
+/**
  * @brief [Shift]キー解放種別が単独状態を反映することを検証する
  *
  * 単独押下の解放では継続種別が返り他キー併用では取消種別が返り、順序通りに記録されることを確認する
@@ -596,6 +637,7 @@ int main() {
         suggestAndFullDistinctSlots(server, connector);
         failureNotCached(server, connector);
         reconnectInvalidates(server, connector);
+        setContextSkipsDuplicates(server, connector);
     }
 
     std::cout << "[PASS] hazkey_client_cache_test: all scenarios green"
