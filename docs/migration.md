@@ -1,7 +1,7 @@
 # 以前のHazkey Communityの設定を新バージョンへ移行する
 
 v0.2.30-communityで、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
-名称が **Hazkey Community** に統一されました。  
+名称が**Hazkey Community**に統一されました。  
 
 これに伴い、バージョン 0.2.30より前のバージョンを使用していた場合、設定・ユーザ辞書・ニューラル変換モデル・学習データは自動では引き継がれません。  
 本ドキュメントの手順で、1回だけ手動移行してください。  
@@ -44,9 +44,9 @@ v0.2.30-communityで、インストール先・実行ファイル名・ユーザ
 ## オプション
 
 | オプション | 内容 |
-|---|---|
-| `--dry-run` | 実行内容の確認のみ<br>何も変更せず、サーバも終了しません。 |
-| `--force` | コピー先に既存ファイルがある場合、`<コピー先>.bak-<日時>`へ退避してからコピーします。 |
+|:---|:---|
+| **`--dry-run`** | 実行内容の確認のみ<br>何も変更せず、サーバも終了しません。 |
+| **`--force`** | コピー先に既存ファイルがある場合、`<コピー先>.bak-<日時>`へ退避してからコピーします。 |
 
 ```sh
 # 実行内容だけを確認したい場合 (サーバは終了しない)
@@ -56,9 +56,26 @@ v0.2.30-communityで、インストール先・実行ファイル名・ユーザ
 /usr/share/hazkey-community/hazkey-community-migrate.sh --force
 ```
 
+## 移行スクリプトの動作
+
+名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データが移行対象です。  
+
+- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
+  Hazkey Community側へ**コピー**します。  
+  旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
+- コピー後、Zenzaiモデルのシンボリックリンク (zenzai.gguf) と、config.json / env内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
+- 起動中のHazkey Community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
+  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey Communityで文字を入力しないでください。  
+- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
+  ファイルやシンボリックリンクを含むコピー先はスキップします。  
+  
+  `--force`オプションを指定すると、既存のコピー先を`<コピー先>.bak-<日時>`へ退避してからコピーします。  
+- Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
+  移行後、Fcitx 5 / IBusを再起動し、入力メソッド**Hazkey Community**を追加してください。  
+
 ## 関連ドキュメント
 
 - [README 上流版Hazkeyとの併存](../README.md#上流版hazkeyとの併存)  
-- [README 設定・環境のリファレンス](../README.md#設定環境のリファレンス)  
+- [設定・環境のリファレンス](./configuration.md)  
 - [トラブルシューティング](./troubleshooting.md)  
 - [v0.2.30-community Releaseノート](https://github.com/presire/hazkey-community/releases/tag/v0.2.30-community)  

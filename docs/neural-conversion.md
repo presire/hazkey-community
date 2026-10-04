@@ -19,12 +19,12 @@ Zenzaiモデルは、設定UIの[AI]タブにある[ニューラル変換モデ�
 現在提供されているモデルは以下の通りです。  
 
 | モデル | サイズ | 特徴 | ライセンス |
-|---|---|---|---|
+|:---|:---:|:---|:---:|
 | **zenz-v3.2-small** | 約74[MB] | 推奨<br>最新世代の標準モデル | Apache-2.0 |
 | **zenz-v3.2-xsmall** | 約21[MB] | 軽量<br>CPUで高速、精度はやや低め | Apache-2.0 |
-| zenz-v3.1-small | 約74[MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
-| jinen-v2-small | 約69〜210[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
-| jinen-v2-xsmall | 約25〜69[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
+| **zenz-v3.1-small** | 約74[MB] | 旧世代<br>既存環境との互換維持用 | CC-BY-SA-4.0 |
+| **jinen-v2-small** | 約69〜210[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
+| **jinen-v2-xsmall** | 約25〜69[MB]<br>(量子化により変動) | 実験的<br>Qwen3ベース<br>量子化を選択可能 | CC-BY-SA-4.0 |
 
 新規利用は **zenz-v3.2-small** を推奨します。  
 CPU中心で使う・軽量重視の場合は **zenz-v3.2-xsmall** が適しています。  
@@ -37,9 +37,9 @@ jinen-v2は、[togatogah](https://huggingface.co/togatogah) 氏が公開する *
 [ニューラル変換モデルの管理] では系列ごとに量子化 (`f16` / `Q8_0` / `Q5_K_M` / `Q4_K_M`) を選択でき、選択したアーティファクトだけがダウンロードされます。  
 
 | 系列 | 配布リポジトリ | 量子化 | サイズ |
-|---|---|---|---|
-| jinen-v2-small | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 69〜210 [MB] |
-| jinen-v2-xsmall | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 25〜69 [MB] |
+|:---|:---|:---|:---:|
+| **jinen-v2-small** | [togatogah/jinen-v2-small.gguf](https://huggingface.co/togatogah/jinen-v2-small.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 69〜210 [MB] |
+| **jinen-v2-xsmall** | [togatogah/jinen-v2-xsmall.gguf](https://huggingface.co/togatogah/jinen-v2-xsmall.gguf) | `f16`<br>`Q8_0`<br>`Q5_K_M`<br>`Q4_K_M` | 約 25〜69 [MB] |
 
 - **帰属**:  
   本モデルは、togatogah氏の成果物です。(ライセンスは、CC-BY-SA-4.0)  
@@ -80,9 +80,9 @@ jinen-v2で「ユーザープロファイル」を変えると、先頭候補が
 実モデル (jinen-v2-small、CPU、学習を無効にした条件) での一例を次に示します。  
 
 | 読み | プロファイル 空 | 医師 | 新聞記者 |
-|---|---|---|---|
-| こうせい | 江青 | 構成 | 厚生 |
-| きかん | 季刊 | 気管 | 季刊 |
+|:---|:---:|:---:|:---:|
+| **こうせい** | 江青 | 構成 | 厚生 |
+| **きかん** | 季刊 | 気管 | 季刊 |
 
 - ペルソナは文脈変換がOFFでも送られます。  
 - ペルソナの有無で変換品質が向上することは保証しません。(結果は文や環境に依存します)  
@@ -172,11 +172,11 @@ GPU/iGPUでZenzaiを使用する場合、次の条件をすべて満たす必要
 ***Hazkey CommunityでZenzaiの動作を確認・認定した機種一覧ではなく、最低要件や推奨機種を示すものでもありません。***  
 
 | 区分 | 型番・製品系列の例 |
-|---|---|
-| NVIDIA GeForce (dGPU) | GeForce GTX 1050<br>GTX 1650<br>GTX 1660 SUPER<br>RTX 3060<br>RTX 4060 |
-| AMD Radeon (dGPU) | Radeon RX 560<br>RX 6400<br>RX 6600<br>RX 7600 |
-| Intel iGPU | Intel UHD Graphics 630<br>UHD Graphics 730<br>UHD Graphics 770<br>Iris Xe Graphics |
-| AMD iGPU | Radeon Vega 8<br>Radeon 680M<br>Radeon 760M<br>Radeon 780M |
+|:---|:---|
+| **NVIDIA GeForce (dGPU)** | GeForce GTX 1050<br>GTX 1650<br>GTX 1660 SUPER<br>RTX 3060<br>RTX 4060 |
+| **AMD Radeon (dGPU)** | Radeon RX 560<br>RX 6400<br>RX 6600<br>RX 7600 |
+| **Intel iGPU** | Intel UHD Graphics 630<br>UHD Graphics 730<br>UHD Graphics 770<br>Iris Xe Graphics |
+| **AMD iGPU** | Radeon Vega 8<br>Radeon 680M<br>Radeon 760M<br>Radeon 780M |
 
 Vulkan対応状況の確認には、下記のページを参照してください。  
 - [NVIDIA Vulkan Driver Support](https://developer.nvidia.com/vulkan-driver)  

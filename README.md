@@ -1,14 +1,15 @@
 # Hazkey Community
 
+<p align="center">
+  <img src="./hazkey-server/icons/hazkey-community_256x256.png" alt="Hazkey Communityのロゴ" width="200" valign="middle">
+  <img src="./media/InputSample.gif" alt="Hazkey Communityの入力デモ" width="400" valign="middle">
+</p>
+
 [![based on 7ka-Hiira/hazkey](https://img.shields.io/badge/based%20on-7ka--Hiira%2Fhazkey-blue)](https://github.com/7ka-Hiira/hazkey)
 [![Fcitx 5](https://img.shields.io/badge/Fcitx%205-support-blue)](https://fcitx-im.org/)
 [![IBus](https://img.shields.io/badge/IBus-experimental-orange)](https://github.com/ibus/ibus)
 
 <br>
-
-<p align="center">
-  <img src="./media/InputSample.gif" alt="Hazkey Communityの入力デモ" />
-</p>
 
 Hazkey Communityは、Linux向けデスクトップ環境のインプットメソッドフレームワーク[Fcitx 5](https://fcitx-im.org/) および [IBus](https://github.com/ibus/ibus)で動作する日本語インプットメソッドです。  
 [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)を変換エンジンに採用し、  
@@ -16,7 +17,7 @@ Hazkey Communityは、Linux向けデスクトップ環境のインプットメ�
 
 Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的なIBusフロントエンド (ibus-hazkey-community) を同梱します。  
 
-> IBus版をソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションが必要です。(デフォルトはOFF)  
+> IBus版をソースコードからビルドする場合は、CMakeで`-DENABLE_IBUS=ON`オプションが必要です。(デフォルトはOFF)  
 > バイナリパッケージは両フロントエンド分を頒布します。  
 
 本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.37** です。  
@@ -29,40 +30,67 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 
 ## 対応環境
 
-| 区分 | ディストリビューション |
-|---|---|
-| **動作確認・サポート対象** | Fedora 44<br>openSUSE Leap 16<br>Debian 13 (Trixie) x64 |
-| **CIビルド・パッケージ頒布対象** (動作確認・サポート対象外) | 上記に加えて、<br>Debian 13 (Trixie) AArch64<br>Ubuntu 26.04<br>openSUSE Tumbleweed |
+| ディストリビューション | 動作確認・サポート | CIビルド・パッケージ頒布 |
+|:---|:---:|:---:|
+| **Fedora 44** | **対象** | **対象** |
+| **openSUSE Leap 16** | **対象** | **対象** |
+| **Debian 13 (Trixie) x64** | **対象** | **対象** |
+| **Debian 13 (Trixie) AArch64** | 対象外 | **対象** |
+| **Ubuntu 26.04** | 対象外 | **対象** |
+| **openSUSE Tumbleweed** | 対象外 | **対象** |
 
 - パッケージの頒布は、その環境での動作保証を意味しません。  
 - その他のディストリビューションでの動作は保証しません。  
-- 上流版の対応環境・インストール方法については、[上流ドキュメント](https://hazkey.hiira.dev/docs) を参照してください。  
+- 上流版の対応環境・インストール方法については、[上流ドキュメント](https://hazkey.hiira.dev/docs)を参照してください。  
 
 <br>
 
 ## コミュニティ版の主な機能 (v0.2.2-community以降)
 
 上流に対するコミュニティ版独自の追加機能・改善の概要です。  
+各機能の詳細は、[docs/features.md](./docs/features.md)を参照してください。  
 
-| 機能 | 内容 |
-|---|---|
-| ユーザ辞書 (品詞・動詞活用対応) | TSV形式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) で単語を登録できる辞書<br>品詞 (固有名詞・人名・地名・動詞) を指定すると変換エンジンの接続コスト評価に品詞が反映される。<br>設定UIの辞書タブから追加・編集・インポート・エクスポートが可能 |
-| 動詞活用エンジン | azooKeyの `JapaneseConjugationBuilder` を移植<br>ユーザ辞書に登録した動詞から全活用形を自動生成し、五段活用・一段活用・サ行変格に対応 |
-| 文節境界調整 | 変換中に `[Shift] + [Left]` / `[Shift] + [Right]` で文節の境界を直接調整できる |
-| ライブ変換トグル | `[Ctrl] + [Shift] + [L]` (デフォルト、設定で変更可能) でライブ変換のON / OFFを即座に切替え<br>OFF時のモードは記憶され、アプリ間の切替をまたいで維持される |
-| 予測候補の先頭表記固定 | サジェスト候補にカーソルを合わせて `F5` (変更可能) を押すと、その表記を先頭の固定表記として受理しつつ続きを入力できる |
-| 学習データの削除・履歴管理 | 候補フォーカス中に `Ctrl+D` (設定で変更可能、「候補学習削除ホットキー」) でその候補の学習データを削除<br>設定UIの「入力履歴データの管理」から入力履歴を選択して削除するダイアログも利用可能 |
-| Emoji 17直接変換 | Emoji 17.0辞書による絵文字の直接変換候補を追加 (設定UI「拡張絵文字」、デフォルトON)<br>通常変換の候補にのみ注入され、サジェスト・ライブ変換には混入しない |
-| 日本全国の地名辞書 | 都道府県・郡・市区町村・町域/大字のうち、変換エンジンが一発変換できない難読地名47,934件を組み込み辞書として収録 (設定UIの[変換]タブ「住所辞書」、デフォルトOFF)<br>一発変換できる地名は収録しないため、通常の変換候補の順位に影響しない |
-| 工学用語辞書 | 機械・電気・電子・情報工学、情報系サービス名、プログラム言語、データベース名、建築学、土木工学等の専門用語・名称のうち、変換エンジンが一発変換できないもの859件を組み込み辞書として収録 (設定UIの[変換]タブ「工学用語」、デフォルトOFF)<br>「住所辞書」とは独立にON / OFFできる<br>読み・表記の出典は SudachiDict (Apache-2.0) ほか ([hazkey-engineering-dictionary](https://github.com/presire/hazkey-engineering-dictionary) の NOTICE 参照) |
-| 誤字の訂正候補 | 読みに典型的な打ち間違いが含まれる場合、訂正した読みの変換候補を先頭候補のすぐ後ろに表示する (設定UIの[変換]タブ「誤字の訂正候補を表示」、デフォルトOFF)<br>通常変換と予測候補の両方に現れ、スコア比較と絞り込みを経て最大3件まで提示される<br>入力中 (preedit) の文字列は自動では書き換えず、訂正候補を選択したときだけその表記で確定する<br>文節が分かれる場合は、確定する先頭部分だけを訂正し、未変換の残りの読みはそのまま残す<br>対象は、かなの連打 (長音・小書き文字の連なりを含む)、読みに残ったローマ字、隣接キーや母音の打ち間違い、撥音「ん」の打ち忘れなど<br>注記はフロントエンドで異なる。Fcitx 5の最低要件は従来どおり 5.0.4 のままで、Fcitx 5.1.9以降は `*[訂正]*` の注記を斜体で表示し、5.1.8以前は候補自体は表示されるが注記は付かない。IBusは `*[訂正]*` (日本語訳) の注記を灰色で表示する (斜体にはしない) |
-| 候補ウィンドウのマウス選択 | 変換候補ウィンドウの候補をマウスクリックでも選択できる |
-| ニューラル変換設定の拡充 (Zenzai) | プロファイルごとのトピック・文体・好みの指定、任意のGGUFファイルのカスタムモデル指定、<br>リッチ候補の候補一覧 / サジェスト個別切替、<br>GUIからのニューラル変換モデル管理 (ダウンロード・有効化・削除)、<br>カーソル後ろのテキストを使用する右文脈 (既定OFF、zenz-v3.2以降)、<br>文節の区切りを移動した後の変換で残りの読みを考慮するアラインメント区切り (既定OFF、zenz-v3.2以降) |
-| 複数のニューラル変換モデルに対応 (zenz / jinen-v2) | 標準の**zenz**系列 (Apache-2.0 / CC-BY-SA-4.0) に加え、[togatogah](https://huggingface.co/togatogah)氏が公開するQwen3ベースの**jinen-v2** (small / xsmall、量子化 `f16`/`Q8_0`/`Q5_K_M`/`Q4_K_M` を選択可、CC-BY-SA-4.0) に対応<br>設定UIの表記もモデルに依存しない「ニューラル変換」に統一<br>jinen系モデルは条件トークン (U+EE03〜EE06) を持たないが、「ユーザープロファイル」は有効化中も入力でき、サーバ側で左文脈の先頭に区切り (句点「。」) を挟んで反映される。<br>(プロファイルを正規化して末尾25文字。プロファイルの末尾が既に文末記号 (。 . ! ?) のときは句点を付けない。文脈変換OFFでも有効で、左文脈の40文字枠とは別枠)<br><br>トピック・文体・好みの3項目と右文脈・アラインメント区切りはjinen系では非対応で、該当欄は自動的にグレーアウトされる |
-| ニューラル変換の事前ウォームアップ | サーバ起動時と設定の適用後にモデルを事前ロードし、初回入力時のモデルロード待ちを解消 |
-| プロファイルごとの履歴分離 | [プロファイル非依存の入力履歴]を無効にすると、プロファイルごとに学習データを分離して保存できる |
-| サーバ管理の安定化 | クライアント更新時のhazkey-community-server自動再起動、不正設定ファイルの安全なパース、サーバプロセス管理の改善 |
-| マルチGPU環境のSIGILL回避 | NVIDIAとAMD/Intel iGPUが同居する環境での起動時クラッシュ ([上流 Issue #29](https://github.com/7ka-Hiira/hazkey/issues/29)) を、隔離子プロセスによる起動前のバックエンド安全確認とCPU専用への自動フォールバックで解消<br>(フォールバック発生時は設定UIの[AI]タブに警告を表示。下記[トラブルシューティング](./docs/troubleshooting.md)参照) |
+### 入力・変換
+
+| 機能 | 操作 (既定値) | 初期状態 | 概要 |
+|:---|:---|:---:|:---|
+| **文節境界調整** | `[Shift] + [Left]` / `[Shift] + [Right]` | - | 変換中に文節の境界を調整 |
+| **ライブ変換トグル** | `[Ctrl] + [Shift] + [L]` | - | ライブ変換のON / OFFを即座に切替 |
+| **予測候補の先頭表記固定** | `[F5]` | - | サジェスト候補で押下すると、その表記を固定して続きを入力 |
+| **誤字の訂正候補** | - | `OFF` | 打ち間違いを訂正した読みの変換候補を提示 |
+| **候補ウィンドウのマウス選択** | マウスクリック | - | 変換候補をマウスクリックで選択 |
+
+### 辞書
+
+| 機能 | 初期状態 | 概要 |
+|:---|:---:|:---|
+| **ユーザ辞書 (品詞・動詞活用対応)** | - | TSV形式で単語を登録できる。<br>品詞 (固有名詞・人名・地名・動詞) 指定に対応し、設定UIから編集・インポート・エクスポートが可能 |
+| **動詞活用エンジン** | - | ユーザ辞書の動詞から、五段活用・一段活用・サ行変格の全活用形を自動生成 |
+| **Emoji 17直接変換** | `ON` | Emoji 17.0辞書による絵文字の直接変換候補 |
+| **日本全国の地名辞書** | `OFF` | 難読地名47,934件を組み込み辞書として収録 |
+| **工学用語辞書** | `OFF` | 専門用語・名称859件を組み込み辞書として収録 |
+
+### 学習・履歴
+
+| 機能 | 操作 (変更可) | 概要 |
+|:---|:---|:---|
+| **学習データの削除・履歴管理** | `[Ctrl] + [D]` | 候補の学習データを削除<br>設定UIから入力履歴の管理も可能 |
+| **プロファイルごとの履歴分離** | - | プロファイルごとに学習データを分離して保存可能 |
+
+### ニューラル変換 (Zenzai)
+
+| 機能 | 概要 |
+|:---|:---|
+| **ニューラル変換設定の拡充** | プロファイル指定、カスタムGGUFモデル、モデル管理GUI、右文脈、アラインメント区切り等 |
+| **複数モデルに対応 (zenz / jinen-v2)** | 標準のzenz系列に加え、Qwen3ベースのjinen-v2 (small / xsmall) に対応 |
+| **事前ウォームアップ** | サーバ起動時・設定適用後にモデルを事前ロードし、初回入力の待ち時間を解消 |
+
+### 安定性
+
+| 機能 | 概要 |
+|:---|:---|
+| **サーバ管理の安定化** | クライアント更新時のサーバ自動再起動、不正設定ファイルの安全なパース等 |
+| **マルチGPU環境のSIGILL回避** | 起動前のバックエンド安全確認とCPU専用への自動フォールバックで起動時クラッシュを解消<br>([トラブルシューティング](./docs/troubleshooting.md)参照) |
 
 <br>
 
@@ -77,7 +105,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
    フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey-community: Fcitx 5用、ibus-hazkey-community: IBus用)  
    
    使用するフレームワークのパッケージを選んでください。  
-   両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。下記の「IBus フロントエンドの既知の制約」参照)  
+   両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。詳細は[docs/ibus-frontend.md](./docs/ibus-frontend.md)参照)  
    
    - Debian / Ubuntu (`.deb`):  
      両パッケージは共有ファイル (hazkey-community-server / hazkey-community-settings / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
@@ -110,14 +138,14 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
    ```
    
 4. 使用しているフレームワークを再起動します。  
-   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart` コマンド等)  
+   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart`コマンド等)  
 
 > インストール後、設定UI (hazkey-community-settings) と サーバ (hazkey-community-server) は同じバージョンで揃います。  
-> クライアントとサーバのバージョンが不一致になった場合は、hazkey-community-server が自動的に再起動されます。  
+> クライアントとサーバのバージョンが不一致になった場合は、hazkey-community-serverが自動的に再起動されます。  
 
 ### ダウンロードの検証 (SHA-256・GPG署名)
 
-Releasesページにはパッケージと合わせて `SHA256SUMS` が置かれています。  
+Releasesページにはパッケージと合わせて、`SHA256SUMS`が配置されています。  
 ダウンロード後は、次の手順で破損・改竄の有無を確認できます。  
 
 ```sh
@@ -126,6 +154,7 @@ sha256sum -c SHA256SUMS
 ```
 
 RPMパッケージはGPG署名付きで頒布されています。(DEBは署名検証を行わないため不要です)  
+
 初回に1回だけ公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を登録すると、  
 以降のdnf / zypperコマンドでのインストール時に署名警告が表示されなくなります。  
 
@@ -162,30 +191,18 @@ v0.2.30-communityより前のバージョンからアップグレードする場
 ### 既存データの移行 (手動)
 
 名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
-引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
-手順の詳細は、[docs/migration.md](./docs/migration.md)も参照してください。  
+引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。(旧ディレクトリはコピーするだけで、変更しません)  
 
 ```sh
 # 実行内容の確認のみ (何も変更しない)
-# dry-runはサーバを終了しない
 /usr/share/hazkey-community/hazkey-community-migrate.sh --dry-run
 
 # 移行を実行する
 /usr/share/hazkey-community/hazkey-community-migrate.sh
 ```
 
-- 旧ディレクトリ (`~/.config/hazkey/`、`~/.local/share/hazkey/`、`~/.local/state/hazkey/`、`~/.config/fcitx5/conf/hazkey.conf`) を、  
-  Hazkey Community側へ**コピー**します。  
-  旧ディレクトリは上流版Hazkeyが引き続き使用するため、変更しません。  
-- コピー後、Zenzaiモデルのシンボリックリンク (zenzai.gguf) と、config.json / env内の旧ディレクトリを指すパスを、新ディレクトリへ書き換えます。  
-- 起動中のHazkey Community-serverはスクリプトがSIGTERMで終了させ、コピー完了後に再度終了を確認します。  
-  Fcitx 5 / IBusがキー入力に応じて再起動するため、移行中はHazkey Communityで文字を入力しないでください。  
-- 空のディレクトリだけが作成済みの場合は、サーバが自動作成した未使用の雛形とみなしてデータをコピーします。  
-  ファイルやシンボリックリンクを含むコピー先はスキップします。  
-  
-  `--force` オプションを指定すると、既存のコピー先を `<コピー先>.bak-<日時>` へ退避してからコピーします。  
-- Fcitx 5の入力メソッド一覧やIBusの入力ソースは書き換えません。  
-  移行後、Fcitx 5 / IBusを再起動し、入力メソッド**Hazkey Community**を追加してください。  
+移行対象・スクリプトの動作・オプション (`--force`等) の詳細は、[docs/migration.md](./docs/migration.md)を参照してください。  
+移行後は、Fcitx 5 / IBusを再起動し、入力メソッド**Hazkey Community**を追加してください。  
 
 <br>
 
@@ -240,13 +257,13 @@ Hazkey Communityは、インストール先・実行ファイル名・ユーザ�
 入力メソッド名も別 (Fcitx 5 / IBus: **Hazkey Community**) で、互いのサーバや設定には干渉しません。  
 
 | 用途 | 上流版Hazkey | Hazkey Community |
-|---|---|---|
-| サーバ / 設定UI | `/usr/bin/hazkey-server`<br>`/usr/bin/hazkey-settings` | `/usr/bin/hazkey-community-server`<br>`/usr/bin/hazkey-community-settings` |
-| プログラム / データ | `/usr/lib*/hazkey/`<br>`/usr/share/hazkey/` | `/usr/lib*/hazkey-community/`<br>`/usr/share/hazkey-community/` |
-| Fcitx 5アドオン | `fcitx5-hazkey.so`<br>`addon/hazkey.conf`・`inputmethod/hazkey.conf` | `fcitx5-hazkey-community.so`<br>`addon/hazkey-community.conf`・`inputmethod/hazkey-community.conf` |
-| IBusエンジン | `ibus-hazkey.xml`<br>`libexec/ibus-hazkey/ibus-engine-hazkey` | `ibus-hazkey-community.xml`<br>`libexec/ibus-hazkey-community/ibus-engine-hazkey-community` |
-| ユーザデータ | `~/.config/hazkey/`<br>`~/.local/share/hazkey/`<br>`~/.local/state/hazkey/` | `~/.config/hazkey-community/`<br>`~/.local/share/hazkey-community/`<br>`~/.local/state/hazkey-community/` |
-| サーバソケット | `$XDG_RUNTIME_DIR/hazkey-server.<uid>.sock` | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
+|:---|:---|:---|
+| **サーバ / 設定UI** | `/usr/bin/hazkey-server`<br>`/usr/bin/hazkey-settings` | `/usr/bin/hazkey-community-server`<br>`/usr/bin/hazkey-community-settings` |
+| **プログラム / データ** | `/usr/lib*/hazkey/`<br>`/usr/share/hazkey/` | `/usr/lib*/hazkey-community/`<br>`/usr/share/hazkey-community/` |
+| **Fcitx 5アドオン** | `fcitx5-hazkey.so`<br>`addon/hazkey.conf`・`inputmethod/hazkey.conf` | `fcitx5-hazkey-community.so`<br>`addon/hazkey-community.conf`・`inputmethod/hazkey-community.conf` |
+| **IBusエンジン** | `ibus-hazkey.xml`<br>`libexec/ibus-hazkey/ibus-engine-hazkey` | `ibus-hazkey-community.xml`<br>`libexec/ibus-hazkey-community/ibus-engine-hazkey-community` |
+| **ユーザデータ** | `~/.config/hazkey/`<br>`~/.local/share/hazkey/`<br>`~/.local/state/hazkey/` | `~/.config/hazkey-community/`<br>`~/.local/share/hazkey-community/`<br>`~/.local/state/hazkey-community/` |
+| **サーバソケット** | `$XDG_RUNTIME_DIR/hazkey-server.<uid>.sock` | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
 
 > 実行ファイル名"hazkey-community-server"は15文字を超えるため、`pgrep -x` / `pkill -x` (プロセス名の完全一致) では一致しません。  
 > サーバを終了する場合は、次のようにコマンドライン照合 (`-f`) を使用してください。  
@@ -262,96 +279,13 @@ Hazkey Communityは、インストール先・実行ファイル名・ユーザ�
 
 ## IBusフロントエンド (実験的)
 
-Fcitx 5と同じhazkey-community-serverを利用する実験的なIBusフロントエンド (ibus-hazkey-community) です。  
-GitHub Releasesのibus-hazkey-communityパッケージ (DEB / RPM) で導入するのが手軽です。  
-(上記「クイックスタート」参照)  
+Fcitx 5と同じhazkey-community-serverを利用する、実験的なIBusフロントエンド (ibus-hazkey-community) です。  
+GitHub Releasesのibus-hazkey-communityパッケージ (DEB / RPM) で導入できます。(上記「クイックスタート」参照)  
+Fcitx 5とIBusは同時に有効化して使用できます。  
 
-ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションを指定します。  
-(既定は**OFF**、**pkg-config ibus-1.0**が必要)  
+ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` を指定します。(既定は**OFF**。詳細は[docs/build.md](./docs/build.md)を参照)  
 
-```sh
-cmake -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr \
-      -DENABLE_IBUS=ON \
-      ..
-ninja -j $(nproc)
-sudo ninja install
-```
-
-インストール後はibus-daemonを再起動し、ibus list-engineに **Hazkey Community** が表示されることを確認してください。  
-エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community/ibus-engine-hazkey-community`、  
-component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml` に配置されます。  
-
-トランスポートはFcitx 5版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です。  
-(`hazkey-frontend-common/candidate_refresh_coalescer.h - hazkey::frontend::CandidateRefreshCoalescer`、30[ms]の立ち上がりエッジ型デバウンス)  
-
-IBus版も連続キー入力時の表示専用リフレッシュを同じポリシーで間引き、タイマのみGLib (g_timeout_add) のアダプタで駆動します。  
-
-> 立ち上がりエッジ型デバウンス (リーディングエッジ方式のデバウンス) とは  
-> デバウンスとは、短時間に連続して発生するイベントを1回にまとめる (間引く) 手法のことです。  
-> 元々は、チャタリングする物理スイッチの信号処理用語で、ソフトウェアではリサイズ・スクロール・キー入力時の連続リフレッシュ抑制等に使われます。  
->  
-> 連続キー入力中に候補表示の更新要求が連発しても、先頭の1件はすぐ反映し、30[ms]以内の後続要求は捨てることにより、  
-> 入力応答性を落とさず描画負荷だけを抑えている。  
-
-### IBusフロントエンドの既知の制約
-
-- **Fcitx 5とIBusの同時有効化による入力に対応しています。**  
-  hazkey-community-serverは、接続ごとに独立した入力セッション (`hazkey-server/Sources/hazkey-server/state.swift - HazkeyServerState`) を持ち、  
-  変換エンジン・ユーザ辞書・学習メモリ・Zenzaiモデルは全接続で共有します。  
-  (`hazkey-server/Sources/hazkey-server/state.swift - HazkeySharedResources`)  
-  
-  接続を奪い合いません。  
-- **hazkey-community-settingsを起動しても、IME側の入力接続は切断されません。**  
-- **同時接続の上限は8です**  
-  (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)  
-  超過した新規接続は、accept直後にサーバが閉じ、既存セッションは保護されます。  
-- **停滞したクライアントが他方を巻き込みません。**  
-  ソケットI/Oは期限付きpollで待機 (デフォルトは10秒) するため、  
-  (`hazkey-server/Sources/hazkey-server/socketUtils.swift - readData(from:count:timeoutMs:)` / `writeData(to:data:timeoutMs:)`)、  
-  応答を返さない/読み取らないクライアントは `hazkey-server/Sources/hazkey-server/socketUtils.swift - SocketError.ioTimeout` で切断され、  
-  他のクライアントの処理が再開します。  
-- **hazkey-community-settingsで設定を変更しても、他方の入力中テキストは失われません。**  
-  設定変更時の再初期化は要求元の接続だけが自分の組成をリセットし、他の接続は組成を保持します。  
-  入力テーブルは名前ごとにレジストリへ追加登録されるため (`InputStyleManager.registerInputStyle`)、  
-  変更前に挿入済みの要素は旧テーブル名のまま解決できます。  
-  
-  残差:  
-  組成の途中で設定を変更した場合、変更前に入力したキーは旧マッピング、変更後のキーは新マッピングになります。(同一組成内での混在)  
-- **残差リスク**:  
-  サーバは単一スレッドでリクエストを直列処理するため、片方のZenzai推論中はもう片方の同期RPC応答が遅延し得ます。  
-  (クライアントのread timeoutは最大10秒以内、機能的な破綻はありません)  
-- **Fcitx 5版の主要な入力操作は、IBus版にも移植済みです。**  
-  ライブ変換トグル、文節境界調整 (`[Shift] + [Left]` / `[Shift] + [Right]`)、予測候補受入、学習データの個別削除、Zenzaiトグル、  
-  `[F6]`〜`[F10]` と `[Ctrl] + [U]` / `[Ctrl] + [I]` / `[Ctrl] + [O]` / `[Ctrl] + [P]` / `[Ctrl] + [T]` の直接変換、  
-  `[Alt]` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp / AuxDown) を含みます。  
-  無変換キーはFcitx 5版と同様に、組成中に消費されるNOPです。(直接変換は行いません)  
-- **パネルの入力モード表示 (IBusProperty) に対応しています。**  
-  パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
-  言語バーの「あ / A」をクリックすると、直接入力をトグルできます。([Shift]キー単体押下と同じRPC経路を利用)  
-- **Zenzaiのトグル (ホットキー / パネルのプロパティ) とライブ変換トグル (ホットキー) は、補助テキストに一時的なヒントを約1秒表示します。**  
-  IBusにはGNOME Shellを含む全パネルが描画する一時ポップアップAPIが無い ([ibus-rime](https://github.com/rime/ibus-rime) の `status_hint.c` と同じく  
-  補助テキストの一時表示で代替。  
-  IBus 1.5.33以降の `ibus_engine_send_message()` は、UnstableでGNOME Shell非対応のため採用していません)  
-- **候補リストに数字ラベル (1〜9, 0) と縦向き表示を設定しています。**  
-- **クライアントのcapability (`set_capabilities`) を反映します。**  
-  surrounding text非対応のクライアントでは、surrounding textの取得・送信を行いません。  
-  capabilityを申告しないクライアントでは従来どおり動作します。  
-- **IBusに固有の未対応項目 (見送り)**:  
-  - surrounding textの書き込み経路 (`delete_surrounding_text` / `forward_key_event`) は、サーバ側の新規RPCが必要なため未対応です。  
-  - Fcitx 5版の[Tabキーで選択]表示可否設定 (`showTabToSelect`) に相当するIBus側の設定経路はありません。  
-    Fcitx 5版の既定値は[表示]であり、IBusは組成中に常時表示するため実質同挙動です。  
-- **RPCは非同期化されており、`process_key_event` はサーバ応答でブロックしません。**  
-  IBus側の入力状態機械 (`hazkey::ibus::HazkeyState`) は専用ワーカースレッドで逐次実行され、  
-  preedit・候補リスト・IBusProperty・補助テキストの更新はGLibメインループへ配送されて適用されます。  
-  
-  サーバが遅い間もキー入力処理は即座に戻り、応答到着後に表示へ反映されます。  
-  既存のread timeout (最大10秒)・response 上限2[MB]・再接続・read-throughキャッシュ無効化・RPC順序は維持しています。  
-  
-  応答到着前に次のキーが入力された場合、consume / forwardの判定は直前の確定済み状態に基づくため、稀にサーバレイテンシ分だけ順序がずれることがあります。  
-  (未処理と判明したキーは `ibus_engine_forward_key_event` でアプリへ転送されるため、キーが失われることはありません)  
-  なお、Fcitx 5フロントエンドは従来どおり同期のままです。  
+アーキテクチャ・同時接続の扱い・Fcitx 5版との差異・既知の制約は、[docs/ibus-frontend.md](./docs/ibus-frontend.md)を参照してください。  
 
 <br>
 
@@ -364,57 +298,8 @@ Zenzai / jinen-v2のモデル選択・有効化手順・Vulkanドライバの導
 
 ## 設定・環境のリファレンス
 
-Hazkey Communityが使用するファイルの場所と、サーバ起動時に効く環境変数をここにまとめます。  
-
-### ファイルの場所 (XDGベースディレクトリ準拠)
-
-| 用途 | パス |
-|---|---|
-| 設定本体 | `$XDG_CONFIG_HOME/hazkey-community/config.json`<br>(通常は `~/.config/hazkey-community/config.json`) |
-| 環境変数ファイル | `$XDG_CONFIG_HOME/hazkey-community/env`<br>(通常は `~/.config/hazkey-community/env`) |
-| ユーザ辞書 | `$XDG_CONFIG_HOME/hazkey-community/user_dictionary.tsv` |
-| Zenzaiモデル | `$XDG_DATA_HOME/hazkey-community/zenzai/`<br>(通常は `~/.local/share/hazkey-community/zenzai/`) |
-| 学習データ (入力履歴) | `$XDG_STATE_HOME/hazkey-community/` 配下<br>(通常は `~/.local/state/hazkey-community/`) |
-| サーバソケット | `$XDG_RUNTIME_DIR/hazkey-community-server.<uid>.sock` |
-
-### 環境変数ファイル `~/.config/hazkey-community/env`
-
-hazkey-community-serverの起動時、ラッパースクリプトがこのファイルを `source` してサーバプロセスに引き継ぎます。  
-1行1変数の `KEY=value` 形式 (`export` 不要、`#` 以降はコメント)  
-
-ファイルが存在しない場合は何も行われません。  
-
-| 変数名 | 用途 | 設定値 |
-|---|---|---|
-| `VK_DRIVER_FILES` | 使用するVulkan ICDの明示指定<br>(設定するとhazkey-community-serverはバックエンド安全確認プローブを省略してこの指定をそのまま使用する。マルチGPU環境のSIGILL回避にもなる) | ICDのJSONパス<br>(例: `/usr/share/vulkan/icd.d/nvidia_icd.json`)<br><br>実在名は `ls /usr/share/vulkan/icd.d/` コマンドで確認 |
-| `VK_ICD_FILENAMES` | 同上 (Vulkan loader向けの別名)<br>`VK_DRIVER_FILES` と同じ値を書く | 同上 |
-| `HAZKEY_ZENZAI_CPU_THREADS` | Zenzai CPU推論のスレッド数 | `1`〜`8`<br>未設定・無効値時は既定動作 |
-| `HAZKEY_ZENZAI_DEADLINE_MS` | Zenzai CPU推論1回の上限時間 (ミリ秒) | `0`〜`2000`<br>`0` は期限なし。<br>超過時はニューラル変換なしにフォールバック |
-| `HAZKEY_ZENZAI_MODEL` | Zenzai モデルファイル (`zenzai.gguf`) の明示指定 (上級者向け) | 実在する通常ファイルのパス |
-| `HAZKEY_DICTIONARY` | 辞書ディレクトリの明示指定 (上級者向け) | 実在するディレクトリのパス |
-| `HAZKEY_ADDRESS_DICTIONARY` | 住所辞書 (`AddressDictionary`) ディレクトリの明示指定 (上級者向け)<br>設定するとその値だけを使い、実在するディレクトリでなければ住所辞書を無効にする (システム配備へは切り替えない)<br>未設定時は `/usr/share/hazkey-community/AddressDictionary` を使用 | ディレクトリのパス |
-| `HAZKEY_ENGINEERING_DICTIONARY` | 工学用語辞書 (`EngineeringDictionary`) ディレクトリの明示指定 (上級者向け)<br>`HAZKEY_ADDRESS_DICTIONARY` と同じ規則。未設定時は `/usr/share/hazkey-community/EngineeringDictionary` を使用 | ディレクトリのパス |
-| `GGML_BACKEND_DIR` | llama.cppバックエンド (`.so`) の探索ディレクトリ (上級者向け) | ディレクトリのパス (末尾 `/` は自動補完) |
-
-**設定例**:  
-
-```sh
-mkdir -p ~/.config/hazkey-community
-cat > ~/.config/hazkey-community/env <<'EOF'
-# NVIDIA GPUのみに固定する例
-VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
-VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
-HAZKEY_ZENZAI_CPU_THREADS=4
-HAZKEY_ZENZAI_DEADLINE_MS=0
-EOF
-
-# 次回サーバ起動時に反映 (即時反映したい場合はサーバを終了)
-pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
-```
-
-> Systemdのドロップイン (`fcitx5.service.d/*.conf` の `Environment=`) でも環境変数は設定できますが、  
-> ラッパースクリプトがenvファイルを`source`するため、両方に同じ変数を書いた場合は**`~/.config/hazkey-community/env`側が優先**されます。  
-> 混在させずどちらか一方を使用してください。  
+設定ファイル・ユーザ辞書・モデル・学習データ・ソケットの場所 (XDGベースディレクトリ準拠) と、  
+サーバ起動時に効く環境変数 (`~/.config/hazkey-community/env`) は、[docs/configuration.md](./docs/configuration.md)を参照してください。  
 
 <br>
 
@@ -434,7 +319,7 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 ## 上流・関連プロジェクト
 
 | プロジェクト | 用途 |
-|---|---|
+|:---|:---|
 | [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) | 本プロジェクトの上流<br>ドキュメント: [https://hazkey.hiira.dev/docs](https://hazkey.hiira.dev/docs) |
 | [azooKey/AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) | 変換エンジン (本プロジェクトは、フォークのhazkeyブランチを使用) |
 | [ensan-hcl/azooKey](https://github.com/ensan-hcl/azooKey) | 動詞活用エンジンの移植元 |
@@ -448,7 +333,7 @@ pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 
 [MIT License](./LICENSE)  
 
-本プロジェクトは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) (MIT License) をベースにしています。  
+本プロジェクトは、[7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) (MIT License)をベースにしています。  
 Zenzaiモデルのライセンスは上記のモデル一覧を参照してください。  
 
 パッケージには、静的にリンクされるSwiftパッケージや同梱のllama.cppランタイム、各種辞書データ等、  

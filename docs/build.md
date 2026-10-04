@@ -194,12 +194,12 @@ sudo ninja install
 ## ビルドオプション
 
 | オプション | デフォルト | 説明 |
-|---|---|---|
-| `ENABLE_FCITX5` | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
-| `ENABLE_IBUS` | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
-| `GGML_VULKAN` | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
-| `HAZKEY_SERVER_ENABLE_ZENZAI` | `ON` | Zenzaiニューラル変換機能の有効化 |
-| `SWIFT_LINK_PATH` | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |
+|:---|:---:|:---|
+| **`ENABLE_FCITX5`** | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
+| **`ENABLE_IBUS`** | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
+| **`GGML_VULKAN`** | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
+| **`HAZKEY_SERVER_ENABLE_ZENZAI`** | `ON` | Zenzaiニューラル変換機能の有効化 |
+| **`SWIFT_LINK_PATH`** | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |
 
 CPU専用ビルドの例:  
 
