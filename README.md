@@ -303,6 +303,52 @@ Zenzai / jinen-v2のモデル選択・有効化手順・Vulkanドライバの導
 
 <br>
 
+## SELinuxポリシー (任意)
+
+SELinuxが有効な環境で、Hazkey Communityを`/usr`以外 (`/usr/local`、`/opt`、ホームディレクトリ) にインストールすると、  
+ファイルに既定のラベルが付くため、SELinuxの拒否 (AVC) が記録されたり、変換サーバが起動できなかったりする場合があります。  
+
+この問題を避けるために、Hazkey Community専用のSELinuxポリシーモジュールを同梱しています。  
+
+- 全てのインストール先に対する、一貫したファイルラベルを提供します。  
+- 変換サーバ (hazkey-community-server) を専用のドメインで動作させます。  
+  変換サーバは全てのキー入力を受け取るため、TCP通信とポートでの待ち受けは許可しません。  
+- GPU (Vulkan) の使用、ホームディレクトリ配下のモデルの読み取り、GPUドライバのキャッシュへの書き込みは、Booleanで個別に無効にできます。  
+
+ポリシーモジュールは、既定ではビルドされません。  
+CMakeで`-DENABLE_SELINUX=ON`オプションを指定すると、ビルドとインストールの時に、モジュールの読み込みとラベルの付け直しまで行います。  
+
+```sh
+cd hazkey-community
+cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DENABLE_SELINUX=ON
+cmake --build build
+sudo cmake --install build
+
+# 読み込み前から動作している変換サーバを終了する (次のキー入力で、新しいドメインで自動的に再起動される)
+pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
+```
+
+事前に、`selinux-policy-devel`、`checkpolicy`、`policycoreutils`、`policycoreutils-python-utils`が必要です。  
+Debian 13 / Ubuntu 26.04では、`selinux-policy-default`、`checkpolicy`、`policycoreutils`、`semodule-utils`、`selinux-utils`、`make`が必要です。  
+(基本ポリシーの型名がFedora / openSUSEと異なるため、ビルド時に自動で型名を置き換えます)  
+`/usr`にRPM / DEBパッケージでインストールした場合は、`/usr`の標準のラベルで動作するため、通常は不要です。  
+
+| 項目 | 内容 |
+|---|---|
+| 動作確認 | openSUSE Leap 16 (targetedポリシー、MLS有効) の実機<br>Fedora 44、Debian 13、Ubuntu 26.04のコンテナ (ビルド・読み込み・ラベルの確認) |
+| 対象のドメイン | 変換サーバだけ<br>Fcitx 5のアドオン、IBusのエンジン、設定GUIは、起動元のドメインのまま動作する |
+| 許可の範囲 | unconfined_t / user_t / staff_tからの起動とソケット接続 |
+
+インストール手順、Booleanの設定、トラブルシューティング、管理者向けの詳細は、次の文書を参照してください。  
+
+- [selinux/README.md](./selinux/README.md)  
+- [selinux/ADMIN.md](./selinux/ADMIN.md)  
+
+<br>
+
 ## ソースコードからのビルド
 
 ソースコードからビルドするための依存関係・Swiftのインストール・ビルド手順・ビルドオプションは、[docs/build.md](./docs/build.md)を参照してください。  

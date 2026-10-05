@@ -72,7 +72,8 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd packages
-          sha256sum fcitx5-hazkey-* ibus-hazkey-* > SHA256SUMS
+          # SELinuxポリシーモジュール (selinux-hazkey-community-*.pp) も、チェックサムの対象に含める
+          sha256sum fcitx5-hazkey-* ibus-hazkey-* selinux-hazkey-* > SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest build provenance

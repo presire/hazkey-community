@@ -237,3 +237,44 @@ jobs:
           # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない
           # Swift Buildではテストランナーの推移的なllama/ggml共有ライブラリが既定の探索範囲外に置かれるため、-rpath-linkで推移パスを指定する
           swift test --traits ZenzaiSupport -Xlinker "-L${LLAMA_LIB_DIR}" -Xlinker "-rpath-link" -Xlinker "${LLAMA_LIB_DIR}"
+
+  selinux-policy:
+    name: SELinux policy (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      # ディストリビューションごとに、ポリシーの系統 (redhat / refpolicy) と基本ポリシーの型名が異なる
+      # 1つが失敗しても、他の結果を報告できるよう、fail-fastは無効にする
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 13 Trixie
+            image: debian:trixie
+          - name: Ubuntu 26.04
+            image: ubuntu:26.04
+          - name: Fedora 44
+            image: fedora:44
+          - name: openSUSE Leap 16
+            image: opensuse/leap:16
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Verify SELinux policy module in container
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -eux
+          # SELinuxポリシーモジュール (selinux/) だけを検証するため、サブモジュールやSwiftツールチェーンは不要である
+          # コンテナ内ではSELinuxは動作しないが、次の項目はポリシーストアとコンパイラだけで検証できる
+          #   - ビルド (Makefile / CMake) と、ポリシーストアへの読み込み
+          #   - インストール先ごとのファイルコンテキスト
+          #   - 許可規則 (TCP通信を許可しないこと、設定ファイルへの書き込み禁止など)
+          # 検証の内容は、selinux/ci-verify.shに記述している
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            "${IMAGE}" sh /work/selinux/ci-verify.sh /tmp/hazkey_community.pp

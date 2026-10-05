@@ -197,6 +197,7 @@ sudo ninja install
 |:---|:---:|:---|
 | **`ENABLE_FCITX5`** | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
 | **`ENABLE_IBUS`** | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
+| **`ENABLE_SELINUX`** | `OFF` | SELinuxポリシーモジュール (hazkey_community) をビルド<br>`/usr`以外へのインストール時の拒否を避けるために使う<br>(`checkmodule`、`semodule_package`、`semodule`、`restorecon`が必要。詳細は[SELinuxポリシー](../selinux/README.md)を参照) |
 | **`GGML_VULKAN`** | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
 | **`HAZKEY_SERVER_ENABLE_ZENZAI`** | `ON` | Zenzaiニューラル変換機能の有効化 |
 | **`SWIFT_LINK_PATH`** | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |

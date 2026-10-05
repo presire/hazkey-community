@@ -1,0 +1,124 @@
+# Hazkey Communityのファイルコンテキスト
+#
+# インストール先ごとに、実行ファイル・共有ライブラリ・データへSELinuxコンテキストを割り当てる
+# 対応するインストール先は、/usr、/usr/local、/opt/hazkey-community、ホームディレクトリ (~/.local)
+# ライブラリのディレクトリは、ディストリビューションによってlib、lib64、lib/<アーキテクチャ>-linux-gnuのどれかを使う
+# lib/<アーキテクチャ>-linux-gnuはDebianとUbuntuの/usrだけで、x86_64とaarch64を定義する
+#
+# 変換サーバの実行ファイルだけに専用の型 (hazkey_community_exec_t) を付けて、ドメイン遷移の入口にする
+# それ以外の実行ファイルとライブラリには、/usrと同じ標準の型 (bin_t、lib_t、usr_t) を付ける
+# /usr/local、/opt、ホームディレクトリの既定のラベル (usr_t、gconf_home_t等) のままでは、
+# 制限ユーザのドメインが実行できず、変換サーバも専用のドメインへ遷移しないため
+#
+# ユーザごとのデータ (設定、学習データ、モデル、キャッシュ) には、変換サーバが読み書きできる専用の型を付ける
+#
+# 正規表現の照合では、具体的なパスの規則が、基本ポリシーの汎用的な規則 (/opt/.*、~/.local/.*等) より優先される
+
+########################################
+# 実行ファイル、共有ライブラリ、データ
+#
+# lib/hazkey-community        : 変換サーバと設定GUIの実体、llama.cppとGGMLのバックエンド (libllama)
+# lib/fcitx5                  : Fcitx 5のアドオン
+# libexec/ibus-hazkey-community : IBusのエンジン
+# share/hazkey-community      : 変換辞書、絵文字辞書、住所辞書、工学用語辞書、システムのZenzaiモデル
+# bin配下のラッパースクリプトとシンボリックリンクは、既定のラベル (bin_t、home_bin_t) のままで実行できる
+# 上記以外のインストール先のbin配下は、CMakeが追加する規則でbin_tを付ける
+########################################
+
+# /usr (ディストリビューションのパッケージ、-DCMAKE_INSTALL_PREFIX=/usr)
+/usr/lib/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/lib/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/lib/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/lib/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/usr/lib64/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/lib64/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/lib64/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/lib64/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+# DebianとUbuntuは、/usrのライブラリを/usr/lib/<アーキテクチャ>-linux-gnu配下に置く (マルチアーチ)
+/usr/lib/x86_64-linux-gnu/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/lib/x86_64-linux-gnu/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/lib/x86_64-linux-gnu/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/lib/x86_64-linux-gnu/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/usr/lib/aarch64-linux-gnu/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/lib/aarch64-linux-gnu/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/lib/aarch64-linux-gnu/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/lib/aarch64-linux-gnu/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/usr/libexec/ibus-hazkey-community(/.*)?		system_u:object_r:bin_t:s0
+/usr/share/hazkey-community(/.*)?		system_u:object_r:usr_t:s0
+
+# /usr/local (-DCMAKE_INSTALL_PREFIX=/usr/local)
+/usr/local/lib/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/local/lib/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/local/lib/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/local/lib/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/usr/local/lib64/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/usr/local/lib64/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/usr/local/lib64/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/usr/local/lib64/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/usr/local/libexec/ibus-hazkey-community(/.*)?		system_u:object_r:bin_t:s0
+/usr/local/share/hazkey-community(/.*)?		system_u:object_r:usr_t:s0
+
+# /opt (-DCMAKE_INSTALL_PREFIX=/opt/hazkey-community)
+/opt/hazkey-community/lib/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/opt/hazkey-community/lib/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/opt/hazkey-community/lib/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/opt/hazkey-community/lib/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/opt/hazkey-community/lib64/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+/opt/hazkey-community/lib64/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+/opt/hazkey-community/lib64/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+/opt/hazkey-community/lib64/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+/opt/hazkey-community/libexec/ibus-hazkey-community(/.*)?		system_u:object_r:bin_t:s0
+/opt/hazkey-community/share/hazkey-community(/.*)?		system_u:object_r:usr_t:s0
+
+# ホームディレクトリ (-DCMAKE_INSTALL_PREFIX=$HOME/.local)
+# share/hazkey-communityは、ユーザのデータディレクトリ (~/.local/share/hazkey-community) と同じ場所になるため、
+# 下記のユーザごとのデータの規則でラベルを付ける
+HOME_DIR/\.local/lib/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+HOME_DIR/\.local/lib/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+HOME_DIR/\.local/lib/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+HOME_DIR/\.local/lib/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+HOME_DIR/\.local/lib64/hazkey-community(/.*)?		system_u:object_r:lib_t:s0
+HOME_DIR/\.local/lib64/hazkey-community/hazkey-community-server	--	system_u:object_r:hazkey_community_exec_t:s0
+HOME_DIR/\.local/lib64/hazkey-community/hazkey-community-settings	--	system_u:object_r:bin_t:s0
+HOME_DIR/\.local/lib64/fcitx5/fcitx5-hazkey-community\.so	--	system_u:object_r:lib_t:s0
+HOME_DIR/\.local/libexec/ibus-hazkey-community(/.*)?		system_u:object_r:bin_t:s0
+
+########################################
+# ユーザごとのデータ
+#
+# 変換サーバと設定GUIがXDG Base Directoryの規定に従って作成する
+# 環境変数 [XDG_CONFIG_HOME] 等で既定以外の場所を指定した場合は、semanage fcontextで同じ型を割り当てる
+########################################
+
+# 設定ディレクトリと、変換サーバが書き込めないファイル (ユーザ辞書 user_dictionary.tsv、環境変数ファイル env、keymap、table)
+HOME_DIR/\.config/hazkey-community(/.*)?		system_u:object_r:hazkey_community_conf_home_t:s0
+
+# 変換サーバが書き込む設定ファイル
+# 環境変数ファイルは起動元のドメインでシェルとして読み込まれるため、変換サーバが書き込めるファイルをこれだけに限定する
+HOME_DIR/\.config/hazkey-community/config\.json	--	system_u:object_r:hazkey_community_config_t:s0
+
+# モデル (zenzai)、ホームディレクトリへインストールした辞書
+HOME_DIR/\.local/share/hazkey-community(/.*)?		system_u:object_r:hazkey_community_data_home_t:s0
+
+# 学習データ (memory)
+HOME_DIR/\.local/state/hazkey-community(/.*)?		system_u:object_r:hazkey_community_state_home_t:s0
+
+# キャッシュ
+HOME_DIR/\.cache/hazkey-community(/.*)?		system_u:object_r:hazkey_community_cache_home_t:s0
+
+########################################
+# クライアント接続用のソケットとロックファイル
+#
+# 変換サーバの作成時に型遷移で専用の型が付くため、この規則はrestoreconでラベルを戻す場合だけに使う
+########################################
+
+/run/user/[0-9]+/hazkey-community-server\.[0-9]+\.sock	-s	system_u:object_r:hazkey_community_runtime_t:s0
+/run/user/[0-9]+/hazkey-community-server\.[0-9]+\.lock	--	system_u:object_r:hazkey_community_runtime_t:s0
+
+########################################
+# CMakeでビルドした時のインストール先
+#
+# 上記以外の場所へインストールした場合に、CMakeがインストール先 ([CMAKE_INSTALL_PREFIX]) の規則をここに追加する
+# ホームディレクトリ配下のインストール先は、HOME_DIRへ置き換えて全てのユーザに適用する
+# このファイル (.fc) は、CMakeを使わずにビルドする場合のもので、追加の規則は無い
+########################################

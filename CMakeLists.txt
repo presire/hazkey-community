@@ -15,6 +15,7 @@ set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
 
 option(ENABLE_FCITX5 "Build Fcitx5 frontend" ON)
 option(ENABLE_IBUS "Build IBus frontend" OFF)
+option(ENABLE_SELINUX "Build SELinux policy module" OFF)
 
 # 共有トランスポート + protobuf生成: 両フロントエンドで必須
 add_subdirectory(hazkey-frontend-common)
@@ -39,3 +40,10 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
         DESTINATION ${CMAKE_INSTALL_DATADIR}/hazkey-community)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ThirdPartyLicenses/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/hazkey-community/ThirdPartyLicenses)
+
+# --- SELinuxポリシーモジュール ---
+# 変換サーバを専用のドメインで動作させ、/usr/local、/opt、ホームディレクトリへのインストールにもラベルを付ける
+# インストール時にrestoreconで全てのインストール済みファイルのラベルを付け直すため、最後に追加する
+if(ENABLE_SELINUX)
+    add_subdirectory(selinux)
+endif()

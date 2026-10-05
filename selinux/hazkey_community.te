@@ -1,0 +1,801 @@
+module hazkey_community 1.0.0;
+
+########################################
+# Hazkey Community SELinuxポリシーモジュール
+#
+# AIによるニューラル変換 (Zenzai) に対応した日本語インプットメソッドHazkey Communityのうち、
+# 変換サーバ (hazkey-community-server) に強制アクセス制御(MAC)を適用する
+#
+# インストール先が/usr以外 (/usr/local、/opt、ホームディレクトリ) でも同じドメインで動作するように、
+# 各インストール先の実行ファイルとライブラリへのラベルは.fcファイルで定義する
+#
+# ドメイン :
+#   hazkey_community_server_t : 変換サーバのドメイン (一般ユーザ権限、ログインユーザごとに1プロセス)
+#
+# 変換サーバ以外のプログラムは、起動元のドメインのまま動作する
+#   Fcitx 5のアドオン (fcitx5-hazkey-community.so) : fcitx5プロセス内で読み込まれる
+#   IBusのエンジン (ibus-engine-hazkey-community)   : ibus-daemonから起動される
+#   設定GUI (hazkey-community-settings)             : ユーザが起動する
+#   ラッパースクリプト (bin/hazkey-community-server) : 環境変数ファイルを読み込んでから変換サーバを実行する
+#
+# hazkey_community_server_tの権限の範囲 :
+#   変換辞書・絵文字辞書・補助辞書 (share/hazkey-community) とllama.cppのライブラリの読み取り
+#   設定ファイル (~/.config/hazkey-community/config.json) の書き込み
+#   学習データ (~/.local/state/hazkey-community)、モデル (~/.local/share/hazkey-community)、
+#   キャッシュ (~/.cache/hazkey-community) の読み書き
+#   クライアント接続用のUNIXドメインソケットとロックファイル ([XDG_RUNTIME_DIR]) の作成
+#   Vulkanバックエンドの安全確認のための自身の再実行と、旧サーバを探すためのpgrepの実行
+#   GPUデバイスの利用 (boolean [hazkey_community_use_gpu]、既定は有効)
+#   ユーザが指定した任意の場所のモデル・辞書の読み取り (boolean [hazkey_community_read_user_files]、既定は有効)
+#
+# セキュリティモデル :
+#   変換サーバは全てのキー入力を受け取るため、TCPとネットワーク上の名前の束縛 (name_bind) を一切許可しない
+#   UDPは、Foundationが子プロセスの終了を通知するために作成するループバックのソケットだけに必要となる
+#   ホームディレクトリへの書き込みは、Hazkey Community専用のディレクトリだけに限定する
+#   ラッパースクリプトが起動元のドメインで読み込む環境変数ファイル (~/.config/hazkey-community/env) は、
+#   変換サーバが作成・変更・置換できないようにする (変換サーバを侵害されても、起動元のドメインへ戻れないようにする)
+#   クライアント (Fcitx 5、IBus、設定GUI) は、ソケットのファイル権限(0600)とUIDで接続を制限し、
+#   SELinuxは接続できるドメインを非制限ユーザと一般的な制限ユーザ (user_t、staff_t) に限定する
+#   変換サーバへのドメイン遷移は、unconfined_t、user_t、staff_tから実行ファイルを実行した時に起こる
+#   これ以外のドメインから実行した場合は、遷移も実行もせず、.ifファイルのインターフェースで個別に許可する
+########################################
+
+########################################
+# 基本ポリシーから参照する型とクラス
+#
+# 本モジュールのルールで使用する型・属性・ロール・クラスを宣言する
+# 制限ユーザのドメインやNVIDIA等のデバイスの型のように、環境によって存在しない型は、
+# ここではなくoptionalブロック内でrequireする
+########################################
+
+require {
+    # ドメイン
+    type unconfined_t; # 非制限ユーザのドメイン (fcitx5、ibus-daemon、設定GUIの起動元)
+
+    # 実行ファイルとライブラリの型
+    type bin_t;           # /usr/bin等の一般的な実行ファイル (env、pgrep)
+    type lib_t;           # 共有ライブラリ (llama.cppとGGMLのバックエンドを含む)
+    type ld_so_t;         # 動的リンカ
+    type ld_so_cache_t;   # 動的リンカのキャッシュ (/etc/ld.so.cache)
+    type textrel_shlib_t; # テキスト再配置を含む共有ライブラリ
+    type usr_t;           # /usr配下のデータ (辞書、VulkanのICD定義、/opt配下のファイル)
+
+    # 設定ファイルの型
+    type etc_t;          # /etc配下の設定ファイル (/etc/vulkan、nsswitch.conf等)
+    type etc_runtime_t;  # 実行時に生成される/etc配下のファイル
+    type locale_t;       # ロケールとタイムゾーンのデータ
+    type passwd_file_t;  # /etc/passwd (ホームディレクトリの取得)
+
+    # ファイルシステムの型
+    type node_t;          # ネットワークのノード (ループバックアドレスを含む)
+    type tmp_t;           # /tmp
+    type tmpfs_t;         # tmpfs (/dev/shm、memfd)
+    type user_tmp_t;      # ユーザの一時ファイル ($XDG_RUNTIME_DIRである/run/user/<UID>を含む)
+    type var_run_t;       # /run
+    type var_t;           # /var
+    type proc_t;          # /proc
+    type sysfs_t;         # /sys
+    type sysctl_t;        # /proc/sys
+    type sysctl_kernel_t; # /proc/sys/kernel
+    type sysctl_vm_t;     # /proc/sys/vm
+    type root_t;          # ルートディレクトリ(/)
+
+    # デバイスの型
+    type device_t;         # /dev
+    type null_device_t;    # /dev/null
+    type zero_device_t;    # /dev/zero
+    type random_device_t;  # /dev/random
+    type urandom_device_t; # /dev/urandom
+    type dri_device_t;     # GPUのデバイス (/dev/dri)
+    type devpts_t;         # /dev/pts
+    type user_devpts_t;    # ユーザの疑似端末
+
+    # ユーザのホームディレクトリの型
+    type home_root_t;     # /home
+    type user_home_dir_t; # ホームディレクトリ自体
+    type user_home_t;     # ホームディレクトリ配下の一般的なファイル
+    type home_bin_t;      # ~/bin、~/.local/bin等のユーザの実行ファイル
+    type config_home_t;   # ~/.config
+    type gconf_home_t;    # ~/.local (~/.local/stateを含む)
+    type data_home_t;     # ~/.local/share
+    type cache_home_t;    # ~/.cache
+
+    # 属性
+    attribute domain;           # 全てのプロセスのドメイン
+    attribute file_type;        # 全てのファイルの型
+    attribute exec_type;        # 全ての実行ファイルの型
+    attribute filesystem_type;  # 全てのファイルシステムの型
+    attribute tmpfile;          # /tmp配下のファイルの型 (一時ファイルの掃除の対象)
+
+    role unconfined_r; # 非制限ユーザのロール
+
+    # オブジェクトのクラス
+    class process { fork signal signull sigkill sigstop sigchld transition setpgid getpgid getsched setsched getrlimit execmem noatsecure siginh rlimitinh }; # プロセスの操作
+    class file { getattr setattr open read write append execute execute_no_trans create unlink link rename lock ioctl map entrypoint }; # 通常のファイル
+    class dir { getattr setattr open read write search add_name remove_name create rmdir rename ioctl }; # ディレクトリ
+    class lnk_file { getattr read create unlink rename };                   # シンボリックリンク
+    class fifo_file { getattr open read write ioctl };                       # パイプ
+    class sock_file { getattr setattr open read write create unlink rename }; # UNIXドメインソケットのファイル
+    class chr_file { getattr open read write ioctl map };                    # キャラクタデバイス
+    class unix_stream_socket { create bind connect listen accept read write getattr setattr getopt shutdown connectto ioctl }; # UNIXドメインのストリームソケット
+    class udp_socket { create bind connect read write getattr getopt setopt node_bind };          # UDPのソケット (子プロセスの終了通知だけに使用する)
+    class unix_dgram_socket { create connect read write sendto getattr };    # UNIXドメインのデータグラムソケット
+    class fd { use };                                                        # 他のプロセスのファイルディスクリプタの使用
+    class capability { dac_override dac_read_search sys_ptrace };            # rootの特権 (dontauditだけに使用する)
+    class filesystem { getattr };                                            # ファイルシステムの属性の取得
+}
+
+########################################
+# 型の宣言とロールへの関連付け
+#
+# 変換サーバだけを専用のドメインに閉じ込め、ホームディレクトリのデータにも専用の型を付ける
+# 専用の型を付けることで、変換サーバが書き込めるファイルをHazkey Communityのデータだけに限定する
+########################################
+
+type hazkey_community_server_t;     # 変換サーバのドメイン
+type hazkey_community_exec_t;       # 変換サーバの実行ファイル (lib/hazkey-community/hazkey-community-server)
+type hazkey_community_conf_home_t;  # 設定ディレクトリ (~/.config/hazkey-community) と、ユーザ辞書・環境変数ファイル等の読み取り専用のファイル
+type hazkey_community_config_t;     # 変換サーバが書き込む設定ファイル (~/.config/hazkey-community/config.json)
+type hazkey_community_data_home_t;  # モデルとホームディレクトリへインストールした辞書 (~/.local/share/hazkey-community)
+type hazkey_community_state_home_t; # 学習データ (~/.local/state/hazkey-community)
+type hazkey_community_cache_home_t; # キャッシュ (~/.cache/hazkey-community)
+type hazkey_community_runtime_t;    # クライアント接続用のソケットとロックファイル ($XDG_RUNTIME_DIR)
+type hazkey_community_tmp_t;        # /tmpに作成するディレクトリ (ソケットの代替置き場、CPU専用バックエンドの一時配置)
+type hazkey_community_tmpfs_t;      # tmpfsに作成する共有メモリのファイル (GPUドライバのmemfd等)
+
+typeattribute hazkey_community_server_t domain;
+typeattribute hazkey_community_exec_t exec_type, file_type;
+
+typeattribute hazkey_community_conf_home_t file_type;
+typeattribute hazkey_community_config_t file_type;
+typeattribute hazkey_community_data_home_t file_type;
+typeattribute hazkey_community_state_home_t file_type;
+typeattribute hazkey_community_cache_home_t file_type;
+typeattribute hazkey_community_runtime_t file_type;
+typeattribute hazkey_community_tmp_t file_type, tmpfile;
+typeattribute hazkey_community_tmpfs_t file_type;
+
+# ホームディレクトリ配下の型と/run/user配下の型には、制限ユーザのドメインが管理できる属性を付ける
+# 制限ユーザ (user_t、staff_t) が設定GUIで設定を保存したり、データを削除したりできるようにするため
+# 属性user_home_typeとuser_tmp_typeは、基本ポリシーによっては存在しない
+# (Debian 13とUbuntu 26.04のselinux-policy-defaultには、user_home_typeの代わりにuser_home_content_typeがあり、user_tmp_typeは無い)
+# 存在しない環境で読み込みに失敗しないように、属性ごとにoptionalブロックにする
+# ユーザの一時ファイルの属性が無い環境でも、制限ユーザによる変換サーバへの接続は、各ユーザのoptionalブロックの個別の許可で行う
+optional {
+    require {
+        attribute user_home_type;   # ユーザのホームディレクトリ配下のファイルの型 (制限ユーザが管理できる)
+    }
+    typeattribute hazkey_community_conf_home_t user_home_type;
+    typeattribute hazkey_community_config_t user_home_type;
+    typeattribute hazkey_community_data_home_t user_home_type;
+    typeattribute hazkey_community_state_home_t user_home_type;
+    typeattribute hazkey_community_cache_home_t user_home_type;
+}
+
+optional {
+    require {
+        attribute user_home_content_type;   # ユーザのホームディレクトリ配下のファイルの型 (Debian 13とUbuntu 26.04の基本ポリシーでの名前)
+    }
+    typeattribute hazkey_community_conf_home_t user_home_content_type;
+    typeattribute hazkey_community_config_t user_home_content_type;
+    typeattribute hazkey_community_data_home_t user_home_content_type;
+    typeattribute hazkey_community_state_home_t user_home_content_type;
+    typeattribute hazkey_community_cache_home_t user_home_content_type;
+}
+
+# Debian 13とUbuntu 26.04の基本ポリシーでは、制限ユーザが設定とデータを管理する権限は、XDGディレクトリごとの属性に与えられている
+optional {
+    require {
+        attribute xdg_config_type;  # ~/.configの型 (Debian 13とUbuntu 26.04の基本ポリシー)
+    }
+    typeattribute hazkey_community_conf_home_t xdg_config_type;
+    typeattribute hazkey_community_config_t xdg_config_type;
+}
+
+optional {
+    require {
+        attribute xdg_data_type;    # ~/.local/shareと~/.local/stateの型 (Debian 13とUbuntu 26.04の基本ポリシー)
+    }
+    typeattribute hazkey_community_data_home_t xdg_data_type;
+    typeattribute hazkey_community_state_home_t xdg_data_type;
+}
+
+optional {
+    require {
+        attribute xdg_cache_type;   # ~/.cacheの型 (Debian 13とUbuntu 26.04の基本ポリシー)
+    }
+    typeattribute hazkey_community_cache_home_t xdg_cache_type;
+}
+
+optional {
+    require {
+        attribute user_tmp_type;    # ユーザの一時ファイルの型 (制限ユーザが管理できる)
+    }
+    typeattribute hazkey_community_runtime_t user_tmp_type;
+    typeattribute hazkey_community_tmp_t user_tmp_type;
+}
+
+# 変換サーバは、非制限ユーザのロールで動作する
+# 制限ユーザのロールへの関連付けは、各ユーザのoptionalブロックで行う
+role unconfined_r types hazkey_community_server_t;
+
+########################################
+# boolean
+#
+# 環境によって必要な権限が異なり、かつ権限の範囲が広いものを、管理者が無効化できるようにする
+# 変更は、setsebool -P <boolean名> on|off で行う
+########################################
+
+# GPUデバイス (/dev/dri、NVIDIAのデバイス) の利用と、実行可能なメモリの確保 (execmem) を許可する
+# 無効にすると、ニューラル変換はCPUだけで動作する (GPUの安全確認の子プロセスが失敗し、CPU専用へ切り替わる)
+bool hazkey_community_use_gpu true;
+
+# GPUドライバが~/.cache直下に作成する共有のシェーダキャッシュ (mesa_shader_cache等) への書き込みを許可する
+# この権限は、他のアプリケーションのキャッシュ (~/.cache配下の一般的なファイル) の変更も含む
+# 無効にする場合は、環境変数ファイルで [MESA_SHADER_CACHE_DIR] 等を~/.cache/hazkey-community配下へ向ける
+# 向けない場合でも、シェーダキャッシュが無効になるだけで、GPUによる変換は動作する
+bool hazkey_community_write_gpu_cache true;
+
+# ホームディレクトリ配下の一般的なファイル (user_home_t等) の読み取りを許可する
+# 設定GUIのカスタム重み、環境変数 [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY] 等で、
+# Hazkey Community専用ディレクトリの外にあるモデルや辞書を指定する場合に必要となる
+# 変換サーバにはネットワークの権限が無いため、読み取った内容を外部へ送信することはできない
+bool hazkey_community_read_user_files true;
+
+########################################
+# 非制限ユーザ (unconfined_t) から変換サーバへのドメイン遷移
+#
+# fcitx5のアドオン、IBusのエンジン、設定GUIは、ラッパースクリプト (bin_t) をPATHから起動して、
+# ラッパースクリプトがexecで変換サーバの実行ファイルを実行した時点でhazkey_community_server_tへ遷移する
+# ラッパースクリプト自体は起動元のドメインで動作するため、~/.config/hazkey-community/envの読み込みは起動元の権限で行う
+########################################
+
+allow unconfined_t hazkey_community_exec_t:file { getattr open read execute map };
+allow unconfined_t hazkey_community_server_t:process transition;
+type_transition unconfined_t hazkey_community_exec_t:process hazkey_community_server_t;
+
+# ドメイン遷移の時に、起動元の環境変数・シグナルの状態・リソースの上限を引き継ぐ
+# 引き継がない場合、glibcがセキュアモード (AT_SECURE) で起動して環境変数を削除し、
+# Vulkanのローダーが環境変数 [VK_DRIVER_FILES]、[VK_ICD_FILENAMES]、[XDG_DATA_HOME] を無視する
+# このため、~/.config/hazkey-community/envでGPUを固定する設定が効かなくなる
+allow unconfined_t hazkey_community_server_t:process { noatsecure siginh rlimitinh };
+
+# 起動元から継承したファイルディスクリプタ (標準入出力、journalへのソケット、パイプ) の使用と、終了の通知
+allow hazkey_community_server_t unconfined_t:fd use;
+allow hazkey_community_server_t unconfined_t:process sigchld;
+allow hazkey_community_server_t unconfined_t:fifo_file { getattr read write ioctl };
+allow hazkey_community_server_t unconfined_t:unix_stream_socket { getattr read write ioctl };
+
+# クライアント (fcitx5、IBusのエンジン、設定GUI) からのソケット接続
+allow unconfined_t hazkey_community_server_t:unix_stream_socket connectto;
+
+# 非制限ユーザがHazkey Community専用ディレクトリを作成した時に、専用の型を付ける
+# 設定GUIや移行スクリプト (hazkey-community-migrate.sh) が、変換サーバより先に作成する場合がある
+type_transition unconfined_t config_home_t:dir hazkey_community_conf_home_t "hazkey-community";
+type_transition unconfined_t data_home_t:dir hazkey_community_data_home_t "hazkey-community";
+type_transition unconfined_t gconf_home_t:dir hazkey_community_state_home_t "hazkey-community";
+type_transition unconfined_t cache_home_t:dir hazkey_community_cache_home_t "hazkey-community";
+
+# 非制限ユーザが設定ファイルを作成した時 (移行スクリプトによるコピー等) に、変換サーバが書き込める型を付ける
+type_transition unconfined_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+
+########################################
+# hazkey_community_server_t (変換サーバ) のポリシー
+########################################
+
+########################################
+# 自プロセスの操作
+#
+# 推論スレッドの優先度の取得と設定、子プロセス (pgrep、GPUの安全確認) の生成と終了の待機に必要
+########################################
+
+allow hazkey_community_server_t self:process { fork signal signull sigkill sigstop sigchld setpgid getpgid getsched setsched getrlimit };
+allow hazkey_community_server_t self:fifo_file { getattr open read write ioctl };
+
+# /proc/self配下の参照
+# GPUの安全確認では/proc/self/exeから自身のパスを取得して再実行し、
+# 子プロセスの生成時には/proc/self/fdを列挙して不要なファイルディスクリプタを閉じる
+allow hazkey_community_server_t self:dir { getattr open read search };
+allow hazkey_community_server_t self:file { getattr open read };
+allow hazkey_community_server_t self:lnk_file { getattr read };
+
+########################################
+# 実行ファイルと共有ライブラリ
+#
+# 変換サーバは、GPUの安全確認のために自身を [--probe-backends] 引数付きで同じドメインのまま再実行する
+# llama.cppとGGMLのバックエンド (lib/hazkey-community/libllama) は、起動後にdlopenで読み込む
+########################################
+
+allow hazkey_community_server_t hazkey_community_exec_t:file { getattr open read execute execute_no_trans map entrypoint };
+allow hazkey_community_server_t lib_t:dir { getattr open read search };
+allow hazkey_community_server_t lib_t:file { getattr open read execute map };
+allow hazkey_community_server_t lib_t:lnk_file { getattr read };
+allow hazkey_community_server_t ld_so_t:file { getattr open read execute map };
+allow hazkey_community_server_t ld_so_cache_t:file { getattr open read map };
+allow hazkey_community_server_t textrel_shlib_t:file { getattr open read execute map };
+
+# 外部コマンドの実行
+# 旧サーバの検索で、/usr/bin/envを経由してpgrepを同じドメインのまま実行する
+allow hazkey_community_server_t bin_t:dir { getattr open read search };
+allow hazkey_community_server_t bin_t:file { getattr open read execute execute_no_trans map };
+allow hazkey_community_server_t bin_t:lnk_file { getattr read };
+
+########################################
+# システムのデータと設定ファイル
+#
+# 変換辞書 (share/hazkey-community/Dictionary)、絵文字辞書、住所辞書、工学用語辞書、
+# システムに配置したZenzaiモデル (share/hazkey-community/zenzai.gguf)、
+# VulkanのICD定義 (/usr/share/vulkan、/etc/vulkan)、ロケールとタイムゾーンの読み取りに必要
+# /opt配下にインストールした場合は、辞書等のデータにusr_tが付く
+########################################
+
+allow hazkey_community_server_t root_t:dir { getattr search };
+allow hazkey_community_server_t usr_t:dir { getattr open read search };
+allow hazkey_community_server_t usr_t:file { getattr open read map };
+allow hazkey_community_server_t usr_t:lnk_file { getattr read };
+allow hazkey_community_server_t etc_t:dir { getattr open read search };
+allow hazkey_community_server_t etc_t:file { getattr open read map };
+allow hazkey_community_server_t etc_t:lnk_file { getattr read };
+allow hazkey_community_server_t etc_runtime_t:file { getattr open read };
+allow hazkey_community_server_t locale_t:dir { getattr open read search };
+allow hazkey_community_server_t locale_t:file { getattr open read map };
+allow hazkey_community_server_t locale_t:lnk_file { getattr read };
+
+# ユーザ情報の取得
+# 環境変数HOMEが無い場合に、Foundationがgetpwuid()でホームディレクトリを取得する
+allow hazkey_community_server_t passwd_file_t:file { getattr open read map };
+
+########################################
+# /procと/sys
+#
+# 推論スレッド数の決定 (CPUの数とトポロジ)、メモリ量の確認、GPUの列挙 (/sys/class/drm等) に必要
+# pgrepは/proc配下の各プロセスの情報を読み取り、カーネルのPID上限を確認する
+########################################
+
+allow hazkey_community_server_t proc_t:dir { getattr open read search };
+allow hazkey_community_server_t proc_t:file { getattr open read };
+allow hazkey_community_server_t proc_t:lnk_file { getattr read };
+allow hazkey_community_server_t sysctl_t:dir { getattr search };
+allow hazkey_community_server_t sysctl_kernel_t:dir { getattr search };
+allow hazkey_community_server_t sysctl_kernel_t:file { getattr open read };
+allow hazkey_community_server_t sysctl_vm_t:dir { getattr search };
+allow hazkey_community_server_t sysctl_vm_t:file { getattr open read };
+allow hazkey_community_server_t sysfs_t:dir { getattr open read search };
+allow hazkey_community_server_t sysfs_t:file { getattr open read };
+allow hazkey_community_server_t sysfs_t:lnk_file { getattr read };
+
+# ファイルシステムの属性 (空き容量、マウントの種類) の取得
+# Foundationのファイル操作が、保存先のファイルシステムを確認するために使用する
+allow hazkey_community_server_t filesystem_type:filesystem getattr;
+
+########################################
+# デバイス
+#
+# 子プロセスの標準入出力 (/dev/null) と乱数の取得に必要
+########################################
+
+allow hazkey_community_server_t device_t:dir { getattr open read search };
+allow hazkey_community_server_t null_device_t:chr_file { getattr open read write ioctl };
+allow hazkey_community_server_t zero_device_t:chr_file { getattr open read map };
+allow hazkey_community_server_t random_device_t:chr_file { getattr open read };
+allow hazkey_community_server_t urandom_device_t:chr_file { getattr open read };
+
+# 端末から手動で起動した場合 (デバッグ時) に、ログを端末へ出力する
+allow hazkey_community_server_t devpts_t:dir { getattr search };
+allow hazkey_community_server_t user_devpts_t:chr_file { getattr read write ioctl };
+
+########################################
+# ホームディレクトリの探索
+#
+# 専用ディレクトリへ到達するために、途中のディレクトリの探索だけを許可する
+# ホームディレクトリ配下の任意の場所 (~/apps等) へインストールした場合に、
+# 実行ファイルとライブラリへ到達するため、一般的なディレクトリ (user_home_t) の探索も許可する
+# この探索は、boolean [hazkey_community_read_user_files] を無効にしても必要となる
+########################################
+
+allow hazkey_community_server_t home_root_t:dir { getattr search };
+allow hazkey_community_server_t user_home_dir_t:dir { getattr search };
+allow hazkey_community_server_t user_home_t:dir { getattr search };
+allow hazkey_community_server_t config_home_t:dir { getattr search };
+allow hazkey_community_server_t data_home_t:dir { getattr search };
+allow hazkey_community_server_t cache_home_t:dir { getattr search };
+allow hazkey_community_server_t gconf_home_t:dir { getattr search };
+
+# 新しく作成したユーザのように、~/.config、~/.local、~/.local/share、~/.cacheが無い環境では、変換サーバが作成する
+# 名前付きの型遷移で、ファイルコンテキストの定義と同じ型を付ける
+# ホームディレクトリ直下には、これらの名前のディレクトリ以外を作成できない (他の型のディレクトリとファイルの作成権限が無い)
+# ~/.local/stateは、親ディレクトリと同じgconf_home_tになる
+allow hazkey_community_server_t user_home_dir_t:dir { write add_name };
+allow hazkey_community_server_t { config_home_t gconf_home_t data_home_t cache_home_t }:dir create;
+type_transition hazkey_community_server_t user_home_dir_t:dir config_home_t ".config";
+type_transition hazkey_community_server_t user_home_dir_t:dir gconf_home_t ".local";
+type_transition hazkey_community_server_t user_home_dir_t:dir cache_home_t ".cache";
+type_transition hazkey_community_server_t gconf_home_t:dir data_home_t "share";
+
+# 専用ディレクトリが無い場合は、変換サーバが作成する (名前付きの型遷移で専用の型を付ける)
+allow hazkey_community_server_t config_home_t:dir { write add_name };
+allow hazkey_community_server_t data_home_t:dir { write add_name };
+allow hazkey_community_server_t gconf_home_t:dir { write add_name };
+allow hazkey_community_server_t cache_home_t:dir { write add_name };
+type_transition hazkey_community_server_t config_home_t:dir hazkey_community_conf_home_t "hazkey-community";
+type_transition hazkey_community_server_t data_home_t:dir hazkey_community_data_home_t "hazkey-community";
+type_transition hazkey_community_server_t gconf_home_t:dir hazkey_community_state_home_t "hazkey-community";
+type_transition hazkey_community_server_t cache_home_t:dir hazkey_community_cache_home_t "hazkey-community";
+
+########################################
+# Hazkey Community専用ディレクトリの読み書き
+#
+# 学習データはプロファイルごとのディレクトリへ保存し、入力履歴の削除時にファイルを書き換える
+# モデルは設定GUIがダウンロードし、zenzai.ggufのシンボリックリンクで選択する
+########################################
+
+allow hazkey_community_server_t { hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }:dir { getattr setattr open read write search add_name remove_name create rmdir rename ioctl };
+allow hazkey_community_server_t { hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }:file { getattr setattr open read write append create unlink link rename lock ioctl map };
+allow hazkey_community_server_t { hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }:lnk_file { getattr read create unlink rename };
+
+########################################
+# 設定ディレクトリ (~/.config/hazkey-community)
+#
+# ラッパースクリプトは、変換サーバへ遷移する前に起動元のドメインで環境変数ファイル (env) をシェルとして読み込む
+# 変換サーバがこのファイルを作成・変更・置換できると、侵害された変換サーバが起動元のドメインで任意のコマンドを実行できる
+# このため、変換サーバが書き込めるファイルは、名前付きの型遷移で専用の型を付けた設定ファイル (config.json) だけに限定する
+# 設定ディレクトリ内のファイルの削除・名前の変更・リンクの作成と、ディレクトリ自体の削除・名前の変更は許可しない
+#
+# 変換サーバは、ユーザ辞書 (user_dictionary.tsv)、キーマップ (keymap)、入力テーブル (table) を読み取り、
+# キーマップと入力テーブルのディレクトリが無い場合は作成する
+# config.jsonは一時ファイルを経由せずに直接書き込むため、名前の変更の権限は不要となる
+########################################
+
+allow hazkey_community_server_t hazkey_community_conf_home_t:dir { getattr open read search write add_name create ioctl };
+allow hazkey_community_server_t hazkey_community_conf_home_t:file { getattr open read lock ioctl map };
+allow hazkey_community_server_t hazkey_community_conf_home_t:lnk_file { getattr read };
+allow hazkey_community_server_t hazkey_community_config_t:file { getattr open read write create lock ioctl map };
+type_transition hazkey_community_server_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+
+########################################
+# クライアント接続用のソケットとロックファイル
+#
+# [XDG_RUNTIME_DIR] (/run/user/<UID>) にソケットとロックファイルを作成し、ロックファイルをflockで排他する
+# [XDG_RUNTIME_DIR] が未設定の場合は、/tmp/hazkey-community-runtime-<UID>を作成して代わりに使う
+########################################
+
+allow hazkey_community_server_t var_run_t:dir { getattr search };
+allow hazkey_community_server_t user_tmp_t:dir { getattr search write add_name remove_name };
+type_transition hazkey_community_server_t user_tmp_t:sock_file hazkey_community_runtime_t;
+type_transition hazkey_community_server_t user_tmp_t:file hazkey_community_runtime_t;
+
+allow hazkey_community_server_t tmp_t:dir { getattr search write add_name remove_name };
+type_transition hazkey_community_server_t tmp_t:dir hazkey_community_tmp_t;
+type_transition hazkey_community_server_t hazkey_community_tmp_t:sock_file hazkey_community_runtime_t;
+type_transition hazkey_community_server_t hazkey_community_tmp_t:file hazkey_community_runtime_t;
+
+allow hazkey_community_server_t hazkey_community_runtime_t:sock_file { getattr setattr create unlink };
+allow hazkey_community_server_t hazkey_community_runtime_t:file { getattr setattr open read write create unlink lock };
+
+# 接続待ちのソケットと、受け付けたクライアントのソケット
+# Foundationは、ソケットを監視対象へ登録する時にソケットの種類 (SO_TYPE) を取得する
+allow hazkey_community_server_t self:unix_stream_socket { create bind connect listen accept read write getattr setattr getopt shutdown ioctl };
+
+########################################
+# 子プロセスの終了通知 (ループバックのUDP)
+#
+# GPUの安全確認と旧サーバの検索は、FoundationのProcessで子プロセスを起動する
+# Linux版のFoundationは、子プロセスの終了を監視スレッドへ通知するために、
+# 127.0.0.1へ束縛 (ポート番号は自動割り当て) して相互に接続した2つのUDPソケットを作成する
+# 拒否すると、子プロセスの終了を検出できず、GPUの安全確認が誤ってタイムアウトする場合がある
+#
+# 基本ポリシーではループバックのノードの型が一般的なノードの型 (node_t) と同じため、宛先をループバックだけに限定できない
+# 特定のポート番号への束縛 (name_bind) とTCPは許可しない
+########################################
+
+allow hazkey_community_server_t self:udp_socket { create bind connect read write getattr getopt setopt };
+allow hazkey_community_server_t node_t:udp_socket node_bind;
+
+########################################
+# /tmp配下の一時ディレクトリ
+#
+# GPUの安全確認が失敗した場合に、Vulkan以外のGGMLバックエンドへのシンボリックリンクを集めたディレクトリを作成し、
+# そこからCPU専用のバックエンドを読み込む
+########################################
+
+allow hazkey_community_server_t hazkey_community_tmp_t:dir { getattr setattr open read write search add_name remove_name create rmdir };
+allow hazkey_community_server_t hazkey_community_tmp_t:lnk_file { getattr read create unlink };
+allow hazkey_community_server_t hazkey_community_tmp_t:file { getattr open read write create unlink };
+
+########################################
+# 共有メモリ
+#
+# GPUドライバ (Mesa等) がmemfdや/dev/shmに作成する共有メモリのファイル
+########################################
+
+allow hazkey_community_server_t tmpfs_t:dir { getattr search write add_name remove_name };
+type_transition hazkey_community_server_t tmpfs_t:file hazkey_community_tmpfs_t;
+allow hazkey_community_server_t hazkey_community_tmpfs_t:file { getattr open read write create unlink map };
+
+########################################
+# GPUの利用 (boolean [hazkey_community_use_gpu])
+#
+# llama.cppのVulkanバックエンドが、GPUのデバイスファイルを開いて計算を行う
+# execmemは、ソフトウェア実装のVulkan (lavapipe) やNVIDIAのドライバが実行時にコードを生成するために必要
+########################################
+
+if (hazkey_community_use_gpu) {
+    allow hazkey_community_server_t dri_device_t:dir { getattr open read search };
+    allow hazkey_community_server_t dri_device_t:chr_file { getattr open read write ioctl map };
+    allow hazkey_community_server_t self:process execmem;
+}
+
+########################################
+# 共有のシェーダキャッシュ (boolean [hazkey_community_use_gpu] と [hazkey_community_write_gpu_cache])
+#
+# Mesa等のGPUドライバは、コンパイル済みのシェーダを~/.cache直下 (mesa_shader_cache等) に保存し、
+# 容量の上限を超えた古いキャッシュを削除する
+# 無効にした場合は、ドライバがキャッシュの作成を試みて失敗するだけで、GPUによる変換は動作するため、記録しない
+########################################
+
+if (hazkey_community_use_gpu && hazkey_community_write_gpu_cache) {
+    allow hazkey_community_server_t cache_home_t:dir { getattr setattr open read write search add_name remove_name create rmdir rename };
+    allow hazkey_community_server_t cache_home_t:file { getattr setattr open read write append create unlink rename lock map };
+} else {
+    dontaudit hazkey_community_server_t cache_home_t:dir { setattr write add_name remove_name create rmdir rename };
+    dontaudit hazkey_community_server_t cache_home_t:file { setattr write append create unlink rename lock };
+}
+
+# NVIDIAのデバイス (/dev/nvidia*)
+# xserver_misc_device_tはXサーバのポリシーで定義されるため、存在しない環境でもビルドできるようにoptionalで囲む
+optional {
+    require {
+        type xserver_misc_device_t; # NVIDIAのデバイス等、Xサーバが使うデバイス
+    }
+    if (hazkey_community_use_gpu) {
+        allow hazkey_community_server_t xserver_misc_device_t:chr_file { getattr open read write ioctl map };
+    }
+}
+
+# GPUの情報 (udevが管理するデバイスの属性)
+# libdrmがGPUを列挙する時に、udevのデータベース (/run/udev/data) を参照する場合がある
+optional {
+    require {
+        type udev_var_run_t; # udevの実行時データ (/run/udev)
+    }
+    allow hazkey_community_server_t udev_var_run_t:dir { getattr open read search };
+    allow hazkey_community_server_t udev_var_run_t:file { getattr open read };
+}
+
+# GPUを使用しない設定でも、起動元から継承したGPUのファイルディスクリプタや、
+# Vulkanのローダーによるデバイスの探索が拒否として記録される
+# CPU専用で正常に動作するため、記録しない
+dontaudit hazkey_community_server_t dri_device_t:chr_file { getattr open read write ioctl map };
+
+########################################
+# ホームディレクトリ配下の任意のファイルの読み取り (boolean [hazkey_community_read_user_files])
+#
+# 設定GUIのカスタム重みや、環境変数 [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY]、[HAZKEY_ADDRESS_DICTIONARY]、
+# [HAZKEY_ENGINEERING_DICTIONARY] で指定したファイルは、ホームディレクトリ配下の任意の場所に置かれる
+# ホームディレクトリへインストールした場合のVulkanの設定 (~/.local/share/vulkan、~/.config/vulkan) の読み取りにも使う
+########################################
+
+if (hazkey_community_read_user_files) {
+    allow hazkey_community_server_t { user_home_dir_t user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:dir { getattr open read search };
+    allow hazkey_community_server_t { user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:file { getattr open read map };
+    allow hazkey_community_server_t { user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:lnk_file { getattr read };
+}
+
+# 上記のbooleanを無効にした場合でも、Vulkanのローダーはホームディレクトリ配下の設定ディレクトリを探索する
+# 設定が無くても変換サーバは正常に動作するため、記録しない
+dontaudit hazkey_community_server_t { user_home_dir_t user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:dir { open read };
+dontaudit hazkey_community_server_t { user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:file { getattr open read };
+
+# /usr/bin/envがpgrepを探す時に、環境変数 [PATH] に含まれるホームディレクトリ配下のディレクトリ (~/bin等) を順に調べる
+# pgrepは/usr/binで見つかるため、ホームディレクトリ配下の探索の拒否は動作に影響せず、記録しない
+dontaudit hazkey_community_server_t home_bin_t:dir { getattr search };
+
+########################################
+# 他のプロセスの情報
+#
+# pgrepは、自身と同じUIDのプロセスを探すために、/proc配下の全てのプロセスの情報を読み取ろうとする
+# 探している変換サーバは同じドメインで動作するため、他のドメインのプロセスの読み取りは不要で、記録しない
+# カーネルは、rootが所有するプロセスの情報を読み取る時に権限の確認を行う
+########################################
+
+dontaudit hazkey_community_server_t domain:dir { getattr open read search };
+dontaudit hazkey_community_server_t domain:file { getattr open read };
+dontaudit hazkey_community_server_t domain:lnk_file { getattr read };
+dontaudit hazkey_community_server_t self:capability { dac_override dac_read_search sys_ptrace };
+
+# 起動元 (fcitx5、ibus-daemon) から継承したファイルディスクリプタのうち、変換サーバが使わないもの
+# 実行時にカーネルが閉じるだけで動作に影響しないため、記録しない
+dontaudit hazkey_community_server_t unconfined_t:unix_dgram_socket { read write getattr };
+
+########################################
+# ログ
+#
+# 起動元から継承した標準エラー出力 (systemdのユーザマネージャを経由したjournalへのソケット) にログを書き込む
+# systemdのユーザマネージャを経由せずに起動された場合は、syslogのソケット (/dev/log) を使う場合がある
+# /dev/logは、journalのディレクトリ (/run/systemd/journal) 内のソケットへのシンボリックリンクの場合がある
+########################################
+
+optional {
+    require {
+        type devlog_t;          # syslogのソケット (/dev/log)
+        type syslogd_t;         # journalのドメイン
+        type syslogd_var_run_t; # journalのディレクトリ (/run/systemd/journal)
+        type init_var_run_t;    # systemdの実行時データ (/run/systemd)
+        type kernel_t;          # カーネルのドメイン (/dev/logの受信側)
+    }
+    allow hazkey_community_server_t init_var_run_t:dir { getattr search };
+    allow hazkey_community_server_t syslogd_var_run_t:dir { getattr search };
+    allow hazkey_community_server_t self:unix_dgram_socket { create connect read write sendto getattr };
+    allow hazkey_community_server_t devlog_t:sock_file { getattr open write };
+    allow hazkey_community_server_t devlog_t:lnk_file { getattr read };
+    allow hazkey_community_server_t syslogd_t:unix_dgram_socket sendto;
+    allow hazkey_community_server_t kernel_t:unix_dgram_socket sendto;
+    allow hazkey_community_server_t syslogd_t:unix_stream_socket { getattr read write ioctl };
+}
+
+########################################
+# ユーザ情報の取得 (systemd-userdbd、SSSD)
+#
+# getpwuid()は、nsswitchの設定によりsystemd-userdbd、SSSD、nscdへ問い合わせる
+# これらのサービスのポリシーが存在しない環境でもビルドできるように、optionalで囲む
+# ネットワークへ問い合わせる経路 (LDAP等) まで含む基本ポリシーのインターフェースは使わず、ローカルのソケットだけを許可する
+########################################
+
+optional {
+    require {
+        type systemd_userdbd_t;         # systemd-userdbdのドメイン
+        type systemd_userdbd_runtime_t; # systemd-userdbdのソケット (/run/systemd/userdb)
+        type init_var_run_t;            # systemdの実行時データ (/run/systemd)
+    }
+    allow hazkey_community_server_t init_var_run_t:dir { getattr search };
+    allow hazkey_community_server_t systemd_userdbd_runtime_t:dir { getattr open read search };
+    allow hazkey_community_server_t systemd_userdbd_runtime_t:lnk_file { getattr read };
+    allow hazkey_community_server_t systemd_userdbd_runtime_t:sock_file { getattr open write };
+    allow hazkey_community_server_t systemd_userdbd_t:unix_stream_socket connectto;
+}
+
+# nss-systemdは、グループ情報の取得のたびに /run/systemd/userdb 配下の全ソケットへ問い合わせる
+# nsswitch.confの [group: compat [SUCCESS=merge] systemd] の設定では、compatで見つかった場合も問い合わせる
+# 次の2つのソケットは、systemd-userdbd以外のドメインが持つため、個別に許可する
+#   io.systemd.DynamicUser : 起動の早い段階で作られるため、持ち主のドメインがkernel_tになる
+#   io.systemd.Machine     : systemd-machinedのドメインが持つ
+# kernel_tへの接続は、基本ポリシーでもsyslog_client_typeなど多数のドメインに許可されている
+# 問い合わせの失敗は無視されるが、許可しないと変換サーバの起動のたびに拒否が記録される
+optional {
+    require {
+        type kernel_t;                  # io.systemd.DynamicUserを持つドメイン
+    }
+    allow hazkey_community_server_t kernel_t:unix_stream_socket connectto;
+}
+
+optional {
+    require {
+        type systemd_machined_t;        # systemd-machinedのドメイン
+    }
+    allow hazkey_community_server_t systemd_machined_t:unix_stream_socket connectto;
+}
+
+# SSSDの公開キャッシュの読み取りと、キャッシュに無い場合のSSSDへの問い合わせ (/var/lib/sss/pipes/nss)
+optional {
+    require {
+        type sssd_t;         # SSSDのドメイン
+        type sssd_public_t;  # SSSDの公開キャッシュ (/var/lib/sss/mc)
+        type sssd_var_lib_t; # /var/lib/sss (問い合わせ用のソケットを含む)
+        type var_lib_t;      # /var/lib
+    }
+    allow hazkey_community_server_t var_t:dir { getattr search };
+    allow hazkey_community_server_t var_lib_t:dir { getattr search };
+    allow hazkey_community_server_t sssd_var_lib_t:dir { getattr search };
+    allow hazkey_community_server_t sssd_var_lib_t:sock_file { getattr open write };
+    allow hazkey_community_server_t sssd_t:unix_stream_socket connectto;
+    allow hazkey_community_server_t sssd_public_t:dir { getattr search };
+    allow hazkey_community_server_t sssd_public_t:file { getattr open read map };
+}
+
+# nscdへの問い合わせ (/run/nscd/socket)
+optional {
+    require {
+        type nscd_t;         # nscdのドメイン
+        type nscd_var_run_t; # nscdのソケット (/run/nscd)
+        class nscd { getpwd getgrp }; # nscdへの問い合わせの種類
+    }
+    allow hazkey_community_server_t nscd_var_run_t:dir { getattr search };
+    allow hazkey_community_server_t nscd_var_run_t:sock_file { getattr open write };
+    allow hazkey_community_server_t nscd_t:unix_stream_socket connectto;
+    allow hazkey_community_server_t nscd_t:nscd { getpwd getgrp };
+}
+
+########################################
+# cgroup
+#
+# 利用できるCPUの数を、cgroupのCPU割り当て (cpu.max) から判断する場合がある
+########################################
+
+optional {
+    require {
+        type cgroup_t; # cgroupのファイルシステム (/sys/fs/cgroup)
+    }
+    allow hazkey_community_server_t cgroup_t:dir { getattr search };
+    allow hazkey_community_server_t cgroup_t:file { getattr open read };
+}
+
+########################################
+# 制限ユーザ (user_t) からの利用
+#
+# 一般ユーザをuser_uへ割り当てた環境で、fcitx5やIBusがuser_tで動作する場合に、変換サーバへ遷移させる
+# このモジュールが変換サーバの実行ファイルへ専用の型を付けるため、ここで許可しないと実行自体が拒否される
+########################################
+
+optional {
+    require {
+        type user_t; # 制限ユーザのドメイン
+        role user_r; # 制限ユーザのロール
+    }
+    role user_r types hazkey_community_server_t;
+
+    allow user_t hazkey_community_exec_t:file { getattr open read execute map };
+    allow user_t hazkey_community_server_t:process transition;
+    type_transition user_t hazkey_community_exec_t:process hazkey_community_server_t;
+    allow user_t hazkey_community_server_t:process { noatsecure siginh rlimitinh }; # 環境変数の引き継ぎ (非制限ユーザと同じ理由)
+
+    allow hazkey_community_server_t user_t:fd use;
+    allow hazkey_community_server_t user_t:process sigchld;
+    allow hazkey_community_server_t user_t:fifo_file { getattr read write ioctl };
+    allow hazkey_community_server_t user_t:unix_stream_socket { getattr read write ioctl };
+
+    allow user_t hazkey_community_server_t:unix_stream_socket connectto;
+    allow user_t hazkey_community_runtime_t:sock_file { getattr open write };
+    allow user_t hazkey_community_tmp_t:dir { getattr search }; # [XDG_RUNTIME_DIR] が未設定の時の代替置き場 (/tmp/hazkey-community-runtime-<UID>) の探索
+
+    # ユーザによる変換サーバの終了 (pkill) と、psでの表示
+    allow user_t hazkey_community_server_t:process { signal sigkill signull sigstop };
+    allow user_t hazkey_community_server_t:dir { getattr open read search };
+    allow user_t hazkey_community_server_t:file { getattr open read };
+    allow user_t hazkey_community_server_t:lnk_file { getattr read };
+
+    type_transition user_t config_home_t:dir hazkey_community_conf_home_t "hazkey-community";
+    type_transition user_t data_home_t:dir hazkey_community_data_home_t "hazkey-community";
+    type_transition user_t gconf_home_t:dir hazkey_community_state_home_t "hazkey-community";
+    type_transition user_t cache_home_t:dir hazkey_community_cache_home_t "hazkey-community";
+    type_transition user_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+}
+
+########################################
+# 制限ユーザ (staff_t) からの利用
+#
+# 管理者をstaff_uへ割り当てた環境で、fcitx5やIBusがstaff_tで動作する場合に、変換サーバへ遷移させる
+# 許可する内容は、user_tと同じ
+########################################
+
+optional {
+    require {
+        type staff_t; # 管理者の制限ユーザのドメイン
+        role staff_r; # 管理者の制限ユーザのロール
+    }
+    role staff_r types hazkey_community_server_t;
+
+    allow staff_t hazkey_community_exec_t:file { getattr open read execute map };
+    allow staff_t hazkey_community_server_t:process transition;
+    type_transition staff_t hazkey_community_exec_t:process hazkey_community_server_t;
+    allow staff_t hazkey_community_server_t:process { noatsecure siginh rlimitinh }; # 環境変数の引き継ぎ (非制限ユーザと同じ理由)
+
+    allow hazkey_community_server_t staff_t:fd use;
+    allow hazkey_community_server_t staff_t:process sigchld;
+    allow hazkey_community_server_t staff_t:fifo_file { getattr read write ioctl };
+    allow hazkey_community_server_t staff_t:unix_stream_socket { getattr read write ioctl };
+
+    allow staff_t hazkey_community_server_t:unix_stream_socket connectto;
+    allow staff_t hazkey_community_runtime_t:sock_file { getattr open write };
+    allow staff_t hazkey_community_tmp_t:dir { getattr search }; # [XDG_RUNTIME_DIR] が未設定の時の代替置き場 (/tmp/hazkey-community-runtime-<UID>) の探索
+
+    allow staff_t hazkey_community_server_t:process { signal sigkill signull sigstop };
+    allow staff_t hazkey_community_server_t:dir { getattr open read search };
+    allow staff_t hazkey_community_server_t:file { getattr open read };
+    allow staff_t hazkey_community_server_t:lnk_file { getattr read };
+
+    type_transition staff_t config_home_t:dir hazkey_community_conf_home_t "hazkey-community";
+    type_transition staff_t data_home_t:dir hazkey_community_data_home_t "hazkey-community";
+    type_transition staff_t gconf_home_t:dir hazkey_community_state_home_t "hazkey-community";
+    type_transition staff_t cache_home_t:dir hazkey_community_cache_home_t "hazkey-community";
+    type_transition staff_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+}

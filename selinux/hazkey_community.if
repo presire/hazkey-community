@@ -1,0 +1,238 @@
+## <summary>AIによるニューラル変換に対応した日本語インプットメソッドHazkey Communityの変換サーバ</summary>
+
+########################################
+## <summary>
+##	変換サーバを実行し、hazkey_community_server_tドメインへ遷移することを許可する
+## </summary>
+## <param name="domain">
+##	<summary>
+##	ドメイン遷移を許可するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_domtrans',`
+	gen_require(`
+		type hazkey_community_server_t, hazkey_community_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, hazkey_community_exec_t, hazkey_community_server_t)
+
+	# 起動元の環境変数を引き継ぐ (Vulkanのローダーが環境変数 [VK_DRIVER_FILES] 等を参照するため)
+	allow $1 hazkey_community_server_t:process { noatsecure siginh rlimitinh };
+')
+
+########################################
+## <summary>
+##	変換サーバを実行してhazkey_community_server_tドメインへ遷移し、
+##	指定したロールにhazkey_community_server_tドメインを許可する
+## </summary>
+## <param name="domain">
+##	<summary>
+##	ドメイン遷移を許可するドメイン
+##	</summary>
+## </param>
+## <param name="role">
+##	<summary>
+##	hazkey_community_server_tドメインを許可するロール
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_run',`
+	gen_require(`
+		type hazkey_community_server_t;
+	')
+
+	hazkey_community_domtrans($1)
+	role $2 types hazkey_community_server_t;
+')
+
+########################################
+## <summary>
+##	UNIXドメインソケットを経由した変換サーバへの接続を許可する
+## </summary>
+## <desc>
+##	<p>
+##	Fcitx 5のアドオン、IBusのエンジン、設定GUIを実行するドメインに必要となる
+##	ソケットは/run/user/<UID>、または/tmp/hazkey-community-runtime-<UID>に置かれるため、
+##	それぞれの親ディレクトリの探索も許可する
+##	</p>
+## </desc>
+## <param name="domain">
+##	<summary>
+##	接続を許可するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_stream_connect',`
+	gen_require(`
+		type hazkey_community_server_t, hazkey_community_runtime_t, hazkey_community_tmp_t;
+		type var_run_t;
+		type tmp_t;
+		type user_tmp_t;
+	')
+
+	allow $1 { var_run_t tmp_t }:dir search_dir_perms;
+	stream_connect_pattern($1, { user_tmp_t hazkey_community_tmp_t }, hazkey_community_runtime_t, hazkey_community_server_t)
+')
+
+########################################
+## <summary>
+##	変換サーバへのシグナルの送信と、プロセスの情報の読み取りを許可する
+## </summary>
+## <desc>
+##	<p>
+##	pkillによる変換サーバの終了やpsによる表示に必要となる
+##	</p>
+## </desc>
+## <param name="domain">
+##	<summary>
+##	アクセスを許可するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_signal',`
+	gen_require(`
+		type hazkey_community_server_t;
+	')
+
+	allow $1 hazkey_community_server_t:process { signal sigkill signull sigstop };
+	ps_process_pattern($1, hazkey_community_server_t)
+')
+
+########################################
+## <summary>
+##	Hazkey Community専用ディレクトリ (設定、モデル、学習データ、キャッシュ) の読み取りを許可する
+## </summary>
+## <desc>
+##	<p>
+##	専用ディレクトリの親となるXDGディレクトリの探索も許可する
+##	</p>
+## </desc>
+## <param name="domain">
+##	<summary>
+##	アクセスを許可するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_read_user_content',`
+	gen_require(`
+		type hazkey_community_conf_home_t, hazkey_community_config_t, hazkey_community_data_home_t;
+		type hazkey_community_state_home_t, hazkey_community_cache_home_t;
+		type config_home_t;
+		type gconf_home_t;
+		type data_home_t;
+		type cache_home_t;
+	')
+
+	# 専用ディレクトリの親 (~/.config、~/.local、~/.local/share、~/.cache) の探索
+	userdom_search_user_home_dirs($1)
+	allow $1 { config_home_t gconf_home_t data_home_t cache_home_t }:dir search_dir_perms;
+	list_dirs_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	read_files_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_config_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	read_lnk_files_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+')
+
+########################################
+## <summary>
+##	Hazkey Community専用ディレクトリ (設定、モデル、学習データ、キャッシュ) の作成・変更・削除を許可する
+## </summary>
+## <desc>
+##	<p>
+##	設定GUIによる設定とユーザ辞書の保存、モデルのダウンロードに必要となる
+##	</p>
+## </desc>
+## <param name="domain">
+##	<summary>
+##	アクセスを許可するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_manage_user_content',`
+	gen_require(`
+		type hazkey_community_conf_home_t, hazkey_community_config_t, hazkey_community_data_home_t;
+		type hazkey_community_state_home_t, hazkey_community_cache_home_t;
+		type config_home_t;
+		type gconf_home_t;
+		type data_home_t;
+		type cache_home_t;
+	')
+
+	# 専用ディレクトリの親 (~/.config、~/.local、~/.local/share、~/.cache) の探索
+	userdom_search_user_home_dirs($1)
+	allow $1 { config_home_t gconf_home_t data_home_t cache_home_t }:dir search_dir_perms;
+	manage_dirs_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	manage_files_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_config_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	manage_lnk_files_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	relabel_dirs_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+	relabel_files_pattern($1, { hazkey_community_conf_home_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t }, { hazkey_community_conf_home_t hazkey_community_config_t hazkey_community_data_home_t hazkey_community_state_home_t hazkey_community_cache_home_t })
+')
+
+########################################
+## <summary>
+##	ホームディレクトリの各XDGディレクトリに作成したHazkey Community専用ディレクトリへ、専用の型を付ける
+## </summary>
+## <desc>
+##	<p>
+##	設定ディレクトリに作成した設定ファイル (config.json) には、変換サーバが書き込める型を付ける
+##	</p>
+## </desc>
+## <param name="domain">
+##	<summary>
+##	ディレクトリを作成するドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_home_filetrans',`
+	gen_require(`
+		type config_home_t;
+		type data_home_t;
+		type gconf_home_t;
+		type cache_home_t;
+		type hazkey_community_conf_home_t, hazkey_community_data_home_t;
+		type hazkey_community_state_home_t, hazkey_community_cache_home_t;
+		type hazkey_community_config_t;
+	')
+
+	filetrans_pattern($1, config_home_t, hazkey_community_conf_home_t, dir, "hazkey-community")
+	filetrans_pattern($1, data_home_t, hazkey_community_data_home_t, dir, "hazkey-community")
+	filetrans_pattern($1, gconf_home_t, hazkey_community_state_home_t, dir, "hazkey-community")
+	filetrans_pattern($1, cache_home_t, hazkey_community_cache_home_t, dir, "hazkey-community")
+	filetrans_pattern($1, hazkey_community_conf_home_t, hazkey_community_config_t, file, "config.json")
+')
+
+########################################
+## <summary>
+##	ユーザのロールとドメインに、Hazkey Communityの利用に必要な全ての権限を与える
+## </summary>
+## <desc>
+##	<p>
+##	独自の制限ユーザのドメインで、Fcitx 5やIBusからHazkey Communityを使う場合に呼び出す
+##	user_tとstaff_tへの許可は、本モジュールが既に行っている
+##	</p>
+## </desc>
+## <param name="role">
+##	<summary>
+##	hazkey_community_server_tドメインを許可するロール
+##	</summary>
+## </param>
+## <param name="domain">
+##	<summary>
+##	ユーザのドメイン
+##	</summary>
+## </param>
+#
+interface(`hazkey_community_role',`
+	gen_require(`
+		type hazkey_community_server_t;
+	')
+
+	hazkey_community_run($2, $1)
+	hazkey_community_stream_connect($2)
+	hazkey_community_signal($2)
+	hazkey_community_manage_user_content($2)
+	hazkey_community_home_filetrans($2)
+
+	# 起動元から継承した標準エラー出力 (journalへのソケット) へのログの書き込み
+	allow hazkey_community_server_t $2:unix_stream_socket { getattr read write ioctl };
+')

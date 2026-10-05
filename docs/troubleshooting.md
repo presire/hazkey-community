@@ -97,6 +97,30 @@ ls -la "$XDG_RUNTIME_DIR"/hazkey-community-server.*.sock  # ソケット確認
 サーバプロセスが終わっている場合は、使用中のフレームワーク (Fcitx 5 / IBusデーモン) を再起動すると再度起動します。  
 手動起動での切り分けは、インストール先の `hazkey-community-server` (ラッパースクリプト) を実行して確認できます。  
 
+## SELinuxの拒否でサーバが起動しない・GPUが使われない
+
+`/usr`以外 (`/usr/local`、`/opt`、ホームディレクトリ) にインストールした場合に、  
+SELinuxの拒否で、サーバが起動しなかったり、GPUが使われなかったりすることがあります。  
+
+まず、SELinuxの拒否が原因かを確認してください。  
+
+```sh
+getenforce                                                # Enforcingなら、SELinuxが有効
+sudo ausearch -m AVC,USER_AVC -ts recent | grep hazkey    # 拒否ログの確認
+```
+
+拒否が記録されている場合は、Hazkey Community専用のSELinuxポリシーモジュールを導入してください。  
+CMakeで`-DENABLE_SELINUX=ON`を指定してビルドし、インストールします。  
+手順と、ラベルの付け直し・Booleanの設定・一時的な回避方法は、[selinux/README.md](../selinux/README.md)を参照してください。  
+
+原因の切り分けだけを行う場合は、変換サーバのドメインだけをpermissiveにできます。  
+(モジュールの導入後に限る。切り分けが終わったら、必ず元に戻してください)  
+
+```sh
+sudo semanage permissive -a hazkey_community_server_t
+sudo semanage permissive -d hazkey_community_server_t
+```
+
 ## ユーザ辞書が反映されない
 
 - `~/.config/hazkey-community/user_dictionary.tsv`の書式 (`読み<TAB>単語<TAB>コメント[<TAB>品詞]`) を確認してください。  
