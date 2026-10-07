@@ -176,6 +176,14 @@ MainWindow::MainWindow(QWidget* parent)
     // 入力テーブル設定のモード切替タブを均等幅にする
     ui_->inputTableConfigModeTabWidget->tabBar()->setExpanding(true);
 
+    // 組版引用符はキーの割り当てが固定なので、項目ツールチップで対応を説明する
+    ui_->quotationStyle->setItemData(
+        1,
+        tr("Fixed assignment: \" becomes ”, ' becomes ’, ` becomes ‘.\n"
+           "Opening and closing quotes are not switched automatically.\n"
+           "“ is chosen from the conversion candidates of ”."),
+        Qt::ToolTipRole);
+
     // [リセット]ボタンでサーバ提供の既定設定をプレビューする
     QPushButton* resetButton = ui_->dialogButtonBox->button(QDialogButtonBox::Reset);
     if (resetButton) {
@@ -354,6 +362,12 @@ void MainWindow::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindow::onBasicSettingChanged);
     connect(ui_->commonSymbolStyle,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindow::onBasicSettingChanged);
+    connect(ui_->quotationStyle,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindow::onBasicSettingChanged);
+    connect(ui_->bracketStyle,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MainWindow::onBasicSettingChanged);
     connect(ui_->spaceStyleLabel,
@@ -1637,24 +1651,7 @@ void MainWindow::onBasicInputStyleChanged() {
     if (isUpdatingFromAdvanced_) return;
 
     // 入力形式に応じて他の選択肢の有効 / 無効を切り替える
-    bool isKana = (ui_->mainInputStyle->currentIndex() == 1);  // JISかな
-
-    // かなモードではSpace形式のみ変更できる
-    ui_->punctuationStyle->setEnabled(!isKana);
-    ui_->numberStyle->setEnabled(!isKana);
-    ui_->commonSymbolStyle->setEnabled(!isKana);
-
-    // 無効状態が分かるようラベルを更新する
-    if (isKana) {
-        ui_->punctuationStyle->setToolTip(tr("Disabled in Kana mode"));
-        ui_->numberStyle->setToolTip(tr("Disabled in Kana mode"));
-        ui_->commonSymbolStyle->setToolTip(tr("Disabled in Kana mode"));
-    }
-    else {
-        ui_->punctuationStyle->setToolTip("");
-        ui_->numberStyle->setToolTip("");
-        ui_->commonSymbolStyle->setToolTip("");
-    }
+    updateKanaModeControls(ui_->mainInputStyle->currentIndex() == 1);
 
     syncBasicToAdvanced();
     recomputeDirtyState();
@@ -1668,26 +1665,26 @@ void MainWindow::onBasicSettingChanged() {
 }
 
 void MainWindow::resetInputStyleToDefault() {
-    // 既定値を設定する (すべて先頭の選択肢)
+    // コンボの順次変更で中間状態が何度もAdvancedへ同期されないよう、最後の1回だけ適用する
+    isUpdatingFromAdvanced_ = true;
     ui_->mainInputStyle->setCurrentIndex(0);     // ローマ字
     ui_->punctuationStyle->setCurrentIndex(0);   // 句点 + 読点
     ui_->numberStyle->setCurrentIndex(0);        // 全角
     ui_->commonSymbolStyle->setCurrentIndex(0);  // 全角
+    ui_->quotationStyle->setCurrentIndex(0);     // 全角引用符
+    ui_->bracketStyle->setCurrentIndex(0);       // 和字括弧
     ui_->spaceStyleLabel->setCurrentIndex(0);    // 全角
+    isUpdatingFromAdvanced_ = false;
 
     // 全コントロールを再度有効化する (ローマ字モードに戻すため)
-    ui_->punctuationStyle->setEnabled(true);
-    ui_->numberStyle->setEnabled(true);
-    ui_->commonSymbolStyle->setEnabled(true);
+    updateKanaModeControls(false);
 
-    // ツールチップを消去する
-    ui_->punctuationStyle->setToolTip("");
-    ui_->numberStyle->setToolTip("");
-    ui_->commonSymbolStyle->setToolTip("");
+    // 警告が出ていた場合は取り除き、Basicタブを操作可能へ戻す
+    hideBasicModeWarning();
 
     // 変更を適用する
     syncBasicToAdvanced();
-    hideBasicModeWarning();
+
     // 明示的に再計算する
     // コンボの選択位置が既に既定値でも、Basic→Advanced同期でテーブル / キーマップの順序付き状態が変わる可能性があるため、dirty状態を更新する
     recomputeDirtyState();
@@ -1696,29 +1693,62 @@ void MainWindow::resetInputStyleToDefault() {
 void MainWindow::syncBasicToAdvanced() {
     if (!currentProfile_) return;
 
-    // 既存のキーマップとテーブルを消去する
-    clearKeymapsAndTables();
+    // Basicタブの選択から完全な置換計画を作り、可用性を先に検証する (トランザクショナル)
+    const BasicInputStylePlan plan = buildBasicInputStylePlan(currentBasicSelection(),
+                                                              availableKeymapEntries(),
+                                                              availableTableEntries());
+    if (!plan.ok) {
+        // 必要な組み込みキーマップ / テーブルが欠ける間はプロファイルを一切変更しない
+        qWarning() << "Basic sync aborted: missing built-in keymaps" << plan.missingKeymaps
+                   << "tables" << plan.missingTables;
 
-    // Basicタブの選択に基づいて設定を適用する
-    applyBasicPunctuationStyle();
-    applyBasicNumberStyle();
-    applyBasicSymbolStyle();
-    applyBasicSpaceStyle();
-    // 句読点形式は基本形式より先に設定すること
-    // 句読点キーマップが和字記号マップを上書きするため
-    applyBasicInputStyle();
+        // コンボの選択だけ残ると適用されたように誤解されるため、理由を明示して変更前の設定へ戻す
+        QStringList missing;
+        missing << plan.missingKeymaps << plan.missingTables;
+        QMessageBox::warning(this, tr("Input Style Not Applied"),
+                             tr("The selected input style cannot be applied because the server does not provide "
+                                "the required built-in keymaps or tables (%1). The previous settings are kept.")
+                                 .arg(missing.join(QStringLiteral(", "))));
+
+        // 読み取り専用の逆投影で表示を復元する
+        // syncAdvancedToBasic() は isUpdatingFromAdvanced_ で守られており、
+        // 復元中に設定される currentIndex は onBasicSettingChanged() を発火させないため、計画の再適用は起きない
+        syncAdvancedToBasic();
+        return;
+    }
+
+    // 検証済み計画を一括適用する (一覧の先頭ほど優先度が高い)
+    currentProfile_->clear_enabled_keymaps();
+    currentProfile_->clear_enabled_tables();
+    for (const BasicProfileEntry& entry : plan.keymaps) {
+        auto* enabledKeymap = currentProfile_->add_enabled_keymaps();
+        enabledKeymap->set_name(entry.name.toStdString());
+        enabledKeymap->set_is_built_in(entry.isBuiltin);
+        enabledKeymap->set_filename(entry.filename.toStdString());
+    }
+    for (const BasicProfileEntry& entry : plan.tables) {
+        auto* enabledTable = currentProfile_->add_enabled_tables();
+        enabledTable->set_name(entry.name.toStdString());
+        enabledTable->set_is_built_in(entry.isBuiltin);
+        enabledTable->set_filename(entry.filename.toStdString());
+    }
+    currentProfile_->set_submode_entry_point_chars(plan.submodeEntryPointChars.toStdString());
 
     // 変更をUIに反映する
-    if (currentProfile_) {
-        // 無限ループ防止のため一時的にフラグを立てる
-        isUpdatingFromAdvanced_ = true;
-        ui_->submodeEntryPointChars->setText(QString::fromStdString(currentProfile_->submode_entry_point_chars()));
-        isUpdatingFromAdvanced_ = false;
-    }
+    // 無限ループ防止のため一時的にフラグを立てる
+    isUpdatingFromAdvanced_ = true;
+    ui_->submodeEntryPointChars->setText(QString::fromStdString(currentProfile_->submode_entry_point_chars()));
+    isUpdatingFromAdvanced_ = false;
 
     // Advancedタブの表示を更新する
     loadInputTables();
     loadKeymaps();
+
+    // 明示的なBasic編集でプロファイルは新形式へ書き換わったため、表示専用投影の印を消す
+    // かなモードの無効説明は updateKanaModeControls が管理しているので上書きしない
+    if (ui_->mainInputStyle->currentIndex() != 1) {
+        ui_->bracketStyle->setToolTip(QString());
+    }
 }
 
 void MainWindow::syncAdvancedToBasic() {
@@ -1726,104 +1756,40 @@ void MainWindow::syncAdvancedToBasic() {
 
     isUpdatingFromAdvanced_ = true;
 
-    if (isBasicModeCompatible()) {
+    // Advanced設定 (順序付き有効一覧) をBasic選択値へ逆投影する
+    // レガシー設定は表示専用投影であり、明示編集までプロファイルは書き換えない
+    const BasicInputStyleProjection projection = projectBasicInputStyle(
+        QString::fromStdString(currentProfile_->submode_entry_point_chars()),
+        enabledKeymapEntries(),
+        enabledTableEntries());
+
+    if (projection.compatible) {
         hideBasicModeWarning();
         setBasicTabEnabled(true);
 
-        // Advanced設定からBasic設定の推定を試みる
-        // 簡易な逆方向マッピングである
-
-        // サブモード入口と入力テーブルから入力形式を確認する
-        QString submodeEntry = QString::fromStdString(currentProfile_->submode_entry_point_chars());
-        bool hasRomajiTable = false;
-        bool hasKanaTable = false;
-
-        for (int i = 0; i < currentProfile_->enabled_tables_size(); ++i) {
-            const auto& table = currentProfile_->enabled_tables(i);
-            QString tableName = QString::fromStdString(table.name());
-
-            if (tableName.contains("Romaji", Qt::CaseInsensitive)) {
-                hasRomajiTable = true;
-            }
-
-            if (tableName.contains("Kana", Qt::CaseInsensitive)) {
-                hasKanaTable = true;
-            }
-        }
-
-        bool isKanaMode = false;
-        // submodeEntryはisBasicModeCompatible()で確認済み
-        if (hasRomajiTable) {
-            ui_->mainInputStyle->setCurrentIndex(0);  // ローマ字
-        }
-        else if (hasKanaTable) {
-            ui_->mainInputStyle->setCurrentIndex(1);  // JISかな
-            isKanaMode = true;
-        }
+        ui_->mainInputStyle->setCurrentIndex(projection.selection.mainInputStyle);
+        ui_->punctuationStyle->setCurrentIndex(projection.selection.punctuationStyle);
+        ui_->numberStyle->setCurrentIndex(projection.selection.numberStyle);
+        ui_->commonSymbolStyle->setCurrentIndex(projection.selection.symbolStyle);
+        ui_->quotationStyle->setCurrentIndex(projection.selection.quotationStyle);
+        ui_->bracketStyle->setCurrentIndex(projection.selection.bracketStyle);
+        ui_->spaceStyleLabel->setCurrentIndex(projection.selection.spaceStyle);
 
         // 入力形式に応じて他の選択肢の有効 / 無効を切り替える
-        ui_->punctuationStyle->setEnabled(!isKanaMode);
-        ui_->numberStyle->setEnabled(!isKanaMode);
-        ui_->commonSymbolStyle->setEnabled(!isKanaMode);
+        updateKanaModeControls(projection.selection.isKanaMode());
 
-        // ツールチップを更新する
-        if (isKanaMode) {
-            ui_->punctuationStyle->setToolTip(tr("Disabled in Kana mode"));
-            ui_->numberStyle->setToolTip(tr("Disabled in Kana mode"));
-            ui_->commonSymbolStyle->setToolTip(tr("Disabled in Kana mode"));
-        }
-        else {
-            ui_->punctuationStyle->setToolTip("");
-            ui_->numberStyle->setToolTip("");
-            ui_->commonSymbolStyle->setToolTip("");
-        }
-
-        // 他の形式のキーマップ設定を確認する
-        QSet<QString> enabledKeymaps;
-        for (int i = 0; i < currentProfile_->enabled_keymaps_size(); ++i) {
-            const auto& keymap = currentProfile_->enabled_keymaps(i);
-            enabledKeymaps.insert(QString::fromStdString(keymap.name()));
-        }
-
-        // 句読点形式
-        if (enabledKeymaps.contains("Fullwidth Period") && enabledKeymaps.contains("Fullwidth Comma")) {
-            ui_->punctuationStyle->setCurrentIndex(1);  // Period+Comma
-        }
-        else if (enabledKeymaps.contains("Fullwidth Comma") && !enabledKeymaps.contains("Fullwidth Period")) {
-            ui_->punctuationStyle->setCurrentIndex(2);  // Kuten+Comma
-        }
-        else if (enabledKeymaps.contains("Fullwidth Period") && !enabledKeymaps.contains("Fullwidth Comma")) {
-            ui_->punctuationStyle->setCurrentIndex(3);  // Period+Toten
-        }
-        else {
-            ui_->punctuationStyle->setCurrentIndex(0);  // 句点 + 読点
-        }
-
-        // 数字形式
-        if (enabledKeymaps.contains("Fullwidth Number")) {
-            ui_->numberStyle->setCurrentIndex(0);  // 全角
-        }
-        else {
-            ui_->numberStyle->setCurrentIndex(1);  // 半角
-        }
-
-        // 記号形式
-        if (enabledKeymaps.contains("Fullwidth Symbol")) {
-            ui_->commonSymbolStyle->setCurrentIndex(0);  // 全角
-        }
-        else {
-            ui_->commonSymbolStyle->setCurrentIndex(1);  // 半角
-        }
-
-        // 空白形式
-        if (enabledKeymaps.contains("Fullwidth Space")) {
-            ui_->spaceStyleLabel->setCurrentIndex(0);  // 全角
-        }
-        else {
-            ui_->spaceStyleLabel->setCurrentIndex(1);  // 半角
+        // 表示専用投影の印: 括弧コンボに実際の混在挙動と正規化のタイミングを説明する
+        // 表示専用はローマ字構成のみなので、かなモードの無効説明 (updateKanaModeControls) には触れない
+        if (!projection.selection.isKanaMode()) {
+            ui_->bracketStyle->setToolTip(projection.legacyDisplayOnly
+                ? tr("Legacy profile: parentheses and braces stay halfwidth while square brackets map to 「」.\n"
+                     "Editing any Basic setting applies the selected bracket style.")
+                : QString());
         }
     }
     else {
+        // 非互換投影では前回の表示専用印を残さない
+        ui_->bracketStyle->setToolTip(QString());
         showBasicModeWarning();
         setBasicTabEnabled(false);
         // Basicモードと互換性がない場合は自動でAdvancedタブへ切り替える
@@ -1831,107 +1797,6 @@ void MainWindow::syncAdvancedToBasic() {
     }
 
     isUpdatingFromAdvanced_ = false;
-}
-
-bool MainWindow::isBasicModeCompatible() {
-    if (!currentProfile_) return false;
-
-    // 現在の設定を取得する
-    QString submodeEntry = QString::fromStdString(currentProfile_->submode_entry_point_chars());
-
-    // 有効なキーマップとテーブルを収集する
-    QList<QString> enabledCustomKeymaps;
-    QList<QString> enabledCustomTables;
-
-    QList<QString> enabledBuiltinKeymaps;
-    QList<QString> enabledBuiltinTables;
-
-    for (int i = 0; i < currentProfile_->enabled_keymaps_size(); ++i) {
-        const auto& keymap = currentProfile_->enabled_keymaps(i);
-        QString name = QString::fromStdString(keymap.name());
-        if (keymap.is_built_in()) {
-            enabledBuiltinKeymaps.append(name);
-        }
-        else {
-            enabledCustomKeymaps.append(name);
-        }
-    }
-
-    for (int i = 0; i < currentProfile_->enabled_tables_size(); ++i) {
-        const auto& table = currentProfile_->enabled_tables(i);
-        QString name = QString::fromStdString(table.name());
-        if (table.is_built_in()) {
-            enabledBuiltinTables.append(name);
-        }
-        else {
-            enabledCustomKeymaps.append(name);
-        }
-    }
-
-    // カスタムキーマップの確認
-    if (enabledCustomTables.size() != 0 || enabledCustomKeymaps.size() != 0) {
-        return false;
-    }
-
-    // 有効な入力形式設定か確認する
-    // 組込テーブルが必須である
-    bool hasBuiltinRomajiTable = enabledBuiltinTables.contains("Romaji");
-    bool hasBuiltinKanaTable = enabledBuiltinTables.contains("Kana");
-    bool hasBuiltinKanaKeymap = enabledBuiltinKeymaps.contains("JIS Kana");
-    bool isRomajiSubmode = (submodeEntry == "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    bool isKanaSubmode = submodeEntry.isEmpty();
-
-    // 有効な組み合わせ:
-    // 1. ローマ字テーブルのみ + ローマ字サブモード
-    // 2. かなテーブルのみ + かなサブモード(空)
-    bool isValidRomajiInputStyle = (hasBuiltinRomajiTable && !hasBuiltinKanaTable && isRomajiSubmode && !hasBuiltinKanaKeymap);
-    bool isValidKanaInputStyle = (hasBuiltinKanaTable && !hasBuiltinRomajiTable && isKanaSubmode && hasBuiltinKanaKeymap);
-
-    // かなモードでは空白関連とJISかなのキーマップのみ許可する
-    if (isValidKanaInputStyle) {
-        QSet<QString> allowedKanaModeKeymaps = {"Fullwidth Space", "JIS Kana"};
-
-        for (const QString& keymap : enabledBuiltinKeymaps) {
-            if (!allowedKanaModeKeymaps.contains(keymap)) {
-                return false;  // かなモードに無効なキーマップ
-            }
-        }
-
-        return true;  // 有効な"かな"モード
-    }
-    else if (isValidRomajiInputStyle) {
-        QSet<QString> validBasicKeymaps = {
-            "Fullwidth Period", "Fullwidth Comma", "Fullwidth Number",
-            "Fullwidth Symbol", "Fullwidth Space", "Japanese Symbol"};
-
-        // 和字記号マップは有効化し、句読点の後に配置すること
-        bool checkedJapaneSymbolMap = false;
-
-        // 有効なキーマップがすべてBasicモードに適合するか確認する
-        for (const QString& keymap : enabledBuiltinKeymaps) {
-            if (!validBasicKeymaps.contains(keymap)) {
-                return false;
-            }
-
-            if (checkedJapaneSymbolMap &&
-                (keymap == "Fullwidth Period" || keymap == "Fullwidth Comma")) {
-                return false;  // 句読点と和字記号マップの順序が不正
-            }
-
-            if (keymap == "Japanese Symbol") {
-                checkedJapaneSymbolMap = true;
-            }
-        }
-
-        if (!checkedJapaneSymbolMap) {
-            return false;  // 必須マップが不足
-        }
-
-        return true;  // 有効なローマ字モード
-    }
-    else {
-        return false;
-    }
 }
 
 void MainWindow::showBasicModeWarning() {
@@ -1970,14 +1835,7 @@ void MainWindow::hideBasicModeWarning() {
                     setBasicTabEnabled(true);
 
                     // かなモードなら制限を再適用する
-                    if (ui_->mainInputStyle->currentIndex() == 1) {
-                        ui_->punctuationStyle->setEnabled(false);
-                        ui_->numberStyle->setEnabled(false);
-                        ui_->commonSymbolStyle->setEnabled(false);
-                        ui_->punctuationStyle->setToolTip("Disabled in Kana mode");
-                        ui_->numberStyle->setToolTip("Disabled in Kana mode");
-                        ui_->commonSymbolStyle->setToolTip("Disabled in Kana mode");
-                    }
+                    updateKanaModeControls(ui_->mainInputStyle->currentIndex() == 1);
                     return;
                 }
             }
@@ -1991,131 +1849,84 @@ void MainWindow::setBasicTabEnabled(bool enabled) {
     ui_->punctuationStyle->setEnabled(enabled);
     ui_->numberStyle->setEnabled(enabled);
     ui_->commonSymbolStyle->setEnabled(enabled);
+    ui_->quotationStyle->setEnabled(enabled);
+    ui_->bracketStyle->setEnabled(enabled);
     ui_->spaceStyleLabel->setEnabled(enabled);
 }
 
-void MainWindow::applyBasicInputStyle() {
-    int inputStyleIndex = ui_->mainInputStyle->currentIndex();
+void MainWindow::updateKanaModeControls(bool isKana) {
+    // かなモードでは句読点・数字・記号・引用符・括弧を無効化し、空白形式のみ変更できる
+    const QList<QComboBox*> restricted = {
+        ui_->punctuationStyle, ui_->numberStyle, ui_->commonSymbolStyle,
+        ui_->quotationStyle, ui_->bracketStyle};
 
-    if (inputStyleIndex == 0) {  // ローマ字
-        currentProfile_->set_submode_entry_point_chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-        addInputTableIfAvailable("Romaji", true);
-        addKeymapIfAvailable("Japanese Symbol", true);
-    }
-    else if (inputStyleIndex == 1) {  // JISかな
-        currentProfile_->set_submode_entry_point_chars("");
-        addInputTableIfAvailable("Kana", true);
-        addKeymapIfAvailable("JIS Kana", true);
+    for (QComboBox* combo : restricted) {
+        combo->setEnabled(!isKana);
+        // 無効状態が分かるようツールチップを更新する
+        combo->setToolTip(isKana ? tr("Disabled in Kana mode") : QString());
     }
 }
 
-void MainWindow::applyBasicPunctuationStyle() {
-    // 句読点形式が無効なら飛ばす (かなモード)
-    if (!ui_->punctuationStyle->isEnabled()) {
-        return;
-    }
-
-    int punctuationIndex = ui_->punctuationStyle->currentIndex();
-
-    switch (punctuationIndex) {
-        case 0:  // 和字の句点と読点
-            // 追加のキーマップは不要
-            break;
-        case 1:  // Period+Comma: ．，
-            addKeymapIfAvailable("Fullwidth Period", true);
-            addKeymapIfAvailable("Fullwidth Comma", true);
-            break;
-        case 2:  // 和字の句点とASCIIコンマ
-            addKeymapIfAvailable("Fullwidth Comma", true);
-            break;
-        case 3:  // Period+Toten: ．、
-            addKeymapIfAvailable("Fullwidth Period", true);
-            break;
-    }
+BasicInputStyleSelection MainWindow::currentBasicSelection() const {
+    BasicInputStyleSelection selection;
+    selection.mainInputStyle = ui_->mainInputStyle->currentIndex();
+    selection.punctuationStyle = ui_->punctuationStyle->currentIndex();
+    selection.numberStyle = ui_->numberStyle->currentIndex();
+    selection.symbolStyle = ui_->commonSymbolStyle->currentIndex();
+    selection.quotationStyle = ui_->quotationStyle->currentIndex();
+    selection.bracketStyle = ui_->bracketStyle->currentIndex();
+    selection.spaceStyle = ui_->spaceStyleLabel->currentIndex();
+    return selection;
 }
 
-void MainWindow::applyBasicNumberStyle() {
-    // 数字形式が無効なら飛ばす (かなモード)
-    if (!ui_->numberStyle->isEnabled()) {
-        return;
+QVector<BasicAvailableEntry> MainWindow::availableKeymapEntries() const {
+    QVector<BasicAvailableEntry> entries;
+    entries.reserve(currentConfig_.available_keymaps_size());
+    for (const auto& availableKeymap : currentConfig_.available_keymaps()) {
+        entries.append({QString::fromStdString(availableKeymap.name()),
+                        availableKeymap.is_built_in(),
+                        QString::fromStdString(availableKeymap.filename())});
     }
-
-    int numberIndex = ui_->numberStyle->currentIndex();
-
-    if (numberIndex == 0) {  // 全角: １２３４５
-        addKeymapIfAvailable("Fullwidth Number", true);
-    }
-
-    // 半角が既定値のためキーマップは不要
+    return entries;
 }
 
-void MainWindow::applyBasicSymbolStyle() {
-    // 記号形式が無効なら飛ばす(かなモード)
-    if (!ui_->commonSymbolStyle->isEnabled()) {
-        return;
+QVector<BasicAvailableEntry> MainWindow::availableTableEntries() const {
+    QVector<BasicAvailableEntry> entries;
+    entries.reserve(currentConfig_.available_tables_size());
+    for (const auto& availableTable : currentConfig_.available_tables()) {
+        entries.append({QString::fromStdString(availableTable.name()),
+                        availableTable.is_built_in(),
+                        QString::fromStdString(availableTable.filename())});
     }
-
-    int symbolIndex = ui_->commonSymbolStyle->currentIndex();
-
-    switch (symbolIndex) {
-        case 0:  // 全角: ！＃＠（
-            addKeymapIfAvailable("Fullwidth Symbol", true);
-            break;
-        case 1:  // 半角: !#@(
-            // 追加のキーマップは不要
-            break;
-    }
+    return entries;
 }
 
-void MainWindow::applyBasicSpaceStyle() {
-    int spaceIndex = ui_->spaceStyleLabel->currentIndex();
-
-    if (spaceIndex == 0) {  // 全角: "　"
-        addKeymapIfAvailable("Fullwidth Space", true);
+QVector<BasicProfileEntry> MainWindow::enabledKeymapEntries() const {
+    QVector<BasicProfileEntry> entries;
+    if (!currentProfile_) {
+        return entries;
     }
-
-    // 半角が既定値のためキーマップは不要
+    entries.reserve(currentProfile_->enabled_keymaps_size());
+    for (const auto& enabledKeymap : currentProfile_->enabled_keymaps()) {
+        entries.append({QString::fromStdString(enabledKeymap.name()),
+                        enabledKeymap.is_built_in(),
+                        QString::fromStdString(enabledKeymap.filename())});
+    }
+    return entries;
 }
 
-void MainWindow::addKeymapIfAvailable(const QString& keymapName,
-                                      bool isBuiltIn) {
-    // 名前と組込状態の完全一致でキーマップが利用可能か確認する
-    for (int i = 0; i < currentConfig_.available_keymaps_size(); ++i) {
-        const auto& availableKeymap = currentConfig_.available_keymaps(i);
-        if (QString::fromStdString(availableKeymap.name()) == keymapName &&
-            availableKeymap.is_built_in() == isBuiltIn) {
-            // 有効なキーマップに追加する
-            auto* enabledKeymap = currentProfile_->add_enabled_keymaps();
-            enabledKeymap->set_name(availableKeymap.name());
-            enabledKeymap->set_is_built_in(availableKeymap.is_built_in());
-            enabledKeymap->set_filename(availableKeymap.filename());
-            break;
-        }
+QVector<BasicProfileEntry> MainWindow::enabledTableEntries() const {
+    QVector<BasicProfileEntry> entries;
+    if (!currentProfile_) {
+        return entries;
     }
-}
-
-void MainWindow::addInputTableIfAvailable(const QString& tableName,
-                                          bool isBuiltIn) {
-    // 名前と組込状態の完全一致で入力テーブルが利用可能か確認する
-    for (int i = 0; i < currentConfig_.available_tables_size(); ++i) {
-        const auto& availableTable = currentConfig_.available_tables(i);
-        if (QString::fromStdString(availableTable.name()) == tableName &&
-            availableTable.is_built_in() == isBuiltIn) {
-            // 有効なテーブルに追加する
-            auto* enabledTable = currentProfile_->add_enabled_tables();
-            enabledTable->set_name(availableTable.name());
-            enabledTable->set_is_built_in(availableTable.is_built_in());
-            enabledTable->set_filename(availableTable.filename());
-            break;
-        }
+    entries.reserve(currentProfile_->enabled_tables_size());
+    for (const auto& enabledTable : currentProfile_->enabled_tables()) {
+        entries.append({QString::fromStdString(enabledTable.name()),
+                        enabledTable.is_built_in(),
+                        QString::fromStdString(enabledTable.filename())});
     }
-}
-
-void MainWindow::clearKeymapsAndTables() {
-    if (currentProfile_) {
-        currentProfile_->clear_enabled_keymaps();
-        currentProfile_->clear_enabled_tables();
-    }
+    return entries;
 }
 
 void MainWindow::onCheckAllConversion() {
@@ -2217,6 +2028,24 @@ QString MainWindow::translateKeymapName(const QString& keymapName,
     }
     else if (keymapName == "Fullwidth Symbol") {
         return tr("Fullwidth Symbol");
+    }
+    else if (keymapName == "Fullwidth Basic Symbol") {
+        return tr("Fullwidth Basic Symbol");
+    }
+    else if (keymapName == "Fullwidth Quotation") {
+        return tr("Fullwidth Quotation");
+    }
+    else if (keymapName == "Typographic Quotation") {
+        return tr("Typographic Quotation");
+    }
+    else if (keymapName == "Japanese Bracket") {
+        return tr("Japanese Bracket");
+    }
+    else if (keymapName == "Fullwidth Bracket") {
+        return tr("Fullwidth Bracket");
+    }
+    else if (keymapName == "Halfwidth Bracket") {
+        return tr("Halfwidth Bracket");
     }
     else if (keymapName == "Fullwidth Space") {
         return tr("Fullwidth Space");
@@ -2461,7 +2290,7 @@ void MainWindow::onDownloadZenzaiModel() {
         zenzaiModelDialog_ = nullptr;
         rows.clear();
 
-        // [OK] / [キャンセル]ボタンのいずれでもループを抜ける
+        // [OK]/[キャンセル]ボタンのいずれでもループを抜ける
         // モデルを有効化した可能性があるため (削除はその場で反映済み)、Zenzaiランタイムのメタデータのみを更新する
         // プロファイル由来ウィジェットと未保存の編集内容には触れず、更新に失敗しても警告表示はそのまま残す
         auto runtimeConfig = server_.getConfig();

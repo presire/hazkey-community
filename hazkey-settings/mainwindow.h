@@ -6,7 +6,7 @@
  * @brief hazkey-settingsのメイン設定ウィンドウを宣言する
  *
  * サーバ設定、入力方式、ユーザ辞書、およびZenzaiモデル管理を1つのQWidgetに集約する
- * 編集内容は、[Apply] または [OK]ボタンを押下するまでサーバへ送信せず、
+ * 編集内容は、[Apply]または[OK]ボタンを押下するまでサーバへ送信せず、
  * 設定UIは、常にprofiles[0]のみを対象とする
  */
 
@@ -23,6 +23,7 @@
 #include "serverconnector.h"
 #include "userdict_model.h"
 #include "zenzai_models.h"
+#include "basic_input_style.h"
 
 class LearningHistoryDialog;
 class QFile;
@@ -194,11 +195,6 @@ class MainWindow : public QWidget {
     void syncBasicToAdvanced();
     /** @brief Advanced設定がBasicで表現できる場合に選択値へ逆同期する */
     void syncAdvancedToBasic();
-    /**
-     * @brief 現在のAdvanced設定がBasic UIで表現可能か判定する
-     * @return Basic UIの選択値へ損失なく対応付けられる場合はtrue
-     */
-    bool isBasicModeCompatible();
     /** @brief Basic UIで表現不能な Advanced 設定の警告を表示する */
     void showBasicModeWarning();
     /** @brief Basic UIの互換性警告を非表示にする */
@@ -208,30 +204,36 @@ class MainWindow : public QWidget {
      * @param enabled Basic 設定タブを操作可能にする場合は true
      */
     void setBasicTabEnabled(bool enabled);
-    /** @brief Basic入力方式から基礎キーマップと入力テーブルを適用する */
-    void applyBasicInputStyle();
-    /** @brief Basic句読点設定から対応キーマップを適用する */
-    void applyBasicPunctuationStyle();
-    /** @brief Basic数字設定から対応キーマップを適用する */
-    void applyBasicNumberStyle();
-    /** @brief Basic記号設定から対応キーマップを適用する */
-    void applyBasicSymbolStyle();
-    /** @brief Basic空白設定から対応キーマップを適用する */
-    void applyBasicSpaceStyle();
     /**
-     * @brief 利用可能なキーマップだけを有効一覧へ追加する
-     * @param keymapName 追加候補のキーマップ名
-     * @param isBuiltIn 組み込みキーマップならtrue
+     * @brief かなモードの制限に応じてBasicコンボの有効状態とツールチップを切り替える
+     * @param isKana かなモードならtrue (句読点・数字・記号・引用符・括弧を無効化する)
      */
-    void addKeymapIfAvailable(const QString& keymapName, bool isBuiltIn);
+    void updateKanaModeControls(bool isKana);
     /**
-     * @brief 利用可能な入力テーブルだけを有効一覧へ追加する
-     * @param tableName 追加候補の入力テーブル名
-     * @param isBuiltIn 組み込み入力テーブルならtrue
+     * @brief Basicタブのコンボから現在の選択インデックスを読み出す
+     * @return Basicタブのコンボ選択値
      */
-    void addInputTableIfAvailable(const QString& tableName, bool isBuiltIn);
-    /** @brief Basic同期に先立ちキーマップと入力テーブルの一覧を空にする */
-    void clearKeymapsAndTables();
+    BasicInputStyleSelection currentBasicSelection() const;
+    /**
+     * @brief サーバ報告の利用可能キーマップをヘルパーのエントリ列へ変換する
+     * @return 利用可能キーマップのエントリ列
+     */
+    QVector<BasicAvailableEntry> availableKeymapEntries() const;
+    /**
+     * @brief サーバ報告の利用可能入力テーブルをヘルパーのエントリ列へ変換する
+     * @return 利用可能入力テーブルのエントリ列
+     */
+    QVector<BasicAvailableEntry> availableTableEntries() const;
+    /**
+     * @brief プロファイルの有効キーマップをヘルパーのエントリ列へ変換する
+     * @return 有効キーマップのエントリ列
+     */
+    QVector<BasicProfileEntry> enabledKeymapEntries() const;
+    /**
+     * @brief プロファイルの有効入力テーブルをヘルパーのエントリ列へ変換する
+     * @return 有効入力テーブルのエントリ列
+     */
+    QVector<BasicProfileEntry> enabledTableEntries() const;
     /**
      * @brief 組み込みキーマップ名をUI用に翻訳する
      * @param keymapName 翻訳候補のキーマップ名

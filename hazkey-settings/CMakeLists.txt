@@ -59,6 +59,9 @@ set(PROJECT_SOURCES
     zenzai_family_row.h
     userdict_model.cpp
     userdict_model.h
+    # Basic入力方式タブの計画生成 / 逆投影ロジック
+    basic_input_style.cpp
+    basic_input_style.h
 )
 
 qt_add_executable(hazkey-settings ${PROJECT_SOURCES}
@@ -200,6 +203,14 @@ qt_add_executable(userdict_model_test
 )
 target_link_libraries(userdict_model_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME userdict_model_test COMMAND userdict_model_test)
+
+# Basic入力方式の計画生成 / 逆投影の純ロジックテスト
+qt_add_executable(basic_input_style_test
+    basic_input_style_test.cpp
+    basic_input_style.cpp
+)
+target_link_libraries(basic_input_style_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME basic_input_style_test COMMAND basic_input_style_test)
 
 qt_add_executable(learninghistorydialog_test
     learninghistorydialog_test.cpp

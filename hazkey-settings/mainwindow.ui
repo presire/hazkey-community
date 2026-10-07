@@ -1060,13 +1060,65 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="4" column="0">
-                  <widget class="QLabel" name="spaceStyle">
-                   <property name="text">
-                    <string>Space style</string>
-                   </property>
-                  </widget>
-                 </item>
+                  <item row="4" column="0">
+                   <widget class="QLabel" name="quotationStyleLabel">
+                    <property name="text">
+                     <string>Quotation style</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="1">
+                   <widget class="QComboBox" name="quotationStyle">
+                    <item>
+                     <property name="text">
+                      <string>Fullwidth: ＂＇｀</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>Typographic: “”‘’ (fixed)</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>Halfwidth: &quot;'`</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                  <item row="5" column="0">
+                   <widget class="QLabel" name="bracketStyleLabel">
+                    <property name="text">
+                     <string>Bracket style</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="1">
+                   <widget class="QComboBox" name="bracketStyle">
+                    <item>
+                     <property name="text">
+                      <string>Japanese: （）「」｛｝</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>Fullwidth: （）［］｛｝</string>
+                     </property>
+                    </item>
+                    <item>
+                     <property name="text">
+                      <string>Halfwidth: ()[]{}</string>
+                     </property>
+                    </item>
+                   </widget>
+                  </item>
+                  <item row="6" column="0">
+                   <widget class="QLabel" name="spaceStyle">
+                    <property name="text">
+                     <string>Space style</string>
+                    </property>
+                   </widget>
+                  </item>
                  <item row="2" column="1">
                   <widget class="QComboBox" name="numberStyle">
                    <item>
@@ -1081,8 +1133,8 @@
                    </item>
                   </widget>
                  </item>
-                 <item row="4" column="1">
-                  <widget class="QComboBox" name="spaceStyleLabel">
+                  <item row="6" column="1">
+                   <widget class="QComboBox" name="spaceStyleLabel">
                    <item>
                     <property name="text">
                      <string>Fullwidth: &quot;　&quot;</string>
@@ -1099,12 +1151,12 @@
                   <widget class="QComboBox" name="commonSymbolStyle">
                    <item>
                     <property name="text">
-                     <string>Fullwidth: ！＃＠（</string>
+                     <string>Fullwidth: ！＃＠％</string>
                     </property>
                    </item>
                    <item>
                     <property name="text">
-                     <string>Halfwidth: !#@(</string>
+                     <string>Halfwidth: !#@%</string>
                     </property>
                    </item>
                   </widget>

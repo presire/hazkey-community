@@ -75,6 +75,12 @@ let builtInKeymaps = [
     "Fullwidth Symbol",
     "Fullwidth Number",
     "Fullwidth Space",
+    "Fullwidth Basic Symbol",
+    "Fullwidth Quotation",
+    "Typographic Quotation",
+    "Japanese Bracket",
+    "Fullwidth Bracket",
+    "Halfwidth Bracket",
 ].map { name in
     Hazkey_Config_Keymap.with {
         $0.name = name
@@ -461,6 +467,10 @@ class HazkeyServerConfig {
             $0.extendedEmoji = true
         }
         newConf.stopStoreNewHistory = false
+        // 有効キーマップは前方ほど優先される
+        //
+        // 既定の並びは、全角数字・全角基本記号・全角引用符・和字括弧・全角スペース・和字記号とする
+        // 記号の変換は[Fullwidth Basic Symbol]が担い、[Fullwidth Symbol]は既存の利用者設定のために残す
         newConf.enabledKeymaps = [
             Hazkey_Config_Profile.EnabledKeymap.with {
                 $0.name = "Fullwidth Number"
@@ -468,19 +478,29 @@ class HazkeyServerConfig {
                 $0.filename = "Fullwidth Number"
             },
             Hazkey_Config_Profile.EnabledKeymap.with {
-                $0.name = "Fullwidth Symbol"
+                $0.name = "Fullwidth Basic Symbol"
                 $0.isBuiltIn = true
-                $0.filename = "Fullwidth Symbol"
+                $0.filename = "Fullwidth Basic Symbol"
             },
             Hazkey_Config_Profile.EnabledKeymap.with {
-                $0.name = "Japanese Symbol"
+                $0.name = "Fullwidth Quotation"
                 $0.isBuiltIn = true
-                $0.filename = "Japanese Symbol"
+                $0.filename = "Fullwidth Quotation"
+            },
+            Hazkey_Config_Profile.EnabledKeymap.with {
+                $0.name = "Japanese Bracket"
+                $0.isBuiltIn = true
+                $0.filename = "Japanese Bracket"
             },
             Hazkey_Config_Profile.EnabledKeymap.with {
                 $0.name = "Fullwidth Space"
                 $0.isBuiltIn = true
                 $0.filename = "Fullwidth Space"
+            },
+            Hazkey_Config_Profile.EnabledKeymap.with {
+                $0.name = "Japanese Symbol"
+                $0.isBuiltIn = true
+                $0.filename = "Japanese Symbol"
             },
         ]
         newConf.enabledTables = [
@@ -1168,7 +1188,9 @@ class HazkeyServerConfig {
 
     /// 有効なキーマップを読み込む
     ///
-    /// 内蔵定義と利用者定義TSVを後勝ちで合成して、不明な定義や読み込み失敗は飛ばす
+    /// 有効リストを逆順に辿って合成するため、先頭に近い項目ほど優先される
+    ///
+    /// 内蔵定義と利用者定義TSVを合成し、不明な定義や読み込み失敗は飛ばす
     ///
     /// - Returns: 合成済みキーマップを返す
     func loadKeymap() -> Keymap {
@@ -1191,6 +1213,18 @@ class HazkeyServerConfig {
                     newKeymapRule = fullwidthNumberMap
                 case "Fullwidth Space":
                     newKeymapRule = fullwidthSpaceMap
+                case "Fullwidth Basic Symbol":
+                    newKeymapRule = fullwidthBasicSymbolMap
+                case "Fullwidth Quotation":
+                    newKeymapRule = fullwidthQuotationMap
+                case "Typographic Quotation":
+                    newKeymapRule = typographicQuotationMap
+                case "Japanese Bracket":
+                    newKeymapRule = japaneseBracketMap
+                case "Fullwidth Bracket":
+                    newKeymapRule = fullwidthBracketMap
+                case "Halfwidth Bracket":
+                    newKeymapRule = halfwidthBracketMap
                 default:
                     NSLog("Unknown built-in keymap: \(enabledKeymap.name)")
                     continue outer
