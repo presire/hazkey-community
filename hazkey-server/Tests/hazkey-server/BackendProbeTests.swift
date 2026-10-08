@@ -84,6 +84,48 @@ final class BackendProbeTests: XCTestCase {
         }
     }
 
+    func testProbeReapsTermResistantChildAfterKillGrace() throws {
+        let root = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pidFile = root.appendingPathComponent("pid")
+        let start = ContinuousClock.now
+        let outcome = probeVulkanBackendsSafely(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "trap '' TERM; echo $$ > '\(pidFile.path)'; while :; do :; done"],
+            timeoutSeconds: 0.1)
+        XCTAssertEqual(outcome, .timedOut)
+        XCTAssertGreaterThanOrEqual(start.duration(to: .now), .milliseconds(550))
+        XCTAssertLessThan(start.duration(to: .now), .seconds(2))
+        let pid = try XCTUnwrap(Int32(try String(contentsOf: pidFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)))
+        var status: Int32 = 0
+        XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
+        XCTAssertEqual(errno, ECHILD)
+    }
+
+    func testProbeQuickExitsDoNotLeaveChildrenOrDelayedWatchdogs() throws {
+        let root = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pidFile = root.appendingPathComponent("pid")
+        for _ in 0..<10 {
+            XCTAssertEqual(probeVulkanBackendsSafely(
+                executablePath: "/bin/sh",
+                arguments: ["-c", "echo $$ > '\(pidFile.path)'; exit 0"], timeoutSeconds: 0.2), .success)
+            let pid = try XCTUnwrap(Int32(try String(contentsOf: pidFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)))
+            var status: Int32 = 0
+            XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
+            XCTAssertEqual(errno, ECHILD)
+        }
+    }
+
+    func testProbeRejectsNulArgumentWithoutSpawning() {
+        guard case .spawnFailed = probeVulkanBackendsSafely(
+            executablePath: "/bin/sh", arguments: ["-c", "exit 0\0exit 1"]) else {
+            return XCTFail("Expected argument validation failure")
+        }
+    }
+
     // MARK: 実行中バイナリのパス取得
 
     func testResolveSelfExecutablePathReturnsNonEmptyPath() {

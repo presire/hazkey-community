@@ -473,7 +473,8 @@ bool zenzaiModelSupportsAlignmentSeparator(const QString& modelKeyOrPath) {
 
 QString ZenzaiModelManager::getZenzaiDir() {
     QString dataHome = qEnvironmentVariable("XDG_DATA_HOME");
-    if (dataHome.isEmpty()) {
+    // XDG Base Directory仕様に従い、絶対パスでない値は無効として既定位置を使う (サーバと同じ規則)
+    if (!dataHome.startsWith(QLatin1Char('/'))) {
         dataHome = QDir::homePath() + "/.local/share";
     }
     return dataHome + "/hazkey-community/zenzai";

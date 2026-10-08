@@ -34,6 +34,7 @@
 #include <QNetworkRequest>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QEventLoop>
 #include <QScopedValueRollback>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -43,10 +44,16 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <cerrno>
+#include <cstring>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include "mainwindow.h"
 #include "zenzai_family_row.h"
 #include "./ui_mainwindow.h"
 #include "config_definitions.h"
+#include "async_server_call.h"
 #include "config_macros.h"
 #include "constants.h"
 #include "constants.h.in"
@@ -501,7 +508,9 @@ void MainWindow::onButtonClicked(QAbstractButton* button) {
 
     switch (standardButton) {
         case QDialogButtonBox::Ok:
-            if (saveCurrentConfig()) {
+            // 保存の完了を待つ間 (待機ダイアログの表示前を含む) にUIが編集された場合は、閉じずにその編集を残す
+            // saveCurrentConfig()は待機前の状態を基準値にするため、待機中の編集は未保存の変更として[Apply]に残る
+            if (saveCurrentConfig() && uiStateKey() == baselineKey_) {
                 close();
             }
             break;
@@ -786,12 +795,14 @@ void MainWindow::updateRightContextUi() {
 
 bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     if (fetchConfig) {
-        auto configOpt = server_.getConfig();
-        if (!configOpt.has_value()) {
+        // 取得は作業スレッドで行い、サーバが応答しない間も画面の再描画を止めない
+        const auto call = runServerCallAsync(this, tr("Loading configuration..."),
+                                             [this]() { return server_.getConfig(); });
+        if (!call.completed() || !call.value->has_value()) {
             return false;
         }
 
-        currentConfig_ = configOpt.value();
+        currentConfig_ = call.value->value();
         if (currentConfig_.profiles_size() == 0) {
             return false;
         }
@@ -1126,10 +1137,23 @@ bool MainWindow::saveCurrentConfig() {
 
     // サーバへ保存する
     try {
-        server_.setCurrentConfig(currentConfig_);
+        // 送信内容と基準値は待機前の状態で確定する
+        // 待機中にUIが編集されても、その編集を保存済みとして扱わないため
+        const QString savedKey = uiStateKey();
+        const auto call = runServerCallAsync(
+            this, tr("Saving configuration..."),
+            [this, config = currentConfig_]() {
+                server_.setCurrentConfig(config);
+                return true;
+            });
+        if (!call.completed()) {
+            // Busy: 他のサーバ呼び出しの実行中 / Aborted: アプリケーション終了中
+            // いずれも保存していないため、基準値は変更しない
+            return false;
+        }
         // 成功した保存でのみ基準値を更新する
         // 失敗時は基準値と[Apply]ボタンをそのままにしてユーザが再試行できるようにする
-        updateBaseline();
+        baselineKey_ = savedKey;
         recomputeDirtyState();
         return true;
     }
@@ -1975,9 +1999,15 @@ void MainWindow::onClearLearningData() {
 
     if (reply == QMessageBox::Yes) {
         // サーバコネクターで履歴を消去する
-        bool success = server_.clearAllHistory(currentProfile_->profile_id());
+        const std::string profileId = currentProfile_->profile_id();
+        const auto call = runServerCallAsync(
+            this, tr("Clearing input history..."),
+            [this, profileId]() { return server_.clearAllHistory(profileId); });
+        if (call.aborted()) {
+            return;
+        }
 
-        if (success) {
+        if (call.completed() && call.value.value_or(false)) {
             QMessageBox::information(this, tr("Success"), tr("Input history has been cleared successfully."));
         }
         else {
@@ -2117,11 +2147,7 @@ MainWindow::~MainWindow() {
         currentDownload_->abort();
         currentDownload_->deleteLater();
     }
-    closeDownloadStream();
-    const QString leftoverTemp = currentDownloadTempPath();
-    if (!leftoverTemp.isEmpty()) {
-        QFile::remove(leftoverTemp);
-    }
+    discardPartialDownload();
 
     if (downloadProgressDialog_) {
         delete downloadProgressDialog_;
@@ -2237,8 +2263,9 @@ void MainWindow::onDownloadZenzaiModel() {
         buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
 
         // OKボタン: 選択行に束縛中のアーティファクトを有効化する
+        bool applicationQuitting = false;
         connect(buttons->button(QDialogButtonBox::Ok), &QPushButton::clicked,
-                this, [this, group, rows, &dialog]() {
+                this, [this, group, rows, &dialog, &applicationQuitting]() {
                     int selectedIdx = group->checkedId();
                     if (selectedIdx < 0 || selectedIdx >= rows.size()) {
                         dialog.reject();
@@ -2246,22 +2273,14 @@ void MainWindow::onDownloadZenzaiModel() {
                     }
                     const ZenzaiModelOption& chosen = rows[selectedIdx]->artifact();
                     if (ZenzaiModelManager::activateModel(chosen.key)) {
-                        bool reloadSucceeded = false;
-                        {
-                            QProgressDialog waitDialog(tr("Loading neural conversion model..."), QString(), 0, 0, &dialog);
-                            waitDialog.setWindowModality(Qt::WindowModal);
-                            waitDialog.setMinimumDuration(0);
-                            waitDialog.setCancelButton(nullptr);
-                            waitDialog.setAutoReset(false);
-                            waitDialog.setAutoClose(false);
-                            OverrideCursorGuard cursorGuard;
-                            waitDialog.show();
-                            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers);
-                            reloadSucceeded = server_.reloadZenzaiModel();
-                            waitDialog.close();
+                        const ZenzaiReloadOutcome outcome = reloadZenzaiModelAsync(&dialog);
+                        if (outcome == ZenzaiReloadOutcome::Aborted) {
+                            // アプリケーション終了中は、ダイアログへ一切触れずに戻る
+                            applicationQuitting = true;
+                            return;
                         }
 
-                        if (!reloadSucceeded) {
+                        if (outcome != ZenzaiReloadOutcome::Succeeded) {
                             QMessageBox::warning(&dialog, tr("Neural Conversion Model Warning"),
                                                  tr("The selected model is active, but neural conversion could not finish loading it."));
                         }
@@ -2289,18 +2308,31 @@ void MainWindow::onDownloadZenzaiModel() {
         dialog.exec();
         zenzaiModelDialog_ = nullptr;
         rows.clear();
+        if (applicationQuitting) {
+            // 終了中は、サーバ問い合わせやUI更新をせずに抜ける
+            zenzaiDownloadedSnapshot_.clear();
+            return;
+        }
 
         // [OK]/[キャンセル]ボタンのいずれでもループを抜ける
         // モデルを有効化した可能性があるため (削除はその場で反映済み)、Zenzaiランタイムのメタデータのみを更新する
         // プロファイル由来ウィジェットと未保存の編集内容には触れず、更新に失敗しても警告表示はそのまま残す
-        auto runtimeConfig = server_.getConfig();
-        if (runtimeConfig.has_value()) {
+        const auto runtimeCall = runServerCallAsync(
+            this, tr("Loading configuration..."),
+            [this]() { return server_.getConfig(); });
+        if (runtimeCall.aborted()) {
+            // アプリケーション終了中は、UI更新をせずに抜ける
+            zenzaiDownloadedSnapshot_.clear();
+            return;
+        }
+        if (runtimeCall.completed() && runtimeCall.value->has_value()) {
+            const auto& runtimeConfig = runtimeCall.value->value();
             currentConfig_.set_zenzai_model_available(
-                runtimeConfig->zenzai_model_available());
+                runtimeConfig.zenzai_model_available());
             currentConfig_.set_zenzai_model_path(
-                runtimeConfig->zenzai_model_path());
+                runtimeConfig.zenzai_model_path());
             currentConfig_.mutable_available_zenzai_backend_devices()->CopyFrom(
-                runtimeConfig->available_zenzai_backend_devices());
+                runtimeConfig.available_zenzai_backend_devices());
             updateZenzaiAvailabilityUi();
         }
         zenzaiDownloadedSnapshot_.clear();
@@ -2406,6 +2438,19 @@ void MainWindow::beginZenzaiModelDownload(const QString& key) {
     downloadProgressDialog_->setValue(0);
 }
 
+ZenzaiReloadOutcome MainWindow::reloadZenzaiModelAsync(QWidget* dialogParent) {
+    // 再読込はモデル読込を伴い長くかかるため、待機ダイアログは即座に表示する
+    const auto call = runServerCallAsync(
+        dialogParent, tr("Loading neural conversion model..."),
+        [this]() { return server_.reloadZenzaiModel(); }, 0);
+    if (call.aborted()) {
+        return ZenzaiReloadOutcome::Aborted;
+    }
+    // Busy (他のサーバ呼び出しの実行中) は失敗として扱う
+    return call.completed() && call.value.value_or(false) ? ZenzaiReloadOutcome::Succeeded
+                                                          : ZenzaiReloadOutcome::Failed;
+}
+
 void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog) {
     const ZenzaiModelOption* model = findZenzaiModelByKey(key);
     if (!model) {
@@ -2429,7 +2474,12 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
     const bool wasActive = activeKey == key;
     if (ZenzaiModelManager::deleteModel(key)) {
         if (wasActive) {
-            server_.reloadZenzaiModel();
+            const ZenzaiReloadOutcome outcome = reloadZenzaiModelAsync(
+                dialog ? static_cast<QWidget*>(dialog) : zenzaiDialogParent());
+            if (outcome == ZenzaiReloadOutcome::Aborted) {
+                // アプリケーション終了中は、ダイアログへ一切触れずに戻る
+                return;
+            }
         }
 
         if (dialog) {
@@ -2515,8 +2565,8 @@ void MainWindow::onDownloadReadyRead() {
     QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
     if (reply != currentDownload_ || !currentDownload_) return;
 
-    // 遅延生成: 初回断片で一時ファイルと増分ハッシュを用意する
-    if (!downloadTempFile_ && !ensureDownloadStream()) {
+    // 遅延生成: 初回断片で保存先の検証と一時ファイルの作成を行う
+    if (downloadTempFd_ < 0 && !ensureDownloadStream()) {
         currentDownload_->abort();
         return;
     }
@@ -2529,56 +2579,74 @@ void MainWindow::onDownloadReadyRead() {
         currentDownload_->abort();
         return;
     }
-    downloadHash_->addData(chunk);
-    if (downloadTempFile_->write(chunk) != chunk.size()) {
-        downloadFileError_ = downloadTempFile_->errorString();
+    if (!writeDownloadChunk(chunk)) {
         currentDownload_->abort();
         return;
     }
-    downloadReceivedBytes_ += chunk.size();
 }
 
-QString MainWindow::currentDownloadTempPath() const {
-    if (currentDownloadKey_.isEmpty()) return QString();
-    return ZenzaiModelManager::getModelPath(currentDownloadKey_) + ".tmp";
+bool MainWindow::writeDownloadChunk(const QByteArray& chunk) {
+    qint64 written = 0;
+    while (written < chunk.size()) {
+        const ssize_t count = ::write(downloadTempFd_, chunk.constData() + written,
+                                      static_cast<size_t>(chunk.size() - written));
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (downloadFileError_.isEmpty()) {
+                downloadFileError_ = QString::fromLocal8Bit(std::strerror(errno));
+            }
+            return false;
+        }
+        written += count;
+    }
+    downloadReceivedBytes_ += chunk.size();
+    return true;
 }
 
 bool MainWindow::ensureDownloadStream() {
-    if (downloadTempFile_) return true;
-    const QString temporaryPath = currentDownloadTempPath();
-    if (temporaryPath.isEmpty()) return false;
-    QDir().mkpath(QFileInfo(temporaryPath).absolutePath());
-    // 既存の一時ファイルやシンボリックリンクはリンク自体を外し、書き込み先を辿らせない
-    QFile::remove(temporaryPath);
-    downloadTempFile_ = new QFile(temporaryPath);
-    if (!downloadTempFile_->open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-        downloadFileError_ = downloadTempFile_->errorString();
-        delete downloadTempFile_;
-        downloadTempFile_ = nullptr;
+    if (downloadTempFd_ >= 0) return true;
+    if (currentDownloadKey_.isEmpty()) return false;
+
+    // 保存先が自UID所有の実ディレクトリでなければ、ダウンロードを中止する (group/other書込権限は外す)
+    QString detail;
+    downloadDirectoryFd_ = openVerifiedModelDirectory(ZenzaiModelManager::getModelsDir(), &detail);
+    if (downloadDirectoryFd_ < 0) {
+        downloadFileError_ = tr("The model directory is not safe to use (%1)").arg(detail);
         return false;
     }
-    downloadHash_ = new QCryptographicHash(QCryptographicHash::Sha256);
+
+    // 0600の新規ファイルとして作成する。古い一時ファイルやリンクは、リンク自体を外す
+    downloadTempName_ = QFileInfo(ZenzaiModelManager::getModelPath(currentDownloadKey_)).fileName() +
+                        QStringLiteral(".tmp");
+    downloadTempFd_ = createPrivateTemporaryFile(downloadDirectoryFd_, downloadTempName_, &detail);
+    if (downloadTempFd_ < 0) {
+        downloadFileError_ = detail;
+        closeDownloadStream();
+        return false;
+    }
     return true;
 }
 
 void MainWindow::closeDownloadStream() {
-    if (downloadTempFile_) {
-        downloadTempFile_->close();
-        delete downloadTempFile_;
-        downloadTempFile_ = nullptr;
+    if (downloadTempFd_ >= 0) {
+        ::close(downloadTempFd_);
+        downloadTempFd_ = -1;
     }
-    if (downloadHash_) {
-        delete downloadHash_;
-        downloadHash_ = nullptr;
+    if (downloadDirectoryFd_ >= 0) {
+        ::close(downloadDirectoryFd_);
+        downloadDirectoryFd_ = -1;
     }
+    downloadTempName_.clear();
 }
 
 void MainWindow::discardPartialDownload() {
-    closeDownloadStream();
-    const QString temporaryPath = currentDownloadTempPath();
-    if (!temporaryPath.isEmpty()) {
-        QFile::remove(temporaryPath);
+    // 検証済みディレクトリの記述子経由で一時ファイル名だけを外す (パス名を再解決しない)
+    if (downloadDirectoryFd_ >= 0 && !downloadTempName_.isEmpty()) {
+        ::unlinkat(downloadDirectoryFd_, QFile::encodeName(downloadTempName_).constData(), 0);
     }
+    closeDownloadStream();
     downloadReceivedBytes_ = 0;
     downloadFileError_.clear();
 }
@@ -2632,11 +2700,7 @@ void MainWindow::onDownloadFinished() {
                 downloadFileError_ = tr("The download exceeds the allowed model size.");
             }
         } else {
-            downloadHash_->addData(tail);
-            if (downloadTempFile_->write(tail) != tail.size() && downloadFileError_.isEmpty()) {
-                downloadFileError_ = downloadTempFile_->errorString();
-            }
-            downloadReceivedBytes_ += tail.size();
+            writeDownloadChunk(tail);
         }
     }
     currentDownload_->deleteLater();
@@ -2651,11 +2715,6 @@ void MainWindow::onDownloadFinished() {
         return;
     }
 
-    const QString calculatedHashHex =
-        QString::fromLatin1(downloadHash_->result().toHex());
-    const qint64 receivedBytes = downloadReceivedBytes_;
-    closeDownloadStream();
-
     const ZenzaiModelOption* downloadedModel =
         findZenzaiModelByKey(currentDownloadKey_);
     if (!downloadedModel) {
@@ -2666,36 +2725,38 @@ void MainWindow::onDownloadFinished() {
         return;
     }
 
-    const QString modelPath = ZenzaiModelManager::getModelPath(downloadedModel->key);
-    const ModelDownloadValidation validation = validateStreamedModelDownload(
-        receivedBytes, currentDownloadExpectedBytes_,
-        calculatedHashHex, currentDownloadExpectedSha256_);
-    if (validation == ModelDownloadValidation::SizeMismatch) {
-        finalizeStreamedModelDownload(modelPath, validation);
+    // 受信時の増分ハッシュは使わない。確定の直前に、書き出した同じ記述子の実バイト列から
+    // サイズとSHA256を再計算して検証する
+    const QString finalName = QFileInfo(ZenzaiModelManager::getModelPath(downloadedModel->key)).fileName();
+    const StreamedModelFinalization finalization = finalizeStreamedModelDownload(
+        downloadDirectoryFd_, downloadTempName_, finalName, downloadTempFd_,
+        currentDownloadExpectedBytes_, currentDownloadExpectedSha256_);
+    closeDownloadStream();
+
+    if (finalization.validation == ModelDownloadValidation::SizeMismatch) {
         QMessageBox::critical(
             zenzaiDialogParent(), tr("Download Error"),
             tr("Downloaded file verification failed. Size mismatch.\n"
                "Expected: %1 bytes\n"
                "Got: %2 bytes")
                 .arg(currentDownloadExpectedBytes_)
-                .arg(receivedBytes));
+                .arg(finalization.diskBytes));
         clearAndRefresh();
         return;
     }
 
-    if (validation == ModelDownloadValidation::ChecksumMismatch) {
+    if (finalization.validation == ModelDownloadValidation::ChecksumMismatch) {
         QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
                               tr("Downloaded file verification failed. Checksum mismatch.\n"
                                  "Expected: %1\n"
-                                 "Got: %2").arg(currentDownloadExpectedSha256_).arg(calculatedHashHex));
-        finalizeStreamedModelDownload(modelPath, validation);
+                                 "Got: %2").arg(currentDownloadExpectedSha256_).arg(finalization.diskSha256Hex));
         clearAndRefresh();
         return;
     }
 
-    QString saveError;
-    if (!finalizeStreamedModelDownload(modelPath, validation, &saveError)) {
-        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"), tr("Failed to save model file: %1").arg(saveError));
+    if (!finalization.committed) {
+        QMessageBox::critical(zenzaiDialogParent(), tr("Download Error"),
+                              tr("Failed to save model file: %1").arg(finalization.errorMessage));
         clearAndRefresh();
         return;
     }
@@ -2817,15 +2878,43 @@ void MainWindow::onResetConfiguration() {
     }
 
     // 接続競合を避けるため永続セッションを使用する
-    if (!server_.beginSession()) {
+    // セッションの開始から終了までを1つの作業スレッド呼び出しにまとめる
+    struct DefaultProfileFetch {
+        bool connected = false;
+        std::optional<hazkey::config::CurrentConfig> config;
+    };
+    const auto call = runServerCallAsync(
+        this, tr("Loading default configuration..."), [this]() {
+            DefaultProfileFetch fetch;
+            fetch.connected = server_.beginSession();
+            if (!fetch.connected) {
+                return fetch;
+            }
+            // 既定設定はApplyかOKで保存するまでプレビュー扱いである
+            // endSession()は、取得中に例外が出ても必ず実行する
+            try {
+                fetch.config = server_.getDefaultProfileInSession();
+            } catch (...) {
+                server_.endSession();
+                throw;
+            }
+            server_.endSession();
+            return fetch;
+        });
+    if (call.aborted()) {
+        return;
+    }
+    if (!call.completed()) {
         QMessageBox::critical(this, tr("Connection Error"),
                               tr("Failed to connect to server."));
         return;
     }
-
-    // 既定設定はApplyかOKで保存するまでプレビュー扱いである
-    auto configOpt = server_.getDefaultProfileInSession();
-    server_.endSession();
+    if (!call.value->connected) {
+        QMessageBox::critical(this, tr("Connection Error"),
+                              tr("Failed to connect to server."));
+        return;
+    }
+    const auto& configOpt = call.value->config;
 
     if (!configOpt.has_value()) {
         QMessageBox::critical(this, tr("Configuration Error"), tr("Failed to load default configuration from server."));
@@ -2884,14 +2973,20 @@ QWidget* MainWindow::createWarningWidget(const QString& message,
 QString MainWindow::userDictFilePath() {
     QString xdg = qEnvironmentVariable("XDG_CONFIG_HOME");
     QString base;
-    if (!xdg.isEmpty()) {
+    // XDG Base Directory仕様に従い、絶対パスでない値は無効として既定位置を使う (サーバと同じ規則)
+    if (xdg.startsWith(QLatin1Char('/'))) {
         base = xdg + "/hazkey-community";
     }
     else {
         base = QDir::homePath() + "/.config/hazkey-community";
     }
 
-    QDir().mkpath(base);
+    // GUIが先に作る場合も、umaskに依らず所有者のみアクセス可能な0700で作成する
+    QDir().mkpath(QFileInfo(base).absolutePath());
+    const QByteArray encodedBase = QFile::encodeName(base);
+    if (::mkdir(encodedBase.constData(), S_IRWXU) != 0 && errno != EEXIST) {
+        qWarning() << "Failed to create config directory:" << base;
+    }
 
     return base + "/user_dictionary.tsv";
 }

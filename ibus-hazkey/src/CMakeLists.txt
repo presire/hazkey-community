@@ -63,6 +63,7 @@ if(BUILD_TESTING)
     target_compile_options(ibus_hazkey_state_test PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
         $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    target_compile_definitions(ibus_hazkey_state_test PRIVATE HAZKEY_IBUS_TESTING)
     add_dependencies(ibus_hazkey_state_test hazkey-proto-headers)
     add_test(NAME ibus_hazkey_state_test COMMAND ibus_hazkey_state_test)
 endif()

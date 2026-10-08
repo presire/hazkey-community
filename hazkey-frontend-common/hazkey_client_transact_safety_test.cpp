@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <atomic>
 #include <chrono>
@@ -55,7 +56,38 @@
         }                                                                  \
     } while (0)
 
+// hazkey_server_connector.cppが定義するフレーム書込関数 (ヘッダには公開していない)
+// 下の無名名前空間にある模擬サーバ用のwriteAllと区別するため、::writeAllで呼ぶ
+bool writeAll(int fd, const void* data, size_t len);
+
 namespace {
+
+/**
+ * @brief 閉じた相手への書込でSIGPIPEによりプロセスが終了しないことを確かめる
+ *
+ * main()はSIGPIPEを無視するため、子プロセスで既定の処理 (終了) に戻してから書き込む
+ * 子が正常終了し、書込が失敗として返ることを確認する
+ */
+void writeToClosedPeerDoesNotRaiseSigpipe() {
+    int fds[2];
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) == 0);
+    CHECK(close(fds[1]) == 0);
+
+    const pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        signal(SIGPIPE, SIG_DFL);
+        const char payload[] = "frame";
+        const bool written = ::writeAll(fds[0], payload, sizeof(payload));
+        _exit(written ? 2 : 0);
+    }
+    close(fds[0]);
+    int status = 0;
+    CHECK(waitpid(child, &status, 0) == child);
+    CHECK(!WIFSIGNALED(status));
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    std::cout << "[PASS] write to closed peer fails without SIGPIPE\n";
+}
 
 void socketPathSelectionUsesTrustedRuntimeDirectories() {
     const uid_t uid = getuid();
@@ -738,6 +770,7 @@ int main() {
     // 検証Aではクライアントが閉じたソケットへ書き込むため、SIGPIPEを無視してEPIPEとして扱う
     signal(SIGPIPE, SIG_IGN);
 
+    writeToClosedPeerDoesNotRaiseSigpipe();
     socketPathSelectionUsesTrustedRuntimeDirectories();
     transactionWorksWithHighSocketDescriptor();
     lateResponseNeverParsedAfterTimeout();

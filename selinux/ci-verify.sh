@@ -9,7 +9,7 @@
 #   1. 系統 (redhat / refpolicy) の自動判定
 #   2. Makefileでの構文検査、ビルド、ポリシーストアへの読み込み
 #   3. インストール先ごとのファイルコンテキスト (matchpathcon)
-#   4. 許可規則と型遷移 (sesearch)。TCP通信を許可していないこと
+#   4. 許可規則と型遷移 (sesearch)。TCPとUDPの通信を許可していないこと
 #   5. .fcと.fc.inの内容の一致
 #   6. CMakeでのビルドと、DESTDIR指定のインストール
 #
@@ -146,13 +146,15 @@ sesearch -A -s hazkey_community_server_t -t hazkey_community_config_t -c file -p
 sesearch -A -s hazkey_community_server_t -t hazkey_community_conf_home_t -c file -p read | grep -q '^allow hazkey_community_server_t' \
     || fail "control check failed: conf_home_t is not readable (sesearch may be broken)"
 
-# 変換サーバは全てのキー入力を受け取るため、TCP通信とポートへの束縛を許可しない
+# 変換サーバは全てのキー入力を受け取るため、TCPとUDPの通信とポートへの束縛を許可しない
 # (全てのドメインに共通の規則は、主体がdomain属性のため一致しない)
-if sesearch -A -s hazkey_community_server_t -c tcp_socket | grep -q '^allow hazkey_community_server_t'; then
-    fail "tcp_socket is allowed for hazkey_community_server_t"
-else
-    echo "OK: tcp_socket is not allowed"
-fi
+for class in tcp_socket udp_socket; do
+    if sesearch -A -s hazkey_community_server_t -c "$class" | grep -q '^allow hazkey_community_server_t'; then
+        fail "${class} is allowed for hazkey_community_server_t"
+    else
+        echo "OK: ${class} is not allowed"
+    fi
+done
 
 # 変換サーバは、起動元で読み込まれる設定 (env) を書き換えられない
 if sesearch -A -s hazkey_community_server_t -t hazkey_community_conf_home_t -c file -p write | grep -q '^allow hazkey_community_server_t'; then

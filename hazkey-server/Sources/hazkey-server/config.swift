@@ -1,3 +1,4 @@
+import CHazkeyLinux
 import Foundation
 import Glibc
 import KanaKanjiConverterModule
@@ -41,6 +42,14 @@ enum ConfigError: LocalizedError {
     ///
     /// 設定は変更されず、何も書き込まない
     case learningCommitFailed(String)
+    /// 保存するconfig.jsonが読み込み時の上限以上になる場合を示す
+    ///
+    /// 保存すると次回起動時に読み込めず既定設定へ戻るため、設定は変更せず何も書き込まない
+    ///
+    /// - Parameters:
+    ///   - size: 生成したJSONのバイト数
+    ///   - limit: 読み込み時の上限 (この値未満)
+    case configTooLarge(size: Int, limit: Int)
 
     /// 利用者向けのエラーメッセージを返す
     ///
@@ -61,6 +70,10 @@ enum ConfigError: LocalizedError {
             return
                 "Failed to persist the pending learning data of the active profile; "
                 + "the configuration was not changed. \(message)"
+        case .configTooLarge(let size, let limit):
+            return
+                "The configuration is too large to save (\(size) bytes; must be less than \(limit) bytes); "
+                + "the configuration was not changed."
         }
     }
 }
@@ -154,7 +167,7 @@ class HazkeyServerConfig {
         do {
             profiles = try Self.loadConfig()
         } catch {
-            NSLog("Failed to load config: \(error)")
+            hazkeyLog("Failed to load config: \(error)")
             NSLog("Loading default config...")
             profiles = [HazkeyServerConfig.genDefaultConfig()]
         }
@@ -365,7 +378,7 @@ class HazkeyServerConfig {
         if let state {
             let warmup = state.reloadZenzaiModel()
             if warmup.status == .failed {
-                NSLog("[hazkey] Post-config neural model warmup failed: \(warmup.errorMessage)")
+                hazkeyLog("[hazkey] Post-config neural model warmup failed: \(warmup.errorMessage)")
             }
         }
 
@@ -545,6 +558,7 @@ class HazkeyServerConfig {
     ///   - newProfiles: 保存するプロファイル列
     ///   - state: 未保存の学習データを保存する接続 (nilの場合は保存しない)
     /// - Throws: 学習データの保存に失敗した場合は、ConfigError.learningCommitFailedを投げる
+    ///   生成したJSONが読み込み時の上限以上の場合は、ConfigError.configTooLargeを投げる (何も書き込まない)
     /// - Important: config.jsonより先に学習データを保存して、失敗した場合は何も書き込まずに中止する
     func saveConfig(
         _ newProfiles: [Hazkey_Config_Profile],
@@ -584,10 +598,15 @@ class HazkeyServerConfig {
 
         let jsonData = try JSONSerialization.data(
             withJSONObject: jsonObjects, options: [.prettyPrinted, .sortedKeys])
+        // loadConfig()は上限以上のconfig.jsonを読まないため、保存に成功しても次回起動時に既定設定へ戻ってしまう
+        // ジャーナルを書き始める前に拒否し、既存の設定とリビジョンを変更しない
+        guard jsonData.count < Self.configFileSizeLimit else {
+            throw ConfigError.configTooLarge(size: jsonData.count, limit: Self.configFileSizeLimit)
+        }
 
         try Self.writePrivateConfig(jsonData, to: configPath)
 
-        NSLog("Config saved to: \(configPath.path)")
+        hazkeyLog("Config saved to: \(configPath.path)")
 
         profiles = normalizedProfiles
         guard let firstProfile = normalizedProfiles.first else {
@@ -616,7 +635,7 @@ class HazkeyServerConfig {
         try writePrivateFile(data, to: journal)
         try writePrivateFile(data, to: destination)
         if unlink(journal.path) != 0, errno != ENOENT {
-            NSLog("Failed to remove \(journal.path): \(errno)")
+            hazkeyLog("Failed to remove \(journal.path): \(errno)")
         }
     }
 
@@ -646,7 +665,7 @@ class HazkeyServerConfig {
         }
         // 旧版が作成した0644等のファイルを引き締める (失敗しても保存は続ける)
         if (info.st_mode & 0o077) != 0, fchmod(fd, 0o600) != 0 {
-            NSLog("Failed to restrict permissions of \(url.path): \(errno)")
+            hazkeyLog("Failed to restrict permissions of \(url.path): \(errno)")
         }
         guard ftruncate(fd, 0) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         try data.withUnsafeBytes { bytes in
@@ -680,7 +699,7 @@ class HazkeyServerConfig {
         guard fstat(fd, &opened) == 0, opened.st_uid == getuid(),
             opened.st_dev == info.st_dev, opened.st_ino == info.st_ino,
             (opened.st_mode & 0o077) != 0 else { return }
-        if fchmod(fd, 0o700) != 0 { NSLog("Failed to tighten directory \(directory.path): \(errno)") }
+        if fchmod(fd, 0o700) != 0 { hazkeyLog("Failed to tighten directory \(directory.path): \(errno)") }
     }
 
     /// 保存済み設定を読み込む
@@ -697,7 +716,7 @@ class HazkeyServerConfig {
         // 存在しなければ、保存の中断で残った内容か、既定プロファイルから生成した正規化済み設定を返す
         guard FileManager.default.fileExists(atPath: configPath.path) else {
             if let recovered = recoverInterruptedConfig(configPath) { return recovered }
-            NSLog("Config file does not exist at: \(configPath.path), returning empty config")
+            hazkeyLog("Config file does not exist at: \(configPath.path), returning empty config")
             return try normalizeProfiles([Self.genDefaultConfig()])
         }
 
@@ -705,23 +724,35 @@ class HazkeyServerConfig {
         // 上書きの途中で停止して壊れている場合は、先に書き終えたconfig.json.tmpから復元する
         let configs: [Hazkey_Config_Profile]
         do {
-            configs = try decodeProfiles(from: Data(contentsOf: configPath))
+            configs = try decodeProfiles(
+                from: readValidatedFileData(at: configPath, limit: configFileSizeLimit, followFinalSymlink: true))
         } catch {
+            hazkeyLog("Failed to read config: \(error)")
             if let recovered = recoverInterruptedConfig(configPath) { return recovered }
             throw error
         }
 
-        NSLog("Config loaded from: \(configPath.path)")
+        hazkeyLog("Config loaded from: \(configPath.path)")
         return configs
     }
 
     private static func recoverInterruptedConfig(_ configPath: URL) -> [Hazkey_Config_Profile]? {
         let journal = configJournalURL(for: configPath)
-        guard let data = try? Data(contentsOf: journal),
-            let configs = try? decodeProfiles(from: data) else { return nil }
-        NSLog("Config recovered from an interrupted save: \(journal.path)")
-        return configs
+        do {
+            let data = try readValidatedFileData(at: journal, limit: configFileSizeLimit, followFinalSymlink: true)
+            let configs = try decodeProfiles(from: data)
+            hazkeyLog("Config recovered from an interrupted save: \(journal.path)")
+            return configs
+        } catch {
+            if (error as? POSIXError)?.code != .ENOENT {
+                hazkeyLog("Failed to recover config journal: \(error)")
+            }
+            return nil
+        }
     }
+
+    /// 多数のプロファイルにも余裕を持たせつつ、設定と復旧用JSONの無制限読込みを防ぐ (4 MiB未満)
+    static let configFileSizeLimit = 4 * 1024 * 1024
 
     /// 設定JSONをプロファイル列へ復号する
     ///
@@ -895,12 +926,12 @@ class HazkeyServerConfig {
 
     /// 設定ディレクトリのパスを返す
     ///
-    /// 環境変数XDG_CONFIG_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    /// 環境変数XDG_CONFIG_HOMEが絶対パスで設定されていれば (XDG Base Directory仕様に従い、相対パスは無効として扱う)、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
     ///
     /// - Returns: 設定ディレクトリのURLを返す
     static func getConfigDirectory() -> URL {
         if let xdgConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
-            !xdgConfigHome.isEmpty
+            xdgConfigHome.hasPrefix("/")
         {
             return URL(fileURLWithPath: xdgConfigHome).appendingPathComponent("hazkey-community")
         }
@@ -912,12 +943,12 @@ class HazkeyServerConfig {
 
     /// データディレクトリのパスを返す
     ///
-    /// 環境変数XDG_DATA_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    /// 環境変数XDG_DATA_HOMEが絶対パスで設定されていれば (XDG Base Directory仕様に従い、相対パスは無効として扱う)、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
     ///
     /// - Returns: データディレクトリのURLを返す
     static func getDataDirectory() -> URL {
         if let xdgDataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"],
-            !xdgDataHome.isEmpty
+            xdgDataHome.hasPrefix("/")
         {
             return URL(fileURLWithPath: xdgDataHome).appendingPathComponent("hazkey-community")
         }
@@ -930,14 +961,14 @@ class HazkeyServerConfig {
 
     /// 状態ディレクトリのパスを返す
     ///
-    /// 環境変数XDG_STATE_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    /// 環境変数XDG_STATE_HOMEが絶対パスで設定されていれば (XDG Base Directory仕様に従い、相対パスは無効として扱う)、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
     ///
     /// 学習メモリの配置基準になる
     ///
     /// - Returns: 状態ディレクトリのURLを返す
     static func getStateDirectory() -> URL {
         if let xdgStateHome = ProcessInfo.processInfo.environment["XDG_STATE_HOME"],
-            !xdgStateHome.isEmpty
+            xdgStateHome.hasPrefix("/")
         {
             return URL(fileURLWithPath: xdgStateHome).appendingPathComponent("hazkey-community")
         }
@@ -950,12 +981,12 @@ class HazkeyServerConfig {
 
     /// キャッシュディレクトリのパスを返す
     ///
-    /// 環境変数XDG_CACHE_HOMEが設定されていれば、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
+    /// 環境変数XDG_CACHE_HOMEが絶対パスで設定されていれば (XDG Base Directory仕様に従い、相対パスは無効として扱う)、その配下のhazkey-communityを使用して、未設定時はホーム配下の既定位置を使用する
     ///
     /// - Returns: キャッシュディレクトリのURLを返す
     static func getCacheDirectory() -> URL {
         if let xdgCacheHome = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"],
-            !xdgCacheHome.isEmpty
+            xdgCacheHome.hasPrefix("/")
         {
             return URL(fileURLWithPath: xdgCacheHome).appendingPathComponent("hazkey-community")
         }
@@ -1030,7 +1061,7 @@ class HazkeyServerConfig {
         guard let values = try? customModelPath.resourceValues(forKeys: [.isRegularFileKey]),
             values.isRegularFile == true
         else {
-            NSLog("Configured Zenzai model is not a regular file: \(customModelPath.path)")
+            hazkeyLog("Configured Zenzai model is not a regular file: \(customModelPath.path)")
             return nil
         }
         return customModelPath
@@ -1320,7 +1351,7 @@ class HazkeyServerConfig {
                 case "Halfwidth Bracket":
                     newKeymapRule = halfwidthBracketMap
                 default:
-                    NSLog("Unknown built-in keymap: \(enabledKeymap.name)")
+                    hazkeyLog("Unknown built-in keymap: \(enabledKeymap.name)")
                     continue outer
                 }
             } else {
@@ -1328,11 +1359,11 @@ class HazkeyServerConfig {
                 do {
                     newKeymapRule = try Self.readValidatedCustomFile(
                         filename: enabledKeymap.filename, directory: "keymap", limit: KEYMAP_FILE_SIZE_LIMIT
-                    ) { _, contents in
+                    ) { contents in
                         Self.parseCustomKeymap(contents)
                     }
                 } catch {
-                    NSLog(
+                    hazkeyLog(
                         "Failed to load custom keymap \(enabledKeymap.name): \(error)"
                     )
                     continue outer
@@ -1367,34 +1398,34 @@ class HazkeyServerConfig {
     ///   - filename: 設定ディレクトリ内のファイル名
     ///   - directory: 設定ディレクトリ内のサブディレクトリ名
     ///   - limit: 許容するファイルサイズの上限 (この値未満)
-    ///   - body: 開いた記述子を指すURLと読み込んだ内容を受け取る処理
+    ///   - body: 上限付きで読み込んだ内容を受け取る処理
+    ///     元のファイルを指すURLは渡さない (読み直すと、検証後に同じinodeへ追記された内容まで上限なしに読むため)
     /// - Returns: `body` の戻り値を返す
     static func readValidatedCustomFile<T>(
         filename: String, directory: String, limit: Int,
-        _ body: (_ descriptorURL: URL, _ contents: String) throws -> T
+        _ body: (_ contents: String) throws -> T
     ) throws -> T {
         let file = try validatedCustomFile(filename: filename, directory: directory, limit: limit)
-        let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        return try withValidatedFileData(at: file, limit: limit) { _, data in
+            guard let contents = String(data: data, encoding: .utf8) else { throw POSIXError(.EILSEQ) }
+            return try body(contents)
+        }
+    }
+
+    /// 上限付きで読み込んだ内容から入力テーブルを解析する
+    ///
+    /// 変換エンジンの`InputStyleManager.loadTable(from:)`はURLから全体を読み直すため、内容を書き込み封印したmemfdへ写し、その複製だけを読ませる
+    ///
+    /// - Parameter contents: 上限付きで読み込んだTSVの内容
+    /// - Returns: 解析した入力テーブルを返す
+    /// - Throws: memfdを作成できない場合と、解析に失敗した場合にエラーを送出する
+    static func loadInputTable(fromBoundedContents contents: String) throws -> InputTable {
+        let fd = Array(contents.utf8).withUnsafeBytes { bytes in
+            hazkey_sealed_memfd("hazkey-input-table", bytes.baseAddress, bytes.count)
+        }
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(fd) }
-        var info = stat()
-        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
-            info.st_size >= 0, info.st_size < limit else { throw POSIXError(.EFBIG) }
-
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let count = read(fd, &buffer, buffer.count)
-            if count < 0 {
-                if errno == EINTR { continue }
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            if count == 0 { break }
-            data.append(contentsOf: buffer[0..<count])
-            guard data.count < limit else { throw POSIXError(.EFBIG) }
-        }
-        guard let contents = String(data: data, encoding: .utf8) else { throw POSIXError(.EILSEQ) }
-        return try body(URL(fileURLWithPath: "/proc/self/fd/\(fd)"), contents)
+        return try InputStyleManager.loadTable(from: URL(fileURLWithPath: "/proc/self/fd/\(fd)"))
     }
 
     /// 利用者定義キーマップの内容を解釈する
@@ -1410,7 +1441,7 @@ class HazkeyServerConfig {
             guard let firstColumn = columns.first, !firstColumn.isEmpty else { continue }
             guard firstColumn.count == 1,
                 columns.dropFirst().prefix(2).allSatisfy({ $0.count <= 1 }) else {
-                NSLog("Skipping custom keymap line with multi-character key or value: \(line)")
+                hazkeyLog("Skipping custom keymap line with multi-character key or value: \(line)")
                 continue
             }
             guard let key = firstColumn.first else { continue }
@@ -1454,11 +1485,11 @@ class HazkeyServerConfig {
                 do {
                     tableToAdd = try Self.readValidatedCustomFile(
                         filename: enabledTable.filename, directory: "table", limit: TABLE_FILE_SIZE_LIMIT
-                    ) { descriptorURL, _ in
-                        try InputStyleManager.loadTable(from: descriptorURL)
+                    ) { contents in
+                        try Self.loadInputTable(fromBoundedContents: contents)
                     }
                 } catch {
-                    NSLog("Failed to load custom table \(enabledTable.name)Q \(error)")
+                    hazkeyLog("Failed to load custom table \(enabledTable.name)Q \(error)")
                     continue outer
                 }
             }
@@ -1563,7 +1594,7 @@ func getZenzaiDevices(backendDirectoryOverride: String? = nil) -> [GGMLBackendDe
     let backendDevices = enumerateGGMLBackendDevices()
     #if DEBUG
         for device in backendDevices {
-            NSLog(
+            hazkeyLog(
                 "GGML Backend Device: \(device.name), Type: \(device.type), Description: \(device.description)"
             )
         }
@@ -1595,7 +1626,7 @@ func getZenzaiModelPath() -> URL? {
         if let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
             values.isDirectory == false
         {
-            NSLog(url.path)
+            hazkeyLog(url.path)
             return url
         }
     }

@@ -145,7 +145,7 @@ final class SetContextSplitTests: XCTestCase {
         XCTAssertEqual(state.zenzaiRightContext, "")
     }
 
-    /// (e) 右側が長い時は先頭40文字へ切り詰め、左側は切り詰めない
+    /// (e) 右側が長い時は先頭40文字へ切り詰め、短い左側はそのまま保つ
     func testRightContextIsTruncatedToFirstFortyCharacters() {
         let shared = makeShared()
         let state = makeState(shared: shared)
@@ -157,6 +157,25 @@ final class SetContextSplitTests: XCTestCase {
         XCTAssertEqual(state.zenzaiLeftContext, left)
         XCTAssertEqual(state.zenzaiRightContext, String(repeating: "あ", count: 40))
         XCTAssertEqual(state.zenzaiRightContext.count, HazkeyServerState.rightContextMaxCharacters)
+    }
+
+    /// (e2) 左側が長い時はカーソル直前の末尾256文字だけを保持し、変換エンジンが使う末尾40文字は変わらない
+    func testLeftContextKeepsOnlyTheTrailingCharactersBeforeTheCursor() {
+        let shared = makeShared()
+        let state = makeState(shared: shared)
+        defer { state.close() }
+
+        let head = String(repeating: "x", count: 100_000)
+        let tail = String(repeating: "い", count: HazkeyServerState.leftContextMaxCharacters - 1) + "👨‍👩‍👧"
+        let text = head + tail + "右"
+        let anchor = (head + tail).unicodeScalars.count
+        XCTAssertEqual(state.setContext(surroundingText: text, anchorIndex: anchor).status, .success)
+        XCTAssertEqual(state.zenzaiLeftContext, tail)
+        XCTAssertEqual(state.zenzaiLeftContext.count, HazkeyServerState.leftContextMaxCharacters)
+        XCTAssertEqual(
+            String(state.zenzaiLeftContext.suffix(40)),
+            String((head + tail).suffix(40)))
+        XCTAssertEqual(state.zenzaiRightContext, "右")
     }
 
     /// (f) 空文字列では左右とも空

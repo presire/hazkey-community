@@ -50,7 +50,8 @@ void installHazkeyFrontendHooks() {
     hazkey::frontend::setServerSpawner([](bool forceRestart) {
         std::vector<std::string> args;
         args.reserve(2);
-        args.push_back("hazkey-community-server");
+        // PATHを検索せず、インストール先の絶対パスで起動する
+        args.push_back(HAZKEY_SERVER_EXECUTABLE_PATH);
         if (forceRestart) {
             args.push_back("-r");
         }

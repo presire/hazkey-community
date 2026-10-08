@@ -36,7 +36,7 @@ final class EmojiCandidateProvider {
     /// - Note: 失敗しても通常の変換は絵文字候補なしで継続する
     init?(dictionaryURL: URL) {
         guard FileManager.default.isReadableFile(atPath: dictionaryURL.path) else {
-            NSLog(
+            hazkeyLog(
                 "[hazkey] Emoji dictionary not readable: \(dictionaryURL.path); emoji injection disabled"
             )
             return nil
@@ -44,7 +44,7 @@ final class EmojiCandidateProvider {
         guard let contents = try? String(contentsOf: dictionaryURL, encoding: .utf8),
             Self.hasValidEntry(contents)
         else {
-            NSLog(
+            hazkeyLog(
                 "[hazkey] Emoji dictionary malformed or empty: \(dictionaryURL.path); emoji injection disabled"
             )
             return nil

@@ -80,9 +80,10 @@ class SocketManager {
     ///
     /// ループ終了まで登録を保持するために所有する
     private var signalSources: [DispatchSourceSignal] = []
+    private let signalQueue = DispatchQueue(label: "dev.hiira.hazkey.server.socketmanager.signals")
     /// trueの間ループを継続する停止フラグ
     ///
-    /// シグナル受信時にfalseへ変わる
+    /// 自己パイプを観測した主ループだけがfalseへ変える
     private var continueServing = true
 
     /// サーバソケットのfd
@@ -97,14 +98,14 @@ class SocketManager {
     var activityClock: () -> ContinuousClock.Instant = { .now }
     static let idleClientTimeout: Duration = .seconds(60)
     static let requestTimeout: Duration = .milliseconds(2000)
-    static let responseTimeout: Duration = .milliseconds(10000)
+    static let responseTimeout: Duration = .milliseconds(2000)
     /// 待ち受けるUNIXドメインソケットのパス
     ///
     /// 初期化時に受け取り以後は変わらない
     private let socketPath: String
     /// pollを起こす自己パイプのfd対
     ///
-    /// 初期値は無効値の対であり書込端のクローズがループ停止の合図になる
+    /// 初期値は無効値の対であり書込端への1バイトの書込みがループ停止の合図になる
     private var pipeFds: [Int32] = [-1, -1]
     private var ownsSocketPath = false
 
@@ -185,25 +186,21 @@ class SocketManager {
 
     /// シグナルハンドラを登録する
     ///
-    /// [SIGPIPE]を無視し[SIGINT]と[SIGTERM]と[SIGHUP]でcontinueServingをfalseにする
+    /// [SIGPIPE]を無視し[SIGINT]と[SIGTERM]と[SIGHUP]を主ループへ通知する
     ///
-    /// パイプ書込端を閉じてpollを起こし、ループを停止させる
+    /// ハンドラは不変の書込fdだけを捕捉し、共有状態を変更しない
     private func setupSignalHandlers() {
         signal(SIGPIPE, SIG_IGN)
 
-        let signalQueue = DispatchQueue(label: "dev.hiira.hazkey.server.socketmanager.signals")
         let signals = [SIGINT, SIGTERM, SIGHUP]
+        let writeFD = pipeFds[1]
 
         for sig in signals {
+            signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: signalQueue)
-            source.setEventHandler { [weak self] in
-                NSLog("Signal \(sig) received, shutting down...")
-                self?.continueServing = false
-                // pollを止める
-                if let pipeFd = self?.pipeFds[1] {
-                    close(pipeFd)
-                    self?.pipeFds[1] = -1
-                }
+            source.setEventHandler {
+                var byte: UInt8 = 1
+                while Glibc.write(writeFD, &byte, 1) < 0, errno == EINTR {}
             }
             source.resume()
             self.signalSources.append(source)
@@ -221,6 +218,7 @@ class SocketManager {
     /// - Note: 既存クライアントをacceptより先に処理するため、同一反復で解放したfd番号の再利用がrevents処理より先に起きない
     func startListening() {
         setupSignalHandlers()
+        defer { closeSocket() }
         while continueServing {
             var pollFds: [pollfd] = []
 
@@ -244,7 +242,7 @@ class SocketManager {
                     // シグナルを受信した
                     continue
                 }
-                NSLog("Poll failed: \(errno)")
+                hazkeyLog("Poll failed: \(errno)")
                 break
             }
 
@@ -253,8 +251,10 @@ class SocketManager {
                 continue
             }
 
-            // シグナルハンドラによってパイプが閉じられた
+            // 停止フラグとfdの所有権は主ループだけが変更する
             if pollFds[1].revents & Int16(POLLIN|POLLHUP) != 0 {
+                continueServing = false
+                NSLog("Shutdown signal received, shutting down...")
                 break
             }
 
@@ -270,7 +270,7 @@ class SocketManager {
                 let clientEvents = Int32(pollFds[2 + index].revents)
 
                 if clientEvents & POLLHUP != 0 || clientEvents & POLLERR != 0 {
-                    NSLog("Client disconnected or error: \(polledFd)")
+                    hazkeyLog("Client disconnected or error: \(polledFd)")
                     closeClient(polledFd)
                     continue
                 }
@@ -300,7 +300,7 @@ class SocketManager {
         if newClientFd != -1 {
             var peerUID: uid_t = 0
             guard hazkey_peer_uid(newClientFd, &peerUID) == 0, peerUID == getuid() else {
-                NSLog("Rejecting unauthenticated peer on fd \(newClientFd)")
+                hazkeyLog("Rejecting unauthenticated peer on fd \(newClientFd)")
                 close(newClientFd)
                 return
             }
@@ -315,7 +315,7 @@ class SocketManager {
                 closeClient(oldest)
             }
             if !ClientSessionLimit.accepts(currentCount: clientFds.count) {
-                NSLog(
+                hazkeyLog(
                     "Client limit reached (\(Self.maxClientCount)); rejecting connection \(newClientFd)"
                 )
                 close(newClientFd)
@@ -323,7 +323,7 @@ class SocketManager {
             }
 
             // 新規クライアントをセットアップする
-            NSLog("Client connected: \(newClientFd)")
+            hazkeyLog("Client connected: \(newClientFd)")
 
             // クライアントを非ブロッキングにする
             let clientFlags = fcntl(newClientFd, F_GETFL, 0)
@@ -391,7 +391,7 @@ class SocketManager {
         } catch let error as SocketError {
             handleSocketError(error, clientFd: clientFd)
         } catch {
-            NSLog("An unexpected error occurred: \(error)")
+            hazkeyLog("An unexpected error occurred: \(error)")
             closeClient(clientFd)
         }
     }
@@ -404,19 +404,19 @@ class SocketManager {
     private func handleSocketError(_ error: SocketError, clientFd: Int32) {
         switch error {
         case .clientDisconnected(let msg):
-            NSLog(msg)
+            hazkeyLog(msg)
         case .readFailed(let msg, let err):
-            NSLog("Read failed: \(msg), errno: \(err)")
+            hazkeyLog("Read failed: \(msg), errno: \(err)")
         case .incompleteRead(let msg), .incompleteWrite(let msg):
-            NSLog(msg)
+            hazkeyLog(msg)
         case .messageTooLarge(let len):
-            NSLog("Message too large: \(len)")
+            hazkeyLog("Message too large: \(len)")
         case .writeFailed(let msg, let err):
-            NSLog("Write failed: \(msg), errno: \(err)")
+            hazkeyLog("Write failed: \(msg), errno: \(err)")
         case .ioTimeout(let msg):
-            NSLog("Socket I/O timeout: \(msg)")
+            hazkeyLog("Socket I/O timeout: \(msg)")
         default:
-            NSLog("Socket error: \(error)")
+            hazkeyLog("Socket error: \(error)")
         }
         closeClient(clientFd)
     }
@@ -431,7 +431,7 @@ class SocketManager {
         //
         // 同一反復内の古いpollイベントまたは[POLLHUP]と[POLLERR]の重複を想定している
         guard clientFds.contains(clientFd) else { return }
-        NSLog("Closing client connection: \(clientFd)")
+        hazkeyLog("Closing client connection: \(clientFd)")
         close(clientFd)
         clientFds.removeAll { $0 == clientFd }
         lastActivity.removeValue(forKey: clientFd)
@@ -442,6 +442,9 @@ class SocketManager {
     ///
     /// deinitからも呼び出される終了処理である
     func closeSocket() {
+        for source in signalSources { source.cancel() }
+        signalQueue.sync {}
+        signalSources.removeAll()
         for clientFd in clientFds {
             close(clientFd)
         }

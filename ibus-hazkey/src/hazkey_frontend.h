@@ -10,6 +10,8 @@
  */
 
 #include <ibus.h>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -179,6 +181,9 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
         std::unordered_set<guint>& pendingPressKeyvals);
     /** @brief IBus入力目的またはPRIVATEヒントが安全入力を示すか判定する */
     static bool isSecureInputContentType(guint purpose, guint hints);
+#ifdef HAZKEY_IBUS_TESTING
+    size_t pendingOpsForTest() const { return pendingOps_; }
+#endif
 
     /**
      * @brief 新しい組成を開き得る最初の入力として、周辺テキスト待ちの要否をワーカーへ判定依頼すべきか判定する
@@ -274,6 +279,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
         void flush();
         /** @brief 待機を打ち切り、保持したキーは捨て、状態変更操作だけを到着順に実行する */
         void abort();
+        /** @brief 指定世代の判定だけを打ち切る。古い返答から新しい待機を壊さない */
+        bool abortIfCurrent(uint64_t generation);
         /** @brief 待機を打ち切り、保持した操作を全て破棄する */
         void clear();
 
@@ -288,6 +295,12 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
         bool arrivedWhileChecking_ = false;  ///< 判定中に周辺テキストが届いたか
         std::deque<HeldOp> held_;        ///< 待機中に保持した操作 (到着順)
     };
+
+#ifdef HAZKEY_IBUS_TESTING
+    SurroundingGateMachine::Phase surroundingGatePhaseForTest() const {
+        return gate_.phase();
+    }
+#endif
 
    private:
     /**
@@ -317,6 +330,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
      * @param snapshot ワーカー側の組成状態をまとめた平易な要約
      */
     void applyIngress(const HazkeyState::IngressSnapshot& snapshot);
+    /** @brief ワーカー失敗後に投機状態を安全な初期値へ戻す */
+    void clearIngressAfterWorkerFailure();
 
     /**
      * @brief ワーカーの判定結果を受けて待機を始めるか、保持した操作を再開する
@@ -351,7 +366,7 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     // 終了状態
     bool retired_ = false;                ///< 廃止済みで新規受付を止めた場合はtrue
     bool secureInput_ = false;             ///< 現在の入力コンテキストが安全入力か
-    uint64_t contentEpoch_ = 0;            ///< 安全入力の切替ごとに進め、切替前に積んだキーを転送しない
+    std::atomic<uint64_t> contentEpoch_{0};  ///< 安全入力の切替ごとに進め、切替前に積んだキーを処理しない
 
     // 投機的入力取り込み
     // メインループが所有する投機的なingress状態

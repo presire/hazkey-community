@@ -11,7 +11,7 @@
 fcitx5 / ibus-daemon / 設定GUI  (起動元のドメイン: unconfined_t / user_t / staff_t)
   │  fcitx5-hazkey-community.so、ibus-engine-hazkey-community、hazkey-community-settings
   │
-  │ PATHから起動 (g_spawn / QProcess / fork + exec)
+  │ 絶対パス <bindir>/hazkey-community-server で起動 (PATHを検索しない。g_spawn / QProcess / fork + exec)
   ▼
 <bindir>/hazkey-community-server  (ラッパースクリプト、bin_t、起動元のドメインのまま)
   │  ~/.config/hazkey-community/envを読み込む (変換サーバはenvを変更できない)
@@ -21,8 +21,7 @@ fcitx5 / ibus-daemon / 設定GUI  (起動元のドメイン: unconfined_t / user
 <libdir>/hazkey-community/hazkey-community-server  (hazkey_community_exec_t)
   │  hazkey_community_server_tで動作
   │
-  ├─ 自身を--probe-backends付きで再実行 (同じドメイン、Vulkanの安全確認)
-  ├─ /usr/bin/env pgrep (同じドメイン、旧サーバの検索)
+  ├─ 自身を--probe-backends付きで再実行 (同じドメイン、Vulkanの安全確認、posix_spawn)
   └─ $XDG_RUNTIME_DIR/hazkey-community-server.<UID>.sockで接続を待つ
          ▲
          └─ クライアント (fcitx5 / IBus / 設定GUI) が接続する (connectto)
@@ -135,8 +134,7 @@ hazkey_community.ifも、CMakeがインストールするものは系統に合�
 
 ### 2.1 方針
 
-- 変換サーバは全てのキー入力を受け取るため、TCP通信とポート番号への束縛 (`name_bind`) を一切許可しません  
-- UDPは、Linux版Foundationの`Process`が子プロセスの終了の通知に使う、`127.0.0.1`上の2つのソケットのためだけに許可します  
+- 変換サーバは全てのキー入力を受け取るため、TCPとUDPの通信、ポート番号への束縛 (`name_bind`) を一切許可しません  
   (2.4を参照)  
 - ホームディレクトリへの書き込みは、Hazkey Community専用のディレクトリと、GPUドライバのキャッシュ (`~/.cache`) に限定します  
   (GPUドライバのキャッシュは、[hazkey_community_write_gpu_cache]で無効にできます)  
@@ -149,7 +147,6 @@ hazkey_community.ifも、CMakeがインストールするものは系統に合�
 | 分類 | 内容 | 理由 |
 |---|---|---|
 | 実行 | hazkey_community_exec_tの再実行 | `--probe-backends`によるVulkanの隔離確認 |
-| 実行 | bin_tの実行 (ドメイン遷移なし) | `/usr/bin/env pgrep`による旧サーバの検索 |
 | 読み取り | lib_t、ld_so_t、textrel_shlib_t | llama.cpp / GGMLのバックエンドの読み込み |
 | 読み取り | usr_t、etc_t、locale_t、passwd_file_t | 辞書、VulkanのICDの定義、ロケール、`getpwuid()` |
 | 読み取り | proc_t、sysctl_kernel_t、sysctl_vm_t、sysfs_t、cgroup_t | CPU数・メモリ量・GPUの情報 |
@@ -159,10 +156,9 @@ hazkey_community.ifも、CMakeがインストールするものは系統に合�
 | 作成 | hazkey_community_runtime_t | ソケットとロックファイル (`flock`) |
 | 作成 | hazkey_community_tmp_t、hazkey_community_tmpfs_t | 一時ディレクトリ、GPUドライバの共有メモリ |
 | 接続 | systemd_userdbd_t、systemd_machined_t、kernel_tの`unix_stream_socket` | `getpwuid()`や`getgrgid()`が`/run/systemd/userdb`のソケットへ問い合わせる<br>(`io.systemd.DynamicUser`は、起動の早い段階で作られるため、持ち主がkernel_tになる) |
-| ソケット | 自ドメインの`udp_socket`、node_tへの`node_bind` | Foundationの子プロセスの管理 (2.4を参照) |
 | シグナル | 自ドメイン | 旧サーバの終了 (`SIGTERM` / `SIGKILL`) と生存確認<br>(モジュールの導入前から動作しているunconfined_tのサーバは対象外) |
 | デバイス | dri_device_t、xserver_misc_device_t | GPUの使用 ([hazkey_community_use_gpu]) |
-| プロセス | `execmem` | Vulkanドライバの実行時のコード生成 ([hazkey_community_use_gpu]) |
+| プロセス | `execmem` | Vulkanドライバ (lavapipe、NVIDIA) の実行時のコード生成 ([hazkey_community_use_gpu] と [hazkey_community_gpu_execmem]) |
 
 ### 2.3 監査しない操作 (dontaudit)
 
@@ -170,27 +166,17 @@ hazkey_community.ifも、CMakeがインストールするものは系統に合�
 |---|---|
 | dri_device_t | GPUを無効にした場合もVulkanのローダーがデバイスを探索するが、CPUで正常に動作する |
 | ホームディレクトリ配下の一般的な型の読み取り | [hazkey_community_read_user_files]が無効でも、Vulkanのローダーが設定を探索する |
-| [PATH]上のホームディレクトリの探索 | `env`が`pgrep`を探索するだけで、`pgrep`は`/usr/bin`で見つかる |
-| 他のドメインの`/proc/<PID>` | `pgrep`が全てのプロセスを走査するが、探す変換サーバは同じドメインにある |
-| `dac_override`、`dac_read_search`、`sys_ptrace` | `pgrep`がrootのプロセスを読む時の、カーネルによる権限の確認 |
+| 他のドメインの`/proc/<PID>` | ロックファイルのPIDが他のドメインのプロセスに再利用されていた場合で、変換サーバではないと判定するだけ |
+| `dac_override`、`dac_read_search`、`sys_ptrace` | 他のユーザのプロセスの`/proc/<PID>`を読む時の、カーネルによる権限の確認 |
 | cache_home_tへの書き込み<br>([hazkey_community_write_gpu_cache]の無効時) | GPUドライバがキャッシュを作成できないだけで、GPUによる変換は動作する |
 | 起動元のドメインの`unix_dgram_socket` | 起動元から継承しただけで、使用しないファイルディスクリプタ |
 
-### 2.4 ループバックのUDPについて
+### 2.4 ネットワーク通信を許可しない理由
 
-Linux版のswift-corelibs-foundationは、`Process.run()`で子プロセスを監視する時に、  
-`127.0.0.1`へ束縛 (ポート番号は自動の割り当て) して相互に接続した、2つのUDPソケットを作成します。  
-このソケットは、子プロセスを監視するスレッドの起床に使われます。  
-
-変換サーバは、起動時のGPUの安全確認 (`--probe-backends`) と、旧サーバの検索 (`pgrep`) で`Process`を使います。  
-UDPを拒否すると子プロセスの終了を検出できず、GPUの安全確認が誤ってタイムアウトする場合があります。  
-
-基本ポリシーでは、ループバックのノードの型 (lo_node_t) がnode_tの別名です。  
-このため、SELinuxだけでは、UDPの宛先をループバックに限定できません。  
-このモジュールは`name_bind`とTCPを許可しないため、ポートでの待ち受けとTCP通信はできませんが、UDPの送信先は制限されません。  
-
-UDPも完全に禁止する場合は、変換サーバの子プロセスの起動を、`Process`から`posix_spawn`と`waitpid`へ置き換えます。  
-その上で、hazkey_community.teから`udp_socket`の規則を削除してください。  
+変換サーバは、子プロセス (`--probe-backends`) を`posix_spawn`で起動し、`waitpid`で終了を待ちます。  
+旧サーバの終了も、ロックファイルのPIDを`/proc`とpidfdで確認して行い、外部コマンド (`pgrep`) は実行しません。  
+このため、swift-corelibs-foundationの`Process`が子プロセスの監視に作成するループバックのUDPソケットは不要で、  
+このモジュールは`udp_socket`と`tcp_socket`の両方を許可しません。  
 
 ## 3. インターフェース (hazkey_community.if)
 
@@ -297,7 +283,6 @@ sesearch -T -s unconfined_t -t hazkey_community_exec_t
   envは変換サーバからは保護されますが、起動元のドメインで動作する他のプログラムからは保護されません  
 - config.jsonをエディタ等で置き換えると、型がhazkey_community_conf_home_tになり、変換サーバが設定を保存できなくなります  
   `restorecon`でラベルを戻してください  
-- UDPの送信先は、SELinuxでは制限できません (2.4を参照)  
 - 性能計測用の [HAZKEY_PERF_EVIDENCE] に`/tmp`のファイルを指定すると、変換サーバは書き込めません  
   `/tmp`のファイルは、Fcitx 5が作った場合にuser_tmp_tになり、他のアプリのファイルを書き換えられる許可は追加していません  
   開発で計測するときは、`semanage permissive -a hazkey_community_server_t`で一時的に許可してください  
@@ -325,7 +310,7 @@ sesearch -T -s unconfined_t -t hazkey_community_exec_t
 | 変換サーバが起動しない | `ausearch -m AVC -c hazkey-communit` | 拒否された型を確認して、ラベルの付け直し (`restorecon`) か規則を追加する |
 | ドメインがunconfined_tのまま | `ls -Z <libdir>/hazkey-community/hazkey-community-server` | hazkey_community_exec_tでなければ`restorecon`を実行する |
 | ロックファイルへの`write`が拒否される (`tcontext=...user_tmp_t`) | `ps -eZ \| grep hazkey-community-server`<br>`ls -Z /run/user/$UID/hazkey-community-server.*` | 別のインストール先の変換サーバがunconfined_tで動作している。その変換サーバに`restorecon`を実行して終了し、古いソケットとロックファイルを削除する |
-| GPUが使われない | `getsebool hazkey_community_use_gpu`<br>`semodule -DB` | [hazkey_community_use_gpu]を有効にする<br>デバイスの型を確認する (4.3を参照) |
+| GPUが使われない | `getsebool hazkey_community_use_gpu hazkey_community_gpu_execmem`<br>`semodule -DB` | [hazkey_community_use_gpu]を有効にする<br>lavapipeやNVIDIAのドライバでは[hazkey_community_gpu_execmem]も有効にする<br>デバイスの型を確認する (4.3を参照) |
 | カスタム重みを読み込めない | `getsebool hazkey_community_read_user_files` | [hazkey_community_read_user_files]を有効にするか、ファイルを専用のディレクトリへ移動する |
 | 設定GUIから接続できない | `ls -Z /run/user/$UID/hazkey-community-server.*` | 古いソケットを削除して、変換サーバを再起動する |
 

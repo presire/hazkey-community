@@ -11,6 +11,7 @@
 
 #include <QDialog>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 #include "serverconnector.h"
@@ -64,12 +65,21 @@ class LearningHistoryDialog : public QDialog {
                           LearningHistoryDialogTarget target,
                           QWidget* parent = nullptr);
 
+   protected:
+    /**
+     * @brief サーバ呼び出しの待機中は、閉じる操作を無視する
+     *
+     * 待機中に破棄されると、呼び出し元のメンバー参照が無効になるため、
+     * 待機が終わるまでEscキーやウィンドウの閉じるボタンによる終了を保留する
+     */
+    void reject() override;
+
    private slots:
-    /** @brief 検索欄の値で検索し、ページ位置を先頭へ戻して再読込する */
+    /** @brief 検索欄の値で、先頭ページを取得する。サーバ呼び出しの待機中は何もしない */
     void onSearch();
-    /** @brief 前ページへ移動し、先頭を超えない範囲で現在ページを再読込する */
+    /** @brief 表示中の検索条件で、先頭を超えない範囲の前ページを取得する。待機中は何もしない */
     void onPreviousPage();
-    /** @brief 次ページがある場合だけ移動し、現在ページを再読込する */
+    /** @brief 表示中の検索条件で、次ページがある場合だけ取得する。待機中は何もしない */
     void onNextPage();
     /**
      * @brief 現在ページで選択された行を確認後に削除する
@@ -86,12 +96,18 @@ class LearningHistoryDialog : public QDialog {
     static constexpr uint32_t kPageLimit = 200;
 
     /**
-     * @brief 現在の検索条件とページ位置で履歴を取得する
+     * @brief 指定した検索条件とページ位置で履歴を取得する
      *
-     * 通信失敗時は警告を表示して現在の表を維持する
-     * オフセットが結果の末尾を越えた場合は最終ページへ補正して再試行し、成功時は現在ページの行を更新する
+     * 待機中は検索欄・検索ボタン・履歴表・ページ移動・削除の操作を無効にする
+     * 取得に成功した時だけquery_とoffset_を更新して現在ページの行を置き換えるため、
+     * 通信失敗・他の呼び出しの実行中・終了中は、表示中の行とページ表示、以後のページ移動の基準を変えない
+     * 通信失敗時は警告を表示する
+     * オフセットが結果の末尾を越えた場合は最終ページへ補正して再試行する
+     *
+     * @param query 検索文字列
+     * @param offset ゼロ始まりの取得オフセット
      */
-    void reloadPage();
+    void reloadPage(const std::string& query, uint32_t offset);
     /**
      * @brief RPC結果から現在ページの行とページ操作状態を再構築する
      *
@@ -136,10 +152,14 @@ class LearningHistoryDialog : public QDialog {
     QDialogButtonBox* buttonBox_ = nullptr;
     /** @brief 現在ページに表示中の履歴行。サーバからのページ再取得で置き換える */
     std::vector<hazkey::config::LearningHistoryEntry> entries_;
-    /** @brief 現在ページのゼロ始まり取得オフセット。検索時は0に戻る */
+    /** @brief 表示中のページを取得した検索文字列。前後のページ移動と削除後の再読込に使う */
+    std::string query_;
+    /** @brief 表示中のページのゼロ始まり取得オフセット。取得に成功した時だけ更新する */
     uint32_t offset_ = 0;
     /** @brief 現在の検索条件に一致する履歴の総件数 */
     uint32_t totalCount_ = 0;
+    /** @brief サーバ呼び出しの待機中に増えるカウンタ。0より大きい間は閉じる操作を保留する */
+    int busyDepth_ = 0;
 };
 
 #endif  // LEARNINGHISTORYDIALOG_H

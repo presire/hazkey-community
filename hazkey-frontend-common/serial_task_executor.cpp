@@ -7,7 +7,9 @@
  */
 
 #include "serial_task_executor.h"
+#include "hazkey_frontend_hooks.h"
 #include <algorithm>
+#include <exception>
 #include <future>
 #include <memory>
 #include <utility>
@@ -106,7 +108,16 @@ void SerialTaskExecutor::workerLoop() {
                 }
             }
         }
-        next.task();
+        // 1件のタスクの例外 (std::bad_alloc等) でワーカーごとプロセスを終了させず、後続タスクの実行を続ける
+        try {
+            next.task();
+        } catch (const std::exception& e) {
+            logMessage(LogLevel::Error,
+                       std::string("SerialTaskExecutor task threw: ") + e.what());
+        } catch (...) {
+            logMessage(LogLevel::Error,
+                       "SerialTaskExecutor task threw a non-standard exception");
+        }
     }
 }
 

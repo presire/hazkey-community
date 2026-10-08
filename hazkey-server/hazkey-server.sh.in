@@ -3,20 +3,202 @@
 # hazkey-community-serverラッパースクリプト
 # 環境変数XDG_CONFIG_HOMEは、XDG Base Directory仕様では任意であり、多くのデスクトップセッションでは未設定である
 # このフォールバックが無いと、パスは"/hazkey-community/env"に潰れてしまい、以下のユーザ設定がすべて無言で無視される
-ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hazkey-community/env"
+# XDG Base Directory仕様に従い、絶対パスでない値は無効として既定位置を使う (サーバ・設定GUIと同じ規則)
+# 相対パスを受け入れると、作業ディレクトリ配下に置かれたファイルの設定を読み込んでしまう
+case "${XDG_CONFIG_HOME:-}" in
+    /*) CONFIG_HOME="$XDG_CONFIG_HOME" ;;
+    *) CONFIG_HOME="$HOME/.config" ;;
+esac
+ENV_FILE="$CONFIG_HOME/hazkey-community/env"
 
 # ユーザ定義の環境変数を読み込む
 #
-# 下記の設定 ("set -a"コマンドは必須) は、このスクリプトが最後に実行するhazkey-serverプロセスが消費するが、
-# sourceしたファイル内の"KEY=value"行はシェルのローカル変数を定義するだけであり、実行時に渡される環境変数にはならない
-# (Bash専用の"source"コマンドではなく、"."を使用しているのは、このスクリプトがPOSIX shで動作するため)
+# このファイルはシェルとして実行 ("." でsource) せず、1行ずつ "KEY=value" のデータとして解釈する
+# sourceすると、ファイルに書かれたコマンド置換やコマンドがIMEの起動のたびに実行されてしまう
+# (このファイルへの書き込みを得たプロセスが、変換サーバの起動に便乗して任意のコードを実行し続けられる)
+#
+# 読み込んだ変数は、このシェル自身には代入しない
+# 名前を接頭辞付きの変数 (hazkey_env_user_<KEY>) に保持して、最後にenv(1)の引数として変換サーバへ渡す
+# bashでは、RANDOMやOPTIND等の特殊変数へ代入すると値を算術式として評価するため、
+# 単一引用符で囲んだ値でも、配列の添字に書いたコマンド置換が実行されてしまう
+# また、読み取り専用の変数 (UID等) への代入はシェルを終了させ、この解析器自身の変数への代入は解析を乱す
+#
+# 受け付ける書式 (従来の "KEY=value" 形式の設定はそのまま使える)
+#   - 空行と "#" で始まる行は無視する。行頭の "export " は省略可能として読み飛ばす
+#   - KEYは英字または "_" で始まる英数字と "_" の並び
+#   - 'value' は内容をそのまま使う (展開しない。$、`、\ も文字として扱う)
+#   - "value" と引用符なしの値は、$NAME と ${NAME} だけを展開する (例: $HOME/.cache/...)
+#     このファイルの前の行で設定した変数は、その値を展開する
+#     引用符なしの値は最初の空白までで、その後ろには "#" で始まるコメントだけを置ける
+#     (空白を挟まない "#" は値の一部として扱う。例: KEY=abc#def の値は abc#def)
+#     引用符なしの値の先頭の "~" と "~/" は$HOMEに展開する
+#   - 二重引用符の値と引用符なしの値で、コマンド置換 ($(...) と `...`)、${NAME:-x} 等の展開、
+#     バックスラッシュ、シェルの制御文字を含む行は、警告を出して読み飛ばす
+#   - 同じKEYを複数回設定した場合は、最後の行の値を使う
+#
+# 動的リンカとglibcがsetuidプログラムで取り除く変数 (LD_*、GCONV_PATH等) は設定しない
+# SELinuxポリシーは変換サーバへのドメイン遷移でnoatsecureを許可しており、glibcはこれらを取り除かないため、
+# ここで共有ライブラリの差し込み (LD_PRELOAD等) を防ぐ
+hazkey_env_names=
+hazkey_env_lineno=0
+
+hazkey_env_warn() {
+    printf 'hazkey-community-server: %s:%s: %s\n' "$ENV_FILE" "$hazkey_env_lineno" "$1" >&2
+}
+
+# 引数の $NAME と ${NAME} を値へ置き換えて、結果をhazkey_env_expandedに入れる
+# このファイルで設定済みの名前はその値を、それ以外は現在の環境変数の値を使う
+# 名前は英数字と "_" に限定してから参照するため、evalへ渡す文字列はシェルの構文を含まない
+# 対応しない展開 (${NAME:-x}等) を含む場合は、1を返す
+hazkey_env_expand() {
+    hazkey_env_rest=$1
+    hazkey_env_expanded=
+    while :; do
+        case $hazkey_env_rest in
+            *'$'*) ;;
+            *)
+                hazkey_env_expanded=$hazkey_env_expanded$hazkey_env_rest
+                return 0
+                ;;
+        esac
+        hazkey_env_expanded=$hazkey_env_expanded${hazkey_env_rest%%\$*}
+        hazkey_env_rest=${hazkey_env_rest#*\$}
+        case $hazkey_env_rest in
+            '{'*)
+                hazkey_env_name=${hazkey_env_rest#'{'}
+                case $hazkey_env_name in
+                    *'}'*) hazkey_env_name=${hazkey_env_name%%'}'*} ;;
+                    *) return 1 ;;
+                esac
+                hazkey_env_rest=${hazkey_env_rest#*'}'}
+                ;;
+            [A-Za-z_]*)
+                hazkey_env_name=${hazkey_env_rest%%[!A-Za-z0-9_]*}
+                hazkey_env_rest=${hazkey_env_rest#"$hazkey_env_name"}
+                ;;
+            *) return 1 ;;
+        esac
+        case $hazkey_env_name in
+            '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;;
+        esac
+        case " $hazkey_env_names " in
+            *" $hazkey_env_name "*) eval "hazkey_env_value=\$hazkey_env_user_$hazkey_env_name" ;;
+            *) eval "hazkey_env_value=\${$hazkey_env_name-}" ;;
+        esac
+        hazkey_env_expanded=$hazkey_env_expanded$hazkey_env_value
+    done
+}
+
 if [ -f "$ENV_FILE" ]; then
-    set -a
-    . "$ENV_FILE"
-    set +a
+    while IFS= read -r hazkey_env_line || [ -n "$hazkey_env_line" ]; do
+        hazkey_env_lineno=$((hazkey_env_lineno + 1))
+        # 行末のCR (CRLF改行) と前後の空白を除く
+        hazkey_env_line=${hazkey_env_line%"$(printf '\r')"}
+        hazkey_env_line=${hazkey_env_line#"${hazkey_env_line%%[![:space:]]*}"}
+        hazkey_env_line=${hazkey_env_line%"${hazkey_env_line##*[![:space:]]}"}
+        case $hazkey_env_line in
+            '' | '#'*) continue ;;
+            'export '* | 'export	'*)
+                hazkey_env_line=${hazkey_env_line#export}
+                hazkey_env_line=${hazkey_env_line#"${hazkey_env_line%%[![:space:]]*}"}
+                ;;
+        esac
+        case $hazkey_env_line in
+            *=*) ;;
+            *)
+                hazkey_env_warn "ignored (not KEY=value)"
+                continue
+                ;;
+        esac
+        hazkey_env_key=${hazkey_env_line%%=*}
+        hazkey_env_raw=${hazkey_env_line#*=}
+        case $hazkey_env_key in
+            '' | [0-9]* | *[!A-Za-z0-9_]*)
+                hazkey_env_warn "ignored (invalid variable name)"
+                continue
+                ;;
+            LD_* | GCONV_PATH | GETCONF_DIR | GLIBC_TUNABLES | HOSTALIASES | LOCALDOMAIN | LOCPATH | \
+                MALLOC_TRACE | NIS_PATH | NLSPATH | RESOLV_HOST_CONF | RES_OPTIONS | TMPDIR | TZDIR)
+                hazkey_env_warn "ignored ($hazkey_env_key is not allowed)"
+                continue
+                ;;
+        esac
+        case $hazkey_env_raw in
+            "'"*)
+                # 単一引用符: 閉じ引用符の後ろは空白と "#" で始まるコメントだけを許す
+                hazkey_env_value=${hazkey_env_raw#"'"}
+                case $hazkey_env_value in
+                    *"'"*) ;;
+                    *)
+                        hazkey_env_warn "ignored (unterminated quote)"
+                        continue
+                        ;;
+                esac
+                hazkey_env_tail=${hazkey_env_value#*"'"}
+                hazkey_env_value=${hazkey_env_value%%"'"*}
+                ;;
+            '"'*)
+                hazkey_env_value=${hazkey_env_raw#'"'}
+                case $hazkey_env_value in
+                    *'"'*) ;;
+                    *)
+                        hazkey_env_warn "ignored (unterminated quote)"
+                        continue
+                        ;;
+                esac
+                hazkey_env_tail=${hazkey_env_value#*'"'}
+                hazkey_env_value=${hazkey_env_value%%'"'*}
+                case $hazkey_env_value in
+                    *'`'* | *'\'* | *'$('*)
+                        hazkey_env_warn "ignored (command substitution and backslashes are not supported)"
+                        continue
+                        ;;
+                esac
+                if ! hazkey_env_expand "$hazkey_env_value"; then
+                    hazkey_env_warn "ignored (only \$NAME and \${NAME} expansions are supported)"
+                    continue
+                fi
+                hazkey_env_value=$hazkey_env_expanded
+                ;;
+            *)
+                hazkey_env_value=${hazkey_env_raw%%[[:space:]]*}
+                hazkey_env_tail=${hazkey_env_raw#"$hazkey_env_value"}
+                case $hazkey_env_value in
+                    *[\'\"\`\\\;\&\|\<\>\(\)]*)
+                        hazkey_env_warn "ignored (quotes, backslashes and shell operators need quoting rules that are not supported)"
+                        continue
+                        ;;
+                esac
+                case $hazkey_env_value in
+                    '~') hazkey_env_value=$HOME ;;
+                    '~/'*) hazkey_env_value=$HOME/${hazkey_env_value#'~/'} ;;
+                esac
+                if ! hazkey_env_expand "$hazkey_env_value"; then
+                    hazkey_env_warn "ignored (only \$NAME and \${NAME} expansions are supported)"
+                    continue
+                fi
+                hazkey_env_value=$hazkey_env_expanded
+                ;;
+        esac
+        hazkey_env_tail=${hazkey_env_tail#"${hazkey_env_tail%%[![:space:]]*}"}
+        case $hazkey_env_tail in
+            '' | '#'*) ;;
+            *)
+                hazkey_env_warn "ignored (unexpected text after the value)"
+                continue
+                ;;
+        esac
+        # KEYは英数字と "_" だけなので、evalへ渡す文字列はシェルの構文を含まない
+        # 値は変数の参照として代入するため、内容は展開も評価もされない
+        eval "hazkey_env_user_$hazkey_env_key=\$hazkey_env_value"
+        case " $hazkey_env_names " in
+            *" $hazkey_env_key "*) ;;
+            *) hazkey_env_names="$hazkey_env_names $hazkey_env_key" ;;
+        esac
+    done < "$ENV_FILE"
 fi
 
-# 任意のCPU設定は、sourceしたファイルからhazkey-serverが読み取る
+# 任意のCPU設定は、上記で読み込んだ環境変数からhazkey-serverが読み取る
 # HAZKEY_ZENZAI_CPU_THREADS=1..8
 # HAZKEY_ZENZAI_DEADLINE_MS=0..2000 ("0"は期限なし)
 
@@ -38,4 +220,25 @@ fi
 # 特定のドライバを強制したい場合は、引き続き、
 # "$XDG_CONFIG_HOME/hazkey-community/env"ファイルのVK_DRIVER_FILES、VK_ICD_FILENAMES、VK_LOADER_DRIVERS_SELECT等を使用する
 # 例は、README.mdを参照すること
-exec "@CMAKE_INSTALL_FULL_LIBDIR@/hazkey-community/hazkey-community-server" "$@"
+hazkey_server="@CMAKE_INSTALL_FULL_LIBDIR@/hazkey-community/hazkey-community-server"
+if [ -z "$hazkey_env_names" ]; then
+    exec "$hazkey_server" "$@"
+fi
+
+# 読み込んだ変数を "KEY=value" の引数にして、env(1)から変換サーバを起動する
+# 位置パラメータの末尾へ "KEY=value" と変換サーバのパスを追加してから、元の引数を末尾へ回すと、
+# "KEY=value"... 変換サーバのパス 元の引数... の順になる
+hazkey_env_argc=$#
+IFS=' '
+for hazkey_env_name in $hazkey_env_names; do
+    eval "hazkey_env_value=\$hazkey_env_user_$hazkey_env_name"
+    set -- "$@" "$hazkey_env_name=$hazkey_env_value"
+done
+set -- "$@" "$hazkey_server"
+while [ "$hazkey_env_argc" -gt 0 ]; do
+    hazkey_env_arg=$1
+    shift
+    set -- "$@" "$hazkey_env_arg"
+    hazkey_env_argc=$((hazkey_env_argc - 1))
+done
+exec /usr/bin/env "$@"

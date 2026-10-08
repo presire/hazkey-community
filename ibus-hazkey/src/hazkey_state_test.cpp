@@ -21,6 +21,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -969,6 +970,16 @@ void testSurroundingGateMachine() {
         gate.abort();
         assert(!gate.timeoutApplies(timer));
     }
+    {
+        Machine gate;
+        const uint64_t oldGeneration = gate.beginCheck();
+        gate.abort();
+        const uint64_t currentGeneration = gate.beginCheck();
+        assert(!gate.abortIfCurrent(oldGeneration));
+        assert(gate.phase() == Phase::Checking);
+        assert(gate.abortIfCurrent(currentGeneration));
+        assert(!gate.active());
+    }
 
     // 待機外の打ち切りは何もしない
     {
@@ -1027,6 +1038,7 @@ class SurroundingFakeServer {
 
     ~SurroundingFakeServer() {
         stop_ = true;
+        contextCondition_.notify_all();
         if (thread_.joinable()) {
             thread_.join();
         }
@@ -1042,6 +1054,33 @@ class SurroundingFakeServer {
     void setRevision(uint64_t revision) {
         std::lock_guard<std::mutex> lock(mutex_);
         revision_ = revision;
+    }
+
+    void setSelectableCandidates(bool enabled) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        selectableCandidates_ = enabled;
+    }
+
+    void blockNextContext() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        blockNextContext_ = true;
+    }
+
+    bool waitForBlockedContext(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return contextCondition_.wait_for(lock, timeout,
+                                          [this] { return contextBlocked_; });
+    }
+
+    void releaseBlockedContext() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        releaseContext_ = true;
+        contextCondition_.notify_all();
+    }
+
+    int inputChars() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return inputChars_;
     }
 
     int prefixCompletions() {
@@ -1149,7 +1188,7 @@ class SurroundingFakeServer {
     }
 
     hazkey::ResponseEnvelope respond(const hazkey::RequestEnvelope& request) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
         hazkey::ResponseEnvelope response;
         response.set_status(hazkey::SUCCESS);
         response.set_config_revision(revision_);
@@ -1164,8 +1203,19 @@ class SurroundingFakeServer {
             case hazkey::RequestEnvelope::kSetContext:
                 contexts_.emplace_back(request.set_context().context(),
                                        request.set_context().anchor());
+                if (blockNextContext_) {
+                    blockNextContext_ = false;
+                    contextBlocked_ = true;
+                    contextCondition_.notify_all();
+                    contextCondition_.wait(lock, [this] {
+                        return releaseContext_ || stop_.load();
+                    });
+                    contextBlocked_ = false;
+                    releaseContext_ = false;
+                }
                 break;
             case hazkey::RequestEnvelope::kInputChar:
+                ++inputChars_;
                 romaji_ += request.input_char().text();
                 break;
             case hazkey::RequestEnvelope::kGetComposingString:
@@ -1182,7 +1232,7 @@ class SurroundingFakeServer {
                 candidates->add_candidates()->set_text(converted);
                 candidates->set_live_text(converted);
                 candidates->set_live_text_index(0);
-                candidates->set_page_size(0);
+                candidates->set_page_size(selectableCandidates_ ? 1 : 0);
                 break;
             }
             case hazkey::RequestEnvelope::kGetCurrentInputMode:
@@ -1207,10 +1257,16 @@ class SurroundingFakeServer {
     std::atomic<bool> stop_{false};
     std::thread thread_;
     std::mutex mutex_;
+    std::condition_variable contextCondition_;
     std::string romaji_;
+    int inputChars_ = 0;
     int prefixCompletions_ = 0;
     std::vector<std::pair<std::string, int>> contexts_;
     bool rightContext_ = true;
+    bool selectableCandidates_ = false;
+    bool blockNextContext_ = false;
+    bool contextBlocked_ = false;
+    bool releaseContext_ = false;
     uint64_t revision_ = 1;
 };
 
@@ -1351,6 +1407,89 @@ void testSurroundingTextWiring() {
     std::cout << "surrounding text wiring: OK\n";
 }
 
+void testGatedFirstInputDiscardedAfterSecureRequest() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-secure-gate-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    {
+        SurroundingFakeServer server(socketPath);
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                   IBUS_CAP_PROPERTY | IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+        });
+
+        state->requestSecureInput(true, 1);
+        runOnWorker(executor, [&] {
+            state->resumeGatedInput(IBUS_KEY_a, 0, true);
+        });
+        assert(server.inputChars() == 0);
+        assert(server.romaji().empty());
+        executor.shutdown();
+    }
+    rmdir(root);
+    std::cout << "gated first input discarded after secure request: OK\n";
+}
+
+void testCompleteCandidateDoesNotCompleteAfterSecureRequest() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-secure-candidate-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        server.setSelectableCandidates(true);
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                   IBUS_CAP_PROPERTY | IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+        });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_Tab);
+
+        server.blockNextContext();
+        executor.submit([&] {
+            state->processKeyEvent(IBUS_KEY_Return, 0, 0);
+        });
+        assert(server.waitForBlockedContext(std::chrono::seconds(2)));
+        state->requestSecureInput(true, 1);
+        state->requestSecureInput(false, 2);
+        server.releaseBlockedContext();
+        executor.drainAndWait();
+        assert(server.prefixCompletions() == 0);
+
+        runOnWorker(executor, [&] {
+            state->setOperationEpoch(2);
+            state->setSecureInput(false);
+        });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_Return);
+        assert(server.prefixCompletions() == 1);
+
+        executor.shutdown();
+    }
+    rmdir(root);
+    std::cout << "candidate completion discarded after secure request: OK\n";
+}
+
 /**
  * @brief 安全入力への切替より前に積まれたキー処理が、確定・学習しないことを検証する
  *
@@ -1382,7 +1521,7 @@ void testQueuedKeyAfterSecureRequestIsDiscarded() {
         assert(server.romaji() == "ai");
 
         // メインループ上の切替 (setContentType()) は、積まれた[Return]の実行より先に通知する
-        state->requestSecureInput(true);
+        state->requestSecureInput(true, 1);
         gboolean handled = TRUE;
         runOnWorker(executor, [&] { handled = state->processKeyEvent(IBUS_KEY_Return, 0, 0); });
         assert(handled == FALSE);
@@ -1398,8 +1537,9 @@ void testQueuedKeyAfterSecureRequestIsDiscarded() {
         assert(server.prefixCompletions() == 0);
 
         // 解除後は通常どおり確定できる
-        state->requestSecureInput(false);
+        state->requestSecureInput(false, 2);
         runOnWorker(executor, [&] {
+            state->setOperationEpoch(2);
             state->setSecureInput(false);
             state->focusIn();
         });
@@ -1604,6 +1744,99 @@ void testFrontendForwardsReleaseOfFrameworkForwardedPress() {
     std::cout << "frontend forwards release of framework-forwarded press: OK\n";
 }
 
+void testFrontendWorkerExceptionRecoversGate() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-worker-error-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    ibus_init();
+    int fds[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    GDBusConnection* connections[2] = {nullptr, nullptr};
+    for (int i = 0; i < 2; ++i) {
+        GError* error = nullptr;
+        GSocket* socket = g_socket_new_from_fd(fds[i], &error);
+        assert(socket != nullptr);
+        GSocketConnection* stream = g_socket_connection_factory_create_connection(socket);
+        g_object_unref(socket);
+        gchar* guid = i == 0 ? g_dbus_generate_guid() : nullptr;
+        g_dbus_connection_new(
+            G_IO_STREAM(stream), guid,
+            i == 0 ? G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_SERVER
+                   : G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT,
+            nullptr, nullptr,
+            [](GObject*, GAsyncResult* result, gpointer data) {
+                *static_cast<GDBusConnection**>(data) =
+                    g_dbus_connection_new_finish(result, nullptr);
+            },
+            &connections[i]);
+        g_free(guid);
+        g_object_unref(stream);
+    }
+    assert(pumpMainLoopUntil(
+        [&] { return connections[0] != nullptr && connections[1] != nullptr; },
+        std::chrono::milliseconds(5000)));
+
+    hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
+        auto* heapTask = new std::function<void()>(std::move(task));
+        g_idle_add_full(
+            G_PRIORITY_DEFAULT,
+            [](gpointer data) -> gboolean {
+                (*static_cast<std::function<void()>*>(data))();
+                return G_SOURCE_REMOVE;
+            },
+            heapTask, [](gpointer data) { delete static_cast<std::function<void()>*>(data); });
+    });
+    IBusEngine* engine =
+        ibus_engine_new("hazkey-test", "/org/freedesktop/IBus/Engine/1", connections[0]);
+    assert(engine != nullptr);
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(true);
+        auto frontend = std::make_shared<HazkeyFrontend>(engine);
+        frontend->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                  IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                  IBUS_CAP_PROPERTY | IBUS_CAP_SURROUNDING_TEXT);
+        frontend->focusIn();
+        settleFrontend();
+
+        HazkeyState::throwOnNextProcessKeyEventForTest();
+        assert(frontend->processKeyEvent(IBUS_KEY_a, 38, 0) == TRUE);
+        assert(frontend->surroundingGatePhaseForTest() ==
+               HazkeyFrontend::SurroundingGateMachine::Phase::Checking);
+        assert(frontend->processKeyEvent(IBUS_KEY_i, 31, 0) == TRUE);
+        assert(pumpMainLoopUntil(
+            [&] {
+                return frontend->pendingOpsForTest() == 0 &&
+                       frontend->surroundingGatePhaseForTest() ==
+                           HazkeyFrontend::SurroundingGateMachine::Phase::Idle;
+            },
+            std::chrono::milliseconds(2000)));
+        assert(server.romaji().empty());
+
+        sendKey(*frontend, IBUS_KEY_u, 30);
+        assert(server.romaji() == "u");
+        frontend->focusOut();
+        settleFrontend();
+        frontend->retire();
+    }
+
+    hazkey::frontend::setMainLoopPoster(nullptr);
+    g_object_unref(engine);
+    for (GDBusConnection* connection : connections) {
+        g_dbus_connection_close_sync(connection, nullptr, nullptr);
+        g_object_unref(connection);
+    }
+    rmdir(root);
+    std::cout << "frontend worker exception recovers surrounding gate: OK\n";
+}
+
 }  // namespace
 
 /**
@@ -1640,8 +1873,11 @@ int main() {
     testSurroundingGateConditions();
     testSurroundingGateMachine();
     testSurroundingTextWiring();
+    testGatedFirstInputDiscardedAfterSecureRequest();
+    testCompleteCandidateDoesNotCompleteAfterSecureRequest();
     testQueuedKeyAfterSecureRequestIsDiscarded();
     testFrontendForwardsReleaseOfFrameworkForwardedPress();
+    testFrontendWorkerExceptionRecoversGate();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }

@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 
 #ifdef Q_OS_UNIX
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
@@ -90,6 +91,8 @@ private slots:
     void testReplacesExistingLongerFile();
     /** @brief 保存失敗時に既存ファイルと一時ファイル状態が保持されることを確認する */
     void testFailureRetainsExistingFile();
+    /** @brief umask 022でも新規作成・置換後のファイル権限が0600になることを確認する */
+    void testWrittenFileIsOwnerOnlyUnderPermissiveUmask();
 
 private:
     /** @brief テスト間で利用する自動削除対象の一時ディレクトリ */
@@ -197,6 +200,44 @@ void UserDictModelTest::testFailureRetainsExistingFile() {
              QStringList{QStringLiteral("user_dictionary.tsv")});
 #else
     QSKIP("Directory permission manipulation is only implemented for Unix.");
+#endif
+}
+
+void UserDictModelTest::testWrittenFileIsOwnerOnlyUnderPermissiveUmask() {
+#ifdef Q_OS_UNIX
+    const mode_t previousUmask = ::umask(022);
+    struct UmaskRestore {
+        mode_t previous;
+        ~UmaskRestore() { ::umask(previous); }
+    } restore{previousUmask};
+
+    QVector<UserDictEntry> entries;
+    entries.append({QStringLiteral("あ"), QStringLiteral("亜"), QString(),
+                    QStringLiteral("noun")});
+    // QFileInfo::permissions() はOwnerとUserの同義ビットを両方立てて返す
+    const QFile::Permissions ownerOnly =
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+        QFileDevice::ReadUser | QFileDevice::WriteUser;
+
+    // 新規作成: umaskが022でも0644にならない
+    const QString created = tempDir_.path() + "/mode-created.tsv";
+    QVERIFY2(writeUserDictionaryFile(created, entries), "create must succeed");
+    QCOMPARE(QFileInfo(created).permissions(), ownerOnly);
+
+    // 置換: 緩い権限(0644)で存在する既存ファイルも0600へ締め直す
+    const QString replaced = tempDir_.path() + "/mode-replaced.tsv";
+    {
+        QFile seed(replaced);
+        QVERIFY2(seed.open(QIODevice::WriteOnly), "seed existing file");
+        seed.write("old\n");
+    }
+    QVERIFY(QFile::setPermissions(
+        replaced, ownerOnly | QFileDevice::ReadGroup | QFileDevice::ReadOther));
+    QVERIFY(QFileInfo(replaced).permissions().testFlag(QFileDevice::ReadOther));
+    QVERIFY2(writeUserDictionaryFile(replaced, entries), "replace must succeed");
+    QCOMPARE(QFileInfo(replaced).permissions(), ownerOnly);
+#else
+    QSKIP("File mode checks are only implemented for Unix.");
 #endif
 }
 

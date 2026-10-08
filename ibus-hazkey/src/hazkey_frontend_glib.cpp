@@ -9,6 +9,7 @@
 #include "hazkey_frontend_hooks.h"
 #include <glib.h>
 #include <atomic>
+#include <exception>
 #include <functional>
 #include <string>
 #include <utility>
@@ -38,7 +39,14 @@ void installGlibFrontendHooks() {
             G_PRIORITY_DEFAULT,
             [](gpointer data) -> gboolean {
                 auto* fn = static_cast<std::function<void()>*>(data);
-                (*fn)();
+                // C製のGLibメインループを例外が越えるとstd::terminateになるため、ここで止めて記録する
+                try {
+                    (*fn)();
+                } catch (const std::exception& e) {
+                    g_warning("hazkey: main-loop task threw: %s", e.what());
+                } catch (...) {
+                    g_warning("hazkey: main-loop task threw a non-standard exception");
+                }
                 return G_SOURCE_REMOVE;
             },
             heapTask,
@@ -80,7 +88,8 @@ void installGlibFrontendHooks() {
         });
 
     hazkey::frontend::setServerSpawner([](bool forceRestart) {
-        std::vector<std::string> arguments{"hazkey-community-server"};
+        // PATHを検索せず、インストール先の絶対パスで起動する (G_SPAWN_SEARCH_PATHは付けない)
+        std::vector<std::string> arguments{HAZKEY_SERVER_EXECUTABLE_PATH};
         if (forceRestart) {
             arguments.emplace_back("-r");
         }
@@ -93,7 +102,7 @@ void installGlibFrontendHooks() {
         argv.push_back(nullptr);
 
         GError* error = nullptr;
-        if (!g_spawn_async(nullptr, argv.data(), nullptr, G_SPAWN_SEARCH_PATH,
+        if (!g_spawn_async(nullptr, argv.data(), nullptr, static_cast<GSpawnFlags>(0),
                            nullptr, nullptr, nullptr, &error)) {
             g_warning("hazkey: failed to spawn hazkey-community-server: %s", error->message);
             g_error_free(error);

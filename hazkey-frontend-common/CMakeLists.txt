@@ -40,6 +40,11 @@ add_library(hazkey-frontend-common STATIC
     candidate_annotation.cpp
 )
 
+# 両フロントエンドがサーバを起動するときに使う絶対パス (PATHは検索しない)
+# ラッパーは hazkey-server/CMakeLists.txt が ${CMAKE_INSTALL_FULL_BINDIR} へインストールする
+target_compile_definitions(hazkey-frontend-common PUBLIC
+    HAZKEY_SERVER_EXECUTABLE_PATH="${CMAKE_INSTALL_FULL_BINDIR}/hazkey-community-server")
+
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
     # protobuf 3.15以降は標準のproto3 optional生成を使用する
     message(STATUS "Using standard protobuf_generate (protobuf ${Protobuf_VERSION})")

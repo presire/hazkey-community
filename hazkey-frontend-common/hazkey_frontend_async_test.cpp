@@ -14,6 +14,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <vector>
 
@@ -140,6 +141,22 @@ void testCancelPreventsRun() {
     executor.drainAndWait();
     CHECK(!ran);
     std::cout << "[PASS] cancelled delayed task never runs\n";
+}
+
+/**
+ * @brief タスクが例外を投げてもワーカーが止まらないことを検証する
+ *
+ * 例外を投げたタスクの後に積んだタスクも実行され、プロセスが終了しないことを確認する
+ */
+void testThrowingTaskDoesNotStopWorker() {
+    SerialTaskExecutor executor;
+    std::atomic<bool> ranAfter{false};
+    executor.submit([] { throw std::bad_alloc(); });
+    executor.submit([] { throw 42; });
+    executor.submit([&] { ranAfter = true; });
+    executor.drainAndWait();
+    CHECK(ranAfter);
+    std::cout << "[PASS] throwing task does not stop the worker\n";
 }
 
 /**
@@ -329,6 +346,7 @@ int main() {
     testFifoOnSingleThread();
     testDelayedTasksDoNotBlockReadyOnes();
     testCancelPreventsRun();
+    testThrowingTaskDoesNotStopWorker();
     testBoundedDrainTimesOutAndSucceedsWhenIdle();
     testTimedOutDrainCanFinishLater();
     testWorkerDrainReturnsPromptly();

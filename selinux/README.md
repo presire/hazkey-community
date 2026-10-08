@@ -44,6 +44,7 @@ Fcitx 5のアドオン、IBusのエンジン、設定GUI、ラッパースクリ
 | Boolean | 既定 | 説明 |
 |---|---|---|
 | [hazkey_community_use_gpu] | on | GPU (Vulkan) によるニューラル変換を許可する |
+| [hazkey_community_gpu_execmem] | on | GPUの利用時に、実行可能なメモリの確保 (execmem) を許可する<br>(lavapipeやNVIDIAのドライバが実行時にコードを生成するために必要。AMDのRADV、IntelのANVでは不要) |
 | [hazkey_community_read_user_files] | on | ホームディレクトリ配下の任意のモデルと辞書の読み取りを許可する<br>(設定GUIで指定したカスタム重み、[HAZKEY_ZENZAI_MODEL]で指定したモデル等) |
 | [hazkey_community_write_gpu_cache] | on | GPUドライバが`~/.cache`直下に作成する共有のシェーダキャッシュへの書き込みを許可する<br>(`~/.cache/mesa_shader_cache`等) |
 
@@ -216,6 +217,9 @@ rm -f $XDG_RUNTIME_DIR/hazkey-community-server.*
 ```sh
 # GPUを使わない (CPU専用で変換する)
 sudo setsebool -P hazkey_community_use_gpu off
+
+# GPUは使うが、実行可能なメモリの確保を禁止する (AMDのRADV、IntelのANVの場合)
+sudo setsebool -P hazkey_community_gpu_execmem off
 
 # モデルと辞書を~/.local/share/hazkey-community以外に置かない
 sudo setsebool -P hazkey_community_read_user_files off

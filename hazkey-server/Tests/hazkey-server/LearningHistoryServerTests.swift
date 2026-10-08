@@ -117,6 +117,75 @@ final class LearningHistoryServerTests: XCTestCase {
         }
     }
 
+    func testDeletionLimitRejectsBeforeLookupAndAcceptsGuiPageSize() throws {
+        try withIsolatedServerEnvironment { _ in
+            let state = HazkeyServerState()
+            defer { state.close() }
+            var lookups = 0
+            state.shared.learningSurfaceKeyLookup = { _ in lookups += 1; return [] }
+            let key = Hazkey_Config_LearningEntryKey.with {
+                $0.reading = "カナ"
+                $0.word = "仮名"
+            }
+            let oversized = Array(repeating: key, count: HazkeySharedResources.learningDeletionLimit + 1)
+            let response = try send(deleteRequest(oversized), to: state)
+            XCTAssertEqual(response.status, .failed)
+            XCTAssertFalse(response.errorMessage.isEmpty)
+            XCTAssertEqual(lookups, 0)
+            XCTAssertThrowsError(try state.shared.forgetLearningEntries(
+                oversized.map { (reading: $0.reading, word: $0.word, lcid: $0.lcid, rcid: $0.rcid) }))
+            XCTAssertEqual(lookups, 0)
+            let page = try send(deleteRequest(Array(repeating: key, count: 200)), to: state)
+            XCTAssertEqual(page.status, .success)
+            XCTAssertGreaterThan(lookups, 0)
+        }
+    }
+
+    func testPartialDeletionFailureInvalidatesEveryLiveSessionAndPropagatesError() throws {
+        try withIsolatedServerEnvironment { root in
+            let memoryURL = root.appendingPathComponent("memory")
+            let first = makeState(memoryURL: memoryURL)
+            let second = HazkeyServerState(shared: first.shared)
+            defer { first.close(); second.close() }
+            let target = DicdataElement(word: "回帰専用候補乙", ruby: "キリン", lcid: 1285, rcid: 1285, mid: 501, value: -1)
+            let survivor = DicdataElement(word: "保持専用候補甲", ruby: "ホジ", lcid: 1285, rcid: 1285, mid: 501, value: -1)
+            seed([target, survivor], in: first)
+            var options = first.baseConvertRequestOptions
+            options.memoryDirectoryURL = memoryURL
+            options.learningType = .inputAndOutput
+            options.maxMemoryCount = 64
+            options.zenzaiMode = .off
+            options.requireJapanesePrediction = .disabled
+            options.requireEnglishPrediction = .disabled
+            options.typoCorrectionMode = .disabled
+            let text = ComposingText(convertTargetCursorPosition: 3,
+                input: target.ruby.map { .init(character: $0, inputStyle: .direct) }, convertTarget: target.ruby)
+            func candidates(_ state: HazkeyServerState) throws -> [String] {
+                try state.converter.withSession(state.conversionSessionID) {
+                    state.converter.requestCandidates(text, options: options).mainResults.map(\.text)
+                }
+            }
+            XCTAssertTrue(try candidates(first).contains(target.word))
+            XCTAssertTrue(try candidates(second).contains(target.word))
+            var attempts = 0
+            first.shared.learningEntryDeleter = { reading, word, lcid, rcid in
+                attempts += 1
+                if attempts == 2 { throw POSIXError(.EIO) }
+                try first.converter.forgetLearningMemory(reading: reading, word: word, lcid: lcid, rcid: rcid)
+            }
+            defer { first.shared.learningEntryDeleter = nil }
+            let response = try send(deleteRequest([key(for: target), key(for: survivor)]), to: first)
+            XCTAssertEqual(attempts, 2)
+            XCTAssertEqual(response.status, .failed)
+            XCTAssertFalse(response.errorMessage.isEmpty)
+            let persisted = try first.shared.allLearningMemoryEntries().map { $0.data.word }
+            XCTAssertFalse(persisted.contains(target.word))
+            XCTAssertTrue(persisted.contains(survivor.word))
+            XCTAssertFalse(try candidates(first).contains(target.word))
+            XCTAssertFalse(try candidates(second).contains(target.word))
+        }
+    }
+
     func testHistoryFiltersByReadingSubstring() throws {
         try withTemporaryXDG { root in
             let state = makeState(memoryURL: root.appendingPathComponent("memory", isDirectory: true))

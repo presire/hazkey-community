@@ -24,13 +24,13 @@ module hazkey_community 1.0.0;
 #   学習データ (~/.local/state/hazkey-community)、モデル (~/.local/share/hazkey-community)、
 #   キャッシュ (~/.cache/hazkey-community) の読み書き
 #   クライアント接続用のUNIXドメインソケットとロックファイル ([XDG_RUNTIME_DIR]) の作成
-#   Vulkanバックエンドの安全確認のための自身の再実行と、旧サーバを探すためのpgrepの実行
+#   Vulkanバックエンドの安全確認のための自身の再実行 (posix_spawnで起動し、waitpidで終了を待つ)
 #   GPUデバイスの利用 (boolean [hazkey_community_use_gpu]、既定は有効)
+#   GPUドライバによる実行可能なメモリの確保 (boolean [hazkey_community_gpu_execmem]、既定は有効)
 #   ユーザが指定した任意の場所のモデル・辞書の読み取り (boolean [hazkey_community_read_user_files]、既定は有効)
 #
 # セキュリティモデル :
-#   変換サーバは全てのキー入力を受け取るため、TCPとネットワーク上の名前の束縛 (name_bind) を一切許可しない
-#   UDPは、Foundationが子プロセスの終了を通知するために作成するループバックのソケットだけに必要となる
+#   変換サーバは全てのキー入力を受け取るため、TCPとUDPの通信、ネットワーク上の名前の束縛 (name_bind) を一切許可しない
 #   ホームディレクトリへの書き込みは、Hazkey Community専用のディレクトリだけに限定する
 #   ラッパースクリプトが起動元のドメインで読み込む環境変数ファイル (~/.config/hazkey-community/env) は、
 #   変換サーバが作成・変更・置換できないようにする (変換サーバを侵害されても、起動元のドメインへ戻れないようにする)
@@ -53,7 +53,6 @@ require {
     type unconfined_t; # 非制限ユーザのドメイン (fcitx5、ibus-daemon、設定GUIの起動元)
 
     # 実行ファイルとライブラリの型
-    type bin_t;           # /usr/bin等の一般的な実行ファイル (env、pgrep)
     type lib_t;           # 共有ライブラリ (llama.cppとGGMLのバックエンドを含む)
     type ld_so_t;         # 動的リンカ
     type ld_so_cache_t;   # 動的リンカのキャッシュ (/etc/ld.so.cache)
@@ -67,7 +66,6 @@ require {
     type passwd_file_t;  # /etc/passwd (ホームディレクトリの取得)
 
     # ファイルシステムの型
-    type node_t;          # ネットワークのノード (ループバックアドレスを含む)
     type tmp_t;           # /tmp
     type tmpfs_t;         # tmpfs (/dev/shm、memfd)
     type user_tmp_t;      # ユーザの一時ファイル ($XDG_RUNTIME_DIRである/run/user/<UID>を含む)
@@ -118,7 +116,6 @@ require {
     class sock_file { getattr setattr open read write create unlink rename }; # UNIXドメインソケットのファイル
     class chr_file { getattr open read write ioctl map };                    # キャラクタデバイス
     class unix_stream_socket { create bind connect listen accept read write getattr setattr getopt shutdown connectto ioctl }; # UNIXドメインのストリームソケット
-    class udp_socket { create bind connect read write getattr getopt setopt node_bind };          # UDPのソケット (子プロセスの終了通知だけに使用する)
     class unix_dgram_socket { create connect read write sendto getattr };    # UNIXドメインのデータグラムソケット
     class fd { use };                                                        # 他のプロセスのファイルディスクリプタの使用
     class capability { dac_override dac_read_search sys_ptrace };            # rootの特権 (dontauditだけに使用する)
@@ -226,9 +223,17 @@ role unconfined_r types hazkey_community_server_t;
 # 変更は、setsebool -P <boolean名> on|off で行う
 ########################################
 
-# GPUデバイス (/dev/dri、NVIDIAのデバイス) の利用と、実行可能なメモリの確保 (execmem) を許可する
+# GPUデバイス (/dev/dri、NVIDIAのデバイス) の利用を許可する
 # 無効にすると、ニューラル変換はCPUだけで動作する (GPUの安全確認の子プロセスが失敗し、CPU専用へ切り替わる)
 bool hazkey_community_use_gpu true;
+
+# GPUの利用時に、実行可能なメモリの確保 (execmem) を許可する ([hazkey_community_use_gpu] が有効な場合のみ効く)
+# ソフトウェア実装のVulkan (lavapipe) やNVIDIAのドライバは、実行時にCPU向けのコードを生成するためにこの権限を必要とする
+# Mesaのハードウェアドライバ (AMDのRADV、IntelのANV) はCPU向けのコードを生成しないため、無効にしてもGPUで変換できる
+# 書き込み可能かつ実行可能なメモリを禁止すると、変換サーバが侵害された場合に任意のコードを実行されにくくなる
+# 無効にしてドライバが動作しない場合は、GPUの安全確認の子プロセスが失敗し、CPU専用へ切り替わる
+# 既定を有効にしているのは、上記のドライバの利用者のGPUによる変換を、ポリシーの更新で無効にしないため
+bool hazkey_community_gpu_execmem true;
 
 # GPUドライバが~/.cache直下に作成する共有のシェーダキャッシュ (mesa_shader_cache等) への書き込みを許可する
 # この権限は、他のアプリケーションのキャッシュ (~/.cache配下の一般的なファイル) の変更も含む
@@ -288,7 +293,7 @@ type_transition unconfined_t hazkey_community_conf_home_t:file hazkey_community_
 ########################################
 # 自プロセスの操作
 #
-# 推論スレッドの優先度の取得と設定、子プロセス (pgrep、GPUの安全確認) の生成と終了の待機に必要
+# 推論スレッドの優先度の取得と設定、子プロセス (GPUの安全確認) の生成と終了の待機に必要
 ########################################
 
 allow hazkey_community_server_t self:process { fork signal signull sigkill sigstop sigchld setpgid getpgid getsched setsched getrlimit };
@@ -315,12 +320,6 @@ allow hazkey_community_server_t lib_t:lnk_file { getattr read };
 allow hazkey_community_server_t ld_so_t:file { getattr open read execute map };
 allow hazkey_community_server_t ld_so_cache_t:file { getattr open read map };
 allow hazkey_community_server_t textrel_shlib_t:file { getattr open read execute map };
-
-# 外部コマンドの実行
-# 旧サーバの検索で、/usr/bin/envを経由してpgrepを同じドメインのまま実行する
-allow hazkey_community_server_t bin_t:dir { getattr open read search };
-allow hazkey_community_server_t bin_t:file { getattr open read execute execute_no_trans map };
-allow hazkey_community_server_t bin_t:lnk_file { getattr read };
 
 ########################################
 # システムのデータと設定ファイル
@@ -351,7 +350,7 @@ allow hazkey_community_server_t passwd_file_t:file { getattr open read map };
 # /procと/sys
 #
 # 推論スレッド数の決定 (CPUの数とトポロジ)、メモリ量の確認、GPUの列挙 (/sys/class/drm等) に必要
-# pgrepは/proc配下の各プロセスの情報を読み取り、カーネルのPID上限を確認する
+# 旧サーバの終了前に、ロックファイルのPIDのプロセスが同じUIDの変換サーバであることを/proc/<PID>で確認する
 ########################################
 
 allow hazkey_community_server_t proc_t:dir { getattr open read search };
@@ -487,21 +486,6 @@ allow hazkey_community_server_t hazkey_community_runtime_t:file { getattr setatt
 allow hazkey_community_server_t self:unix_stream_socket { create bind connect listen accept read write getattr setattr getopt shutdown ioctl };
 
 ########################################
-# 子プロセスの終了通知 (ループバックのUDP)
-#
-# GPUの安全確認と旧サーバの検索は、FoundationのProcessで子プロセスを起動する
-# Linux版のFoundationは、子プロセスの終了を監視スレッドへ通知するために、
-# 127.0.0.1へ束縛 (ポート番号は自動割り当て) して相互に接続した2つのUDPソケットを作成する
-# 拒否すると、子プロセスの終了を検出できず、GPUの安全確認が誤ってタイムアウトする場合がある
-#
-# 基本ポリシーではループバックのノードの型が一般的なノードの型 (node_t) と同じため、宛先をループバックだけに限定できない
-# 特定のポート番号への束縛 (name_bind) とTCPは許可しない
-########################################
-
-allow hazkey_community_server_t self:udp_socket { create bind connect read write getattr getopt setopt };
-allow hazkey_community_server_t node_t:udp_socket node_bind;
-
-########################################
 # /tmp配下の一時ディレクトリ
 #
 # GPUの安全確認が失敗した場合に、Vulkan以外のGGMLバックエンドへのシンボリックリンクを集めたディレクトリを作成し、
@@ -526,12 +510,17 @@ allow hazkey_community_server_t hazkey_community_tmpfs_t:file { getattr open rea
 # GPUの利用 (boolean [hazkey_community_use_gpu])
 #
 # llama.cppのVulkanバックエンドが、GPUのデバイスファイルを開いて計算を行う
-# execmemは、ソフトウェア実装のVulkan (lavapipe) やNVIDIAのドライバが実行時にコードを生成するために必要
+# execmemは別のboolean [hazkey_community_gpu_execmem] で、GPUの利用と独立に無効にできる
 ########################################
 
 if (hazkey_community_use_gpu) {
     allow hazkey_community_server_t dri_device_t:dir { getattr open read search };
     allow hazkey_community_server_t dri_device_t:chr_file { getattr open read write ioctl map };
+}
+
+# 実行可能なメモリの確保 (boolean [hazkey_community_use_gpu] と [hazkey_community_gpu_execmem])
+# lavapipeやNVIDIAのドライバが、実行時にCPU向けのコードを生成するために必要
+if (hazkey_community_use_gpu && hazkey_community_gpu_execmem) {
     allow hazkey_community_server_t self:process execmem;
 }
 
@@ -596,15 +585,11 @@ if (hazkey_community_read_user_files) {
 dontaudit hazkey_community_server_t { user_home_dir_t user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:dir { open read };
 dontaudit hazkey_community_server_t { user_home_t home_bin_t config_home_t gconf_home_t data_home_t cache_home_t }:file { getattr open read };
 
-# /usr/bin/envがpgrepを探す時に、環境変数 [PATH] に含まれるホームディレクトリ配下のディレクトリ (~/bin等) を順に調べる
-# pgrepは/usr/binで見つかるため、ホームディレクトリ配下の探索の拒否は動作に影響せず、記録しない
-dontaudit hazkey_community_server_t home_bin_t:dir { getattr search };
-
 ########################################
 # 他のプロセスの情報
 #
-# pgrepは、自身と同じUIDのプロセスを探すために、/proc配下の全てのプロセスの情報を読み取ろうとする
-# 探している変換サーバは同じドメインで動作するため、他のドメインのプロセスの読み取りは不要で、記録しない
+# 旧サーバの確認では、ロックファイルに記録されたPIDの/proc配下の情報を読み取る
+# PIDが他のドメインのプロセスに再利用されていた場合、読み取りの拒否は「変換サーバではない」と判定するだけで、記録しない
 # カーネルは、rootが所有するプロセスの情報を読み取る時に権限の確認を行う
 ########################################
 

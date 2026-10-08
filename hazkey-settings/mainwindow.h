@@ -26,8 +26,9 @@
 #include "basic_input_style.h"
 
 class LearningHistoryDialog;
-class QFile;
-class QCryptographicHash;
+
+/** @brief モデル再読込要求の結果 (アプリケーション終了による中断を成功・失敗と区別する) */
+enum class ZenzaiReloadOutcome { Succeeded, Failed, Aborted };
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -151,10 +152,11 @@ class MainWindow : public QWidget {
      */
     void onDownloadError(QNetworkReply::NetworkError error);
     /**
-     * @brief 到着した受信断片を一時ファイルへ追記し、増分ハッシュを更新する
+     * @brief 到着した受信断片を一時ファイルへ追記する
      *
      * @details currentDownload_ の readyRead 駆動で呼ばれ、本文全体をメモリに保持しない。
-     *          一時ファイルの初回利用時に modelPath + ".tmp" を開く (遅延生成)。
+     *          一時ファイルの初回利用時に保存先ディレクトリ直下へ作成する (遅延生成)。
+     *          完全性は受信時ではなく、確定の直前にディスク上の内容から再計算して検証する。
      *          書出しに失敗した場合は downloadFileError_ に理由を記録して応答を中断する。
      */
     void onDownloadReadyRead();
@@ -344,20 +346,40 @@ class MainWindow : public QWidget {
      */
     void requestZenzaiModelDeletion(const QString& key, QDialog* dialog);
     /**
-     * @brief 現在のダウンロードに対応する一時ファイルパスを返す
-     * @return currentDownloadKey_ の modelPath + ".tmp"、キーが不明なら空文字列
-     */
-    QString currentDownloadTempPath() const;
-    /**
-     * @brief 受信一時ファイルと増分ハッシュを遅延生成する
-     * @return ストリームを利用可能ならtrue、生成・書出しに失敗したらfalse
+     * @brief サーバへのモデル再読込要求を、GUIスレッドを止めずに実行する
      *
-     * @details 失敗時は downloadFileError_ に理由を記録する。初回は modelPath + ".tmp"
-     *          を切り詰めて開き直すため、再試行時の古い部分ファイルは残らない。
+     * @details 再読込RPCは最大120秒かかり得るため、runServerCallAsync() (async_server_call.h) で
+     *          作業スレッドに移し、完了までは親ウィンドウに対してウィンドウモーダルな待機ダイアログを表示する。
+     *          呼び出し側はこれまでと同じく同期的に結果を受け取れる。
+     *          作業スレッドの終了を待ってから戻るので、server_ はRPCの実行中に破棄されない。
+     *          他のサーバ呼び出しの実行中は再入防止により Failed を返す。
+     *
+     *          アプリケーション終了中に待機ループが完了前に戻った場合は Aborted を返す。
+     *          その場合、呼び出し側はモデル管理ダイアログに触れてはならない。
+     *
+     * @param dialogParent 待機ダイアログの親 (モデル管理ダイアログなど)
+     * @return Succeeded: サーバが成功を返した / Failed: 通信失敗・失敗応答・再入 /
+     *         Aborted: アプリケーション終了中のため中断した (結果は無効)
+     */
+    ZenzaiReloadOutcome reloadZenzaiModelAsync(QWidget* dialogParent);
+    /**
+     * @brief 受信一時ファイルを遅延生成する
+     * @return ストリームを利用可能ならtrue、生成に失敗したらfalse
+     *
+     * @details 失敗時は downloadFileError_ に理由を記録する。モデル保存先ディレクトリを
+     *          実ディレクトリ・自UID所有・group/other書込不可として検証し (不合格なら中止)、
+     *          その直下に権限0600の一時ファイルを新規作成する。古い一時ファイルは
+     *          リンク自体を外すため、再試行時の古い部分ファイルは残らない。
      */
     bool ensureDownloadStream();
     /**
-     * @brief 受信ストリームを閉じて一時ファイルと増分ハッシュの所有を破棄する
+     * @brief 受信断片を一時ファイルへ書き出し、受信バイト数を更新する
+     * @param chunk 書き出す断片
+     * @return すべて書き出せたらtrue、失敗時は downloadFileError_ に理由を記録してfalse
+     */
+    bool writeDownloadChunk(const QByteArray& chunk);
+    /**
+     * @brief 受信ストリームの記述子を閉じる
      *
      * @details ディスク上の一時ファイルは残す (確定または破棄は呼び出し元が行う)。
      *          受信バイト数と書出しエラー記録はそのまま保持する。
@@ -428,10 +450,12 @@ class MainWindow : public QWidget {
     QString currentDownloadKey_;
     /** @brief ダウンロード要求の応答確立前にモデル管理ダイアログを操作不能にするための印 */
     bool zenzaiDownloadPending_ = false;
-    /** @brief readyRead駆動で追記中の受信一時ファイルで、終了時に閉じて破棄する */
-    QFile* downloadTempFile_ = nullptr;
-    /** @brief 受信断片を逐次投入する増分SHA256で、終了時に破棄する */
-    QCryptographicHash* downloadHash_ = nullptr;
+    /** @brief 検証済みモデル保存先ディレクトリの記述子で、受信一時ファイルの作成と確定に使う (未使用は-1) */
+    int downloadDirectoryFd_ = -1;
+    /** @brief readyRead駆動で追記中の受信一時ファイルの記述子 (未使用は-1) */
+    int downloadTempFd_ = -1;
+    /** @brief 保存先ディレクトリ直下での受信一時ファイル名 */
+    QString downloadTempName_;
     /** @brief 一時ファイルへ書き出した実際の受信バイト数 */
     qint64 downloadReceivedBytes_ = 0;
     /** @brief 一時ファイルの生成・書出しに失敗した理由で、空なら書出し正常 */

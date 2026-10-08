@@ -122,7 +122,7 @@ class HazkeyServer: SocketManagerDelegate {
         if usesFallbackRuntimeDirectory {
             do { try ServerRuntimeDirectory.prepare(runtimeDir.path) }
             catch {
-                NSLog("Failed to prepare runtime directory: \(error)")
+                hazkeyLog("Failed to prepare runtime directory: \(error)")
                 exit(1)
             }
         }
@@ -133,7 +133,7 @@ class HazkeyServer: SocketManagerDelegate {
             // 想定内のため、エラーにせず終了する
             return
         } catch {
-            NSLog("Failed to start hazkey-community-server: \(error)")
+            hazkeyLog("Failed to start hazkey-community-server: \(error)")
             exit(1)
         }
         self.shared = HazkeySharedResources(emojiDictionaryURL: nil)
@@ -147,7 +147,7 @@ class HazkeyServer: SocketManagerDelegate {
             NSLog("Warming up the neural conversion model...")
             let warmup = shared.reloadZenzaiModel()
             if warmup.status == .failed {
-                NSLog("[hazkey] \(warmup.errorMessage)")
+                hazkeyLog("[hazkey] \(warmup.errorMessage)")
             } else {
                 NSLog("Neural conversion model warmup finished.")
             }
@@ -174,7 +174,7 @@ class HazkeyServer: SocketManagerDelegate {
         -> Data
     {
         guard let session = sessions[clientFd] else {
-            NSLog("No session for client fd \(clientFd); dropping request.")
+            hazkeyLog("No session for client fd \(clientFd); dropping request.")
             return Data()
         }
         // ProtocolHandlerは薄いラッパーで要求ごとに生成され、自身は状態を持たない
@@ -197,7 +197,7 @@ class HazkeyServer: SocketManagerDelegate {
         // 新規セッションを作る前に、このfdに結び付く古いセッションを破棄しておく
         sessions.removeValue(forKey: clientFd)?.close()
         sessions[clientFd] = HazkeyServerState(shared: shared)
-        NSLog("Session created for client fd \(clientFd) (\(sessions.count) active)")
+        hazkeyLog("Session created for client fd \(clientFd) (\(sessions.count) active)")
     }
 
     /// 組成が空のセッションだけを、接続上限時の回収対象として許可する
@@ -219,6 +219,6 @@ class HazkeyServer: SocketManagerDelegate {
         guard let session = sessions.removeValue(forKey: clientFd) else { return }
         session.close()
         let _ = shared?.saveLearningData()
-        NSLog("Session closed for client fd \(clientFd) (\(sessions.count) active)")
+        hazkeyLog("Session closed for client fd \(clientFd) (\(sessions.count) active)")
     }
 }

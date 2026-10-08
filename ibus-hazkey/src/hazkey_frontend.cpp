@@ -6,6 +6,8 @@
  * 同期消費判定とワーカーへの投入、投機状態の整合を実装する
  */
 #include "hazkey_frontend.h"
+#include <exception>
+#include <optional>
 #include <string>
 #include <utility>
 #include "hazkey_frontend_hooks.h"
@@ -131,6 +133,17 @@ struct SurroundingGateTimeout {
     uint64_t generation = 0;                 ///< タイマ登録時の待機世代
 };
 
+void logWorkerFailure(const char* operation, const char* detail) noexcept {
+    try {
+        hazkey::frontend::logMessage(
+            hazkey::frontend::LogLevel::Error,
+            std::string("HazkeyFrontend::") + operation +
+                " worker task threw: " + detail);
+    } catch (...) {
+        g_warning("HazkeyFrontend worker failure logger threw");
+    }
+}
+
 }  // namespace
 
 HazkeyFrontend::HazkeyFrontend(IBusEngine* engine)
@@ -188,17 +201,46 @@ void HazkeyFrontend::enqueue(
     std::function<void(const std::shared_ptr<HazkeyState>&)> task) {
     auto self = shared_from_this();
     auto state = state_;
+    const uint64_t contentEpoch = contentEpoch_.load(std::memory_order_acquire);
     ++pendingOps_;
     const hazkey::frontend::SerialTaskExecutor::Token token =
-        sharedExecutor().submit([self, state, task = std::move(task)]() mutable {
-            task(state);
-            const auto snapshot = state->ingressSnapshot();
-            hazkey::frontend::postToMainLoop([self, snapshot] {
-                self->applyIngress(snapshot);
-                if (self->pendingOps_ > 0) {
-                    --self->pendingOps_;
+        sharedExecutor().submit([self, state, task = std::move(task),
+                                 contentEpoch]() mutable {
+            std::optional<HazkeyState::IngressSnapshot> snapshot;
+            bool failed = false;
+            state->setOperationEpoch(contentEpoch);
+            try {
+                task(state);
+                snapshot = state->ingressSnapshot();
+            } catch (const std::exception& error) {
+                failed = true;
+                logWorkerFailure("enqueue", error.what());
+            } catch (...) {
+                failed = true;
+                logWorkerFailure("enqueue", "non-standard exception");
+            }
+            if (failed) {
+                try {
+                    state->reset();
+                    snapshot = state->ingressSnapshot();
+                } catch (const std::exception& error) {
+                    logWorkerFailure("enqueue recovery", error.what());
+                } catch (...) {
+                    logWorkerFailure("enqueue recovery", "non-standard exception");
                 }
-            });
+            }
+            hazkey::frontend::postToMainLoop(
+                [self, snapshot = std::move(snapshot), failed] {
+                    // スナップショットはワーカーの実状態であり、FIFO順に届くため世代に関わらず反映する
+                    if (snapshot) {
+                        self->applyIngress(*snapshot);
+                    } else if (failed) {
+                        self->clearIngressAfterWorkerFailure();
+                    }
+                    if (self->pendingOps_ > 0) {
+                        --self->pendingOps_;
+                    }
+                });
         });
     if (token == hazkey::frontend::SerialTaskExecutor::kInvalidToken) {
         // 実行器がタスクを拒否した (停止中): 帳尻を戻し、pendingOps_が0より上で固まらないようにする
@@ -214,7 +256,7 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
     auto logic = state_;
     auto ui = ui_;
     uint64_t generation = gate_.generation();
-    const uint64_t contentEpoch = contentEpoch_;
+    const uint64_t contentEpoch = contentEpoch_.load(std::memory_order_acquire);
     if (gateCheck) {
         generation = gate_.beginCheck();
         gatedKeyval_ = keyval;
@@ -226,13 +268,50 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
             [self, logic, ui, keyval, keycode, state, consume, gateCheck,
              generation, contentEpoch] {
                 bool gated = false;
-                const gboolean handled = logic->processKeyEvent(
-                    keyval, keycode, state, gateCheck ? &gated : nullptr);
-                const auto snapshot = logic->ingressSnapshot();
+                gboolean handled = FALSE;
+                bool failed = false;
+                std::optional<HazkeyState::IngressSnapshot> snapshot;
+                logic->setOperationEpoch(contentEpoch);
+                try {
+                    const bool contentIsCurrent =
+                        contentEpoch == self->contentEpoch_.load(
+                                            std::memory_order_acquire);
+                    if (contentIsCurrent) {
+                        handled = logic->processKeyEvent(
+                            keyval, keycode, state,
+                            gateCheck ? &gated : nullptr);
+                    }
+                    snapshot = logic->ingressSnapshot();
+                } catch (const std::exception& error) {
+                    failed = true;
+                    logWorkerFailure("enqueueKeyOp", error.what());
+                } catch (...) {
+                    failed = true;
+                    logWorkerFailure("enqueueKeyOp", "non-standard exception");
+                }
+                if (failed) {
+                    try {
+                        logic->reset();
+                        snapshot = logic->ingressSnapshot();
+                    } catch (const std::exception& error) {
+                        logWorkerFailure("enqueueKeyOp recovery", error.what());
+                    } catch (...) {
+                        logWorkerFailure("enqueueKeyOp recovery",
+                                         "non-standard exception");
+                    }
+                }
                 hazkey::frontend::postToMainLoop(
-                    [self, ui, snapshot, handled, consume, keyval, keycode,
-                     state, gateCheck, gated, generation, contentEpoch] {
-                        self->applyIngress(snapshot);
+                    [self, ui, snapshot = std::move(snapshot), handled,
+                     consume, keyval, keycode, state, gateCheck, gated,
+                     generation, contentEpoch, failed] {
+                        const bool contentIsCurrent =
+                            contentEpoch == self->contentEpoch_.load(
+                                                std::memory_order_acquire);
+                        if (snapshot) {
+                            self->applyIngress(*snapshot);
+                        } else if (failed) {
+                            self->clearIngressAfterWorkerFailure();
+                        }
                         if (self->pendingOps_ > 0) {
                             --self->pendingOps_;
                         }
@@ -240,14 +319,17 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
                         //
                         // 解放は対応する押下も転送済みの場合にのみ転送する:
                         // ワーカーは解放を処理せず、解放フラグを見られないクライアントは幻のキー押下を受け取ってしまう
-                        if (consume && !handled && !self->retired_ &&
-                            contentEpoch == self->contentEpoch_ &&
+                        if (!failed && consume && !handled && !self->retired_ &&
+                            contentIsCurrent &&
                             shouldForwardUnhandledKey(
                                 (state & IBUS_RELEASE_MASK) != 0, keyval,
                                 self->forwardedPressKeyvals_)) {
                             ui->forwardKeyEvent(keyval, keycode, state);
                         }
-                        if (gateCheck) {
+                        if (gateCheck && failed) {
+                            // 部分更新された可能性のあるキーを再生せず、待機だけを打ち切る
+                            self->gate_.abortIfCurrent(generation);
+                        } else if (gateCheck) {
                             self->onSurroundingGateChecked(generation, gated);
                         }
                     });
@@ -303,8 +385,12 @@ void HazkeyFrontend::resolveSurroundingGate(bool surroundingArrived) {
     specComposing_ = true;
     const guint keyval = gatedKeyval_;
     const guint state = gatedState_;
-    enqueue([keyval, state, surroundingArrived](
+    const uint64_t contentEpoch = contentEpoch_.load(std::memory_order_acquire);
+    enqueue([this, keyval, state, surroundingArrived, contentEpoch](
                 const std::shared_ptr<HazkeyState>& s) {
+        if (contentEpoch != contentEpoch_.load(std::memory_order_acquire)) {
+            return;
+        }
         s->resumeGatedInput(keyval, state, surroundingArrived);
     });
     gate_.flush();
@@ -394,6 +480,15 @@ void HazkeyFrontend::SurroundingGateMachine::abort() {
     }
 }
 
+bool HazkeyFrontend::SurroundingGateMachine::abortIfCurrent(
+    uint64_t generation) {
+    if (!active() || generation_ != generation) {
+        return false;
+    }
+    abort();
+    return true;
+}
+
 void HazkeyFrontend::SurroundingGateMachine::clear() {
     phase_ = Phase::Idle;
     ++generation_;
@@ -424,6 +519,17 @@ void HazkeyFrontend::applyIngress(
     zenzaiToggle_ = snapshot.zenzaiToggle;
     acceptPrediction_ = snapshot.acceptPrediction;
     deleteLearning_ = snapshot.deleteLearning;
+}
+
+void HazkeyFrontend::clearIngressAfterWorkerFailure() {
+    specComposing_ = false;
+    specListFocused_ = false;
+    profileLoaded_ = false;
+    surroundingGateHint_ = false;
+    liveConvert_ = HazkeyState::parseHotkey("", "Control+Shift+L");
+    zenzaiToggle_ = HazkeyState::parseHotkey("", "Control+Alt+Z");
+    acceptPrediction_ = HazkeyState::parseHotkey("", "F5");
+    deleteLearning_ = HazkeyState::parseHotkey("", "Control+D");
 }
 
 gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
@@ -528,7 +634,13 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     }
     // 周辺テキスト待ちの間は、解放と素通しを含む全キーを投機的に消費して保持し、待機の解決後に到着順で投入する
     if (gate_.active()) {
-        gate_.submitOrHold(true, [this, keyval, keycode, state] {
+        const uint64_t contentEpoch =
+            contentEpoch_.load(std::memory_order_acquire);
+        gate_.submitOrHold(true, [this, keyval, keycode, state, contentEpoch] {
+            if (contentEpoch !=
+                contentEpoch_.load(std::memory_order_acquire)) {
+                return;
+            }
             enqueueKeyOp(keyval, keycode, state, TRUE);
         });
         return TRUE;
@@ -558,9 +670,7 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
         } else {
             forwardedPressKeyvals_.insert(keyval);
         }
-        enqueue([keyval, keycode, state](const std::shared_ptr<HazkeyState>& s) {
-            s->processKeyEvent(keyval, keycode, state);
-        });
+        enqueueKeyOp(keyval, keycode, state, FALSE);
         return FALSE;
     }
 
@@ -653,9 +763,10 @@ void HazkeyFrontend::setContentType(guint purpose, guint hints) {
         return;
     }
     secureInput_ = secure;
-    ++contentEpoch_;
+    const uint64_t contentEpoch =
+        contentEpoch_.fetch_add(1, std::memory_order_acq_rel) + 1;
     // ワーカーのキューに積まれた処理と、投稿済みの描画より先に効かせる
-    state_->requestSecureInput(secure);
+    state_->requestSecureInput(secure, contentEpoch);
     if (ui_) {
         ui_->setSecureInput(secure);
     }

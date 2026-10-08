@@ -1,5 +1,6 @@
 import Foundation
 import Glibc
+import CHazkeyLinux
 import KanaKanjiConverterModule
 
 /// ユーザがVulkanドライバの選択を明示したことを示す環境変数の一覧
@@ -84,9 +85,9 @@ func resolveSelfExecutablePath() -> String? {
 ///
 /// 既定引数は[--probe-backends]、既定の制限時間は5.0秒である
 ///
-/// 制限時間でウォッチドッグスレッドが[SIGTERM]を送り、0.5秒後に[SIGKILL]を送る
+/// waitpidを期限までポーリングし、期限後は[SIGTERM]、0.5秒後に[SIGKILL]を送って回収する
 ///
-/// 未捕捉シグナルによる終了のうち[SIGTERM] / [SIGKILL]はウォッチドッグ由来とみなして[timedOut]とし、
+/// 未捕捉シグナルによる終了のうち[SIGTERM] / [SIGKILL]は[timedOut]とし、
 /// それ以外 ([SIGILL] / [SIGSEGV] / [SIGABRT] / [SIGBUS] / [SIGFPE]) は[crashed]とする
 ///
 /// 非ゼロ終了は[failedExit]とする
@@ -103,54 +104,65 @@ func probeVulkanBackendsSafely(
     arguments: [String] = ["--probe-backends"],
     timeoutSeconds: TimeInterval = 5.0
 ) -> BackendProbeOutcome {
-    guard let exePath = executablePath ?? resolveSelfExecutablePath() else {
-        return .spawnFailed("failed to resolve current executable path")
-    }
-
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: exePath)
-    process.arguments = arguments
-    // 実サーバと同じ環境を観測するためVulkan関連の環境変数は追加も削除もせずに継承する
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-
+    let childPID: pid_t
     do {
-        try process.run()
-    }
-    catch {
+        childPID = try spawnProbeChild(path: executablePath ?? "/proc/self/exe", arguments: arguments)
+    } catch {
         return .spawnFailed("\(error)")
     }
-
-    let watchdog = Thread {
-        Thread.sleep(forTimeInterval: timeoutSeconds)
-        guard process.isRunning else { return }
-        process.terminate()  // [SIGTERM]を送って強制終了へ進む
-        Thread.sleep(forTimeInterval: 0.5)
-        if process.isRunning {
-            kill(process.processIdentifier, SIGKILL)
+    var status: Int32 = 0
+    func waitUntil(_ deadline: ContinuousClock.Instant) throws -> Bool {
+        while true {
+            let result = waitpid(childPID, &status, WNOHANG)
+            if result == childPID { return true }
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            if ContinuousClock.now >= deadline { return false }
+            usleep(10_000)
         }
     }
-    watchdog.start()
-
-    // 子プロセスが終了するかウォッチドッグによる停止まで待機する
-    // ドライバクラッシュでも正常終了と同様に子プロセスのfdが閉じるため、[SIGILL] / [SIGSEGV]でもここは正しく待機解除される
-    process.waitUntilExit()
-
-    if process.terminationReason == .uncaughtSignal {
-        let signal = process.terminationStatus
-        // 実際のドライバクラッシュは、[SIGILL] / [SIGSEGV] / [SIGABRT] / [SIGBUS] / [SIGFPE]を起こし、
-        // 子プロセス自身が[SIGTERM]/[SIGKILL]を送ることはない
-        // 後者はウォッチドッグ経由でのみ届くため、この関数とウォッチドッグスレッド間で共有可変状態を持たずにタイムアウトと判別できる
-        if signal == SIGTERM || signal == SIGKILL {
+    do {
+        let seconds = timeoutSeconds.isFinite ? max(timeoutSeconds, 0) : 5.0
+        if try !waitUntil(ContinuousClock.now.advanced(by: .seconds(seconds))) {
+            // 未回収の子のPIDは再利用されない。回収後は一切シグナルを送らない
+            kill(childPID, SIGTERM)
+            if try !waitUntil(ContinuousClock.now.advanced(by: .milliseconds(500))) {
+                kill(childPID, SIGKILL)
+                while waitpid(childPID, &status, 0) < 0 {
+                    if errno == EINTR { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+            }
             return .timedOut
         }
-        return .crashed(signal: signal)
+    } catch {
+        return .spawnFailed("waitpid failed: \(error)")
     }
-
-    if process.terminationStatus != 0 {
-        return .failedExit(code: process.terminationStatus)
-    }
+    let signal = hazkey_wait_signal(status)
+    if signal == SIGTERM || signal == SIGKILL { return .timedOut }
+    if signal != 0 { return .crashed(signal: signal) }
+    let code = hazkey_wait_exit_code(status)
+    if code != 0 { return .failedExit(code: code) }
     return .success
+}
+
+/// Foundation.Processの終了通知用UDPソケットを作らずに、環境と標準入力を継承して起動する
+func spawnProbeChild(path: String, arguments: [String]) throws -> pid_t {
+    let strings = [path] + arguments
+    guard strings.allSatisfy({ !$0.utf8.contains(0) }) else { throw POSIXError(.EINVAL) }
+    var argv: [UnsafeMutablePointer<CChar>?] = []
+    defer { for pointer in argv { free(pointer) } }
+    for string in strings {
+        guard let pointer = strdup(string) else { throw POSIXError(.ENOMEM) }
+        argv.append(pointer)
+    }
+    argv.append(nil)
+    var pid: pid_t = 0
+    let error = hazkey_spawn_probe(path, &argv, &pid)
+    guard error == 0 else { throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO) }
+    return pid
 }
 
 private final class CPUBackendDirectoryCache: @unchecked Sendable {
@@ -199,7 +211,7 @@ func cpuOnlyBackendDirectory(
     var template = Array(fileManager.temporaryDirectory
         .appendingPathComponent("hazkey-community-cpu-only-backends-XXXXXX").path.utf8CString)
     guard let created = mkdtemp(&template) else {
-        NSLog("[BackendProbe] mkdtemp failed: \(errno); disabling Zenzai.")
+        hazkeyLog("[BackendProbe] mkdtemp failed: \(errno); disabling Zenzai.")
         return nil
     }
     let stagingDirectory = URL(fileURLWithPath: String(cString: created), isDirectory: true)
@@ -212,7 +224,7 @@ func cpuOnlyBackendDirectory(
                 withDestinationURL: sourceURL.appendingPathComponent(entry))
         }
     } catch {
-        NSLog("[BackendProbe] Failed to stage CPU backends: \(error); disabling Zenzai.")
+        hazkeyLog("[BackendProbe] Failed to stage CPU backends: \(error); disabling Zenzai.")
         try? fileManager.removeItem(at: stagingDirectory)
         return nil
     }
@@ -226,18 +238,20 @@ func cpuOnlyBackendDirectory(
 ///
 /// ディレクトリを作成できない場合のみ空配列を返してモデルを完全に無効化する
 ///
+/// GGMLは環境変数GGML_BACKEND_PATHが指す追加バックエンドも読み込むため、このセッションでは環境変数を削除したままにする (CPU専用の判定はセッション単位)
+///
+/// 削除後に元の値を書き戻さないのは、setenvが環境変数の配列を再確保し、他のスレッドのgetenvが解放済みの配列を読み得るためである
+///
 /// - Returns: 利用可能なCPUデバイス、復旧できない場合は空配列を返す
 func cpuOnlyZenzaiDevices() -> [GGMLBackendDevice] {
     guard let directory = cpuOnlyBackendDirectory() else {
         NSLog("[BackendProbe] Could not build a Vulkan-free backend directory; disabling Zenzai for this session.")
         return []
     }
-    let additionalBackend = ProcessInfo.processInfo.environment["GGML_BACKEND_PATH"]
-    unsetenv("GGML_BACKEND_PATH")
-    defer {
-        if let additionalBackend { setenv("GGML_BACKEND_PATH", additionalBackend, 1) }
-        CPUBackendDirectoryCache.shared.removeAll()
+    if getenv("GGML_BACKEND_PATH") != nil {
+        unsetenv("GGML_BACKEND_PATH")
     }
+    defer { CPUBackendDirectoryCache.shared.removeAll() }
     return getZenzaiDevices(backendDirectoryOverride: directory).filter { $0.type == .cpu }
 }
 
@@ -281,26 +295,26 @@ func loadZenzaiDevicesSafely() -> (devices: [GGMLBackendDevice], probeOutcome: B
         NSLog("[BackendProbe] Backend probe succeeded; loading GPU backends normally.")
         return (getZenzaiDevices(), outcome)
     case .crashed(let signal):
-        NSLog(
+        hazkeyLog(
             "[BackendProbe] Backend probe process was killed by signal \(signal) "
                 + "(likely an unsafe Vulkan driver combination). "
                 + "Disabling GPU acceleration for this session; CPU inference only."
         )
         return (cpuOnlyZenzaiDevices(), outcome)
     case .failedExit(let code):
-        NSLog(
+        hazkeyLog(
             "[BackendProbe] Backend probe exited with status \(code). "
                 + "Disabling GPU acceleration for this session; CPU inference only."
         )
         return (cpuOnlyZenzaiDevices(), outcome)
     case .timedOut:
-        NSLog(
+        hazkeyLog(
             "[BackendProbe] Backend probe timed out. "
                 + "Disabling GPU acceleration for this session; CPU inference only."
         )
         return (cpuOnlyZenzaiDevices(), outcome)
     case .spawnFailed(let reason):
-        NSLog(
+        hazkeyLog(
             "[BackendProbe] Failed to spawn backend probe (\(reason)); "
                 + "using CPU backends only."
         )

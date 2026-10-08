@@ -55,6 +55,7 @@ private enum LearningHistoryError: Error {
     case unknownEntry
     /// CID (品詞ID) の値が変換エンジンのInt型で表現できない
     case unsupportedCID
+    case tooManyDeletionEntries
 }
 
 /// 学習メモリの1エントリを完全に識別するキー
@@ -193,12 +194,17 @@ class HazkeySharedResources {
     ///
     /// - Important: HazkeyServerConfig.genBaseConvertRequestOptions()が指定するmaxMemoryCount (保存エントリ数の上限) と同じ値を維持すること
     static let learningEnumerationLimit = 65_536
+    /// GUIの1ページ (200行) までを受理し、CID展開後にも有限の上限を設ける
+    static let learningDeletionLimit = 200
+    static let resolvedLearningDeletionLimit = 4096
     /// 削除可能の注釈と学習削除で使う、読みによるポイント照会の差し替え口 (テスト専用)
     ///
     /// nilの場合は、本番経路 (converter.persistedLearningMemoryKeys(exactReadings:)) を使用する
     ///
     /// テストでは失敗するクロージャに差し替え、実際のシャードを破損させずに照会失敗時の縮退動作を検証する
     var learningSurfaceKeyLookup: (([String]) throws -> [PersistedLearningMemoryKey])?
+    /// 削除途中のI/O失敗を再現するテスト専用の差し替え口 (nilはconverterへ直接委譲)
+    var learningEntryDeleter: ((String, String, Int, Int) throws -> Void)?
 
     // MARK: 接続セッション
 
@@ -254,7 +260,7 @@ class HazkeySharedResources {
             return try KanaKanjiConverter(
                 dictionaryURL: dictionaryURL, supplementalDictionaries: supplementalDictionaries)
         } catch {
-            NSLog("Supplemental dictionaries rejected (\(error)); continuing without them")
+            hazkeyLog("Supplemental dictionaries rejected (\(error)); continuing without them")
             return KanaKanjiConverter(dictionaryURL: dictionaryURL)
         }
     }
@@ -304,7 +310,7 @@ class HazkeySharedResources {
                 }
             }
         } catch {
-            NSLog("Failed to create user memory directory: \(error.localizedDescription)")
+            hazkeyLog("Failed to create user memory directory: \(error.localizedDescription)")
         }
 
         // ユーザキャッシュディレクトリ (ユーザ辞書) を作成
@@ -313,7 +319,7 @@ class HazkeySharedResources {
                 at: HazkeyServerConfig.getCacheDirectory().appendingPathComponent(
                     "shared", isDirectory: true), withIntermediateDirectories: true)
         } catch {
-            NSLog("Failed to create user cache directory: \(error.localizedDescription)")
+            hazkeyLog("Failed to create user cache directory: \(error.localizedDescription)")
         }
 
         // 基本変換オプションを初期化
@@ -378,7 +384,7 @@ extension HazkeySharedResources {
         do {
             try serverConfig.createMemoryDirectoryIfNeeded()
         } catch {
-            NSLog("Failed to create user memory directory: \(error.localizedDescription)")
+            hazkeyLog("Failed to create user memory directory: \(error.localizedDescription)")
         }
         syncConverterLearningConfig()
         syncConverterAddressDictionary()
@@ -518,7 +524,7 @@ extension HazkeySharedResources {
         // 個別の削除 (forgetLearningEntries(_:)) と同じく、全接続中セッションの変換キャッシュを破棄する
         for id in liveConversionSessionIDs {
             do { try converter.withSession(id) { converter.stopComposition() } }
-            catch { NSLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
+            catch { hazkeyLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
         }
         converter.purgeZenzaiMemoizationCache()
         if serverConfig.currentProfile.useProfileIndependentHistoryEffective {
@@ -529,7 +535,7 @@ extension HazkeySharedResources {
                 }
                 try serverConfig.createMemoryDirectoryIfNeeded()
             } catch {
-                NSLog("Failed to clear isolated history: \(error.localizedDescription)")
+                hazkeyLog("Failed to clear isolated history: \(error.localizedDescription)")
                 return Hazkey_ResponseEnvelope.with {
                     $0.status = .failed
                     $0.errorMessage = "Failed to clear profile history."
@@ -605,6 +611,14 @@ extension HazkeySharedResources {
     func forgetLearningEntries(
         _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
     ) throws -> UInt32 {
+        guard keys.count <= Self.learningDeletionLimit else { throw LearningHistoryError.tooManyDeletionEntries }
+        return try forgetResolvedLearningEntries(keys)
+    }
+
+    private func forgetResolvedLearningEntries(
+        _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
+    ) throws -> UInt32 {
+        guard keys.count <= Self.resolvedLearningDeletionLimit else { throw LearningHistoryError.tooManyDeletionEntries }
         var uniqueKeys: [LearningHistoryKey] = []
         var seenKeys: Set<LearningHistoryKey> = []
         for key in keys {
@@ -630,13 +644,27 @@ extension HazkeySharedResources {
             throw LearningHistoryError.unknownEntry
         }
 
+        var deletionAttempted = false
+        defer {
+            // 削除APIが書込み後にthrowする場合も、変更済みの学習を古いラティスから復活させない
+            if deletionAttempted { invalidateLearningCaches() }
+        }
         for key in uniqueKeys {
             guard let lcid = Int(exactly: key.lcid), let rcid = Int(exactly: key.rcid) else {
                 throw LearningHistoryError.unsupportedCID
             }
-            try converter.forgetLearningMemory(
-                reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
+            deletionAttempted = true
+            if let learningEntryDeleter {
+                try learningEntryDeleter(key.reading, key.word, lcid, rcid)
+            } else {
+                try converter.forgetLearningMemory(
+                    reading: key.reading, word: key.word, lcid: lcid, rcid: rcid)
+            }
         }
+        return UInt32(uniqueKeys.count)
+    }
+
+    private func invalidateLearningCaches() {
         // 削除済みエントリを以降の変換候補に再出現させてはならない
         // 組成テキストが変わらない場合、変換エンジンは各セッションのラティス (およびZenzaiのdraft/メモ化制約) を再利用するため、
         // 古いキャッシュから削除済みエントリが候補リストに復活しうる
@@ -645,10 +673,9 @@ extension HazkeySharedResources {
         // 接続ごとのHazkeyServerStateが持つ組成テキストとディスク上の学習メモリには影響しない
         for id in liveConversionSessionIDs {
             do { try converter.withSession(id) { converter.stopComposition() } }
-            catch { NSLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
+            catch { hazkeyLog("[hazkey] Failed to reset conversion session \(id): \(error)") }
         }
         converter.purgeZenzaiMemoizationCache()
-        return UInt32(uniqueKeys.count)
     }
 
     /// 読みと表記が一致する学習エントリを、品詞ID (CID) にかかわらず全て削除する
@@ -661,15 +688,19 @@ extension HazkeySharedResources {
     /// - Returns: 実際に削除したエントリ数 (CID違いを個別に数える)
     /// - Throws: 学習メモリの照会・削除に失敗した場合はそのエラー
     func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
+        guard surfaces.count <= Self.learningDeletionLimit else { throw LearningHistoryError.tooManyDeletionEntries }
         var requestedSurfaces: Set<LearningSurfaceKey> = []
         var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
         for surface in surfaces {
             let key = LearningSurfaceKey(reading: surface.reading, word: surface.word)
             guard requestedSurfaces.insert(key).inserted else { continue }
             resolvedKeys.append(contentsOf: try matchingLearningEntryKeys(reading: surface.reading, word: surface.word))
+            guard resolvedKeys.count <= Self.resolvedLearningDeletionLimit else {
+                throw LearningHistoryError.tooManyDeletionEntries
+            }
         }
         guard !resolvedKeys.isEmpty else { return 0 }
-        return try forgetLearningEntries(resolvedKeys)
+        return try forgetResolvedLearningEntries(resolvedKeys)
     }
 
     /// 学習メモリに保存されたエントリを列挙する
@@ -782,7 +813,7 @@ extension HazkeySharedResources {
             return
         }
         lastLearningLookupFailureLog = now
-        NSLog("Failed to look up learning memory for annotations: \(error)")
+        hazkeyLog("Failed to look up learning memory for annotations: \(error)")
     }
 
     /// 学習データの保存失敗をログへ出力する
@@ -798,7 +829,7 @@ extension HazkeySharedResources {
             return
         }
         lastLearningCommitFailureLog = now
-        NSLog("Failed to persist learning memory: \(error)")
+        hazkeyLog("Failed to persist learning memory: \(error)")
     }
 }
 
@@ -892,10 +923,16 @@ class HazkeyServerState {
     ///
     /// makeCandidatesResultを呼ぶたびに記録して、currentCandidateListと常に一致させる
     var currentCandidateListIsSuggest = false
-    /// Zenzaiの左文脈 (カーソルより前にある周辺テキスト)
+    /// Zenzaiの左文脈 (カーソルより前にある周辺テキスト。末尾leftContextMaxCharacters文字まで)
     var zenzaiLeftContext = ""
     /// Zenzaiの右文脈 (カーソルより後にある周辺テキスト。先頭rightContextMaxCharacters文字まで)
     var zenzaiRightContext = ""
+    /// 左文脈として保持する最大文字数 (キャラクター単位)
+    ///
+    /// 変換エンジンがプロンプトに使う左文脈は末尾40文字 (ConvertRequestOptions.ZenzaiMode.maxLeftSideContextLength の既定値) で、
+    /// hazkey はこの値を変更しないため、余裕を持たせた256文字だけを保持する
+    /// 周辺テキスト全体 (最大1MiBの要求) を接続ごとに保持し続けることと、変換要求のたびに全体を走査することを避ける
+    static let leftContextMaxCharacters = 256
     /// 右文脈として保持する最大文字数 (キャラクター単位)
     static let rightContextMaxCharacters = 40
     /// 計測用: 変換要求の結果を左右する入力 (学習データと辞書の状態は含まない)
@@ -1010,7 +1047,7 @@ class HazkeyServerState {
     /// - Returns: 処理の戻り値 (変換セッションが使えない場合はnil)
     private func withConversionSession<T>(_ body: () throws -> T) -> T? {
         do { return try converter.withSession(conversionSessionID, operation: body) }
-        catch { NSLog("[hazkey] Conversion session unavailable: \(error)"); return nil }
+        catch { hazkeyLog("[hazkey] Conversion session unavailable: \(error)"); return nil }
     }
 
     /// 設定の変更を共有リソースへ反映した後、この接続の組成状態をリセットする
@@ -1094,8 +1131,8 @@ class HazkeyServerState {
     func setContext(surroundingText: String, anchorIndex: Int) -> Hazkey_ResponseEnvelope {
         let scalars = surroundingText.unicodeScalars
         let clamped = max(0, min(anchorIndex, scalars.count))
-        if clamped != anchorIndex { NSLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(scalars.count)") }
-        zenzaiLeftContext = String(String.UnicodeScalarView(scalars.prefix(clamped)))
+        if clamped != anchorIndex { hazkeyLog("[hazkey] setContext: anchor clamped \(anchorIndex)->\(clamped) for length \(scalars.count)") }
+        zenzaiLeftContext = String(String(String.UnicodeScalarView(scalars.prefix(clamped))).suffix(Self.leftContextMaxCharacters))
         zenzaiRightContext = String(String(String.UnicodeScalarView(scalars.dropFirst(clamped))).prefix(Self.rightContextMaxCharacters))
         if let perfProbe = PerfProbe.shared {
             let isDuplicate = lastSurroundingContext.map {
@@ -1133,7 +1170,7 @@ class HazkeyServerState {
         // 誤字の訂正案を評価する補助セッションも、同じ理由で破棄する
         for id in typoCorrectionSessionIDs + [typoBaselineSessionID].compactMap({ $0 }) {
             do { try converter.withSession(id) { converter.stopComposition() } }
-            catch { NSLog("[hazkey] Failed to reset typo correction session \(id): \(error)") }
+            catch { hazkeyLog("[hazkey] Failed to reset typo correction session \(id): \(error)") }
         }
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -1842,7 +1879,7 @@ class HazkeyServerState {
             if reloaded || !shared.userDictInjected {
                 converter.importDynamicUserDictionary(userDictionary.toDicdataElements())
                 shared.userDictInjected = true
-                NSLog("[hazkey] Injected \(userDictionary.count) user dictionary entries into engine")
+                hazkeyLog("[hazkey] Injected \(userDictionary.count) user dictionary entries into engine")
             }
         } else if shared.userDictInjected {
             converter.importDynamicUserDictionary([])  // OFF時に消去
@@ -1887,7 +1924,7 @@ class HazkeyServerState {
             droppedAlignmentCandidateCount += droppedCount
             if droppedCount > 0 && !hasReportedOversizedAlignmentCandidates {
                 hasReportedOversizedAlignmentCandidates = true
-                NSLog(
+                hazkeyLog(
                     "[hazkey] dropped \(droppedCount) alignment candidates exceeding the cursor reading")
             }
         }
@@ -2347,7 +2384,7 @@ class HazkeyServerState {
             matchingKeys = try shared.matchingLearningEntryKeys(
                 readings: [readings.prefixReading, readings.fullRuby], word: candidate.text)
         } catch {
-            NSLog("Failed to enumerate learning memory for deletion: \(error)")
+            hazkeyLog("Failed to enumerate learning memory for deletion: \(error)")
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Failed to enumerate learning memory: \(error)"
@@ -2366,7 +2403,7 @@ class HazkeyServerState {
         do {
             deletedCount = try forgetLearningEntries(matchingKeys)
         } catch {
-            NSLog("Failed to forget learning entries: \(error)")
+            hazkeyLog("Failed to forget learning entries: \(error)")
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Failed to forget learning entries: \(error)"

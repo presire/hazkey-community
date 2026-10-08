@@ -1,5 +1,10 @@
 import Foundation
 
+/// 外部入力を含むメッセージを書式文字列として解釈せずに記録する
+func hazkeyLog(_ message: String) {
+    NSLog("%@", message as NSString)
+}
+
 /// デバッグ用ログを出力する
 ///
 /// DEBUGビルドでのみNSLogを呼び出す
@@ -14,9 +19,9 @@ public func debugLog(
 ) {
     #if DEBUG
         if let items = items {
-            NSLog("\(function) : \(items)")
+            hazkeyLog("\(function) : \(items)")
         } else {
-            NSLog("\(function)")
+            hazkeyLog("\(function)")
         }
     #endif
 }

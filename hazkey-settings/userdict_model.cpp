@@ -38,6 +38,10 @@ bool writeUserDictionaryFile(const QString& path,
     // written dictionary must never replace the existing one.
     file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    // QSaveFileは新規ファイルにumask依存の権限、既存ファイルには旧権限を最終権限として
+    // 記録する。open()後に上書きすれば、commit()が改名前の一時ファイル(作成時0600)へ
+    // 適用するため、0644などの公開状態が一瞬でも現れない。
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);

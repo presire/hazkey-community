@@ -1,3 +1,4 @@
+import CHazkeyLinux
 import Foundation
 import Glibc
 import KanaKanjiConverterModule
@@ -46,22 +47,62 @@ final class CustomInputFileSafetyTests: XCTestCase {
         let valid = folder.appendingPathComponent("valid.tsv")
         try Data("ka\t\u{304B}\n".utf8).write(to: valid)
 
-        let (path, contents) = try HazkeyServerConfig.readValidatedCustomFile(
+        let contents = try HazkeyServerConfig.readValidatedCustomFile(
             filename: "valid.tsv", directory: "table", limit: 64
-        ) { descriptorURL, contents in
-            (descriptorURL.path, contents)
-        }
-        XCTAssertTrue(path.hasPrefix("/proc/self/fd/"))
+        ) { $0 }
         XCTAssertEqual(contents, "ka\t\u{304B}\n")
         XCTAssertNoThrow(
             try HazkeyServerConfig.readValidatedCustomFile(filename: "valid.tsv", directory: "table", limit: 64) {
-                descriptorURL, _ in try InputStyleManager.loadTable(from: descriptorURL)
+                try HazkeyServerConfig.loadInputTable(fromBoundedContents: $0)
             })
 
         let fifo = folder.appendingPathComponent("pipe.tsv")
         XCTAssertEqual(mkfifo(fifo.path, 0o600), 0)
         XCTAssertThrowsError(
-            try HazkeyServerConfig.readValidatedCustomFile(filename: "pipe.tsv", directory: "table", limit: 64) { _, _ in })
+            try HazkeyServerConfig.readValidatedCustomFile(filename: "pipe.tsv", directory: "table", limit: 64) { _ in })
+    }
+
+    /// 検証後に同じinodeへ追記された内容を、入力テーブルの解析が読まないことを検証する
+    ///
+    /// 変換エンジンはURLから全体を読み直すため、元のファイルを渡すと上限を超えた内容まで読む
+    func testInputTableIgnoresContentAppendedToTheSameInodeAfterTheBoundedRead() throws {
+        try withIsolatedServerEnvironment { _ in
+            let folder = HazkeyServerConfig.getConfigDirectory().appendingPathComponent("table")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let table = folder.appendingPathComponent("grow.tsv")
+            try Data("ka\t\u{304B}\n".utf8).write(to: table)
+
+            let exported = try HazkeyServerConfig.readValidatedCustomFile(
+                filename: "grow.tsv", directory: "table", limit: 64
+            ) { contents -> String in
+                // 上限付きの読み込みの後、解析の前に同じinodeへ上限を超える規則を追記する
+                let handle = try FileHandle(forWritingTo: table)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data(String(repeating: "zz\t\u{305A}\n", count: 64).utf8))
+                try handle.close()
+                return try InputStyleManager.exportTable(
+                    HazkeyServerConfig.loadInputTable(fromBoundedContents: contents))
+            }
+            XCTAssertTrue(exported.contains("ka\t\u{304B}"))
+            XCTAssertFalse(exported.contains("zz"))
+        }
+    }
+
+    /// 入力テーブルへ渡すmemfdの複製が書き込み封印され、変更できないことを検証する
+    func testSealedTableCopyRejectsWritesAndGrowth() {
+        let fd = Array("ka\t\u{304B}\n".utf8).withUnsafeBytes { bytes in
+            hazkey_sealed_memfd("hazkey-test", bytes.baseAddress, bytes.count)
+        }
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        defer { close(fd) }
+        XCTAssertEqual(write(fd, "x", 1), -1)
+        XCTAssertEqual(errno, EPERM)
+        XCTAssertNotEqual(ftruncate(fd, 4096), 0)
+        let reopened = open("/proc/self/fd/\(fd)", O_WRONLY | O_CLOEXEC)
+        if reopened >= 0 {
+            XCTAssertEqual(write(reopened, "x", 1), -1)
+            close(reopened)
+        }
     }
 
     func testCustomKeymapSkipsMultiCharacterFieldsWithoutTruncation() {

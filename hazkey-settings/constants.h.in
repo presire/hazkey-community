@@ -1,6 +1,12 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-const char* HAZKEY_VERSION_STR = "@PROJECT_VERSION@";
+inline constexpr const char* HAZKEY_VERSION_STR = "@PROJECT_VERSION@";
+
+// 設定GUIが起動するhazkey-community-serverの絶対パス (configure時に確定する)
+// PATHは検索しない。テストはコンパイル定義で上書きできる
+#ifndef HAZKEY_SERVER_EXECUTABLE_PATH
+#define HAZKEY_SERVER_EXECUTABLE_PATH "@HAZKEY_SERVER_EXECUTABLE_PATH@"
+#endif
 
 #endif

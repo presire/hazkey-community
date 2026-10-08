@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 import KanaKanjiConverterModule
 import SwiftUtils
 
@@ -92,7 +93,7 @@ struct UserDictionaryEntry {
         case "place":
             return CIDData.地名一般.cid
         default:
-            NSLog("[hazkey] Unknown user dictionary POS token '\(pos)', defaulting to noun")
+            hazkeyLog("[hazkey] Unknown user dictionary POS token '\(pos)', defaulting to noun")
             return CIDData.固有名詞.cid
         }
     }
@@ -112,6 +113,10 @@ class UserDictionary {
     private var entries: [UserDictionaryEntry] = []
     /// 前回読込時の更新時刻
     private var lastModified: Date? = nil
+    /// 前回読込時のリンク先の識別子 (デバイス・inode・サイズ)
+    ///
+    /// 更新時刻の粒度は粗いため、リンクの付け替えや同時刻の書き換えも検出できるように併せて比較する
+    private var lastFileIdentity: [UInt64] = []
     /// 前回読込時のファイルパス
     private var lastLoadedPath: String = ""
     /// 直近にファイルを確認した単調時刻 (ナノ秒)
@@ -125,6 +130,9 @@ class UserDictionary {
     ///
     /// 打鍵ごとにstatしないための間引きとする
     static let reloadThrottleInterval: TimeInterval = 1.0
+
+    /// 大規模なTSV (数十万語程度) にも余裕を持たせる読込み上限 (16 MiB未満)
+    static let fileSizeLimit = 16 * 1024 * 1024
 
     /// 最短間隔のナノ秒換算値
     ///
@@ -168,7 +176,7 @@ class UserDictionary {
         if knownPosTokens.contains(rawPos) {
             pos = rawPos
         } else {
-            NSLog("[hazkey] Unknown user dictionary POS token '\(rawPos)', defaulting to noun")
+            hazkeyLog("[hazkey] Unknown user dictionary POS token '\(rawPos)', defaulting to noun")
             pos = "noun"
         }
         if reading.isEmpty || word.isEmpty { return nil }
@@ -196,8 +204,10 @@ class UserDictionary {
         }
         lastCheckUptime = DispatchTime.now().uptimeNanoseconds
         let url = Self.defaultPath()
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else {
+        var info = stat()
+        // リンク先の種類・サイズ・更新日時で判定する (GUIのQSaveFileはリンクを保ったままリンク先を書き換える)
+        let statResult = stat(url.path, &info)
+        if statResult != 0, errno == ENOENT {
             let stateChanged = !entries.isEmpty || lastModified != nil || lastLoadedPath != url.path
             if !entries.isEmpty || lastModified != nil {
                 entries = []
@@ -207,12 +217,20 @@ class UserDictionary {
             return stateChanged
         }
         do {
-            let attrs = try fm.attributesOfItem(atPath: url.path)
-            let mtime = attrs[.modificationDate] as? Date
-            if lastLoadedPath == url.path, let last = lastModified, let cur = mtime, last == cur {
+            guard statResult == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            guard (info.st_mode & S_IFMT) == S_IFREG else { throw POSIXError(.EINVAL) }
+            guard info.st_size >= 0, info.st_size < Self.fileSizeLimit else { throw POSIXError(.EFBIG) }
+            let mtime: Date? = Date(
+                timeIntervalSince1970: TimeInterval(info.st_mtim.tv_sec)
+                    + TimeInterval(info.st_mtim.tv_nsec) / 1_000_000_000)
+            let identity = [UInt64(info.st_dev), UInt64(info.st_ino), UInt64(info.st_size)]
+            if lastLoadedPath == url.path, let last = lastModified, let cur = mtime, last == cur,
+                lastFileIdentity == identity
+            {
                 return false
             }
-            let content = try String(contentsOf: url, encoding: .utf8)
+            let data = try readValidatedFileData(at: url, limit: Self.fileSizeLimit, followFinalSymlink: true)
+            guard let content = String(data: data, encoding: .utf8) else { throw POSIXError(.EILSEQ) }
             var newEntries: [UserDictionaryEntry] = []
             for rawLine in content.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
                 if let entry = Self.parseLine(String(rawLine)) {
@@ -221,11 +239,12 @@ class UserDictionary {
             }
             entries = newEntries
             lastModified = mtime
+            lastFileIdentity = identity
             lastLoadedPath = url.path
-            NSLog("[hazkey] Loaded \(entries.count) user dictionary entries from \(url.path)")
+            hazkeyLog("[hazkey] Loaded \(entries.count) user dictionary entries from \(url.path)")
             return true
         } catch {
-            NSLog("[hazkey] Failed to load user dictionary: \(error.localizedDescription)")
+            hazkeyLog("[hazkey] Failed to load user dictionary: \(error.localizedDescription)")
             return false
         }
     }

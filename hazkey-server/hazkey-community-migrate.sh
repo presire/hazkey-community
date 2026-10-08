@@ -66,10 +66,17 @@ if [ -z "${HOME:-}" ]; then
     exit 1
 fi
 
-# XDG Base Directory (未設定・空の場合は仕様どおりの既定値)
-CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
-DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
-STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}
+# XDG Base Directory (未設定・空・相対パスの場合は仕様どおりの既定値)
+# 相対パスはサーバ・設定GUIも無視するため、ここで受け入れると移行先とサーバの参照先が食い違う
+xdg_base_dir() {
+    case "$1" in
+        /*) printf '%s\n' "$1" ;;
+        *) printf '%s\n' "$2" ;;
+    esac
+}
+CONFIG_HOME=$(xdg_base_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")
+DATA_HOME=$(xdg_base_dir "${XDG_DATA_HOME:-}" "$HOME/.local/share")
+STATE_HOME=$(xdg_base_dir "${XDG_STATE_HOME:-}" "$HOME/.local/state")
 
 UID_NUM=$(id -u)
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -86,14 +93,31 @@ run() {
     fi
 }
 
+# 指定したPIDが、自UIDのhazkey-community-serverであるかを/procで確認する
+# pgrepの列挙からシグナル送信までの間にサーバが終了してPIDが別プロセスへ再利用された場合に、
+# 無関係なプロセスへシグナルを送らないよう、送信の直前に照合する (argv[0]の照合はpgrepのパターンと同じ)
+is_community_server() {
+    status_file="/proc/$1/status"
+    [ -r "$status_file" ] || return 1
+    proc_uid=$(awk '/^Uid:/ { print $2; exit }' "$status_file" 2>/dev/null) || return 1
+    [ "$proc_uid" = "$UID_NUM" ] || return 1
+    proc_argv0=$(tr '\000' '\n' < "/proc/$1/cmdline" 2>/dev/null | head -n 1) || return 1
+    case "$proc_argv0" in
+        hazkey-community-server | */hazkey-community-server) return 0 ;;
+    esac
+    return 1
+}
+
 stop_community_servers() {
     pgrep -u "$UID_NUM" -f '^([^ ]*/)?hazkey-community-server( |$)' | while IFS= read -r pid; do
         [ -n "$pid" ] || continue
+        # pgrepの列挙後に終了したサーバ (PIDが再利用された場合を含む) は停止済みとして扱う
+        is_community_server "$pid" || continue
         info "Stopping hazkey-community-server (PID $pid)"
-        # pgrepの列挙後に終了したサーバは停止済みとして扱う
         kill -TERM "$pid" 2>/dev/null || continue
         attempts=0
-        while kill -0 "$pid" 2>/dev/null; do
+        # 終了後にPIDが別プロセスへ再利用されても待ち続けないよう、生存確認にも同じ照合を使う
+        while is_community_server "$pid"; do
             attempts=$((attempts + 1))
             if [ "$attempts" -ge 100 ]; then
                 die "hazkey-community-server (PID $pid) did not stop after SIGTERM"
@@ -144,7 +168,9 @@ rewrite_paths_in_file() {
     file=$1
     [ -f "$file" ] || return 0
     [ -L "$file" ] && return 0
-    tmp="${file}.migrate-tmp.$$"
+    # 一時ファイルは推測できない名前でmktempが排他的に作成する (固定名の既存ファイルやシンボリックリンクへの書き込みを避ける)
+    tmp=$(mktemp "${file}.migrate-tmp.XXXXXX")
+    tmp_sed=$(mktemp "${file}.migrate-tmp.XXXXXX")
     cp -p "$file" "$tmp"
     set -- \
         "$CONFIG_HOME/hazkey" "$CONFIG_HOME/hazkey-community" \
@@ -153,10 +179,12 @@ rewrite_paths_in_file() {
     while [ $# -ge 2 ]; do
         old=$(sed_escape_pattern "$1")
         new=$(sed_escape_replacement "$2")
-        sed -E -e "s/${old}(\/|\"|'|[[:space:]]|$)/${new}\1/g" "$tmp" > "${tmp}.2"
-        mv "${tmp}.2" "$tmp"
+        sed -E -e "s/${old}(\/|\"|'|[[:space:]]|$)/${new}\1/g" "$tmp" > "$tmp_sed"
+        # cp -pで引き継いだ元ファイルの権限を保つため、置き換えではなく内容を書き戻す
+        cat "$tmp_sed" > "$tmp"
         shift 2
     done
+    rm -f "$tmp_sed"
     if cmp -s "$file" "$tmp"; then
         rm -f "$tmp"
     else
@@ -213,8 +241,16 @@ copy_entry() {
             warn "${label}: ${dst} already exists, skipped (use --force to back it up and replace it)"
             return 1
         fi
-        info "- ${label}: backing up existing ${dst} -> ${dst}.bak-${TIMESTAMP}"
-        run mv "$dst" "${dst}.bak-${TIMESTAMP}"
+        # 同じ秒に再実行した場合も既存の退避先を上書き・入れ子にしないよう、未使用の名前を選ぶ
+        backup="${dst}.bak-${TIMESTAMP}"
+        backup_index=1
+        while [ -e "$backup" ] || [ -L "$backup" ]; do
+            backup="${dst}.bak-${TIMESTAMP}-${backup_index}"
+            backup_index=$((backup_index + 1))
+        done
+        info "- ${label}: backing up existing ${dst} -> ${backup}"
+        # -T: 退避先がディレクトリとして存在していても、その中へ移動しない
+        run mv -T "$dst" "$backup"
     fi
 
     info "- ${label}: ${src} -> ${dst}"

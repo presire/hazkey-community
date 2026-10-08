@@ -38,7 +38,7 @@ class ProtocolHandler {
         do {
             query = try Hazkey_RequestEnvelope(serializedBytes: data)
         } catch {
-            NSLog("Failed to parse protobuf: \(error)")
+            hazkeyLog("Failed to parse protobuf: \(error)")
             response = Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "Failed to parse protobuf: \(error)"
@@ -156,8 +156,25 @@ class ProtocolHandler {
             let serialized = try response.serializedData()
             return serialized
         } catch {
-            NSLog("Failed to serialize response message: \(unserialized)")
+            hazkeyLog("Failed to serialize response payload: \(Self.responsePayloadType(response.payload))")
             return Data()
+        }
+    }
+
+    /// 応答の本文 (入力文字・候補・設定) をログへ出さずに種類だけを返す
+    static func responsePayloadType(_ payload: Hazkey_ResponseEnvelope.OneOf_Payload?) -> String {
+        switch payload {
+        case .text: return "text"
+        case .candidates: return "candidates"
+        case .textWithCursor: return "textWithCursor"
+        case .currentConfig: return "currentConfig"
+        case .currentInputModeInfo: return "currentInputModeInfo"
+        case .clauseBoundaryResult: return "clauseBoundaryResult"
+        case .getLearningHistoryResult: return "getLearningHistoryResult"
+        case .deleteLearningEntriesResult: return "deleteLearningEntriesResult"
+        case .deleteCandidateLearningDataResult: return "deleteCandidateLearningDataResult"
+        case .toggleZenzaiResult: return "toggleZenzaiResult"
+        case .none: return "none"
         }
     }
 }

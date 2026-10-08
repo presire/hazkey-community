@@ -7,6 +7,7 @@
 #include "hazkey_state.h"
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 #include "composing_cursor_view.h"
 #include "hazkey_frontend_hooks.h"
@@ -27,6 +28,10 @@
 namespace hazkey::ibus {
 
 namespace {
+
+#ifdef HAZKEY_IBUS_TESTING
+std::atomic<bool> throwNextProcessKeyEventForTest{false};
+#endif
 
 /**
  * @brief プロセス共有のサーバ接続を取得する
@@ -202,9 +207,12 @@ HazkeyState::~HazkeyState() {
 
 void HazkeyState::postUi(std::function<void(HazkeyUi&)> fn) {
     auto ui = ui_;
+    auto state = shared_from_this();
+    const uint64_t operationEpoch = operationEpoch_;
     hazkey::frontend::postToMainLoop(
-        [ui, fn = std::move(fn)]() mutable {
-            if (ui) {
+        [state, ui, operationEpoch, fn = std::move(fn)]() mutable {
+            if (ui && operationEpoch ==
+                          state->contentEpoch_.load(std::memory_order_acquire)) {
                 fn(*ui);
             }
         });
@@ -371,12 +379,14 @@ std::string HazkeyState::joinAuxiliaryText(const std::string& auxUp,
 
 gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
                                       guint state, bool* surroundingGate) {
+#ifdef HAZKEY_IBUS_TESTING
+    if (throwNextProcessKeyEventForTest.exchange(false,
+                                                  std::memory_order_acq_rel)) {
+        throw std::runtime_error("injected key-event failure");
+    }
+#endif
     (void)keycode;
-    if (secureRequested_.load(std::memory_order_acquire)) {
-        // 安全入力への切替前に積まれたキーは処理せず、組成を確定・学習せずに破棄する
-        if (!secureInput_) {
-            setSecureInput(true);
-        }
+    if (discardIfSecureInput()) {
         return FALSE;
     }
     const gboolean isRelease = (state & IBUS_RELEASE_MASK) != 0;
@@ -388,8 +398,14 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
             // AuxDownの"[Direct Input]"表示を次のキーイベントまで古いままにせず、ここで再計算する
             // fcitxのkeyEvent()も[Shift]分岐で戻る前にsetAuxDownText()を呼ぶ
             // shiftKeyEvent()がconnectorキャッシュを無効化するため、下のcurrentInputModeIsDirect()は新モードを読む
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             server_.shiftKeyEvent(true, shiftPressedAlone_);
             shiftPressedAlone_ = false;
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             updateInputModeProperty();
             updateAuxiliaryText();
         } else {
@@ -405,6 +421,9 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
         // 修飾キー自身のKeyPressは、修飾が適用される前のstateで報告されることが多い
         // そのため、[Shift]単体でも、stateが正当に0になり得る
         shiftPressedAlone_ = isLoneShiftModifierState(state);
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         server_.shiftKeyEvent(false);
         return FALSE;
     }
@@ -412,6 +431,9 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
 
     if (!serverProfileLoaded_ || server_.consumeConfigChanged()) {
         loadServerProfile();
+    }
+    if (discardIfSecureInput()) {
+        return FALSE;
     }
 
     // 全体トグルはモディファイア透過フィルタより先に照合する
@@ -428,6 +450,9 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
 
     const std::string composingText = server_.getComposingText(
         hazkey::commands::GetComposingString_CharType_HIRAGANA, preeditText_);
+    if (discardIfSecureInput()) {
+        return FALSE;
+    }
 
     gboolean handled = FALSE;
     if (listVisible_ && cursorIndex_ >= 0) {
@@ -486,6 +511,9 @@ bool HazkeyState::shouldGateFirstInput(guint keyval, bool rightContext,
 
 void HazkeyState::resumeGatedInput(guint keyval, guint state,
                                    bool surroundingArrived) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!surroundingArrived) {
         surroundingFreeze_.resolve("", 0, 0, "");
     }
@@ -495,18 +523,33 @@ void HazkeyState::resumeGatedInput(guint keyval, guint state,
 }
 
 gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
+    if (discardIfSecureInput()) {
+        return FALSE;
+    }
     const gboolean shift = (state & IBUS_SHIFT_MASK) != 0;
     if (keyval == IBUS_KEY_space) {
         if (shift) {
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             commitText(" ");
             // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
             surroundingFreeze_.appendCommitted(" ");
             resetState();
         } else {
             updateSurroundingText();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             server_.inputChar(" ");
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             const std::string committed = server_.getComposingText(
                 hazkey::commands::GetComposingString_CharType_HIRAGANA, "");
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             commitText(committed);
             surroundingFreeze_.appendCommitted(committed);
             resetState();
@@ -515,7 +558,13 @@ gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
     }
     if (isInputableKey(keyval)) {
         updateSurroundingText();
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         server_.inputChar(utf8FromKeyval(keyval));
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         // 表示専用リフレッシュは連続打鍵を間引く
         // 上のinputChar RPCは同期で順序を保証したまま
         scheduleCandidateRefresh(/*isSuggest=*/true);
@@ -527,6 +576,9 @@ gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
 }
 
 gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
+    if (discardIfSecureInput()) {
+        return FALSE;
+    }
     const gboolean shift = (state & IBUS_SHIFT_MASK) != 0;
     switch (keyval) {
         case IBUS_KEY_Return:
@@ -534,10 +586,19 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         case IBUS_KEY_ISO_Enter: {
             // 保留中の更新を反映してから、確定する文字列を取る
             flushPendingRefresh();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             const std::string committed = preeditText_;
             commitPreedit();
             if (livePreeditIndex_ >= 0) {
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
                 server_.completePrefix(livePreeditIndex_);
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
             }
             // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
             surroundingFreeze_.appendCommitted(committed);
@@ -545,11 +606,23 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
             return TRUE;
         }
         case IBUS_KEY_BackSpace:
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             server_.deleteLeft();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             showPreeditCandidateList();
             return TRUE;
         case IBUS_KEY_Delete:
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             server_.deleteRight();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             showPreeditCandidateList();
             return TRUE;
         case IBUS_KEY_F6:
@@ -569,7 +642,13 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         case IBUS_KEY_space:
             if (!isDirectConversionMode_ && shift) {
                 updateSurroundingText();
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
                 server_.inputChar(" ");
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
                 refreshAfterComposingEdit();
             } else {
                 showNonPredictCandidateList();
@@ -625,6 +704,9 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
             // 直接変換の結果を確定してから続けて入力する
             // 候補フォーカス中の継続入力と同じく、確定した文字列を固定済みの周辺テキストへ積む
             flushPendingRefresh();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
             committed = preeditText_;
             commitPreedit();
             const auto carriedFreeze = surroundingFreeze_;
@@ -632,7 +714,13 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
             surroundingFreeze_ = carriedFreeze;
         }
         updateSurroundingText(committed);
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         server_.inputChar(utf8FromKeyval(keyval));
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         refreshAfterComposingEdit();
         return TRUE;
     }
@@ -640,6 +728,9 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
 }
 
 gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
+    if (discardIfSecureInput()) {
+        return FALSE;
+    }
     const gboolean shift = (state & IBUS_SHIFT_MASK) != 0;
     const gboolean control = (state & IBUS_CONTROL_MASK) != 0;
 
@@ -653,7 +744,13 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
     // フォーカス済みsuggestモード候補だけを受理する
     // [Return]と違い、組成を保ったままサーバから更新する
     if (currentListIsSuggest_ && hotkeyMatches(keyval, state, acceptPredictionHotkey_)) {
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         server_.acceptPrediction(cursorIndex_);
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         showPreeditCandidateList();
         return TRUE;
     }
@@ -759,6 +856,9 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         // 保留リフレッシュは取り込みと確定の前に解決する
         // 解決しないと確定テキストと周囲テキストの更新が遅れる
         flushPendingRefresh();
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         const std::string committed = preeditText_;
         commitPreedit();
         // 確定直後のライブの周囲テキストは更新が遅れ、確定したpreeditを含んだままになる
@@ -767,7 +867,13 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         resetState();
         surroundingFreeze_ = carriedFreeze;
         updateSurroundingText(committed);
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         server_.inputChar(utf8FromKeyval(keyval));
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
         showPreeditCandidateList();
         return TRUE;
     }
@@ -808,6 +914,9 @@ void HazkeyState::loadServerProfile() {
 }
 
 void HazkeyState::handleLiveConvertToggle() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     const auto prevMode = cachedAutoConvertMode_;
     auto& sharedRemembered = server_.rememberedOnMode();
     const auto prevRemembered = sharedRemembered;
@@ -818,6 +927,9 @@ void HazkeyState::handleLiveConvertToggle() {
     // 失敗時もプロパティを再送出する
     // [ライブ変換]チェックボックスを楽観的に反転したパネルを実際の状態へ戻すため
     const auto configOpt = server_.getServerConfig();
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
         cachedAutoConvertMode_ = prevMode;
         sharedRemembered = prevRemembered;
@@ -827,10 +939,16 @@ void HazkeyState::handleLiveConvertToggle() {
 
     auto config = configOpt.value();
     config.mutable_profiles(0)->set_auto_convert_mode(cachedAutoConvertMode_);
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!server_.setServerConfig(config)) {
         cachedAutoConvertMode_ = prevMode;
         sharedRemembered = prevRemembered;
         updateLiveConvertProperty();
+        return;
+    }
+    if (discardIfSecureInput()) {
         return;
     }
     updateLiveConvertProperty();
@@ -845,7 +963,11 @@ void HazkeyState::handleLiveConvertToggle() {
             ? tr("Live conversion disabled")
             : tr("Live conversion enabled"));
 
-    const std::string composingText = server_.getComposingText(hazkey::commands::GetComposingString_CharType_HIRAGANA, preeditText_);
+    const std::string composingText = server_.getComposingText(
+        hazkey::commands::GetComposingString_CharType_HIRAGANA, preeditText_);
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (composingText.empty()) {
         return;
     }
@@ -853,7 +975,13 @@ void HazkeyState::handleLiveConvertToggle() {
 }
 
 void HazkeyState::handleZenzaiToggle() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     const auto enabled = server_.toggleZenzai();
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!enabled.has_value()) {
         return;
     }
@@ -897,7 +1025,13 @@ void HazkeyState::cancelPendingHint() {
 }
 
 void HazkeyState::handleDeleteCandidateLearningData(int globalIndex) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     const auto result = server_.deleteCandidateLearningData(globalIndex);
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!result.has_value() || result->deleted_count == 0) {
         return;
     }
@@ -915,6 +1049,9 @@ void HazkeyState::handleDeleteCandidateLearningData(int globalIndex) {
 }
 
 void HazkeyState::functionKeyHandler(guint keyval) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     switch (keyval) {
         case IBUS_KEY_F6:
             directCharactorConversion(ConversionMode::Hiragana);
@@ -934,15 +1071,27 @@ void HazkeyState::functionKeyHandler(guint keyval) {
         default:
             return;
     }
+    if (discardIfSecureInput()) {
+        return;
+    }
     isDirectConversionMode_ = true;
 }
 
 void HazkeyState::directCharactorConversion(ConversionMode mode) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     // 遅延リフレッシュを解決する
     // 下の変換はpreeditText_を読むため、解決しないと古い値になる
     flushPendingRefresh();
+    if (discardIfSecureInput()) {
+        return;
+    }
     const std::string converted =
         server_.getComposingText(charTypeFor(mode), preeditText_);
+    if (discardIfSecureInput()) {
+        return;
+    }
     livePreeditIndex_ = -1;
     preeditText_ = converted;
     if (converted.empty()) {
@@ -963,6 +1112,9 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
 }
 
 bool HazkeyState::ctrlShortcutHandler(guint keyval) {
+    if (discardIfSecureInput()) {
+        return false;
+    }
     // fcitx5-hazkey-communityのfcitx::HazkeyState::ctrlShortcutHandler()から移植
     // [Ctrl] + [U]はHiragana、[Ctrl] + [I]はKatakanaFullwidth
     // [Ctrl] + [O]はKatakanaHalfwidth、[Ctrl] + [P]はRawFullwidth
@@ -987,13 +1139,22 @@ bool HazkeyState::ctrlShortcutHandler(guint keyval) {
         default:
             return false;
     }
+    if (discardIfSecureInput()) {
+        return false;
+    }
     // functionKeyHandler()による直接変換開始と同じ効果
     isDirectConversionMode_ = true;
     return true;
 }
 
 void HazkeyState::moveSegmentBoundary(bool expand) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     const auto result = server_.adjustClauseBoundary(expand ? 1 : -1);
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!result.has_value()) {
         isClauseBoundaryAdjusting_ = false;
         return;
@@ -1020,6 +1181,9 @@ hazkey::commands::GetComposingString::CharType HazkeyState::charTypeFor(
 }
 
 bool HazkeyState::showCandidateList(bool isSuggest) {
+    if (discardIfSecureInput()) {
+        return false;
+    }
     currentListIsSuggest_ = isSuggest;
     // 一時停止するのはライブ変換表示のみ
     // 非予測変換は、showNonPredictCandidateList()ですでにカーソルを末尾へ寄せている
@@ -1027,7 +1191,11 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
     if (isSuggest && showPausedPreeditIfCursorInside()) {
         return false;
     }
-    return applyCandidateResponse(server_.getCandidates(isSuggest), std::nullopt, isSuggest);
+    const auto response = server_.getCandidates(isSuggest);
+    if (discardIfSecureInput()) {
+        return false;
+    }
+    return applyCandidateResponse(response, std::nullopt, isSuggest);
 }
 
 void HazkeyState::showPausedRawPreedit(
@@ -1056,7 +1224,13 @@ void HazkeyState::showPausedRawPreedit(
 }
 
 bool HazkeyState::showPausedPreeditIfCursorInside() {
+    if (discardIfSecureInput()) {
+        return true;
+    }
     const auto parts = server_.getComposingHiraganaWithCursor();
+    if (discardIfSecureInput()) {
+        return true;
+    }
     if (hazkey::frontend::cursorAtEnd(parts)) {
         return false;
     }
@@ -1065,19 +1239,36 @@ bool HazkeyState::showPausedPreeditIfCursorInside() {
 }
 
 void HazkeyState::moveComposingCursor(int offset) {
-    if (offset > 0 && hazkey::frontend::cursorAtEnd(
-                          server_.getComposingHiraganaWithCursor())) {
-        // 組成末尾での[Right] / [End]には移動先がない
-        // 呼び出し側はキーを消費するが、RPCも再描画も行わない
+    if (discardIfSecureInput()) {
+        return;
+    }
+    if (offset > 0) {
+        const auto current = server_.getComposingHiraganaWithCursor();
+        if (discardIfSecureInput()) {
+            return;
+        }
+        if (hazkey::frontend::cursorAtEnd(current)) {
+            // 組成末尾での[Right] / [End]には移動先がない
+            // 呼び出し側はキーを消費するが、RPCも再描画も行わない
+            return;
+        }
+    }
+    if (discardIfSecureInput()) {
         return;
     }
     // 保留リフレッシュは下の同期描画で置き換える
     // 取り消し、描画、リスト非表示は全てこの1ワーカー上でこの順に実行する
     cancelPendingRefresh();
     server_.moveCursor(offset);
+    if (discardIfSecureInput()) {
+        return;
+    }
     // moveCursor()はconnectorキャッシュを無効化するため、この再読込は新しい位置を読む
     // サーバがオフセットをクランプするため、+-1024は安全
     const auto parts = server_.getComposingHiraganaWithCursor();
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (hazkey::frontend::cursorAtEnd(parts)) {
         showPreeditCandidateList();
         return;
@@ -1086,7 +1277,13 @@ void HazkeyState::moveComposingCursor(int offset) {
 }
 
 void HazkeyState::refreshAfterComposingEdit() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     const auto parts = server_.getComposingHiraganaWithCursor();
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!hazkey::frontend::cursorAtEnd(parts)) {
         cancelPendingRefresh();
         showPausedRawPreedit(parts);
@@ -1099,6 +1296,9 @@ void HazkeyState::refreshAfterComposingEdit() {
 bool HazkeyState::applyCandidateResponse(
     const hazkey::commands::CandidatesResult& response,
     const std::optional<std::string>& fallback, bool isSuggest) {
+    if (discardIfSecureInput()) {
+        return false;
+    }
     currentListIsSuggest_ = isSuggest;
     candidates_.clear();
     for (const auto& c : response.candidates()) {
@@ -1128,6 +1328,9 @@ bool HazkeyState::applyCandidateResponse(
         display = server_.getComposingText(
             hazkey::commands::GetComposingString_CharType_HIRAGANA,
             preeditText_);
+        if (discardIfSecureInput()) {
+            return false;
+        }
     }
     display = makeValidUtf8(display);
     preeditText_ = display;
@@ -1153,11 +1356,15 @@ bool HazkeyState::applyCandidateResponse(
 }
 
 void HazkeyState::showPreeditCandidateList() {
-    if (server_
-            .getComposingText(
-                hazkey::commands::GetComposingString_CharType_HIRAGANA,
-                preeditText_)
-            .empty()) {
+    if (discardIfSecureInput()) {
+        return;
+    }
+    const std::string composingText = server_.getComposingText(
+        hazkey::commands::GetComposingString_CharType_HIRAGANA, preeditText_);
+    if (discardIfSecureInput()) {
+        return;
+    }
+    if (composingText.empty()) {
         resetState();
         return;
     }
@@ -1246,6 +1453,10 @@ void HazkeyState::firePendingCandidateRefresh() {
 }
 
 void HazkeyState::runPendingCandidateRefresh() {
+    if (discardIfSecureInput()) {
+        executingPendingRefresh_ = false;
+        return;
+    }
     executingPendingRefresh_ = true;
     if (pendingRefreshIsSuggest_) {
         showPreeditCandidateList();
@@ -1276,6 +1487,9 @@ void HazkeyState::cancelPendingRefresh() {
 // これがないと、間引き窓内に遅延した打鍵が確定テキストから抜け落ちる
 // 例: [A] [I] [U] [E] [O]の直後に[Return]を押すと、立ち上がりエッジの先頭1文字だけが確定される
 void HazkeyState::flushPendingRefresh() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!refreshCoalescer_.hasPending()) {
         return;
     }
@@ -1291,6 +1505,9 @@ void HazkeyState::flushPendingRefresh() {
 }
 
 void HazkeyState::showNonPredictCandidateList() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     // 保留中の遅延suggestリフレッシュが後から発火し、非予測リストを上書きしてはならない
     // coalescer自身の保留リフレッシュ実行中は除く
     // その場合は正当に非予測となることがある
@@ -1298,6 +1515,9 @@ void HazkeyState::showNonPredictCandidateList() {
         cancelPendingRefresh();
     }
     server_.moveCursor(1024);
+    if (discardIfSecureInput()) {
+        return;
+    }
     isClauseBoundaryAdjusting_ = false;
     if (!showCandidateList(false)) {
         return;
@@ -1310,6 +1530,9 @@ void HazkeyState::showNonPredictCandidateList() {
 void HazkeyState::showNonPredictCandidateList(
     const hazkey::commands::CandidatesResult& response,
     const std::string& hiragana) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (!executingPendingRefresh_) {
         cancelPendingRefresh();
     }
@@ -1522,6 +1745,9 @@ void HazkeyState::selectPageLocalAltDigit(guint keyval, bool flushFirst) {
 }
 
 void HazkeyState::completeCandidate(int globalIndex) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     if (globalIndex < 0 ||
         globalIndex >= static_cast<int>(candidates_.size())) {
         return;
@@ -1529,7 +1755,13 @@ void HazkeyState::completeCandidate(int globalIndex) {
     const HazkeyCandidate cand =
         candidates_[static_cast<size_t>(globalIndex)];
     updateSurroundingText(cand.text);
+    if (discardIfSecureInput()) {
+        return;
+    }
     server_.completePrefix(globalIndex);
+    if (discardIfSecureInput()) {
+        return;
+    }
     hidePreedit();
     commitText(cand.text);
     if (!cand.subHiragana.empty()) {
@@ -1600,6 +1832,9 @@ void HazkeyState::resetState() {
 }
 
 void HazkeyState::commitText(const std::string& text) {
+    if (discardIfSecureInput()) {
+        return;
+    }
     postUi([text](HazkeyUi& ui) { ui.commitText(text); });
 }
 
@@ -1651,6 +1886,9 @@ void HazkeyState::setAuxiliaryTextWithCursor(const std::string& auxUp,
 }
 
 void HazkeyState::updateAuxiliaryText() {
+    if (discardIfSecureInput()) {
+        return;
+    }
     // fcitx5のkeyEvent()末尾を再現する
     // AuxUpは候補リストのフォーカス中に"[n/total]"を表示する
     // それ以外は、組成があればサーバカーソル付きの生ひらがなを表示する
@@ -1674,6 +1912,9 @@ void HazkeyState::updateAuxiliaryText() {
     } else if (!preeditText_.empty()) {
         auxDown = tr("[Press Tab to Select]");
     }
+    if (discardIfSecureInput()) {
+        return;
+    }
 
     // 一時的な切り替えヒントは、Zenzaiまたはライブ変換の切り替えに由来する
     // IBusには他に一時的フィードバックの経路がない (showTransientHint()参照)
@@ -1695,6 +1936,9 @@ void HazkeyState::updateAuxiliaryText() {
         // auxTextModeはサーバ側ではなくここで適用する (cachedAuxTextMode_参照)
         // 生ひらがなを隠す設定では、joinAuxiliaryText()が先行空白なしのAuxDown単体になる
         auto parts = server_.getComposingHiraganaWithCursor();
+        if (discardIfSecureInput()) {
+            return;
+        }
         parts.before = makeValidUtf8(parts.before);
         parts.onCursor = makeValidUtf8(parts.onCursor);
         parts.after = makeValidUtf8(parts.after);
@@ -1747,7 +1991,7 @@ void HazkeyState::updateLiveConvertProperty() {
 }
 
 void HazkeyState::updateSurroundingText(const std::string& append) {
-    if (secureInputActive()) {
+    if (discardIfSecureInput()) {
         return;
     }
     const bool liveAvailable =
@@ -1799,6 +2043,29 @@ void HazkeyState::setSecureInput(bool secure) {
     }
 }
 
+#ifdef HAZKEY_IBUS_TESTING
+void HazkeyState::throwOnNextProcessKeyEventForTest() {
+    throwNextProcessKeyEventForTest.store(true, std::memory_order_release);
+}
+#endif
+
+bool HazkeyState::discardIfSecureInput() {
+    const bool secureRequested =
+        secureRequested_.load(std::memory_order_acquire);
+    const bool staleOperation =
+        operationEpoch_ != contentEpoch_.load(std::memory_order_acquire);
+    if (!secureInput_ && !secureRequested && !staleOperation) {
+        return false;
+    }
+    if (secureRequested && !secureInput_) {
+        setSecureInput(true);
+    } else if (!secureRequested && staleOperation) {
+        // 短時間の安全入力切替も含め、切替前の組成は確定せず破棄する
+        reset();
+    }
+    return true;
+}
+
 void HazkeyState::enable() {
     resetState();
     surroundingFreeze_.release();
@@ -1828,6 +2095,9 @@ void HazkeyState::setCapabilities(guint caps) {
 
 bool HazkeyState::activateProperty(const gchar* propName,
                                    [[maybe_unused]] guint propState) {
+    if (discardIfSecureInput()) {
+        return false;
+    }
     if (g_strcmp0(propName, "InputMode") == 0) {
         // サーバ側の[Shift]単体タップRPC経路を使用する
         // 直接入力モード遷移とキャッシュ無効化はサーバが握り、フロントエンド単独の状態を持たない
@@ -1907,7 +2177,7 @@ void HazkeyState::cursorDown() {
 }
 
 void HazkeyState::candidateClickedGlobal(int globalIndex, int generation) {
-    if (secureInputActive()) {
+    if (discardIfSecureInput()) {
         return;
     }
     // クリックはユーザが実際に見た描画に対してメインループ上で解決済み

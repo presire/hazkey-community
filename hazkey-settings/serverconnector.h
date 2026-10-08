@@ -9,6 +9,8 @@
  * 設定GUIが使用するRPCと永続セッションを提供する
  */
 
+#include <chrono>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -239,5 +241,22 @@ class ServerConnector {
      */
     int session_socket_;
 };
+
+/**
+ * @brief 指定バイト数をソケットへ書き切るフレーム搬送ヘルパー
+ *
+ * send(MSG_NOSIGNAL)で書くため、相手がソケットを閉じていてもSIGPIPEでプロセスは終了せず、falseを返す
+ * EINTRは再試行し、EAGAIN/EWOULDBLOCKでは期限まで書き込み可能になるのを待つ
+ * ソケットは閉じない (所有権は呼び出し元にある)
+ * ServerConnectorの実装のために公開しており、単体テストからも呼び出す
+ *
+ * @param fd 書き込み対象のソケットディスクリプター
+ * @param data 送信バッファ
+ * @param len 送信するバイト数
+ * @param deadline フレーム全体の絶対期限
+ * @return lenバイトを書き終えた場合はtrue、書込エラー (EPIPEを含む) または期限切れならfalse
+ */
+bool writeAll(int fd, const void* data, size_t len,
+              std::chrono::steady_clock::time_point deadline);
 
 #endif  // SERVERCONNECTOR_H

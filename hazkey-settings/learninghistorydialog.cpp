@@ -4,6 +4,7 @@
  */
 
 #include "learninghistorydialog.h"
+#include "async_server_call.h"
 #include <QDate>
 #include <QDialogButtonBox>
 #include <QHeaderView>
@@ -12,10 +13,12 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <initializer_list>
 
 namespace {
 
@@ -29,6 +32,55 @@ QString localizedLastUsedDate(uint32_t unixDay) {
     const QDate date = QDate(1970, 1, 1).addDays(unixDay);
     return QLocale().toString(date, QLocale::ShortFormat);
 }
+
+/**
+ * @brief スコープの間だけカウンタを増やすRAII
+ * @internal サーバ呼び出しの待機中に、ダイアログが閉じられて破棄されるのを防ぐ判定用
+ */
+class BusyScope {
+   public:
+    explicit BusyScope(int& counter) : counter_(counter) { ++counter_; }
+    BusyScope(const BusyScope&) = delete;
+    BusyScope& operator=(const BusyScope&) = delete;
+    ~BusyScope() { --counter_; }
+
+   private:
+    int& counter_;
+};
+
+/**
+ * @brief スコープの間だけ、指定したウィジェットを無効にするRAII
+ * @internal サーバ呼び出しの待機中に、検索・ページ移動・選択・削除の操作を受け付けないために使う
+ *
+ * 待機ダイアログは表示までに遅延があり、その間もウィジェットは操作できるため、呼び出しの開始時点で無効にする
+ * 有効だったウィジェットだけを記録して戻すため、待機前の有効状態を変えない
+ *
+ * フォーカスを持つウィジェットを無効にすると、Qtはフォーカスを[閉じる]ボタンへ移し、そのボタンが既定のボタンになる
+ * 検索欄でのEnterは、検索の後にダイアログの既定のボタンにも届くため、戻さないとダイアログが閉じてしまう
+ * そのため、無効にする前のフォーカスを、有効に戻した後で復元する
+ */
+class DisabledWidgetsScope {
+   public:
+    DisabledWidgetsScope(QWidget* window, std::initializer_list<QWidget*> widgets)
+        : focus_(window->focusWidget()) {
+        for (QWidget* widget : widgets) {
+            if (widget->isEnabled()) {
+                widget->setEnabled(false);
+                disabled_.push_back(widget);
+            }
+        }
+    }
+    DisabledWidgetsScope(const DisabledWidgetsScope&) = delete;
+    DisabledWidgetsScope& operator=(const DisabledWidgetsScope&) = delete;
+    ~DisabledWidgetsScope() {
+        for (QWidget* widget : disabled_) widget->setEnabled(true);
+        if (focus_ && focus_->isEnabled()) focus_->setFocus(Qt::OtherFocusReason);
+    }
+
+   private:
+    QPointer<QWidget> focus_;
+    std::vector<QWidget*> disabled_;
+};
 
 }  // namespace
 
@@ -108,26 +160,31 @@ LearningHistoryDialog::LearningHistoryDialog(
     connect(deleteButton_, &QPushButton::clicked, this,
             &LearningHistoryDialog::onDeleteSelected);
 
-    reloadPage();
+    reloadPage(searchEdit_->text().toStdString(), 0);
+}
+
+void LearningHistoryDialog::reject() {
+    if (busyDepth_ > 0) return;
+    QDialog::reject();
 }
 
 void LearningHistoryDialog::onSearch() {
-    offset_ = 0;
-    reloadPage();
+    if (busyDepth_ > 0) return;
+    reloadPage(searchEdit_->text().toStdString(), 0);
 }
 
 void LearningHistoryDialog::onPreviousPage() {
-    offset_ = offset_ > kPageLimit ? offset_ - kPageLimit : 0;
-    reloadPage();
+    if (busyDepth_ > 0) return;
+    reloadPage(query_, offset_ > kPageLimit ? offset_ - kPageLimit : 0);
 }
 
 void LearningHistoryDialog::onNextPage() {
-    if (offset_ + kPageLimit >= totalCount_) return;
-    offset_ += kPageLimit;
-    reloadPage();
+    if (busyDepth_ > 0 || offset_ + kPageLimit >= totalCount_) return;
+    reloadPage(query_, offset_ + kPageLimit);
 }
 
 void LearningHistoryDialog::onDeleteSelected() {
+    if (busyDepth_ > 0) return;
     const auto keys = checkedEntries();
     if (keys.empty()) {
         QMessageBox::warning(this, tr("削除"), tr("削除する履歴を選択してください。"));
@@ -142,35 +199,62 @@ void LearningHistoryDialog::onDeleteSelected() {
         return;
     }
 
-    const auto deletedCount =
-        server_->deleteLearningEntries(target_.profileId, keys);
+    std::optional<uint32_t> deletedCount;
+    {
+        BusyScope deleteBusy(busyDepth_);
+        DisabledWidgetsScope disabled(this, {searchEdit_, searchButton_, historyTable_,
+                                             previousPageButton_, nextPageButton_, deleteButton_});
+        const auto deleteCall = runServerCallAsync(
+            this, tr("入力履歴を削除しています..."),
+            [this, keys]() { return server_->deleteLearningEntries(target_.profileId, keys); });
+        if (deleteCall.aborted() || !deleteCall.completed()) {
+            // 終了中、または他のサーバ呼び出しの実行中は何もしない
+            return;
+        }
+        deletedCount = *deleteCall.value;
+    }
     if (!deletedCount) {
         QMessageBox::warning(this, tr("エラー"),
                              tr("入力履歴の削除に失敗しました。hazkey-community-serverへの接続を確認してください。"));
         return;
     }
 
-    reloadPage();
+    reloadPage(query_, offset_);
     QMessageBox::information(this, tr("完了"),
                              tr("%1 件の入力履歴を削除しました。")
                                  .arg(*deletedCount));
 }
 
-void LearningHistoryDialog::reloadPage() {
-    const auto result = server_->getLearningHistory(
-        target_.profileId, searchEdit_->text().toStdString(), offset_, kPageLimit);
+void LearningHistoryDialog::reloadPage(const std::string& query, uint32_t offset) {
+    std::optional<hazkey::config::GetLearningHistoryResult> result;
+    {
+        BusyScope historyBusy(busyDepth_);
+        DisabledWidgetsScope disabled(this, {searchEdit_, searchButton_, historyTable_,
+                                             previousPageButton_, nextPageButton_, deleteButton_});
+        const auto historyCall = runServerCallAsync(
+            this, tr("入力履歴を取得しています..."), [this, query, offset]() {
+                return server_->getLearningHistory(target_.profileId, query, offset, kPageLimit);
+            });
+        if (historyCall.aborted() || !historyCall.completed()) {
+            return;
+        }
+        result = *historyCall.value;
+    }
     if (!result) {
         QMessageBox::warning(this, tr("エラー"),
                              tr("入力履歴を取得できませんでした。hazkey-community-serverへの接続を確認してください。"));
         return;
     }
 
-    if (result->total_count() > 0 && offset_ >= result->total_count()) {
-        offset_ = ((result->total_count() - 1) / kPageLimit) * kPageLimit;
-        reloadPage();
+    if (result->total_count() > 0 && offset >= result->total_count()) {
+        reloadPage(query, ((result->total_count() - 1) / kPageLimit) * kPageLimit);
         return;
     }
 
+    // 取得に成功した時だけ、表示中の検索条件とページ位置を更新する
+    // 失敗・中断時は、表示中の行・ページ表示・以後のページ移動の基準を変えない
+    query_ = query;
+    offset_ = offset;
     populateTable(*result);
 }
 

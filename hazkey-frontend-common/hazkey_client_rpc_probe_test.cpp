@@ -8,7 +8,9 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <cstring>
 #include <cstdlib>
@@ -282,6 +284,52 @@ void replayCorpus(HazkeyServerConnector& connector) {
     }
 }
 
+void sendEvidenceProbe(const std::string& root, const std::string& evidencePath) {
+    assert(setenv("HAZKEY_PERF_EVIDENCE", evidencePath.c_str(), 1) == 0);
+    const std::string socketPath =
+        root + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+    FakeServer server(socketPath);
+    {
+        HazkeyServerConnector connector;
+        connector.inputChar("probe");
+    }
+}
+
+void testUnsafePerfEvidenceTargets(const std::string& root) {
+    const std::string symlinkPath = root + "/evidence-link.jsonl";
+    const std::string targetPath = root + "/evidence-target.jsonl";
+    const std::string fifoPath = root + "/evidence.fifo";
+    {
+        std::ofstream target(targetPath);
+        target << "sentinel\n";
+    }
+    assert(symlink(targetPath.c_str(), symlinkPath.c_str()) == 0);
+    sendEvidenceProbe(root, symlinkPath);
+    {
+        std::ifstream target(targetPath);
+        const std::string contents((std::istreambuf_iterator<char>(target)), {});
+        assert(contents == "sentinel\n");
+    }
+    assert(std::filesystem::is_symlink(symlinkPath));
+
+    assert(mkfifo(fifoPath.c_str(), 0600) == 0);
+    const pid_t child = fork();
+    assert(child >= 0);
+    if (child == 0) {
+        alarm(5);
+        sendEvidenceProbe(root, fifoPath);
+        _exit(0);
+    }
+    int status = 0;
+    pid_t waited = -1;
+    do {
+        waited = waitpid(child, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    assert(waited == child);
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    assert(std::filesystem::is_fifo(fifoPath));
+}
+
 }  // namespace
 
 /**
@@ -338,6 +386,7 @@ int main() {
     assert(observed.at("get_candidates") < baseline.at("get_candidates"));
     assert(observed.at("get_hiragana_with_cursor") <=
            baseline.at("get_hiragana_with_cursor"));
+    testUnsafePerfEvidenceTargets(root);
     std::cout << "[PASS] RPC counts (after=baseline): ";
     for (const auto& [type, count] : observed) {
         std::cout << type << "=" << count;

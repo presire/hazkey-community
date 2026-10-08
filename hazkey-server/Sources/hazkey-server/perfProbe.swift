@@ -51,7 +51,7 @@ final class PerfProbe: @unchecked Sendable {
     private init?(path: String) {
         let fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
         guard fd >= 0 else {
-            NSLog("Failed to open HAZKEY_PERF_EVIDENCE: errno \(errno); evidence output disabled")
+            hazkeyLog("Failed to open HAZKEY_PERF_EVIDENCE: errno \(errno); evidence output disabled")
             return nil
         }
         var info = stat()

@@ -130,6 +130,8 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     void reset();
     /** @brief 安全入力状態を設定し、有効化時は組成を確定せず破棄する */
     void setSecureInput(bool secure);
+    /** @brief ワーカー操作が開始時に観測した入力コンテキスト世代を記録する */
+    void setOperationEpoch(uint64_t epoch) { operationEpoch_ = epoch; }
     /**
      * @brief 安全入力への切替を、投入済みのワーカー処理より先に通知する
      *
@@ -137,11 +139,17 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * 実行前に参照させる
      *
      * @param secure 安全入力に切り替えるなら、true
+     * @param contentEpoch 入力コンテキスト切替ごとに増加する世代
      * @note 任意のスレッドから呼べる
      */
-    void requestSecureInput(bool secure) {
+    void requestSecureInput(bool secure, uint64_t contentEpoch) {
+        contentEpoch_.store(contentEpoch, std::memory_order_release);
         secureRequested_.store(secure, std::memory_order_release);
     }
+#ifdef HAZKEY_IBUS_TESTING
+    /** @brief 次のキーイベント処理で一度だけ例外を送出するテスト用フック */
+    static void throwOnNextProcessKeyEventForTest();
+#endif
     /**
      * @brief 状態を初期化し、プロパティを登録して周囲テキスト取得を要求する
      */
@@ -836,10 +844,12 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * @param fn メインループ上で実行するUI操作
      */
     void postUi(std::function<void(HazkeyUi&)> fn);
-    /** @brief 安全入力中、または安全入力への切替を通知済みなら、true */
+    /** @brief 安全入力中、切替通知済み、または切替前の操作ならtrue */
     bool secureInputActive() const {
-        return secureInput_ || secureRequested_.load(std::memory_order_acquire);
+        return secureInput_ || secureRequested_.load(std::memory_order_acquire) ||
+               operationEpoch_ != contentEpoch_.load(std::memory_order_acquire);
     }
+    bool discardIfSecureInput();
     /**
      * @brief IBusキーシンボルをUTF-8文字列へ変換する
      *
@@ -893,6 +903,8 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     bool hasSurroundingText_ = false;           ///< 周囲テキストを保持中か
     bool secureInput_ = false;                  ///< 安全入力中は周囲テキストと確定を抑止する
     std::atomic<bool> secureRequested_{false};  ///< メインループが通知した安全入力 (requestSecureInput())
+    std::atomic<uint64_t> contentEpoch_{0};     ///< 入力コンテキスト切替世代 (任意スレッドから更新)
+    uint64_t operationEpoch_ = 0;               ///< 現在のワーカー操作が開始した入力コンテキスト世代
     hazkey::frontend::CompositionSurroundingFreeze
         surroundingFreeze_;                     ///< 組成開始時に固定した周囲テキスト (preedit混入の防止)
     guint caps_ = 0;                            ///< 通知済みIBusケーパビリティ集合

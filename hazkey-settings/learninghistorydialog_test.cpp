@@ -22,6 +22,7 @@
 #include <QTimer>
 #include <QtEndian>
 #include <optional>
+#include <signal.h>
 #include <unistd.h>
 #include "learninghistorydialog.h"
 
@@ -169,6 +170,13 @@ class LearningHistoryDialogTest : public QObject {
      */
     void cleanupTestCase();
     /**
+     * @brief 履歴の取得中は操作部品が無効になり、表示中の行とページ表示が変わらないことを検証する
+     *
+     * サーバをSIGSTOPで止めて取得を待機させ、待機ダイアログの表示前に検索の操作を試みる
+     * 操作は受け付けられず、再開後は取得結果だけが表示され、操作部品の有効状態が戻ることを確認する
+     */
+    void testControlsAreDisabledWhileHistoryRequestIsInFlight();
+    /**
      * @brief 検索、選択削除、サーバ切断時の失敗表示を検証する
      *
      * 分離モードの表示、検索による行数変化、選択行の削除後の再読込、サーバ停止後の検索失敗を確認する
@@ -180,7 +188,7 @@ class LearningHistoryDialogTest : public QObject {
      * @brief テスト用一時ディレクトリと環境変数を準備する
      *
      * XDG 関連パス、辞書、共有ライブラリパスを保存して一時パスへ差し替え、
-     * サーバ実行ファイル探索用のフォールバックも作成する
+     * PATHを一時ディレクトリのbinだけにする。設定GUIはサーバを絶対パスで起動し、このテストではコンパイル定義で存在しないパスへ差し替えている
      */
     void setIsolatedEnvironment();
     /**
@@ -265,12 +273,6 @@ void LearningHistoryDialogTest::setIsolatedEnvironment() {
              QString::fromUtf8(originalLlamaLibraryPath_))
                 .toUtf8());
 
-    QFile fallbackServer(root + "/bin/hazkey-community-server");
-    QVERIFY(fallbackServer.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    fallbackServer.write("#!/bin/sh\nexit 0\n");
-    fallbackServer.close();
-    QVERIFY(fallbackServer.setPermissions(
-        QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
 }
 
 QString LearningHistoryDialogTest::socketPath() const {
@@ -387,6 +389,59 @@ void LearningHistoryDialogTest::cleanupTestCase() {
     qputenv("XDG_CONFIG_HOME", originalConfigDirectory_);
     qputenv("HAZKEY_DICTIONARY", originalDictionary_);
     qputenv("LD_LIBRARY_PATH", originalLlamaLibraryPath_);
+}
+
+void LearningHistoryDialogTest::testControlsAreDisabledWhileHistoryRequestIsInFlight() {
+    LearningHistoryDialog dialog(&connector_, {"isolated-profile", true});
+    dialog.show();
+
+    auto* searchEdit = dialog.findChild<QLineEdit*>("learningHistorySearchEdit");
+    auto* searchButton = dialog.findChild<QPushButton*>("learningHistorySearchButton");
+    auto* table = dialog.findChild<QTableWidget*>("learningHistoryTable");
+    auto* deleteButton = dialog.findChild<QPushButton*>("learningHistoryDeleteButton");
+    auto* paginationLabel = dialog.findChild<QLabel*>("learningHistoryPaginationLabel");
+    QVERIFY(searchEdit && searchButton && table && deleteButton && paginationLabel);
+    QVERIFY(table->rowCount() >= 2);
+    const int rowsBefore = table->rowCount();
+    const QString paginationBefore = paginationLabel->text();
+    QVERIFY(searchButton->isEnabled() && deleteButton->isEnabled() && table->isEnabled());
+
+    const qint64 serverPid = serverProcess_.processId();
+    QVERIFY(serverPid > 0);
+    QCOMPARE(::kill(static_cast<pid_t>(serverPid), SIGSTOP), 0);
+
+    bool sawDisabledControls = false;
+    bool rejectedNestedSearch = false;
+    // 待機ダイアログ (表示まで400ms) より前に、待機中の状態を確認して操作を試みる
+    QTimer::singleShot(150, this, [&]() {
+        sawDisabledControls = !searchEdit->isEnabled() && !searchButton->isEnabled() &&
+                              !table->isEnabled() && !deleteButton->isEnabled();
+        // 無効なボタンへのクリックと、無効な検索欄でのEnterは受け付けられない
+        searchEdit->setText(QStringLiteral("no-such-history"));
+        QTest::mouseClick(searchButton, Qt::LeftButton);
+        QTest::keyClick(searchEdit, Qt::Key_Return);
+        rejectedNestedSearch = true;
+        ::kill(static_cast<pid_t>(serverPid), SIGCONT);
+    });
+    // 表示中と同じ条件で再取得する (待機中の入れ子のイベントループで上記のタイマが動く)
+    searchEdit->setText(QString());
+    QTest::mouseClick(searchButton, Qt::LeftButton);
+    ::kill(static_cast<pid_t>(serverPid), SIGCONT);
+
+    QVERIFY(rejectedNestedSearch);
+    QVERIFY(sawDisabledControls);
+    QCOMPARE(table->rowCount(), rowsBefore);
+    QCOMPARE(paginationLabel->text(), paginationBefore);
+    QVERIFY(searchEdit->isEnabled() && searchButton->isEnabled() && table->isEnabled());
+    QVERIFY(deleteButton->isEnabled());
+
+    // 検索欄のEnterによる検索の後も、無効化の間に移ったフォーカスが戻り、ダイアログは閉じない
+    searchEdit->setText(QString());
+    searchEdit->setFocus();
+    QTest::keyClick(searchEdit, Qt::Key_Return);
+    QVERIFY(dialog.isVisible());
+    QCOMPARE(dialog.focusWidget(), searchEdit);
+    QCOMPARE(table->rowCount(), rowsBefore);
 }
 
 void LearningHistoryDialogTest::testSelectiveDeleteAndDisconnectedFailure() {

@@ -27,6 +27,10 @@ pkg_check_modules(ProtobufLite REQUIRED IMPORTED_TARGET protobuf-lite)
 
 set(TS_FILES hazkey-settings_ja_JP.ts)
 
+include(GNUInstallDirs)
+# 設定GUIがサーバを起動するときに使う絶対パス (PATH検索はしない)
+# サーバのラッパーは hazkey-server/CMakeLists.txt が ${CMAKE_INSTALL_FULL_BINDIR} へインストールする
+set(HAZKEY_SERVER_EXECUTABLE_PATH "${CMAKE_INSTALL_FULL_BINDIR}/hazkey-community-server")
 configure_file(constants.h.in constants.h @ONLY)
 
 # Protoファイル
@@ -41,6 +45,9 @@ set(PROJECT_SOURCES
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    # サーバRPCを作業スレッドで実行する共通ヘルパー
+    async_server_call.cpp
+    async_server_call.h
     serverconnector.cpp
     serverconnector.h
     learninghistorydialog.cpp
@@ -135,7 +142,6 @@ target_link_libraries(hazkey-settings PRIVATE
     PkgConfig::ProtobufLite
 )
 
-include(GNUInstallDirs)
 # 上流版パッケージと共存できるよう、${LIBDIR}/hazkey-community/配下へhazkey-community-settingsとしてインストールする
 set_target_properties(hazkey-settings PROPERTIES OUTPUT_NAME hazkey-community-settings)
 install(TARGETS hazkey-settings
@@ -212,9 +218,51 @@ qt_add_executable(basic_input_style_test
 target_link_libraries(basic_input_style_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME basic_input_style_test COMMAND basic_input_style_test)
 
+# サーバRPCを作業スレッドで実行する共通ヘルパーのテスト
+qt_add_executable(async_server_call_test
+    async_server_call_test.cpp
+    async_server_call.cpp
+)
+target_link_libraries(async_server_call_test PRIVATE Qt6::Test Qt6::Widgets)
+add_test(NAME async_server_call_test COMMAND async_server_call_test)
+set_tests_properties(async_server_call_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# ServerConnectorのソケット書込 (SIGPIPE耐性) とサーバ起動パスのテスト
+qt_add_executable(serverconnector_io_test
+    serverconnector_io_test.cpp
+    serverconnector.cpp
+)
+if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
+    protobuf_generate(
+        TARGET serverconnector_io_test
+        LANGUAGE cpp
+        PROTOS ${PROTO_FILES}
+        IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+        PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+    )
+else()
+    target_sources(serverconnector_io_test PRIVATE ${PROTO_SRCS} ${PROTO_HDRS})
+endif()
+target_include_directories(serverconnector_io_test PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS}
+)
+target_link_libraries(serverconnector_io_test PRIVATE
+    Qt6::Test
+    Qt6::Widgets
+    PkgConfig::ProtobufLite
+)
+add_test(NAME serverconnector_io_test COMMAND serverconnector_io_test)
+set_tests_properties(serverconnector_io_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 qt_add_executable(learninghistorydialog_test
     learninghistorydialog_test.cpp
     learninghistorydialog.cpp
+    async_server_call.cpp
     serverconnector.cpp
 )
 if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
@@ -239,6 +287,8 @@ target_link_libraries(learninghistorydialog_test PRIVATE
     PkgConfig::ProtobufLite
 )
 target_compile_definitions(learninghistorydialog_test PRIVATE
+    # 切断後の再接続でテスト環境外の実サーバを起動しないよう、存在しないパスへ差し替える
+    HAZKEY_SERVER_EXECUTABLE_PATH="${CMAKE_CURRENT_BINARY_DIR}/nonexistent-hazkey-community-server"
     HAZKEY_SERVER_BINARY="${CMAKE_BINARY_DIR}/hazkey-server/swift-build/release/hazkey-server"
     HAZKEY_LLAMA_LIBRARY_DIR="${CMAKE_BINARY_DIR}/bin"
     HAZKEY_SOURCE_DIR="${CMAKE_SOURCE_DIR}"

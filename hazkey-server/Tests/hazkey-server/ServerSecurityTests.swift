@@ -5,6 +5,35 @@ import XCTest
 @testable import hazkey_server
 
 final class ServerSecurityTests: XCTestCase {
+    /// XDG Base Directory仕様どおり、相対パスのXDG_*_HOMEは無視してホーム配下の既定位置を使うことを検証する
+    func testRelativeXDGBaseDirectoriesFallBackToHomeDefaults() {
+        let names = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"]
+        let saved = names.map { name in getenv(name).map { String(cString: $0) } }
+        defer {
+            for (name, value) in zip(names, saved) {
+                if let value { setenv(name, value, 1) } else { unsetenv(name) }
+            }
+        }
+        for name in names { setenv(name, "relative/xdg", 1) }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        XCTAssertEqual(
+            HazkeyServerConfig.getConfigDirectory().path,
+            home.appendingPathComponent(".config/hazkey-community").path)
+        XCTAssertEqual(
+            HazkeyServerConfig.getDataDirectory().path,
+            home.appendingPathComponent(".local/share/hazkey-community").path)
+        XCTAssertEqual(
+            HazkeyServerConfig.getStateDirectory().path,
+            home.appendingPathComponent(".local/state/hazkey-community").path)
+        XCTAssertEqual(
+            HazkeyServerConfig.getCacheDirectory().path,
+            home.appendingPathComponent(".cache/hazkey-community").path)
+
+        for name in names { setenv(name, "/tmp/hazkey-absolute-xdg", 1) }
+        XCTAssertEqual(
+            HazkeyServerConfig.getConfigDirectory().path, "/tmp/hazkey-absolute-xdg/hazkey-community")
+    }
+
     func testRuntimeDirectoryRequiresPrivateOwnershipAndNonEmptyPath() throws {
         let root = try TestTempRoot.make()
         defer { try? FileManager.default.removeItem(at: root) }

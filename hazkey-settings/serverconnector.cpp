@@ -29,6 +29,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include "constants.h"
 #include "qdir.h"
 #include "qlogging.h"
 
@@ -166,6 +167,7 @@ std::string ServerConnector::getSocketPath() {
  *
  * 部分書き込みを繰り返し、EAGAIN/EWOULDBLOCKでは書き込み可能になるまで期限まで待つ
  * その他の書き込みエラーまたは期限切れでは失敗する
+ * send(MSG_NOSIGNAL)を使うため、相手がソケットを閉じていてもSIGPIPEでプロセスは終了せず、falseを返す
  * この関数はソケットを閉じず、呼び出し元が所有権を保持する
  *
  * @param fd 書き込み対象のソケットディスクリプター
@@ -178,7 +180,8 @@ std::string ServerConnector::getSocketPath() {
 bool writeAll(int fd, const void* data, size_t len, Deadline deadline) {
     size_t sent = 0;
     while (sent < len) {
-        ssize_t n = write(fd, (const char*)data + sent, len - sent);
+        // MSG_NOSIGNAL: 相手が閉じたソケットへの書き込みでSIGPIPEを受け取らず、EPIPEで失敗として扱う
+        ssize_t n = send(fd, (const char*)data + sent, len - sent, MSG_NOSIGNAL);
         if (n < 0) {
             if (errno == EINTR) {
                 continue;
@@ -256,9 +259,9 @@ int ServerConnector::createConnection() {
             return sock;
         }
         if (attempt == ATTEMPT_TRY_START) {
-            QProcess::startDetached("hazkey-community-server", {}, "/");
+            QProcess::startDetached(QString::fromUtf8(HAZKEY_SERVER_EXECUTABLE_PATH), {}, "/");
         } else if (attempt == ATTEMPT_TRY_START_FORCE) {
-            QProcess::startDetached("hazkey-community-server", {"-r"}, "/");
+            QProcess::startDetached(QString::fromUtf8(HAZKEY_SERVER_EXECUTABLE_PATH), {"-r"}, "/");
         }
         std::this_thread::sleep_for(
             std::chrono::milliseconds(RETRY_INTERVAL_MS));

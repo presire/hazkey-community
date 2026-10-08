@@ -23,6 +23,6 @@ do {
     try server.start()
 } catch {
     // 起動失敗時は内容を記録して異常終了する
-    NSLog("Failed to start server: \(error)")
+    hazkeyLog("Failed to start server: \(error)")
     exit(1)
 }

@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -19,9 +20,9 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -122,9 +123,41 @@ class ClientPerfMeasurement {
         }
         const auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - startedAt_);
-        std::ofstream output(path_, std::ios::app);
-        output << "{\"type\":\"" << type_ << "\",\"total_ms\":"
-               << elapsed.count() << "}\n";
+        char line[128];
+        const int lineLength = std::snprintf(
+            line, sizeof(line), "{\"type\":\"%s\",\"total_ms\":%.6f}\n",
+            type_.c_str(), elapsed.count());
+        if (lineLength < 0 || static_cast<size_t>(lineLength) >= sizeof(line)) {
+            return;
+        }
+
+        const int fd = open(path_.c_str(), O_WRONLY | O_APPEND | O_CREAT |
+                                             O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
+                            0600);
+        if (fd < 0) {
+            return;
+        }
+        struct stat info {};
+        if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) ||
+            info.st_uid != geteuid() || info.st_nlink != 1 ||
+            fchmod(fd, 0600) != 0) {
+            close(fd);
+            return;
+        }
+
+        size_t offset = 0;
+        while (offset < static_cast<size_t>(lineLength)) {
+            const ssize_t written = write(
+                fd, line + offset, static_cast<size_t>(lineLength) - offset);
+            if (written < 0 && errno == EINTR) {
+                continue;
+            }
+            if (written <= 0) {
+                break;
+            }
+            offset += static_cast<size_t>(written);
+        }
+        close(fd);
     }
 
     private:
@@ -191,6 +224,9 @@ void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
  * @return 全バイト送信できた場合はtrue
  * @details 書込待ちは2秒で切り上げる
  *          失敗時は呼び出し側が再接続を担う
+ *          send(MSG_NOSIGNAL)を使うため、サーバがソケットを閉じていてもSIGPIPEで
+ *          ホストプロセス (fcitx5 / ibus-engine) は終了せず、EPIPEとして失敗を返す
+ *          ホストがSIGPIPEを無視していることには依存しない
  */
 bool writeAll(int fd, const void* data, size_t len) {
     using Clock = std::chrono::steady_clock;
@@ -201,7 +237,7 @@ bool writeAll(int fd, const void* data, size_t len) {
             HAZKEY_LOG_ERROR() << "write timeout";
             return false;
         }
-        ssize_t n = write(fd, (const char*)data + sent, len - sent);
+        ssize_t n = send(fd, (const char*)data + sent, len - sent, MSG_NOSIGNAL);
         if (n < 0) {
             if (errno == EINTR) {
                 continue;
