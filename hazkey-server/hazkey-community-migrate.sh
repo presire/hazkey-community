@@ -90,7 +90,8 @@ stop_community_servers() {
     pgrep -u "$UID_NUM" -f '^([^ ]*/)?hazkey-community-server( |$)' | while IFS= read -r pid; do
         [ -n "$pid" ] || continue
         info "Stopping hazkey-community-server (PID $pid)"
-        kill -TERM "$pid"
+        # pgrepの列挙後に終了したサーバは停止済みとして扱う
+        kill -TERM "$pid" 2>/dev/null || continue
         attempts=0
         while kill -0 "$pid" 2>/dev/null; do
             attempts=$((attempts + 1))
@@ -166,19 +167,26 @@ rewrite_paths_in_file() {
 
 # コピー先ツリー内で、旧ディレクトリ配下を指す絶対パスのシンボリックリンクを新ディレクトリへ張り替える
 repoint_symlinks() {
-    tree=$1
-    old_root=$2
-    new_root=$3
-    find "$tree" -type l | while IFS= read -r link; do
-        target=$(readlink "$link")
-        case "$target" in
-            "$old_root"/*)
-                new_target="${new_root}${target#"$old_root"}"
-                ln -sfn "$new_target" "$link"
-                info "  relinked: $link -> $new_target"
-                ;;
-        esac
-    done
+    # 改行を含むファイル名でも1リンクずつ扱えるよう、行単位の読み取りではなく -exec で引数として渡す
+    find "$1" -type l -exec sh -c '
+        set -eu
+        old_root=$1
+        new_root=$2
+        shift 2
+        for link do
+            # $(...) は末尾の改行を全て削るため、番兵xを付けて読み、readlinkが付けた改行1つだけを除く
+            target=$(readlink "$link" && printf x)
+            target=${target%x}
+            target=${target%?}
+            case "$target" in
+                "$old_root"/*)
+                    new_target="${new_root}${target#"$old_root"}"
+                    ln -sfn "$new_target" "$link"
+                    printf "%s\n" "  relinked: $link -> $new_target"
+                    ;;
+            esac
+        done
+    ' sh "$2" "$3" {} +
 }
 
 MIGRATED=0

@@ -34,8 +34,15 @@ envで設定した環境変数は、ドメイン遷移時に削除されずに�
 
 envは、ラッパースクリプトがシェルスクリプトとして起動元のドメインで読み込みます。  
 変換サーバがenvを作成・変更・置換できると、侵害された変換サーバが、起動元のドメインで任意のコマンドを実行できてしまいます。  
-このため、変換サーバが`~/.config/hazkey-community`内で書き込めるファイルは、config.json (hazkey_community_config_t) だけです。  
-設定ディレクトリ内のファイルの削除・名前の変更・リンクの作成と、設定ディレクトリ自体の削除・名前の変更も許可しません。  
+このため、変換サーバが`~/.config/hazkey-community`内で書き込めるファイルは、config.jsonと、その保存に使う一時ファイルconfig.json.tmp (どちらもhazkey_community_config_t) だけです。  
+削除はこの型のファイルだけに許可します。  
+設定ディレクトリ内のファイルの名前の変更・リンクの作成と、設定ディレクトリ自体の削除・名前の変更・属性 (パーミッション) の変更は許可しません。  
+名前の変更を許可するとconfig.jsonをenvへ改名でき、ディレクトリのパーミッションの変更を許可すると他のユーザにenvを置き換えさせられるためです。  
+
+このため、変換サーバはconfig.jsonを名前の変更で置き換えずに、完全な内容を先にconfig.json.tmpへ書いてから上書きし、最後にconfig.json.tmpを削除します。  
+上書きの途中で停止した場合は、次回の起動時にconfig.json.tmpから設定を復元します。  
+変換サーバは起動時に設定ディレクトリを0700へ変更しようとしますが、ポリシーで拒否します (監査ログには記録しません)。  
+設定ディレクトリを他のユーザから読めないようにする場合は、`chmod 700 ~/.config/hazkey-community`を実行してください。  
 
 ### 1.2 インストール先とラベル
 
@@ -68,6 +75,7 @@ Debian系の`lib/x86_64-linux-gnu`と`lib/aarch64-linux-gnu`の規則も、固�
 |---|---|---|
 | `~/.config/hazkey-community` | hazkey_community_conf_home_t | user_dictionary.tsv、env、`keymap/`、`table/`<br>(変換サーバは読み取りだけ) |
 | `~/.config/hazkey-community/config.json` | hazkey_community_config_t | 変換サーバが書き込む設定ファイル |
+| `~/.config/hazkey-community/config.json.tmp` | hazkey_community_config_t | config.jsonの保存に使う一時ファイル (保存の完了時に削除) |
 | `~/.local/share/hazkey-community` | hazkey_community_data_home_t | Zenzaiのモデル (`zenzai/`、zenzai.gguf) |
 | `~/.local/state/hazkey-community` | hazkey_community_state_home_t | 学習データ (`memory/`) |
 | `~/.cache/hazkey-community` | hazkey_community_cache_home_t | キャッシュ |
@@ -77,7 +85,7 @@ Debian系の`lib/x86_64-linux-gnu`と`lib/aarch64-linux-gnu`の規則も、固�
 
 専用のディレクトリは、名前付きの型遷移 (ディレクトリ名hazkey-community) により、  
 変換サーバ・設定GUI・移行スクリプトのどれが作成しても、専用の型になります。  
-config.jsonも同様に、名前付きの型遷移で、作成時にhazkey_community_config_tになります。  
+config.jsonとconfig.json.tmpも同様に、名前付きの型遷移で、作成時にhazkey_community_config_tになります。  
 
 新しく作成したユーザで`~/.config`、`~/.local`、`~/.local/share`、`~/.cache`が存在しない場合は、  
 変換サーバが、基本ポリシーと同じ型 (config_home_t等) でこれらのディレクトリを作成します。  
@@ -146,7 +154,7 @@ hazkey_community.ifも、CMakeがインストールするものは系統に合�
 | 読み取り | usr_t、etc_t、locale_t、passwd_file_t | 辞書、VulkanのICDの定義、ロケール、`getpwuid()` |
 | 読み取り | proc_t、sysctl_kernel_t、sysctl_vm_t、sysfs_t、cgroup_t | CPU数・メモリ量・GPUの情報 |
 | 読み書き | 専用のホームディレクトリの型 | 学習データ・モデル・キャッシュ |
-| 書き込み | hazkey_community_config_t | config.jsonの保存<br>(設定ディレクトリの他のファイルは読み取りだけ) |
+| 書き込み・削除 | hazkey_community_config_t | config.jsonの保存とconfig.json.tmpの削除、旧版が作成したconfig.jsonの0600への変更<br>(設定ディレクトリの他のファイルは読み取りだけ) |
 | 作成 | config_home_t、gconf_home_t、data_home_t、cache_home_tのディレクトリ | 新しいユーザの`~/.config`等の作成 (名前付きの型遷移) |
 | 作成 | hazkey_community_runtime_t | ソケットとロックファイル (`flock`) |
 | 作成 | hazkey_community_tmp_t、hazkey_community_tmpfs_t | 一時ディレクトリ、GPUドライバの共有メモリ |
@@ -308,7 +316,7 @@ sesearch -T -s unconfined_t -t hazkey_community_exec_t
   導入先のディストリビューションで、ビルドし直してください  
 - `/run/user/<UID>/hazkey-community-server.*`のファイルコンテキストの規則は、基本ポリシーの`/run/user/[^/]+/.+`の規則に負けて、`matchpathcon`で`<<none>>`になります  
   ソケットとロックファイルは、通常の型遷移 (ファイル名には依存しない遷移) でhazkey_community_runtime_tが付くため、動作に影響はありません  
-  古いファイルは、`restorecon`ではなく、削除して作り直してください  
+  古いファイルは、rootで実行したCMakeのインストールが`chcon`で付け直します。それ以外の場合は、削除して作り直してください  
 
 ## 7. 高度なトラブルシューティング
 
@@ -316,6 +324,7 @@ sesearch -T -s unconfined_t -t hazkey_community_exec_t
 |---|---|---|
 | 変換サーバが起動しない | `ausearch -m AVC -c hazkey-communit` | 拒否された型を確認して、ラベルの付け直し (`restorecon`) か規則を追加する |
 | ドメインがunconfined_tのまま | `ls -Z <libdir>/hazkey-community/hazkey-community-server` | hazkey_community_exec_tでなければ`restorecon`を実行する |
+| ロックファイルへの`write`が拒否される (`tcontext=...user_tmp_t`) | `ps -eZ \| grep hazkey-community-server`<br>`ls -Z /run/user/$UID/hazkey-community-server.*` | 別のインストール先の変換サーバがunconfined_tで動作している。その変換サーバに`restorecon`を実行して終了し、古いソケットとロックファイルを削除する |
 | GPUが使われない | `getsebool hazkey_community_use_gpu`<br>`semodule -DB` | [hazkey_community_use_gpu]を有効にする<br>デバイスの型を確認する (4.3を参照) |
 | カスタム重みを読み込めない | `getsebool hazkey_community_read_user_files` | [hazkey_community_read_user_files]を有効にするか、ファイルを専用のディレクトリへ移動する |
 | 設定GUIから接続できない | `ls -Z /run/user/$UID/hazkey-community-server.*` | 古いソケットを削除して、変換サーバを再起動する |

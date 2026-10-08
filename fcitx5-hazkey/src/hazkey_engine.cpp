@@ -17,6 +17,12 @@ bool hasVisiblePreedit(InputContext *inputContext) {
     return !inputPanel.preedit().toString().empty();
 }
 
+bool isSecureInput(InputContext *inputContext) {
+    const auto flags = inputContext->capabilityFlags();
+    return flags.test(CapabilityFlag::Password) ||
+           flags.test(CapabilityFlag::Sensitive);
+}
+
 }  // namespace
 
 /// プロパティを登録し、初期設定を読み込む
@@ -34,10 +40,18 @@ HazkeyEngine::HazkeyEngine(Instance *instance)
 /// キーイベントを状態機械へ渡し、入力パネルを更新する
 void HazkeyEngine::keyEvent([[maybe_unused]] const InputMethodEntry &entry,
                             KeyEvent &keyEvent) {
-    FCITX_DEBUG() << "keyEvent: " << keyEvent.key().toString();
-
     auto inputContext = keyEvent.inputContext();
-    inputContext->propertyFor(&factory_)->keyEvent(keyEvent);
+    auto state = inputContext->propertyFor(&factory_);
+    if (isSecureInput(inputContext)) {
+        if (state->discardForSecureInput()) {
+            inputContext->updatePreedit();
+            inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
+        }
+        return;
+    }
+
+    FCITX_DEBUG() << "HazkeyEngine keyEvent";
+    state->keyEvent(keyEvent);
     if (keyEvent.accepted()) {
         inputContext->updatePreedit();
     }
@@ -65,11 +79,15 @@ void HazkeyEngine::deactivate([[maybe_unused]] const InputMethodEntry &entry,
     auto state = inputContext->propertyFor(&factory_);
     bool hadVisiblePreedit = hasVisiblePreedit(inputContext);
 
-    if (hadVisiblePreedit) {
-        state->commitPreedit();
+    if (isSecureInput(inputContext)) {
+        state->discardForSecureInput();
+    } else {
+        if (hadVisiblePreedit) {
+            state->commitPreedit();
+        }
+        state->reset();
     }
 
-    state->reset();
     state->discardSurroundingCarry();
 
     if (hadVisiblePreedit) {

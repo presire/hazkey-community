@@ -14,6 +14,19 @@ enum class ModelDownloadValidation {
     ChecksumMismatch,
 };
 
+/** @brief 期待バイト数が未知 (0以下) のモデルに適用する受信サイズの絶対上限 (4 GiB) */
+constexpr qint64 kUnknownSizeModelDownloadLimitBytes = Q_INT64_C(4) * 1024 * 1024 * 1024;
+
+/**
+ * @brief 受信中のモデルが許容サイズを超えたかを判定する
+ * @param receivedBytes 受信済みバイト数
+ * @param declaredTotalBytes 応答が申告した総バイト数 (Content-Length相当、不明なら0以下)
+ * @param expectedBytes 正の値なら許容上限、0以下なら kUnknownSizeModelDownloadLimitBytes を上限とする
+ * @return 受信済みまたは申告総量が上限を超えるならtrue
+ */
+bool downloadExceedsSizeLimit(qint64 receivedBytes, qint64 declaredTotalBytes,
+                              qint64 expectedBytes);
+
 /**
  * @brief モデル本文を期待バイト数とSHA256で順番に検証する
  * @param downloadedData ネットワークから実際に受信した本文

@@ -9,6 +9,8 @@
 #include "hazkey_ui.h"
 #include <algorithm>
 #include "candidate_annotation.h"
+#include "hazkey_candidate_selection.h"
+#include "hazkey_utf8.h"
 
 // 理由は、hazkey_state.cppを参照:
 // IBUS_ATTR_TYPE_HINTマクロは IBus 1.5.33以降にのみ存在するため、無条件の下線に加えて利用可能な場合にだけ付与する
@@ -44,10 +46,10 @@ const char* tr(const char* messageId) {
  * @note HazkeyState::selectionLabelForIndex()と同じ内容だが、この描画層がロジック側クラスに依存しないようローカルに保持している
  */
 std::string selectionLabelForIndex(int localIndex) {
-    if (localIndex >= 0 && localIndex <= 8) {
+    if (localIndex >= 0 && localIndex < kCandidateSelectionLabelCount - 1) {
         return std::to_string(localIndex + 1);
     }
-    if (localIndex == 9) {
+    if (localIndex == kCandidateSelectionLabelCount - 1) {
         return "0";
     }
     return "";
@@ -83,14 +85,15 @@ LookupDisplayText lookupDisplayText(const std::string& text,
                                     const std::string& annotation,
                                     int annotationAlignColumns) {
     LookupDisplayText display;
-    display.text = text;
-    if (!isTypoCorrection || annotation.empty()) {
+    display.text = makeValidUtf8(text);
+    const std::string validAnnotation = makeValidUtf8(annotation);
+    if (!isTypoCorrection || validAnnotation.empty()) {
         return display;
     }
     display.text +=
-        hazkey::frontend::annotationGap(text, annotationAlignColumns);
+        hazkey::frontend::annotationGap(display.text, annotationAlignColumns);
     display.annotationStart = g_utf8_strlen(display.text.c_str(), -1);
-    display.text += annotation;
+    display.text += validAnnotation;
     display.annotationEnd = g_utf8_strlen(display.text.c_str(), -1);
     return display;
 }
@@ -117,12 +120,25 @@ void HazkeyUi::retire() {
     g_clear_object(&propertyList_);
 }
 
-void HazkeyUi::updatePreeditSelection(const std::string& text,
-                                      glong selectionLen) {
-    if (retired_) {
+void HazkeyUi::setSecureInput(bool secure) {
+    const bool entering = secure && !secureInput_;
+    secureInput_ = secure;
+    if (retired_ || !entering) {
         return;
     }
-    IBusText* t = ibus_text_new_from_string(text.c_str());
+    ibus_engine_hide_preedit_text(engine_);
+    ibus_engine_hide_auxiliary_text(engine_);
+    snapshot_.visible = false;
+    ibus_engine_hide_lookup_table(engine_);
+}
+
+void HazkeyUi::updatePreeditSelection(const std::string& text,
+                                      glong selectionLen) {
+    if (retired_ || secureInput_) {
+        return;
+    }
+    const std::string validText = makeValidUtf8(text);
+    IBusText* t = ibus_text_new_from_string(validText.c_str());
     if (selectionLen > 0) {
 #if HAZKEY_IBUS_HAS_ATTR_TYPE_HINT
         ibus_text_append_attribute(t, IBUS_ATTR_TYPE_HINT,
@@ -138,10 +154,11 @@ void HazkeyUi::updatePreeditSelection(const std::string& text,
 
 void HazkeyUi::updatePreeditRange(const std::string& text, glong startChar,
                                   glong endChar, guint cursorChar) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
-    IBusText* t = ibus_text_new_from_string(text.c_str());
+    const std::string validText = makeValidUtf8(text);
+    IBusText* t = ibus_text_new_from_string(validText.c_str());
     if (endChar > startChar) {
         ibus_text_append_attribute(t, IBUS_ATTR_TYPE_UNDERLINE,
                                    IBUS_ATTR_UNDERLINE_SINGLE,
@@ -152,11 +169,12 @@ void HazkeyUi::updatePreeditRange(const std::string& text, glong startChar,
 }
 
 void HazkeyUi::updatePreeditHighlighted(const std::string& text) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
-    IBusText* t = ibus_text_new_from_string(text.c_str());
-    const glong charLen = g_utf8_strlen(text.c_str(), -1);
+    const std::string validText = makeValidUtf8(text);
+    IBusText* t = ibus_text_new_from_string(validText.c_str());
+    const glong charLen = g_utf8_strlen(validText.c_str(), -1);
     if (charLen > 0) {
 #if HAZKEY_IBUS_HAS_ATTR_TYPE_HINT
         ibus_text_append_attribute(t, IBUS_ATTR_TYPE_HINT,
@@ -178,16 +196,17 @@ void HazkeyUi::hidePreedit() {
 }
 
 void HazkeyUi::commitText(const std::string& text) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
-    IBusText* t = ibus_text_new_from_string(text.c_str());
+    const std::string validText = makeValidUtf8(text);
+    IBusText* t = ibus_text_new_from_string(validText.c_str());
     ibus_engine_commit_text(engine_, t);
 }
 
 void HazkeyUi::updateLookupTable(const std::vector<LookupCandidate>& candidates,
                                  int pageSize, int cursorIndex, int generation) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
     g_clear_object(&lookupTable_);
@@ -197,20 +216,25 @@ void HazkeyUi::updateLookupTable(const std::vector<LookupCandidate>& candidates,
         ibus_engine_hide_lookup_table(engine_);
         return;
     }
+    pageSize = clampCandidatePageSize(pageSize);
+    std::vector<LookupCandidate> validCandidates = candidates;
+    for (auto& candidate : validCandidates) {
+        candidate.text = makeValidUtf8(candidate.text);
+    }
     IBusLookupTable* table = ibus_lookup_table_new(
         static_cast<guint>(pageSize), 0, FALSE, FALSE);
     ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
     const std::string annotation = tr("*[Correction]*");
     // 訂正候補の注記を、最も長い訂正候補の表記の後ろで揃える
     int annotationAlignColumns = 0;
-    for (const auto& c : candidates) {
+    for (const auto& c : validCandidates) {
         if (c.isTypoCorrection) {
             annotationAlignColumns =
                 std::max(annotationAlignColumns,
                          hazkey::frontend::displayColumns(c.text));
         }
     }
-    for (const auto& c : candidates) {
+    for (const auto& c : validCandidates) {
         const LookupDisplayText display = lookupDisplayText(
             c.text, c.isTypoCorrection, annotation, annotationAlignColumns);
         IBusText* t = ibus_text_new_from_string(display.text.c_str());
@@ -225,7 +249,8 @@ void HazkeyUi::updateLookupTable(const std::vector<LookupCandidate>& candidates,
     const int effectiveCursor = cursorIndex >= 0 ? cursorIndex : 0;
     const int pageStart = (effectiveCursor / pageSize) * pageSize;
     for (int i = pageStart;
-         i < std::min(static_cast<int>(candidates.size()), pageStart + 10);
+         i < std::min(static_cast<int>(validCandidates.size()),
+                      pageStart + pageSize);
          ++i) {
         ibus_lookup_table_set_label(
             table, i,
@@ -235,7 +260,7 @@ void HazkeyUi::updateLookupTable(const std::vector<LookupCandidate>& candidates,
     g_object_ref_sink(table);
     lookupTable_ = table;
 
-    const guint n = static_cast<guint>(candidates.size());
+    const guint n = static_cast<guint>(validCandidates.size());
     guint pos = 0;
     if (cursorIndex >= 0 && static_cast<guint>(cursorIndex) < n) {
         pos = static_cast<guint>(cursorIndex);
@@ -264,21 +289,23 @@ void HazkeyUi::hideLookupTable(int generation) {
 }
 
 void HazkeyUi::updateAuxiliaryTextPlain(const std::string& text) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
-    IBusText* aux = ibus_text_new_from_string(text.c_str());
-    ibus_engine_update_auxiliary_text(engine_, aux, !text.empty());
+    const std::string validText = makeValidUtf8(text);
+    IBusText* aux = ibus_text_new_from_string(validText.c_str());
+    ibus_engine_update_auxiliary_text(engine_, aux, !validText.empty());
 }
 
 void HazkeyUi::updateAuxiliaryTextWithCursor(const std::string& auxUp,
                                              glong underlineStart,
                                              glong underlineEnd,
                                              const std::string& auxDown) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
-    const std::string text = joinAuxiliaryText(auxUp, auxDown);
+    const std::string text = joinAuxiliaryText(makeValidUtf8(auxUp),
+                                               makeValidUtf8(auxDown));
     IBusText* aux = ibus_text_new_from_string(text.c_str());
     if (underlineStart >= 0 && underlineEnd > underlineStart) {
         ibus_text_append_attribute(aux, IBUS_ATTR_TYPE_UNDERLINE,
@@ -395,7 +422,7 @@ void HazkeyUi::updateLiveConvertProperty(bool enabled) {
 }
 
 void HazkeyUi::requestSurroundingText() {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return;
     }
     ibus_engine_get_surrounding_text(engine_, nullptr, nullptr, nullptr);

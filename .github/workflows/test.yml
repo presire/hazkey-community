@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
 
@@ -99,6 +99,26 @@ jobs:
           curl -fL --retry 5 --retry-all-errors \
             -o "${SWIFT_TARBALL}" \
             "${SWIFT_URL}"
+          # 展開の前に、公式の署名をSwift 6.x Release Signing Keyの指紋で検証する (build.ymlと同じ規則)
+          # 署名時点で有効な鍵の期限切れ (EXPKEYSIG) は許容し、不正な署名・失効・鍵の欠落は失敗にする
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${SWIFT_TARBALL}.sig" \
+            "${SWIFT_URL}.sig"
+          curl -fsSL --compressed --retry 5 --retry-all-errors \
+            -o /tmp/swift-keys.asc \
+            https://www.swift.org/keys/all-keys.asc
+          SWIFT_SIGNING_KEY_FPR=52BB7E3DE28A71BE22EC05FFEF80A866B47A981F
+          SWIFT_GNUPGHOME="$(mktemp -d)"
+          gpg --homedir "${SWIFT_GNUPGHOME}" --batch --quiet --import /tmp/swift-keys.asc
+          gpg --homedir "${SWIFT_GNUPGHOME}" --batch --status-fd 1 \
+            --verify "${SWIFT_TARBALL}.sig" "${SWIFT_TARBALL}" > /tmp/swift-verify.status || true
+          cat /tmp/swift-verify.status
+          if grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|REVKEYSIG|NO_PUBKEY)' /tmp/swift-verify.status; then
+            echo "Swift toolchain signature verification failed" >&2
+            exit 1
+          fi
+          grep -Eq "^\[GNUPG:\] VALIDSIG .* ${SWIFT_SIGNING_KEY_FPR}\$" /tmp/swift-verify.status
+          rm -rf "${SWIFT_GNUPGHOME}"
           mkdir -p /opt/swift
           tar -xzf "${SWIFT_TARBALL}" --strip-components=1 -C /opt/swift
           echo "/opt/swift/usr/bin" >> "${GITHUB_PATH}"
@@ -259,7 +279,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
 

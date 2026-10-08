@@ -277,7 +277,9 @@ type_transition unconfined_t gconf_home_t:dir hazkey_community_state_home_t "haz
 type_transition unconfined_t cache_home_t:dir hazkey_community_cache_home_t "hazkey-community";
 
 # 非制限ユーザが設定ファイルを作成した時 (移行スクリプトによるコピー等) に、変換サーバが書き込める型を付ける
+# config.json.tmpは、制限されていない状態で動いた変換サーバが保存の途中で停止した場合に残る
 type_transition unconfined_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+type_transition unconfined_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json.tmp";
 
 ########################################
 # hazkey_community_server_t (変換サーバ) のポリシー
@@ -438,19 +440,27 @@ allow hazkey_community_server_t { hazkey_community_data_home_t hazkey_community_
 #
 # ラッパースクリプトは、変換サーバへ遷移する前に起動元のドメインで環境変数ファイル (env) をシェルとして読み込む
 # 変換サーバがこのファイルを作成・変更・置換できると、侵害された変換サーバが起動元のドメインで任意のコマンドを実行できる
-# このため、変換サーバが書き込めるファイルは、名前付きの型遷移で専用の型を付けた設定ファイル (config.json) だけに限定する
-# 設定ディレクトリ内のファイルの削除・名前の変更・リンクの作成と、ディレクトリ自体の削除・名前の変更は許可しない
+# このため、変換サーバが書き込めるファイルは、名前付きの型遷移で専用の型を付けた設定ファイル (config.json) と、
+# その保存に使う一時ファイル (config.json.tmp) だけに限定する
+# 削除はこの型のファイルだけに許可し、設定ディレクトリ内のファイルの名前の変更・リンクの作成と、
+# ディレクトリ自体の削除・名前の変更・属性の変更は許可しない
+#   - 名前の変更を許可すると、作成したconfig.jsonをenvへ改名できる
+#   - ディレクトリの属性の変更を許可すると、パーミッションを緩めて、他のユーザにenvを置き換えさせられる
 #
 # 変換サーバは、ユーザ辞書 (user_dictionary.tsv)、キーマップ (keymap)、入力テーブル (table) を読み取り、
 # キーマップと入力テーブルのディレクトリが無い場合は作成する
-# config.jsonは一時ファイルを経由せずに直接書き込むため、名前の変更の権限は不要となる
+# config.jsonは、名前の変更を使わずに、完全な内容を先にconfig.json.tmpへ書いてから上書きし、最後にconfig.json.tmpを削除する
+# 旧版が作成したconfig.json (0644等) は、保存時に0600へ変更する
+# 変換サーバは起動時に設定ディレクトリを0700へ変更しようとするが、上記の理由で許可しないため、監査ログへ記録しない
 ########################################
 
-allow hazkey_community_server_t hazkey_community_conf_home_t:dir { getattr open read search write add_name create ioctl };
+allow hazkey_community_server_t hazkey_community_conf_home_t:dir { getattr open read search write add_name remove_name create ioctl };
 allow hazkey_community_server_t hazkey_community_conf_home_t:file { getattr open read lock ioctl map };
 allow hazkey_community_server_t hazkey_community_conf_home_t:lnk_file { getattr read };
-allow hazkey_community_server_t hazkey_community_config_t:file { getattr open read write create lock ioctl map };
+allow hazkey_community_server_t hazkey_community_config_t:file { getattr setattr open read write create unlink lock ioctl map };
 type_transition hazkey_community_server_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json";
+type_transition hazkey_community_server_t hazkey_community_conf_home_t:file hazkey_community_config_t "config.json.tmp";
+dontaudit hazkey_community_server_t hazkey_community_conf_home_t:dir setattr;
 
 ########################################
 # クライアント接続用のソケットとロックファイル

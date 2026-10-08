@@ -9,11 +9,16 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <qcontainerfwd.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <QCoreApplication>
 #include <QDir>
 #include <QMessageBox>
@@ -38,43 +43,148 @@ ServerConnector::ServerConnector() : session_socket_(-1) {}
 
 ServerConnector::~ServerConnector() { endSession(); }
 
-std::string ServerConnector::getSocketPath() {
-    const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
-    uid_t uid = getuid();
-    std::string sockname =
-        "hazkey-community-server." + std::to_string(uid) + ".sock";
-    if (xdg_runtime_dir && xdg_runtime_dir[0] != '\0') {
-        return std::string(xdg_runtime_dir) + "/" + sockname;
-    } else {
-        return "/tmp/" + sockname;
+namespace {
+
+/**
+ * @brief ディレクトリが現在のユーザ専有 (所有者一致かつgroup/other権限なし) かを判定する
+ * @param path 検査するパス
+ * @param followSymlink trueならstat (リンクを辿る)、falseならlstat (リンク自体を検査して拒否する)
+ */
+bool isPrivateOwnDirectory(const std::string& path, bool followSymlink) {
+    struct stat st{};
+    const int rc = followSymlink ? stat(path.c_str(), &st)
+                                 : lstat(path.c_str(), &st);
+    return rc == 0 && S_ISDIR(st.st_mode) && st.st_uid == getuid() &&
+           (st.st_mode & 0077) == 0;
+}
+
+/**
+ * @brief 接続済みソケットの相手プロセスが同一ユーザであることを確認する
+ */
+bool peerIsCurrentUser(int sock) {
+    struct ucred cred{};
+    socklen_t len = sizeof(cred);
+    if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0 ||
+        len != sizeof(cred)) {
+        return false;
     }
+    return cred.uid == getuid();
+}
+
+using Deadline = std::chrono::steady_clock::time_point;
+
+Deadline deadlineAfter(int timeoutMs) {
+    return std::chrono::steady_clock::now() +
+           std::chrono::milliseconds(timeoutMs);
+}
+
+/**
+ * @brief pollでfdのイベントを期限まで待つ (EINTRでは残り時間で再開する)
+ * @return 正ならイベントあり、0ならタイムアウト、負ならエラー
+ */
+int pollFd(int fd, short events, Deadline deadline) {
+    for (;;) {
+        struct pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = events;
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now())
+                .count();
+        const int r = poll(&pfd, 1, remaining > 0 ? static_cast<int>(remaining) : 0);
+        if (r < 0 && errno == EINTR) {
+            continue;
+        }
+        return r;
+    }
+}
+
+/**
+ * @brief 非ブロッキングで接続し、相手が同一ユーザであることを確認する
+ * @param socketPath sun_pathに収まることを呼び出し側が保証したソケットパス
+ * @return 認証済みの接続ソケット、失敗時は-1 (ソケットは閉じ済み)
+ */
+int connectAndAuthenticate(const std::string& socketPath) {
+    const int sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0) {
+        return -1;
+    }
+
+    const int flags = fcntl(sock, F_GETFL, 0);
+    if (flags < 0 || fcntl(sock, F_SETFL, flags | O_NONBLOCK) != 0) {
+        close(sock);
+        return -1;
+    }
+
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    std::memcpy(addr.sun_path, socketPath.c_str(), socketPath.size() + 1);
+
+    bool connected = false;
+    if (connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
+        connected = true;
+    } else if (errno == EINPROGRESS &&
+               pollFd(sock, POLLOUT, deadlineAfter(2000)) > 0) {
+        int so_error = 0;
+        socklen_t len = sizeof(so_error);
+        connected = getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) ==
+                        0 &&
+                    so_error == 0;
+    }
+
+    if (!connected || !peerIsCurrentUser(sock)) {
+        close(sock);
+        return -1;
+    }
+    return sock;
+}
+
+}  // namespace
+
+std::string ServerConnector::getSocketPath() {
+    const uid_t uid = getuid();
+    const std::string sockname =
+        "hazkey-community-server." + std::to_string(uid) + ".sock";
+
+    std::string runtimeDir;
+    const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
+    if (xdg_runtime_dir && xdg_runtime_dir[0] != '\0' &&
+        isPrivateOwnDirectory(xdg_runtime_dir, true)) {
+        runtimeDir = xdg_runtime_dir;
+    } else {
+        // GUIはこのディレクトリを作らない (サーバが作成する)。未作成や不信頼なら接続失敗にする
+        runtimeDir = "/tmp/hazkey-community-runtime-" + std::to_string(uid);
+        if (!isPrivateOwnDirectory(runtimeDir, false)) {
+            return std::string();
+        }
+    }
+    return runtimeDir + "/" + sockname;
 }
 
 /**
  * @brief 指定バイト数をソケットへ書き切る内部ヘルパー
  *
- * 部分書き込みを繰り返し、EAGAIN/EWOULDBLOCKでは書き込み可能になるまで最大2秒ずつ待つ
- * その他の書き込みエラーまたは待機タイムアウトでは失敗する
+ * 部分書き込みを繰り返し、EAGAIN/EWOULDBLOCKでは書き込み可能になるまで期限まで待つ
+ * その他の書き込みエラーまたは期限切れでは失敗する
  * この関数はソケットを閉じず、呼び出し元が所有権を保持する
  *
  * @param fd 書き込み対象のソケットディスクリプター
  * @param data 送信バッファ
  * @param len 送信するバイト数
+ * @param deadline フレーム全体の絶対期限 (少しずつ受け取る相手でも延長しない)
  * @return lenバイトを書き終えた場合はtrue、それ以外はfalse
  * @internal ServerConnectorのフレーム搬送専用
  */
-bool writeAll(int fd, const void* data, size_t len) {
+bool writeAll(int fd, const void* data, size_t len, Deadline deadline) {
     size_t sent = 0;
     while (sent < len) {
         ssize_t n = write(fd, (const char*)data + sent, len - sent);
         if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                fd_set wfds;
-                FD_ZERO(&wfds);
-                FD_SET(fd, &wfds);
-                timeval tv = {2, 0};  // 2sec timeout
-                int r = select(fd + 1, NULL, &wfds, NULL, &tv);
-                if (r <= 0) {
+                if (pollFd(fd, POLLOUT, deadline) <= 0) {
                     return false;
                 }
                 continue;
@@ -89,28 +199,27 @@ bool writeAll(int fd, const void* data, size_t len) {
 /**
  * @brief 指定バイト数をソケットから読み切る内部ヘルパー
  *
- * 部分読み込みを繰り返し、EAGAIN/EWOULDBLOCKでは読み込み可能になるまで最大10秒ずつ待つ
- * その他の読み込みエラー、待機タイムアウト、またはEOFでは失敗する
+ * 部分読み込みを繰り返し、EAGAIN/EWOULDBLOCKでは読み込み可能になるまで期限まで待つ
+ * その他の読み込みエラー、期限切れ、またはEOFでは失敗する
  * この関数はソケットを閉じず、呼び出し元が所有権を保持する
  *
  * @param fd 読み込み元のソケットディスクリプター
  * @param data 受信バッファ
  * @param len 受信するバイト数
+ * @param deadline フレーム全体の絶対期限 (少しずつ送る相手でも延長しない)
  * @return lenバイトを読み終えた場合はtrue、それ以外はfalse
  * @internal ServerConnectorのフレーム搬送専用
  */
-bool readAll(int fd, void* data, size_t len, int readTimeoutSeconds) {
+bool readAll(int fd, void* data, size_t len, Deadline deadline) {
     size_t recved = 0;
     while (recved < len) {
         ssize_t n = read(fd, (char*)data + recved, len - recved);
         if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(fd, &rfds);
-                timeval tv = {readTimeoutSeconds, 0};
-                int r = select(fd + 1, &rfds, NULL, NULL, &tv);
-                if (r <= 0) {
+                if (pollFd(fd, POLLIN, deadline) <= 0) {
                     return false;
                 }
                 continue;
@@ -124,8 +233,6 @@ bool readAll(int fd, void* data, size_t len, int readTimeoutSeconds) {
 }
 
 int ServerConnector::createConnection() {
-    std::string socket_path = getSocketPath();
-
     // try restarting server only 1 time
     // on 1st attempt (minus 1)
     constexpr int ATTEMPT_TRY_START = 0;
@@ -136,48 +243,18 @@ int ServerConnector::createConnection() {
     constexpr int RETRY_INTERVAL_MS = 250;
 
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
-        int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (sock < 0) {
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(RETRY_INTERVAL_MS));
-            continue;
+        // サーバが起動後にランタイムディレクトリを作るため、毎回パスを解決し直す
+        const std::string socket_path = getSocketPath();
+        if (socket_path.size() >= sizeof(sockaddr_un::sun_path)) {
+            return -1;
         }
 
-        int fcntlRes =
-            fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
-        if (fcntlRes != 0) {
-            close(sock);
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(RETRY_INTERVAL_MS));
-            continue;
-        }
-
-        sockaddr_un addr{};
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
-
-        int ret = connect(sock, (sockaddr*)&addr, sizeof(addr));
-        if (ret == 0) {
-            // Connected
+        const int sock = socket_path.empty()
+                             ? -1
+                             : connectAndAuthenticate(socket_path);
+        if (sock >= 0) {
             return sock;
         }
-        if (errno == EINPROGRESS) {
-            fd_set wfds;
-            FD_ZERO(&wfds);
-            FD_SET(sock, &wfds);
-            timeval tv = {2, 0};
-            int sel = select(sock + 1, NULL, &wfds, NULL, &tv);
-            if (sel > 0 && FD_ISSET(sock, &wfds)) {
-                int so_error = 0;
-                socklen_t len = sizeof(so_error);
-                getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-                if (so_error == 0) {
-                    // Connected
-                    return sock;
-                }
-            }
-        }
-        close(sock);
         if (attempt == ATTEMPT_TRY_START) {
             QProcess::startDetached("hazkey-community-server", {}, "/");
         } else if (attempt == ATTEMPT_TRY_START_FORCE) {
@@ -196,20 +273,25 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
         return std::nullopt;
     }
 
+    // 要求フレーム (長さ+本体) は2秒、応答フレームはreadTimeoutSeconds秒の期限で送受信する
+    const Deadline writeDeadline = deadlineAfter(2000);
+
     // write length
     uint32_t writeLen = htonl(msg.size());
-    if (!writeAll(sock, &writeLen, 4)) {
+    if (!writeAll(sock, &writeLen, 4, writeDeadline)) {
         return std::nullopt;
     }
 
     // write data
-    if (!writeAll(sock, msg.c_str(), msg.size())) {
+    if (!writeAll(sock, msg.c_str(), msg.size(), writeDeadline)) {
         return std::nullopt;
     }
 
+    const Deadline readDeadline = deadlineAfter(readTimeoutSeconds * 1000);
+
     // read response length
     uint32_t readLenBuf;
-    if (!readAll(sock, &readLenBuf, 4, readTimeoutSeconds)) {
+    if (!readAll(sock, &readLenBuf, 4, readDeadline)) {
         return std::nullopt;
     }
 
@@ -221,7 +303,7 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
 
     // read response
     std::vector<char> buf(readLen);
-    if (!readAll(sock, buf.data(), readLen, readTimeoutSeconds)) {
+    if (!readAll(sock, buf.data(), readLen, readDeadline)) {
         return std::nullopt;
     }
 

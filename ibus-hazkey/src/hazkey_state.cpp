@@ -10,6 +10,8 @@
 #include <utility>
 #include "composing_cursor_view.h"
 #include "hazkey_frontend_hooks.h"
+#include "hazkey_candidate_selection.h"
+#include "hazkey_utf8.h"
 #include "live_convert_mode.h"
 #include "surrounding_text_snapshot.h"
 
@@ -338,10 +340,11 @@ bool HazkeyState::isAltShiftSpaceOrTab(guint keyval, guint state) {
 }
 
 std::string HazkeyState::selectionLabelForIndex(int localIndex) {
-    if (localIndex >= 0 && localIndex <= 8) {
+    if (localIndex >= 0 &&
+        localIndex < kCandidateSelectionLabelCount - 1) {
         return std::to_string(localIndex + 1);
     }
-    if (localIndex == 9) {
+    if (localIndex == kCandidateSelectionLabelCount - 1) {
         return "0";
     }
     return "";
@@ -369,6 +372,13 @@ std::string HazkeyState::joinAuxiliaryText(const std::string& auxUp,
 gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
                                       guint state, bool* surroundingGate) {
     (void)keycode;
+    if (secureRequested_.load(std::memory_order_acquire)) {
+        // 安全入力への切替前に積まれたキーは処理せず、組成を確定・学習せずに破棄する
+        if (!secureInput_) {
+            setSecureInput(true);
+        }
+        return FALSE;
+    }
     const gboolean isRelease = (state & IBUS_RELEASE_MASK) != 0;
     const gboolean shiftKey =
         (keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R);
@@ -1022,7 +1032,11 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
 
 void HazkeyState::showPausedRawPreedit(
     const hazkey::frontend::ComposingTextWithCursor& parts) {
-    const std::string text = hazkey::frontend::composingTextOf(parts);
+    auto validParts = parts;
+    validParts.before = makeValidUtf8(validParts.before);
+    validParts.onCursor = makeValidUtf8(validParts.onCursor);
+    validParts.after = makeValidUtf8(validParts.after);
+    const std::string text = hazkey::frontend::composingTextOf(validParts);
     preeditText_ = text;
     // 画面上にlive_textがないため、[Return]は見えない候補ではなく生かなを確定する
     livePreeditIndex_ = -1;
@@ -1030,7 +1044,8 @@ void HazkeyState::showPausedRawPreedit(
     // 末尾モードpreeditは、ライブ変換幅の変動でパネルがばたつかないようカーソルを0に固定する
     // 一時停止preeditは本物のキャレットを持つ
     // 生かなは安定しているため、パネルはばたつかない
-    setPreeditUnderline(text, 0, charLen, static_cast<guint>(hazkey::frontend::caretCharOffset(parts)));
+    setPreeditUnderline(text, 0, charLen,
+                        static_cast<guint>(hazkey::frontend::caretCharOffset(validParts)));
     if (listVisible_ || !candidates_.empty()) {
         candidates_.clear();
         pageSize_ = 0;
@@ -1088,8 +1103,8 @@ bool HazkeyState::applyCandidateResponse(
     candidates_.clear();
     for (const auto& c : response.candidates()) {
         HazkeyCandidate cand;
-        cand.text = c.text();
-        cand.subHiragana = c.sub_hiragana();
+        cand.text = makeValidUtf8(c.text());
+        cand.subHiragana = makeValidUtf8(c.sub_hiragana());
         cand.hasLearningEntry = c.has_learning_entry();
         cand.isTypoCorrection = c.is_typo_correction();
         candidates_.push_back(std::move(cand));
@@ -1114,6 +1129,7 @@ bool HazkeyState::applyCandidateResponse(
             hazkey::commands::GetComposingString_CharType_HIRAGANA,
             preeditText_);
     }
+    display = makeValidUtf8(display);
     preeditText_ = display;
     const glong charLen = g_utf8_strlen(display.c_str(), -1);
     // preeditカーソルは組成先頭 (0) に固定し、IBusにそこを基準として扱わせる
@@ -1123,7 +1139,7 @@ bool HazkeyState::applyCandidateResponse(
 
     const bool hasCandidates = rawPageSize > 0 && !candidates_.empty();
     if (hasCandidates) {
-        pageSize_ = std::clamp(rawPageSize, 1, 16);
+        pageSize_ = clampCandidatePageSize(rawPageSize);
         cursorIndex_ = -1;
         listVisible_ = true;
         pushLookupTable();
@@ -1326,11 +1342,12 @@ void HazkeyState::updateCandidateCursor() {
         return;
     }
     const HazkeyCandidate& c = candidates_[static_cast<size_t>(cursorIndex_)];
-    preeditText_ = c.text + c.subHiragana;
+    preeditText_ = makeValidUtf8(c.text + c.subHiragana);
     // Fcitxは、変換対象をハイライト表示する
     // 末尾読みなし候補は文字列全体を対象にする
     // それ以外はc.textだけを対象にし、末尾のsubHiraganaは意図的に素通しにする
-    const std::string selection = c.subHiragana.empty() ? preeditText_ : c.text;
+    const std::string selection = makeValidUtf8(
+        c.subHiragana.empty() ? preeditText_ : c.text);
     const glong selectionLen = g_utf8_strlen(selection.c_str(), -1);
     postUi([text = preeditText_, selectionLen](HazkeyUi& ui) {
         ui.updatePreeditSelection(text, selectionLen);
@@ -1677,7 +1694,10 @@ void HazkeyState::updateAuxiliaryText() {
         // この読込はtransportがキャッシュする
         // auxTextModeはサーバ側ではなくここで適用する (cachedAuxTextMode_参照)
         // 生ひらがなを隠す設定では、joinAuxiliaryText()が先行空白なしのAuxDown単体になる
-        const auto parts = server_.getComposingHiraganaWithCursor();
+        auto parts = server_.getComposingHiraganaWithCursor();
+        parts.before = makeValidUtf8(parts.before);
+        parts.onCursor = makeValidUtf8(parts.onCursor);
+        parts.after = makeValidUtf8(parts.after);
         if (!hazkey::frontend::shouldShowAuxText(
                 cachedAuxTextMode_, hazkey::frontend::cursorAtEnd(parts))) {
             setAuxiliaryTextWithCursor("", -1, -1, auxDown);
@@ -1727,6 +1747,9 @@ void HazkeyState::updateLiveConvertProperty() {
 }
 
 void HazkeyState::updateSurroundingText(const std::string& append) {
+    if (secureInputActive()) {
+        return;
+    }
     const bool liveAvailable =
         capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT) &&
         hasSurroundingText_;
@@ -1757,7 +1780,7 @@ void HazkeyState::focusIn() {
 
 void HazkeyState::focusOut() {
     flushPendingRefresh();
-    if (!preeditText_.empty()) {
+    if (!secureInputActive() && !preeditText_.empty()) {
         commitPreedit();
     }
     clearSurroundingText();
@@ -1769,18 +1792,26 @@ void HazkeyState::reset() {
     resetState();
 }
 
+void HazkeyState::setSecureInput(bool secure) {
+    secureInput_ = secure;
+    if (secure) {
+        reset();
+    }
+}
+
 void HazkeyState::enable() {
     resetState();
     surroundingFreeze_.release();
     registerProperties();
-    if (capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
+    if (!secureInputActive() &&
+        capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
         postUi([](HazkeyUi& ui) { ui.requestSurroundingText(); });
     }
 }
 
 void HazkeyState::disable() {
     flushPendingRefresh();
-    if (!preeditText_.empty()) {
+    if (!secureInputActive() && !preeditText_.empty()) {
         commitPreedit();
     }
     clearSurroundingText();
@@ -1836,11 +1867,15 @@ void HazkeyState::setCursorLocation(gint x, gint y, gint w, gint h) {
 
 void HazkeyState::setSurroundingText(const std::string& text, guint cursorIndex,
                                      guint anchorPos) {
+    if (secureInputActive()) {
+        clearSurroundingText();
+        return;
+    }
     if (!capabilityIsAvailable(caps_, capsKnown_, IBUS_CAP_SURROUNDING_TEXT)) {
         clearSurroundingText();
         return;
     }
-    surroundingText_ = text;
+    surroundingText_ = makeValidUtf8(text);
     const glong textLength = g_utf8_strlen(surroundingText_.c_str(), -1);
     surroundingCursor_ = std::min(cursorIndex, static_cast<guint>(textLength));
     surroundingAnchor_ = std::min(anchorPos, static_cast<guint>(textLength));
@@ -1872,6 +1907,9 @@ void HazkeyState::cursorDown() {
 }
 
 void HazkeyState::candidateClickedGlobal(int globalIndex, int generation) {
+    if (secureInputActive()) {
+        return;
+    }
     // クリックはユーザが実際に見た描画に対してメインループ上で解決済み
     // generation不一致はクリック下でリストが変わった意味のため、古い候補へ適用せず捨てる
     if (static_cast<uint64_t>(generation) != lookupGeneration_) {

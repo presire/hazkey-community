@@ -240,6 +240,9 @@ void LearningHistoryDialogTest::setIsolatedEnvironment() {
     for (const QString& name : {"runtime", "state", "data", "config", "bin"}) {
         QVERIFY(QDir().mkpath(root + "/" + name));
     }
+    // サーバは自UID所有かつ0700のXDG_RUNTIME_DIRだけを使う
+    QVERIFY(QFile::setPermissions(root + "/runtime",
+                                  QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
 
     originalPath_ = qgetenv("PATH");
     originalRuntimeDirectory_ = qgetenv("XDG_RUNTIME_DIR");

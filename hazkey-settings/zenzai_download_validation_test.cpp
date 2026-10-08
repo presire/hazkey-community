@@ -36,6 +36,9 @@ class ZenzaiDownloadValidationTest : public QObject {
     void testStreamedUnknownExpectedBytesUsesShaOnly();
     void testStreamedChecksumComparisonIsCaseInsensitive();
     void testStreamedRejectionClearsTmpAndPreservesExistingModel();
+    void testSizeLimitWithKnownExpectedBytes();
+    void testSizeLimitWithUnknownExpectedBytes();
+    void testFinalizeDoesNotFollowStaleTmpSymlink();
 
    private:
     QString modelDirectory() const;
@@ -321,6 +324,42 @@ void ZenzaiDownloadValidationTest::testStreamedRejectionClearsTmpAndPreservesExi
     QVERIFY(!finalizeStreamedModelDownload(path, validation));
     QCOMPARE(readFile(path), existingData);
     QVERIFY(!QFile::exists(path + ".tmp"));
+}
+
+void ZenzaiDownloadValidationTest::testSizeLimitWithKnownExpectedBytes() {
+    const qint64 expected = 1000;
+    QVERIFY(!downloadExceedsSizeLimit(0, -1, expected));
+    QVERIFY(!downloadExceedsSizeLimit(expected, expected, expected));
+    QVERIFY(downloadExceedsSizeLimit(expected + 1, -1, expected));
+    QVERIFY(downloadExceedsSizeLimit(10, expected + 1, expected));
+    QVERIFY(!downloadExceedsSizeLimit(10, 0, expected));
+}
+
+void ZenzaiDownloadValidationTest::testSizeLimitWithUnknownExpectedBytes() {
+    const qint64 limit = kUnknownSizeModelDownloadLimitBytes;
+    QVERIFY(limit >= Q_INT64_C(1) << 30);
+    for (const qint64 expected : {qint64(0), qint64(-1)}) {
+        QVERIFY(!downloadExceedsSizeLimit(limit, limit, expected));
+        QVERIFY(downloadExceedsSizeLimit(limit + 1, -1, expected));
+        QVERIFY(downloadExceedsSizeLimit(0, limit + 1, expected));
+    }
+}
+
+void ZenzaiDownloadValidationTest::testFinalizeDoesNotFollowStaleTmpSymlink() {
+    const QString path = modelPath("symlinked-tmp");
+    const QString victim = tempDir_.path() + "/victim.txt";
+    const QByteArray victimData("must stay untouched");
+    writeFile(victim, victimData);
+    QVERIFY(QDir().mkpath(modelDirectory()));
+    QVERIFY(QFile::link(victim, path + ".tmp"));
+
+    const QByteArray body("verified");
+    const ModelDownloadValidation validation = validateModelDownload(
+        body, body.size(), sha256(body));
+    QVERIFY(finalizeModelDownload(path, body, validation));
+    QCOMPARE(readFile(path), body);
+    QCOMPARE(readFile(victim), victimData);
+    QVERIFY(!QFileInfo(path).isSymLink());
 }
 
 QTEST_MAIN(ZenzaiDownloadValidationTest)

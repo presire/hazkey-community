@@ -15,6 +15,7 @@
 #include "commands.pb.h"
 #include "config.pb.h"
 #include "hazkey_frontend_hooks.h"
+#include "hazkey_socket_path.h"
 
 /**
  * @file hazkey_server_connector.h
@@ -76,10 +77,10 @@ class HazkeyServerConnector {
     /**
      * @brief サーバのUNIXドメインソケットパスを組み立てる
      *
-     * @return 環境変数XDG_RUNTIME_DIRが空でなければ、その配下のhazkey-community-serverにUIDとsockを付けたパス
-     *         そうでなければ、/tmp配下の同名パス
+     * @return 信頼性とsun_path長を含む接続先候補
+     *         接続に使う前にruntimeDirectoryTrustedとpathFitsを確認する
      */
-    std::string getSocketPath();
+    hazkey::frontend::ServerSocketPath getSocketPath();
 
     /**
      * @brief サーバへ接続し必要なら起動を試みる
@@ -419,6 +420,14 @@ class HazkeyServerConnector {
     static void setTestStartServerHook(std::function<void(bool)> hook) {
         testStartServerHook_ = std::move(hook);
     }
+
+    /**
+     * @brief 試験中の接続記述子をdup2で指定先へ移す
+     *
+     * @param targetFd 所有権を移したい未使用記述子
+     * @return 複製と所有権移動に成功した場合はtrue
+     */
+    bool duplicateSocketToForTest(int targetFd);
 
     /**
      * @brief 全試験用フックを製品動作の既定へ戻す

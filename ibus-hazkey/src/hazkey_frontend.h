@@ -83,6 +83,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
      * @param caps IBusが通知したケーパビリティマスク
      */
     void setCapabilities(guint caps);
+    /** @brief 入力目的とヒントを反映し、安全入力への遷移時は組成を破棄する */
+    void setContentType(guint purpose, guint hints);
     /**
      * @brief パネル操作に対応するプロパティ起動をワーカーへ委譲する
      *
@@ -175,6 +177,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     static bool shouldForwardUnhandledKey(
         bool isRelease, guint keyval,
         std::unordered_set<guint>& pendingPressKeyvals);
+    /** @brief IBus入力目的またはPRIVATEヒントが安全入力を示すか判定する */
+    static bool isSecureInputContentType(guint purpose, guint hints);
 
     /**
      * @brief 新しい組成を開き得る最初の入力として、周辺テキスト待ちの要否をワーカーへ判定依頼すべきか判定する
@@ -346,6 +350,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     std::shared_ptr<HazkeyState> state_;  ///< ワーカー側のIMEロジック
     // 終了状態
     bool retired_ = false;                ///< 廃止済みで新規受付を止めた場合はtrue
+    bool secureInput_ = false;             ///< 現在の入力コンテキストが安全入力か
+    uint64_t contentEpoch_ = 0;            ///< 安全入力の切替ごとに進め、切替前に積んだキーを転送しない
 
     // 投機的入力取り込み
     // メインループが所有する投機的なingress状態

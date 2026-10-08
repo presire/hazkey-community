@@ -1,4 +1,36 @@
 import Foundation
+import Glibc
+
+/// 所有者と権限を確認してランタイムディレクトリを選ぶ
+enum ServerRuntimeDirectory {
+    static func select(environment: [String: String], uid: uid_t = getuid()) -> String {
+        validatedXDGDirectory(environment: environment, uid: uid) ?? "/tmp/hazkey-community-runtime-\(uid)"
+    }
+
+    static func validatedXDGDirectory(environment: [String: String], uid: uid_t = getuid()) -> String? {
+        if let path = environment["XDG_RUNTIME_DIR"], !path.isEmpty {
+            var info = stat()
+            if stat(path, &info) == 0, isPrivateDirectory(info, uid: uid) { return path }
+        }
+        return nil
+    }
+
+    /// 既存のフォールバックはシンボリックリンクを辿らずに検証する
+    static func prepare(_ path: String, uid: uid_t = getuid()) throws {
+        if mkdir(path, 0o700) == 0 { return }
+        guard errno == EEXIST else {
+            throw SocketError.readFailed("Failed to create runtime directory", errno)
+        }
+        var info = stat()
+        guard lstat(path, &info) == 0, isPrivateDirectory(info, uid: uid) else {
+            throw SocketError.readFailed("Untrusted runtime directory: \(path)", EACCES)
+        }
+    }
+
+    private static func isPrivateDirectory(_ info: stat, uid: uid_t) -> Bool {
+        (info.st_mode & S_IFMT) == S_IFDIR && info.st_uid == uid && (info.st_mode & 0o077) == 0
+    }
+}
 
 /// SocketManagerDelegateに準拠したサーバ本体
 ///
@@ -27,6 +59,7 @@ class HazkeyServer: SocketManagerDelegate {
     ///
     /// [XDG_RUNTIME_DIR]から導出し、未設定時はフォールバックを使う
     private let runtimeDir: URL
+    private let usesFallbackRuntimeDirectory: Bool
     /// ソケットファイルのパス
     ///
     /// ランタイムディレクトリ直下のサーバ名とUIDから作られる
@@ -43,10 +76,11 @@ class HazkeyServer: SocketManagerDelegate {
     /// - Note: デリゲートに自身を設定する
     init() {
         let uid = getuid()
-        self.runtimeDir = URL(
-            fileURLWithPath:
-                ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"]
-                ?? "/tmp/hazkey-community-runtime-\(uid)", isDirectory: true)
+        let environment = ProcessInfo.processInfo.environment
+        let trustedRuntimePath = ServerRuntimeDirectory.validatedXDGDirectory(environment: environment, uid: uid)
+        let runtimePath = trustedRuntimePath ?? "/tmp/hazkey-community-runtime-\(uid)"
+        self.usesFallbackRuntimeDirectory = trustedRuntimePath == nil
+        self.runtimeDir = URL(fileURLWithPath: runtimePath, isDirectory: true)
 
         self.socketPath = "\(runtimeDir.path)/hazkey-community-server.\(uid).sock"
         self.lockFilePath = "\(runtimeDir.path)/hazkey-community-server.\(uid).lock"
@@ -85,10 +119,12 @@ class HazkeyServer: SocketManagerDelegate {
     /// - Note: ウォームアップ中はソケットがlisten済みのため、接続は待機列で待つ
     func start() throws {
         let forceRestart = parseCommandLineArguments()
-        if !FileManager.default.fileExists(atPath: runtimeDir.path) {
-            try FileManager.default.createDirectory(
-                at: runtimeDir, withIntermediateDirectories: true,
-                attributes: [FileAttributeKey.posixPermissions: 0o700])
+        if usesFallbackRuntimeDirectory {
+            do { try ServerRuntimeDirectory.prepare(runtimeDir.path) }
+            catch {
+                NSLog("Failed to prepare runtime directory: \(error)")
+                exit(1)
+            }
         }
         do {
             try processManager.tryLock(force: forceRestart)
@@ -162,6 +198,16 @@ class HazkeyServer: SocketManagerDelegate {
         sessions.removeValue(forKey: clientFd)?.close()
         sessions[clientFd] = HazkeyServerState(shared: shared)
         NSLog("Session created for client fd \(clientFd) (\(sessions.count) active)")
+    }
+
+    /// 組成が空のセッションだけを、接続上限時の回収対象として許可する
+    ///
+    /// - Parameters:
+    ///   - manager: 問い合わせ元のSocketManager
+    ///   - clientFd: 回収候補のクライアントfd
+    /// - Returns: 未確定の組成が無ければtrue
+    func socketManager(_ manager: SocketManager, canReclaimIdleClient clientFd: Int32) -> Bool {
+        sessions[clientFd]?.composingText.value.isEmpty ?? true
     }
 
     /// 切断された接続のセッションを破棄して学習データを保存する

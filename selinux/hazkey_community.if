@@ -174,7 +174,7 @@ interface(`hazkey_community_manage_user_content',`
 ## </summary>
 ## <desc>
 ##	<p>
-##	設定ディレクトリに作成した設定ファイル (config.json) には、変換サーバが書き込める型を付ける
+##	設定ディレクトリに作成した設定ファイル (config.json) とその保存用の一時ファイル (config.json.tmp) には、変換サーバが書き込める型を付ける
 ##	</p>
 ## </desc>
 ## <param name="domain">
@@ -199,6 +199,7 @@ interface(`hazkey_community_home_filetrans',`
 	filetrans_pattern($1, gconf_home_t, hazkey_community_state_home_t, dir, "hazkey-community")
 	filetrans_pattern($1, cache_home_t, hazkey_community_cache_home_t, dir, "hazkey-community")
 	filetrans_pattern($1, hazkey_community_conf_home_t, hazkey_community_config_t, file, "config.json")
+	filetrans_pattern($1, hazkey_community_conf_home_t, hazkey_community_config_t, file, "config.json.tmp")
 ')
 
 ########################################

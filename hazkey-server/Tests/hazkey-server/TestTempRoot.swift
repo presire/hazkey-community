@@ -20,7 +20,11 @@ enum TestTempRoot {
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("hk\(token)", isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("runtime"),
+                                                withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         requireFitsInSunPath(canonicalSocketPath(under: url))
         return url
     }

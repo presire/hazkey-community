@@ -47,6 +47,10 @@ class HazkeyState : public InputContextProperty {
      *  @note 組成中に固定した周辺テキストは、確定直後の次の組成へ持ち越す
      */
     void reset();
+    /** @brief 安全な入力欄では組成を確定せずに破棄する
+     *  @return 今回の安全入力状態で初めて破棄した場合はtrue
+     */
+    bool discardForSecureInput();
     /** @brief 確定時から持ち越した周辺テキストを捨てる
      *  @note フォーカス移動やアプリケーションからのリセット要求等、入力先が変わり得る時に呼ぶ
      */
@@ -238,10 +242,11 @@ class HazkeyState : public InputContextProperty {
     bool isClauseBoundaryAdjusting_ = false;  ///< 文節境界を調整中か
     bool isDirectConversionMode_ = false;     ///< 直接変換後の入力状態か
     hazkey::frontend::CompositionSurroundingFreeze
-        surroundingFreeze_;  ///< 組成開始時に固定した周辺テキスト (preedit混入の防止)
+        surroundingFreeze_;                   ///< 組成開始時に固定した周辺テキスト (preedit混入の防止)
     bool shiftPressedAlone_ = false;          ///< [Shift]単独押下を追跡中か
     int livePreeditIndex_ = -1;               ///< 表示中ライブ変換候補の番号
     bool currentListIsSuggest_ = false;       ///< 表示中リストが予測候補か
+    bool secureInputDiscarded_ = false;       ///< 現在の安全入力状態で組成を破棄済みか
 
     // プロファイル・ホットキー状態
     fcitx::Key liveConvertHotkey_{"Control+Shift+L"};  ///< [Ctrl] + [Shift] + [L]ライブ変換切替ホットキー

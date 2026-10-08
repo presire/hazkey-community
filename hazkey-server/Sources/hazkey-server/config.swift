@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 import KanaKanjiConverterModule
 import SwiftProtobuf
 
@@ -584,7 +585,7 @@ class HazkeyServerConfig {
         let jsonData = try JSONSerialization.data(
             withJSONObject: jsonObjects, options: [.prettyPrinted, .sortedKeys])
 
-        try jsonData.write(to: configPath)
+        try Self.writePrivateConfig(jsonData, to: configPath)
 
         NSLog("Config saved to: \(configPath.path)")
 
@@ -603,6 +604,85 @@ class HazkeyServerConfig {
         configRevision &+= 1
     }
 
+    /// config.jsonを保存する
+    ///
+    /// SELinuxポリシーは、設定ディレクトリ内での名前の変更を許可しない
+    /// (侵害された変換サーバが、起動元のシェルで読み込まれるenvを作れないようにするため)
+    ///
+    /// このため、renameで置き換える代わりに、完全な内容を先にconfig.json.tmpへ書いて同期してから、config.jsonを上書きする
+    /// config.jsonの上書き中に停止した場合は、loadConfig()がconfig.json.tmpから復元する
+    static func writePrivateConfig(_ data: Data, to destination: URL) throws {
+        let journal = configJournalURL(for: destination)
+        try writePrivateFile(data, to: journal)
+        try writePrivateFile(data, to: destination)
+        if unlink(journal.path) != 0, errno != ENOENT {
+            NSLog("Failed to remove \(journal.path): \(errno)")
+        }
+    }
+
+    /// 保存の中断に備えて、config.jsonより先に書き込むファイル
+    ///
+    /// SELinuxポリシーは、この名前 (config.json.tmp) にだけ、config.jsonと同じ書き込み可能な型を付ける
+    static func configJournalURL(for configURL: URL) -> URL {
+        configURL.appendingPathExtension("tmp")
+    }
+
+    /// 自UIDの通常ファイルへ0600で書き込み、ディスクへ同期する
+    ///
+    /// 既存のシンボリックリンクは辿らずに通常のファイルで置き換え、ハードリンクされたファイルには書き込まない
+    private static func writePrivateFile(_ data: Data, to url: URL) throws {
+        let flags = O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC
+        var fd = open(url.path, flags, 0o600)
+        if fd < 0, errno == ELOOP {
+            guard unlink(url.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            fd = open(url.path, flags | O_EXCL, 0o600)
+        }
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        guard (info.st_mode & S_IFMT) == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1 else {
+            throw POSIXError(.EPERM)
+        }
+        // 旧版が作成した0644等のファイルを引き締める (失敗しても保存は続ける)
+        if (info.st_mode & 0o077) != 0, fchmod(fd, 0o600) != 0 {
+            NSLog("Failed to restrict permissions of \(url.path): \(errno)")
+        }
+        guard ftruncate(fd, 0) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        try data.withUnsafeBytes { bytes in
+            var written = 0
+            while written < bytes.count {
+                guard let base = bytes.baseAddress else { throw POSIXError(.EIO) }
+                let count = write(fd, base.advanced(by: written), bytes.count - written)
+                if count < 0, errno == EINTR { continue }
+                guard count > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                written += count
+            }
+        }
+        guard fsync(fd) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+
+    /// 所有する実ディレクトリだけを引き締め、シンボリックリンクは辿らない
+    static func tightenPrivateDirectories() {
+        for directory in [getConfigDirectory(), getDataDirectory(), getStateDirectory(), getCacheDirectory()] {
+            tightenPrivateDirectory(directory)
+        }
+    }
+
+    static func tightenPrivateDirectory(_ directory: URL) {
+        var info = stat()
+        guard lstat(directory.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR,
+            info.st_uid == getuid() else { return }
+        let fd = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        var opened = stat()
+        guard fstat(fd, &opened) == 0, opened.st_uid == getuid(),
+            opened.st_dev == info.st_dev, opened.st_ino == info.st_ino,
+            (opened.st_mode & 0o077) != 0 else { return }
+        if fchmod(fd, 0o700) != 0 { NSLog("Failed to tighten directory \(directory.path): \(errno)") }
+    }
+
     /// 保存済み設定を読み込む
     ///
     /// config.jsonが無い場合は、既定プロファイルを正規化して返す
@@ -614,18 +694,32 @@ class HazkeyServerConfig {
         let configPath = configDir.appendingPathComponent("config.json")
 
         // 設定ファイルの有無を確認する
-        // 存在しなければ既定プロファイルから生成した正規化済み設定を返す
+        // 存在しなければ、保存の中断で残った内容か、既定プロファイルから生成した正規化済み設定を返す
         guard FileManager.default.fileExists(atPath: configPath.path) else {
+            if let recovered = recoverInterruptedConfig(configPath) { return recovered }
             NSLog("Config file does not exist at: \(configPath.path), returning empty config")
             return try normalizeProfiles([Self.genDefaultConfig()])
         }
 
         // 設定ファイルの内容を読み込む
-        let jsonData = try Data(contentsOf: configPath)
-
-        let configs = try decodeProfiles(from: jsonData)
+        // 上書きの途中で停止して壊れている場合は、先に書き終えたconfig.json.tmpから復元する
+        let configs: [Hazkey_Config_Profile]
+        do {
+            configs = try decodeProfiles(from: Data(contentsOf: configPath))
+        } catch {
+            if let recovered = recoverInterruptedConfig(configPath) { return recovered }
+            throw error
+        }
 
         NSLog("Config loaded from: \(configPath.path)")
+        return configs
+    }
+
+    private static func recoverInterruptedConfig(_ configPath: URL) -> [Hazkey_Config_Profile]? {
+        let journal = configJournalURL(for: configPath)
+        guard let data = try? Data(contentsOf: journal),
+            let configs = try? decodeProfiles(from: data) else { return nil }
+        NSLog("Config recovered from an interrupted save: \(journal.path)")
         return configs
     }
 
@@ -1231,14 +1325,12 @@ class HazkeyServerConfig {
                 }
             } else {
                 // ユーザ定義キーマップを読み込む
-                let customKeymapFile = HazkeyServerConfig.getConfigDirectory()
-                    .appendingPathComponent(
-                        "keymap", isDirectory: true
-                    ).appendingPathComponent(enabledKeymap.filename, isDirectory: false)
                 do {
-                    let contents = try String(contentsOf: customKeymapFile, encoding: .utf8)
-                    newKeymapRule = [:]
-                    newKeymapRule = Self.parseCustomKeymap(contents)
+                    newKeymapRule = try Self.readValidatedCustomFile(
+                        filename: enabledKeymap.filename, directory: "keymap", limit: KEYMAP_FILE_SIZE_LIMIT
+                    ) { _, contents in
+                        Self.parseCustomKeymap(contents)
+                    }
                 } catch {
                     NSLog(
                         "Failed to load custom keymap \(enabledKeymap.name): \(error)"
@@ -1252,6 +1344,59 @@ class HazkeyServerConfig {
         return maps
     }
 
+    /// 単一ファイル名とサイズを検証し、設定ディレクトリ外の読み込みを拒否する
+    static func validatedCustomFile(filename: String, directory: String, limit: Int) throws -> URL {
+        guard !filename.isEmpty, filename != ".", filename != "..",
+            !filename.contains("/"), !filename.utf8.contains(0) else { throw POSIXError(.EINVAL) }
+        let root = getConfigDirectory().appendingPathComponent(directory, isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let file = root.appendingPathComponent(filename).standardizedFileURL
+        guard file.path.hasPrefix(root.path + "/"),
+            file.resolvingSymlinksInPath().path.hasPrefix(root.path + "/") else { throw POSIXError(.EACCES) }
+        var info = stat()
+        guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_size >= 0, info.st_size < limit else { throw POSIXError(.EFBIG) }
+        return file
+    }
+
+    /// 検証済みの利用者定義ファイルを開いたまま読み込む
+    ///
+    /// 検証後の差し替えやFIFOを避けるため、開いた記述子を再検証して上限付きで読む
+    ///
+    /// - Parameters:
+    ///   - filename: 設定ディレクトリ内のファイル名
+    ///   - directory: 設定ディレクトリ内のサブディレクトリ名
+    ///   - limit: 許容するファイルサイズの上限 (この値未満)
+    ///   - body: 開いた記述子を指すURLと読み込んだ内容を受け取る処理
+    /// - Returns: `body` の戻り値を返す
+    static func readValidatedCustomFile<T>(
+        filename: String, directory: String, limit: Int,
+        _ body: (_ descriptorURL: URL, _ contents: String) throws -> T
+    ) throws -> T {
+        let file = try validatedCustomFile(filename: filename, directory: directory, limit: limit)
+        let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_size >= 0, info.st_size < limit else { throw POSIXError(.EFBIG) }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = read(fd, &buffer, buffer.count)
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            if count == 0 { break }
+            data.append(contentsOf: buffer[0..<count])
+            guard data.count < limit else { throw POSIXError(.EFBIG) }
+        }
+        guard let contents = String(data: data, encoding: .utf8) else { throw POSIXError(.EILSEQ) }
+        return try body(URL(fileURLWithPath: "/proc/self/fd/\(fd)"), contents)
+    }
+
     /// 利用者定義キーマップの内容を解釈する
     ///
     /// タブ区切り1列は無効化、2列以上は入力文字と修飾文字として取り込む
@@ -1262,7 +1407,13 @@ class HazkeyServerConfig {
         var keymap: Keymap = [:]
         for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
             let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
-            guard let key = columns.first?.first else { continue }
+            guard let firstColumn = columns.first, !firstColumn.isEmpty else { continue }
+            guard firstColumn.count == 1,
+                columns.dropFirst().prefix(2).allSatisfy({ $0.count <= 1 }) else {
+                NSLog("Skipping custom keymap line with multi-character key or value: \(line)")
+                continue
+            }
+            guard let key = firstColumn.first else { continue }
 
             switch columns.count {
             case 1:
@@ -1300,12 +1451,12 @@ class HazkeyServerConfig {
                 }
             } else {
                 // ユーザ定義入力テーブルを読み込む
-                let customTableFile = HazkeyServerConfig.getConfigDirectory()
-                    .appendingPathComponent(
-                        "table", isDirectory: true
-                    ).appendingPathComponent(enabledTable.filename, isDirectory: false)
                 do {
-                    tableToAdd = try InputStyleManager.loadTable(from: customTableFile)
+                    tableToAdd = try Self.readValidatedCustomFile(
+                        filename: enabledTable.filename, directory: "table", limit: TABLE_FILE_SIZE_LIMIT
+                    ) { descriptorURL, _ in
+                        try InputStyleManager.loadTable(from: descriptorURL)
+                    }
                 } catch {
                     NSLog("Failed to load custom table \(enabledTable.name)Q \(error)")
                     continue outer

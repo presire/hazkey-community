@@ -159,6 +159,17 @@ static void ibusHazkeyEngineSetCapabilities(IBusEngine* engine, guint caps) {
     }
 }
 
+static void ibusHazkeyEngineSetContentType(IBusEngine* engine, guint purpose,
+                                           guint hints) {
+    if (auto* frontend = frontendOf(engine); frontend != nullptr) {
+        frontend->setContentType(purpose, hints);
+    }
+    IBusEngineClass* parent = IBUS_ENGINE_CLASS(ibus_hazkey_engine_parent_class);
+    if (parent->set_content_type != nullptr) {
+        parent->set_content_type(engine, purpose, hints);
+    }
+}
+
 /**
  * @brief パネル操作をファサード優先で処理する
  *
@@ -355,6 +366,7 @@ static void ibus_hazkey_engine_class_init(IBusHazkeyEngineClass* engineClass) {
     engine->enable = ibusHazkeyEngineEnable;
     engine->disable = ibusHazkeyEngineDisable;
     engine->set_capabilities = ibusHazkeyEngineSetCapabilities;
+    engine->set_content_type = ibusHazkeyEngineSetContentType;
     engine->property_activate = ibusHazkeyEnginePropertyActivate;
     engine->set_cursor_location = ibusHazkeyEngineSetCursorLocation;
     engine->set_surrounding_text = ibusHazkeyEngineSetSurroundingText;

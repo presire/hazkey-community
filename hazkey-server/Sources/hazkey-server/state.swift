@@ -861,7 +861,31 @@ class HazkeyServerState {
     /// 入力中の組成テキスト
     var composingText: ComposingTextBox = ComposingTextBox()
     /// 最後にクライアントへ返した候補リスト (確定・予測受入・学習削除で候補の位置から引く)
-    var currentCandidateList: [DisplayedCandidate]?
+    var currentCandidateList: [DisplayedCandidate]? {
+        didSet { candidateCompositionSnapshot = currentCandidateList == nil ? nil : composingText.value }
+    }
+    private var candidateCompositionSnapshot: ComposingText?
+    static let maxComposingCharacters = 512
+    /// 組成テキストのUTF-8バイト数の上限 (結合文字を連ねた巨大な1文字で文字数の上限を回避させない)
+    static let maxComposingUTF8Bytes = 8192
+    /// 1回の入力で受け付ける1文字のUTF-8バイト数の上限 (ZWJ絵文字の最長の列より十分に大きい)
+    static let maxInputCharacterUTF8Bytes = 128
+
+    /// 組成テキストとして保持できる大きさを超えるかを返す
+    ///
+    /// - Parameter text: 判定する読み
+    /// - Returns: 文字数またはUTF-8バイト数の上限を超える場合はtrue
+    static func exceedsComposingLimit(_ text: String) -> Bool {
+        text.utf8.count > maxComposingUTF8Bytes || text.count > maxComposingCharacters
+    }
+
+    private static func composingLimitFailure() -> Hazkey_ResponseEnvelope {
+        Hazkey_ResponseEnvelope.with {
+            $0.status = .failed
+            $0.errorMessage =
+                "Composing text is limited to \(maxComposingCharacters) characters and \(maxComposingUTF8Bytes) bytes."
+        }
+    }
     /// currentCandidateListがサジェストと変換のどちらで作られたか
     ///
     /// 候補の学習削除後は同じモードで候補リストを作り直す (サジェストの候補リストを変換の候補リストとして作り直すと、ライブ変換の状態が壊れる)
@@ -1125,20 +1149,25 @@ class HazkeyServerState {
     /// - Parameter inputString: 入力された文字 (先頭の1文字だけを使用する)
     /// - Returns: 成功時は.success、文字列が空の場合は.failedを含むレスポンス
     func inputChar(inputString: String) -> Hazkey_ResponseEnvelope {
+        guard composingText.value.convertTarget.count < Self.maxComposingCharacters else {
+            return Self.composingLimitFailure()
+        }
         guard let inputChar = inputString.first else {
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed
                 $0.errorMessage = "failed to get first unicode character"
             }
         }
-        isSubInputMode =
+        guard inputChar.utf8.count <= Self.maxInputCharacterUTF8Bytes else {
+            return Self.composingLimitFailure()
+        }
+        let nextSubInputMode =
             isSubInputMode
             || (isShiftPressedAlone
                 && serverConfig.getSubModeEntryPointChars().contains(inputChar))
-        isShiftPressedAlone = false
-        shiftPressedAt = nil
-        if isSubInputMode {
-            composingText.value.insertAtCursorPosition(String(inputChar), inputStyle: .direct)
+        var nextComposingText = composingText.value
+        if nextSubInputMode {
+            nextComposingText.insertAtCursorPosition(String(inputChar), inputStyle: .direct)
         } else {
             let piece: InputPiece
             if let (intentionChar, overrideInputChar) = keymap[inputChar] {
@@ -1148,12 +1177,19 @@ class HazkeyServerState {
                 piece = .character(inputChar)
             }
 
-            composingText.value.insertAtCursorPosition([
+            nextComposingText.insertAtCursorPosition([
                 ComposingText.InputElement(
                     piece: piece,
                     inputStyle: .mapped(id: .tableName(currentTableName)))
             ])
         }
+        guard !Self.exceedsComposingLimit(nextComposingText.convertTarget) else {
+            return Self.composingLimitFailure()
+        }
+        composingText.value = nextComposingText
+        isSubInputMode = nextSubInputMode
+        isShiftPressedAlone = false
+        shiftPressedAt = nil
         return Hazkey_ResponseEnvelope.with { $0.status = .success }
     }
 
@@ -1266,6 +1302,7 @@ class HazkeyServerState {
     /// - Parameter candidateIndex: 候補リスト内の確定する候補の位置
     /// - Returns: 成功時は.success、候補が見つからない場合は.failedを含むレスポンス
     func completePrefix(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
+        if let failure = staleCandidateFailure() { return failure }
         // 範囲を先に確認する
         // Swiftの配列添字は範囲外でトラップするため、不正なクライアント添字でサーバをクラッシュさせない
         guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
@@ -1277,7 +1314,7 @@ class HazkeyServerState {
         let entry = list[candidateIndex]
         switch entry {
         case .fromConverter(let completedCandidate):
-            composingText.value.prefixComplete(composingCount: completedCandidate.composingCount)
+            completeComposingPrefix(completedCandidate.composingCount)
             let learnsFromCandidate = !completedCandidate.data.contains {
                 $0.metadata.contains(.isFromUserDictionary)
             }
@@ -1291,7 +1328,7 @@ class HazkeyServerState {
         case .fromTypoCorrection(let correctedCandidate, _, let originalPrefixCount):
             // 元の入力の先頭だけを消費し、訂正対象でない接尾辞は組成に残して変換可能なまま保つ
             if originalPrefixCount < composingText.value.convertTarget.count {
-                composingText.value.prefixComplete(composingCount: .surfaceCount(originalPrefixCount))
+                completeComposingPrefix(.surfaceCount(originalPrefixCount))
             } else {
                 composingText = ComposingTextBox()
             }
@@ -1312,18 +1349,39 @@ class HazkeyServerState {
         case .fromDateProvider(_, let composingCount):
             // 日付候補はカーソルまでの相対日付トリガーの読みだけを消費し、右側の読みを保持する
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
-            composingText.value.prefixComplete(composingCount: composingCount)
+            completeComposingPrefix(composingCount)
         case .fromKanaNumberProvider(_, let composingCount):
             // かな数字候補はカーソルまでの数詞の読みだけを消費し、右側の読みを保持する
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
-            composingText.value.prefixComplete(composingCount: composingCount)
+            completeComposingPrefix(composingCount)
         case .fromEmoji(_, let composingCount):
             // 絵文字直接変換候補は一致した正規化クエリのprefixだけを消費し、後続suffixは保持する
             // 変換エンジンの確定 / 学習APIには触れないため、共有dirtyフラグは変更しない (他の接続に永続化待ちの学習がある可能性がある)
-            composingText.value.prefixComplete(composingCount: composingCount)
+            completeComposingPrefix(composingCount)
         }
+        currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
+        }
+    }
+
+    /// 読みやカーソルや入力列が変わった候補を確定・受入・学習削除に使わない
+    private func staleCandidateFailure() -> Hazkey_ResponseEnvelope? {
+        guard currentCandidateList != nil, candidateCompositionSnapshot != composingText.value else { return nil }
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .failed
+            $0.errorMessage = "Candidates are stale; request candidates again after editing or moving the cursor."
+        }
+    }
+
+    /// forkのprefixCompleteが負のカーソルを残しても、次の入力前に範囲内へ戻す
+    private func completeComposingPrefix(_ count: ComposingCount) {
+        composingText.value.prefixComplete(composingCount: count)
+        let text = composingText.value
+        if text.convertTargetCursorPosition < 0 || text.convertTargetCursorPosition > text.convertTarget.count {
+            composingText.value = ComposingText(
+                convertTargetCursorPosition: text.convertTarget.count, input: text.input,
+                convertTarget: text.convertTarget)
         }
     }
 
@@ -1337,6 +1395,7 @@ class HazkeyServerState {
     /// - Returns: 成功時は.success、候補が見つからない場合や受け入れられない候補の場合は.failedを含むレスポンス
     /// - Note: 受入のホットキーは設定で変更できる (既定は[F5]キー)
     func acceptPrediction(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
+        if let failure = staleCandidateFailure() { return failure }
         // 範囲を先に確認する
         // Swiftの配列添字 (およびそのoptional chaining) は範囲外でnilを返さずトラップするため、不正なクライアント添字でサーバをクラッシュさせない
         guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {
@@ -1350,6 +1409,11 @@ class HazkeyServerState {
                 $0.status = .failed
                 $0.errorMessage = "Candidate index \(candidateIndex) is not a converter candidate."
             }
+        }
+        // 受入後の組成は候補の読み全体になる
+        // 変換エンジンのセッション状態を書き換える前に、上限を超える候補を拒否する
+        guard !Self.exceedsComposingLimit(candidate.data.map(\.ruby).joined()) else {
+            return Self.composingLimitFailure()
         }
         var composing = composingText.value
         let accepted = withConversionSession {
@@ -2241,6 +2305,7 @@ class HazkeyServerState {
     /// - Note: 絵文字等の注入候補や未学習の候補は学習データを持たないため、削除件数は0になる (候補リストは作り直さない)
     /// - Important: 変換エンジンの学習削除は直ちにディスクへ反映され、作り直した候補リストにも削除が反映される
     func deleteCandidateLearningData(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
+        if let failure = staleCandidateFailure() { return failure }
         // 範囲を先に確認する
         // Swiftの配列添字は範囲外でトラップするため、不正なクライアント添字でサーバをクラッシュさせない
         guard let list = currentCandidateList, list.indices.contains(candidateIndex) else {

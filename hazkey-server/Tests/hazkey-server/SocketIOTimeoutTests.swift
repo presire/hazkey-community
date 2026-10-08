@@ -59,7 +59,7 @@ final class SocketIOTimeoutTests: XCTestCase {
         XCTAssertEqual(written, frame.count)
 
         let header = try readData(from: pair.server, count: 4, timeoutMs: 1000)
-        let readLen = header.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+        let readLen = header.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian }
         XCTAssertEqual(readLen, UInt32(body.count))
         let received = try readData(from: pair.server, count: Int(readLen), timeoutMs: 1000)
         XCTAssertEqual(received, body)
@@ -89,5 +89,30 @@ final class SocketIOTimeoutTests: XCTestCase {
                 return XCTFail("expected ioTimeout, got \(error)")
             }
         }
+    }
+
+    func testTricklingBytesDoesNotExtendAbsoluteReadDeadline() throws {
+        let pair = try makeSocketPair()
+        setNonBlocking(pair.server)
+        let writer = Thread {
+            for _ in 0..<12 {
+                var byte: UInt8 = 1
+                _ = send(pair.peer, &byte, 1, Int32(MSG_NOSIGNAL))
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+        }
+        writer.start()
+        defer {
+            while !writer.isFinished { Thread.sleep(forTimeInterval: 0.01) }
+            close(pair.server)
+            close(pair.peer)
+        }
+        let start = ContinuousClock.now
+        let deadline = start.advanced(by: .milliseconds(100))
+        XCTAssertEqual(try readData(from: pair.server, count: 4, deadline: deadline).count, 4)
+        XCTAssertThrowsError(try readData(from: pair.server, count: 8, deadline: deadline)) { error in
+            guard case SocketError.ioTimeout = error else { return XCTFail("expected ioTimeout, got \(error)") }
+        }
+        XCTAssertLessThan(start.duration(to: .now), .milliseconds(200))
     }
 }

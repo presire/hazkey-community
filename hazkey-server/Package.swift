@@ -22,11 +22,13 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.27.0"),
     ],
     targets: [
+        .target(name: "CHazkeyLinux"),
         // Targetsは、モジュールまたはテストスイートを定義するパッケージの基本構成要素である
         // Targetsは、このパッケージ内の他のtargetや依存先のproductに依存できる
         .executableTarget(
             name: "hazkey-server",
             dependencies: [
+                "CHazkeyLinux",
                 .product(
                     name: "KanaKanjiConverterModule",
                     package: "AzooKeyKanaKanjiConverter"),

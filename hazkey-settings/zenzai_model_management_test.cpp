@@ -64,6 +64,14 @@ private slots:
     void testDeletionMechanics();
     /** @brief 既存モデルの明示的なアクティベーションと切り替えを検証する */
     void testExplicitActivation();
+    /** @brief 切れたアクティブリンクが「有効モデル無し」として扱われ、管理対象なら掃除されることを検証する */
+    void testDanglingActiveLink();
+    /** @brief 管理対象外を指す切れたリンクは削除しないことを検証する */
+    void testDanglingExternalLinkPreserved();
+    /** @brief 切れたリンクが残っていても新しいモデルを有効化できることを検証する */
+    void testActivateReplacesDanglingLink();
+    /** @brief アクティブモデルを手動削除済みでも deleteModel がリンクを残さないことを検証する */
+    void testDeleteModelCleansOrphanLink();
     /** @brief 推奨・ダウンロード済みフラグを含むラベル整形結果を検証する */
     void testLabelFormatting();
     /** @brief jinen-v2ファミリがカタログに存在することを検証する (failing-first用) */
@@ -338,6 +346,61 @@ void ZenzaiModelManagementTest::testExplicitActivation() {
     // シンボリックリンクの指し先を確認する
     QFileInfo info(ZenzaiModelManager::getSymlinkPath());
     QCOMPARE(info.symLinkTarget(), model2);
+}
+
+namespace {
+void writeModel(const QString& key, const QByteArray& body) {
+    QDir().mkpath(ZenzaiModelManager::getModelsDir());
+    QFile file(ZenzaiModelManager::getModelPath(key));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(body);
+}
+}  // namespace
+
+void ZenzaiModelManagementTest::testDanglingActiveLink() {
+    writeModel("gone", "x");
+    QVERIFY(ZenzaiModelManager::activateModel("gone"));
+    QVERIFY(QFile::remove(ZenzaiModelManager::getModelPath("gone")));
+
+    QVERIFY(QFileInfo(ZenzaiModelManager::getSymlinkPath()).isSymLink());
+    QVERIFY(!QFileInfo(ZenzaiModelManager::getSymlinkPath()).exists());
+
+    QCOMPARE(ZenzaiModelManager::getActiveModelKey(), QString());
+    QVERIFY(!QFileInfo(ZenzaiModelManager::getSymlinkPath()).isSymLink());
+}
+
+void ZenzaiModelManagementTest::testDanglingExternalLinkPreserved() {
+    QDir().mkpath(ZenzaiModelManager::getZenzaiDir());
+    const QString external = tempDir.path() + "/external/custom.gguf";
+    QVERIFY(QFile::link(external, ZenzaiModelManager::getSymlinkPath()));
+
+    QCOMPARE(ZenzaiModelManager::getActiveModelKey(), QString());
+    QVERIFY(QFileInfo(ZenzaiModelManager::getSymlinkPath()).isSymLink());
+}
+
+void ZenzaiModelManagementTest::testActivateReplacesDanglingLink() {
+    writeModel("old", "o");
+    writeModel("fresh", "n");
+    QVERIFY(ZenzaiModelManager::activateModel("old"));
+    QVERIFY(QFile::remove(ZenzaiModelManager::getModelPath("old")));
+
+    QVERIFY(ZenzaiModelManager::activateModel("fresh"));
+    QCOMPARE(ZenzaiModelManager::getActiveModelKey(), QString("fresh"));
+    QCOMPARE(QFileInfo(ZenzaiModelManager::getSymlinkPath()).symLinkTarget(),
+             ZenzaiModelManager::getModelPath("fresh"));
+}
+
+void ZenzaiModelManagementTest::testDeleteModelCleansOrphanLink() {
+    writeModel("first", "1");
+    QVERIFY(ZenzaiModelManager::activateModel("first"));
+    QVERIFY(ZenzaiModelManager::deleteModel("first"));
+    QVERIFY(!QFileInfo(ZenzaiModelManager::getSymlinkPath()).isSymLink());
+
+    writeModel("second", "2");
+    QVERIFY(ZenzaiModelManager::activateModel("second"));
+    QVERIFY(QFile::remove(ZenzaiModelManager::getModelPath("second")));
+    QVERIFY(!ZenzaiModelManager::deleteModel("second"));
+    QVERIFY(!QFileInfo(ZenzaiModelManager::getSymlinkPath()).isSymLink());
 }
 
 void ZenzaiModelManagementTest::testLabelFormatting() {

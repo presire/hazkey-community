@@ -18,7 +18,11 @@
 // 実際のhazkey-community-serverを起動せず、既定の10秒読取待機も使用しない
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <signal.h>
+#include <sys/resource.h>
+#include <sys/select.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -39,6 +43,7 @@
 #include "commands.pb.h"
 #include "config.pb.h"
 #include "hazkey_frontend_hooks.h"
+#include "hazkey_socket_path.h"
 #include "hazkey_server_connector.h"
 
 #define CHECK(cond)                                                        \
@@ -51,6 +56,38 @@
     } while (0)
 
 namespace {
+
+void socketPathSelectionUsesTrustedRuntimeDirectories() {
+    const uid_t uid = getuid();
+    const auto fallback = hazkey::frontend::resolveServerSocketPath("", uid);
+    CHECK(fallback.usedFallback);
+    CHECK(fallback.path == hazkey::frontend::serverSocketPath(
+                               hazkey::frontend::privateRuntimeDirectory(uid),
+                               uid));
+
+    char untrustedTemplate[] = "/tmp/hazkey-socket-path-test-U-XXXXXX";
+    char* untrustedDirectory = mkdtemp(untrustedTemplate);
+    CHECK(untrustedDirectory != nullptr);
+    CHECK(chmod(untrustedDirectory, 0755) == 0);
+    const auto untrusted = hazkey::frontend::resolveServerSocketPath(
+        untrustedDirectory, uid);
+    CHECK(untrusted.usedFallback);
+    CHECK(untrusted.path == fallback.path);
+
+    char trustedTemplate[] = "/tmp/hazkey-socket-path-test-T-XXXXXX";
+    char* trustedDirectory = mkdtemp(trustedTemplate);
+    CHECK(trustedDirectory != nullptr);
+    const auto trusted = hazkey::frontend::resolveServerSocketPath(
+        trustedDirectory, uid);
+    CHECK(!trusted.usedFallback);
+    CHECK(trusted.runtimeDirectoryTrusted);
+    CHECK(trusted.path == hazkey::frontend::serverSocketPath(
+                              trustedDirectory, uid));
+
+    std::filesystem::remove_all(untrustedDirectory);
+    std::filesystem::remove_all(trustedDirectory);
+    std::cout << "[PASS] socket path selects only trusted runtime directories\n";
+}
 
 /**
  * @brief 指定長を受信し切るまで読取を繰り返す
@@ -157,10 +194,10 @@ class DelayableFakeServer {
      * @brief 指定接続の応答遅延を設定する
      *
      * 受付順の接続番号ごとに遅延時間を持たせて、未設定の接続は即時応答のままにする
+     *
+     * 受付順の接続番号ごとに応答前の遅延時間を設定する
+     * 未設定の接続には直ちに応答する
      */
-
-    // 受付順の接続番号ごとに応答前の遅延時間を設定する
-    // 未設定の接続には直ちに応答する
     void setResponseDelayMs(int connIndex, int delayMs) {
         std::lock_guard<std::mutex> lock(mutex_);
         delaysMs_[connIndex] = delayMs;
@@ -192,6 +229,7 @@ class DelayableFakeServer {
      * @brief 閉じた接続が指定数に達するまで待つ
      *
      * 応答後に閉じた接続へ書き込む検証で、書込の前に相手の切断を確定させる
+     *
      * @return 2秒以内に達した場合はtrue
      */
     bool waitForClosedConnections(int count) {
@@ -623,6 +661,72 @@ void saveWithoutReconnectStillSendsOnLiveConnection() {
               << std::endl;
 }
 
+void transactionWorksWithHighSocketDescriptor() {
+    struct rlimit originalLimit {};
+    if (getrlimit(RLIMIT_NOFILE, &originalLimit) != 0) {
+        std::cout << "[SKIP] high-fd transaction: getrlimit failed\n";
+        return;
+    }
+
+    const rlim_t targetLimit = static_cast<rlim_t>(FD_SETSIZE + 2);
+    struct rlimit activeLimit = originalLimit;
+    bool raisedLimit = false;
+    if (activeLimit.rlim_cur < targetLimit) {
+        if (activeLimit.rlim_max < targetLimit) {
+            std::cout << "[SKIP] high-fd transaction: RLIMIT_NOFILE is too low\n";
+            return;
+        }
+        activeLimit.rlim_cur = targetLimit;
+        if (setrlimit(RLIMIT_NOFILE, &activeLimit) != 0) {
+            std::cout << "[SKIP] high-fd transaction: cannot raise RLIMIT_NOFILE\n";
+            return;
+        }
+        raisedLimit = true;
+    }
+
+    int targetFd = -1;
+    for (int candidate = FD_SETSIZE + 1;
+         candidate <= FD_SETSIZE + 1024 &&
+         static_cast<rlim_t>(candidate) < activeLimit.rlim_cur; ++candidate) {
+        errno = 0;
+        if (fcntl(candidate, F_GETFD) < 0 && errno == EBADF) {
+            targetFd = candidate;
+            break;
+        }
+    }
+    if (targetFd < 0) {
+        if (raisedLimit) {
+            setrlimit(RLIMIT_NOFILE, &originalLimit);
+        }
+        std::cout << "[SKIP] high-fd transaction: no free descriptor above FD_SETSIZE\n";
+        return;
+    }
+
+    char directoryTemplate[] = "/tmp/hazkey-high-fd-test-XXXXXX";
+    char* directory = mkdtemp(directoryTemplate);
+    CHECK(directory != nullptr);
+    const std::string root(directory);
+    const std::string socketPath = hazkey::frontend::serverSocketPath(
+        root, getuid());
+    CHECK(setenv("XDG_RUNTIME_DIR", root.c_str(), 1) == 0);
+    HazkeyServerConnector::setTestReadTimeoutSeconds(1);
+
+    {
+        DelayableFakeServer server(socketPath);
+        HazkeyServerConnector connector;
+        CHECK(connector.duplicateSocketToForTest(targetFd));
+        CHECK(connector.transact(makeCandidatesRequest()).has_value());
+        CHECK(server.connectionCount() == 1);
+    }
+
+    HazkeyServerConnector::clearTestHooks();
+    std::filesystem::remove_all(root);
+    if (raisedLimit) {
+        CHECK(setrlimit(RLIMIT_NOFILE, &originalLimit) == 0);
+    }
+    std::cout << "[PASS] transaction works with socket fd above FD_SETSIZE\n";
+}
+
 }  // namespace
 
 /**
@@ -634,6 +738,8 @@ int main() {
     // 検証Aではクライアントが閉じたソケットへ書き込むため、SIGPIPEを無視してEPIPEとして扱う
     signal(SIGPIPE, SIG_IGN);
 
+    socketPathSelectionUsesTrustedRuntimeDirectories();
+    transactionWorksWithHighSocketDescriptor();
     lateResponseNeverParsedAfterTimeout();
     forceRestartStillFiresForNeverSuccessfulConnector();
     forceRestartWindowGatesRecentSuccess();

@@ -68,11 +68,7 @@ class ProcessManager {
         // 親ディレクトリは、HazkeyServer.start()が作成する
 
         // ロックを試行
-        self.lockFd = open(lockFilePath, O_CREAT | O_RDWR, 0o600)
-        guard self.lockFd != -1 else {
-            NSLog("Failed to get lock info.")
-            throw ProcessManagerError.lockCreationFailed
-        }
+        self.lockFd = try openValidatedLock()
 
         if flock(lockFd, LOCK_EX | LOCK_NB) != 0 {
             // ロック失敗
@@ -88,7 +84,7 @@ class ProcessManager {
                 }
 
                 // プロセスを終了
-                if kill(oldPid, 0) == 0 {
+                if Self.isSameUserServer(pid: oldPid), kill(oldPid, 0) == 0 {
                     try terminateAnotherServer(pid: oldPid)
                 }
             } else {
@@ -99,7 +95,8 @@ class ProcessManager {
 
             // ロックを再試行
             close(lockFd)
-            self.lockFd = open(lockFilePath, O_CREAT | O_RDWR, 0o600)
+            self.lockFd = -1
+            self.lockFd = try openValidatedLock()
             if flock(self.lockFd, LOCK_EX | LOCK_NB) != 0 {
                 NSLog("Failed to acquire lock after terminating existing process.")
                 throw ProcessManagerError.anotherInstanceRunning
@@ -108,6 +105,26 @@ class ProcessManager {
 
         // 現在のプロセス情報を書き込む
         writeLockFile()
+    }
+
+    /// リンクや他ユーザのファイルをロックとして使わない
+    private func openValidatedLock() throws -> Int32 {
+        let fd = open(lockFilePath, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else {
+            if errno == EACCES {
+                // SELinuxの有効時に、ドメイン外 (unconfined_t) の変換サーバが作ったファイル (user_tmp_t) が残ると、ここで拒否される
+                NSLog("Permission denied for the lock file \(lockFilePath).")
+                NSLog("If SELinux is enforcing, stop every hazkey-community-server and delete \(lockFilePath) and the socket file next to it.")
+            }
+            throw ProcessManagerError.lockCreationFailed
+        }
+        var info = stat()
+        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_uid == uid, info.st_nlink == 1 else {
+            close(fd)
+            throw ProcessManagerError.lockCreationFailed
+        }
+        return fd
     }
 
     /// ロックファイルを読みPIDとバージョン一致を返す
@@ -131,8 +148,30 @@ class ProcessManager {
             .map { $0.trimmingCharacters(in: .whitespaces) }
         guard lines.count >= 2 else { return nil }
         let versionMatch = lines[1] == hazkeyVersion
-        guard let pid = Int32(lines[0]) else { return nil }
+        guard let pid = Int32(lines[0]), pid > 1, pid != self.pid else { return nil }
         return (pid, versionMatch)
+    }
+
+    /// PIDの再利用を考慮して、シグナル直前に実UIDと実行ファイル名を照合する
+    static func isSameUserServer(pid: pid_t) -> Bool {
+        guard pid > 1, pid != getpid(),
+            let status = try? String(contentsOfFile: "/proc/\(pid)/status", encoding: .utf8),
+            let uidLine = status.split(separator: "\n").first(where: { $0.hasPrefix("Uid:") }),
+            let realUID = uidLine.split(whereSeparator: { $0 == " " || $0 == "\t" }).dropFirst().first,
+            UInt32(realUID) == getuid() else { return false }
+        guard let executable = executablePath(of: "/proc/\(pid)/exe") else { return false }
+        // 上流版Hazkeyの"hazkey-server"は併存対象なので名前では一致させず、自身と同じ実行ファイルの場合だけ許可する
+        if URL(fileURLWithPath: executable).lastPathComponent == "hazkey-community-server" { return true }
+        return executable == executablePath(of: "/proc/self/exe")
+    }
+
+    private static func executablePath(of link: String) -> String? {
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let length = readlink(link, &buffer, buffer.count - 1)
+        guard length > 0, length < buffer.count - 1 else { return nil }
+        var executable = String(decoding: buffer.prefix(length).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        if executable.hasSuffix(" (deleted)") { executable.removeLast(" (deleted)".count) }
+        return executable
     }
 
     /// 自PIDとバージョンをロックファイルに書く
@@ -206,25 +245,33 @@ class ProcessManager {
         NSLog("Terminating existing server with PID \(pid)...")
 
         // [SIGTERM]を送って正常終了させる
+        guard Self.isSameUserServer(pid: pid) else {
+            NSLog("Refusing to signal unverified process \(pid)")
+            return
+        }
         if kill(pid, SIGTERM) != 0 { return }
 
         for attempt in 1...30 {  // 30回試行*0.1秒
             usleep(100_000)  // 0.1秒
 
             // プロセスがまだ動いているか確認
-            if kill(pid, 0) != 0 {
+            if !Self.isSameUserServer(pid: pid) || kill(pid, 0) != 0 {
                 NSLog("Existing server terminated successfully")
                 return
             }
 
             if attempt == 15 {  // [SIGKILL]を試行
+                guard Self.isSameUserServer(pid: pid) else {
+                    NSLog("Process identity changed; refusing SIGKILL for \(pid)")
+                    return
+                }
                 NSLog("Server didn't respond to SIGTERM, sending SIGKILL...")
                 kill(pid, SIGKILL)
             }
         }
 
         // 最終確認
-        if kill(pid, 0) == 0 {
+        if Self.isSameUserServer(pid: pid), kill(pid, 0) == 0 {
             NSLog("Failed to terminate existing server")
             throw ProcessManagerError.terminationFailed
         }

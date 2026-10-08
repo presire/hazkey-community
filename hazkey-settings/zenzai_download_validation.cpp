@@ -39,6 +39,13 @@ ModelDownloadValidation validateSizeAndHash(qint64 receivedBytes,
 
 }  // namespace
 
+bool downloadExceedsSizeLimit(qint64 receivedBytes, qint64 declaredTotalBytes,
+                              qint64 expectedBytes) {
+    const qint64 limit =
+        expectedBytes > 0 ? expectedBytes : kUnknownSizeModelDownloadLimitBytes;
+    return receivedBytes > limit || declaredTotalBytes > limit;
+}
+
 ModelDownloadValidation validateModelDownload(
     const QByteArray& downloadedData, qint64 expectedBytes,
     const QString& expectedSha256) {
@@ -73,7 +80,9 @@ bool finalizeModelDownload(const QString& modelPath, const QByteArray& downloade
         return false;
     }
 
-    if (QFile::exists(temporaryPath) && !QFile::remove(temporaryPath)) {
+    const QFileInfo staleInfo(temporaryPath);
+    if ((staleInfo.exists() || staleInfo.isSymLink()) &&
+        !QFile::remove(temporaryPath)) {
         setErrorMessage(errorMessage,
                         QStringLiteral("Failed to remove stale temporary file: %1")
                             .arg(temporaryPath));
@@ -81,7 +90,7 @@ bool finalizeModelDownload(const QString& modelPath, const QByteArray& downloade
     }
 
     QFile temporaryFile(temporaryPath);
-    if (!temporaryFile.open(QIODevice::WriteOnly)) {
+    if (!temporaryFile.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
         setErrorMessage(errorMessage, temporaryFile.errorString());
         removeTemporaryFile(temporaryPath);
         return false;

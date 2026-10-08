@@ -10,6 +10,7 @@
 #define IBUS_HAZKEY_HAZKEY_STATE_H
 
 #include <ibus.h>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -127,6 +128,20 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     void invalidateServerProfile() { serverProfileLoaded_ = false; }
     /** @brief 周囲テキストを捨てて状態を初期化する */
     void reset();
+    /** @brief 安全入力状態を設定し、有効化時は組成を確定せず破棄する */
+    void setSecureInput(bool secure);
+    /**
+     * @brief 安全入力への切替を、投入済みのワーカー処理より先に通知する
+     *
+     * setSecureInput()はワーカーのキューの後ろで実行されるため、それより前に積まれたキー処理が確定・学習しないよう、
+     * 実行前に参照させる
+     *
+     * @param secure 安全入力に切り替えるなら、true
+     * @note 任意のスレッドから呼べる
+     */
+    void requestSecureInput(bool secure) {
+        secureRequested_.store(secure, std::memory_order_release);
+    }
     /**
      * @brief 状態を初期化し、プロパティを登録して周囲テキスト取得を要求する
      */
@@ -821,6 +836,10 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * @param fn メインループ上で実行するUI操作
      */
     void postUi(std::function<void(HazkeyUi&)> fn);
+    /** @brief 安全入力中、または安全入力への切替を通知済みなら、true */
+    bool secureInputActive() const {
+        return secureInput_ || secureRequested_.load(std::memory_order_acquire);
+    }
     /**
      * @brief IBusキーシンボルをUTF-8文字列へ変換する
      *
@@ -872,6 +891,8 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     guint surroundingCursor_ = 0;               ///< 周囲テキスト先頭からの文字単位カーソル位置
     guint surroundingAnchor_ = 0;               ///< 周囲テキスト先頭からの文字単位アンカー位置
     bool hasSurroundingText_ = false;           ///< 周囲テキストを保持中か
+    bool secureInput_ = false;                  ///< 安全入力中は周囲テキストと確定を抑止する
+    std::atomic<bool> secureRequested_{false};  ///< メインループが通知した安全入力 (requestSecureInput())
     hazkey::frontend::CompositionSurroundingFreeze
         surroundingFreeze_;                     ///< 組成開始時に固定した周囲テキスト (preedit混入の防止)
     guint caps_ = 0;                            ///< 通知済みIBusケーパビリティ集合

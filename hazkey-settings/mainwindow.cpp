@@ -2479,6 +2479,13 @@ void MainWindow::requestZenzaiModelDeletion(const QString& key, QDialog* dialog)
 void MainWindow::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal) {
     // ガード: 古い応答からのシグナルを無視する
     if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) return;
+
+    if (currentDownload_ && downloadExceedsSizeLimit(bytesReceived, bytesTotal,
+                                                     currentDownloadExpectedBytes_)) {
+        downloadFileError_ = tr("The download exceeds the allowed model size.");
+        currentDownload_->abort();
+        return;
+    }
     if (!downloadProgressDialog_) return;
 
     if (bytesTotal <= 0) {
@@ -2516,6 +2523,12 @@ void MainWindow::onDownloadReadyRead() {
 
     const QByteArray chunk = currentDownload_->readAll();
     if (chunk.isEmpty()) return;
+    if (downloadExceedsSizeLimit(downloadReceivedBytes_ + chunk.size(), -1,
+                                 currentDownloadExpectedBytes_)) {
+        downloadFileError_ = tr("The download exceeds the allowed model size.");
+        currentDownload_->abort();
+        return;
+    }
     downloadHash_->addData(chunk);
     if (downloadTempFile_->write(chunk) != chunk.size()) {
         downloadFileError_ = downloadTempFile_->errorString();
@@ -2535,8 +2548,10 @@ bool MainWindow::ensureDownloadStream() {
     const QString temporaryPath = currentDownloadTempPath();
     if (temporaryPath.isEmpty()) return false;
     QDir().mkpath(QFileInfo(temporaryPath).absolutePath());
+    // 既存の一時ファイルやシンボリックリンクはリンク自体を外し、書き込み先を辿らせない
+    QFile::remove(temporaryPath);
     downloadTempFile_ = new QFile(temporaryPath);
-    if (!downloadTempFile_->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    if (!downloadTempFile_->open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
         downloadFileError_ = downloadTempFile_->errorString();
         delete downloadTempFile_;
         downloadTempFile_ = nullptr;
@@ -2570,10 +2585,7 @@ void MainWindow::discardPartialDownload() {
 
 void MainWindow::onDownloadFinished() {
     // ガード: 古い応答からのシグナルを無視する
-    if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) {
-        currentDownloadExpectedBytes_ = 0;
-        return;
-    }
+    if (qobject_cast<QNetworkReply*>(sender()) != currentDownload_) return;
 
     if (!currentDownload_) return;
 
@@ -2614,11 +2626,18 @@ void MainWindow::onDownloadFinished() {
     }
     const QByteArray tail = currentDownload_->readAll();
     if (!tail.isEmpty()) {
-        downloadHash_->addData(tail);
-        if (downloadTempFile_->write(tail) != tail.size() && downloadFileError_.isEmpty()) {
-            downloadFileError_ = downloadTempFile_->errorString();
+        if (downloadExceedsSizeLimit(downloadReceivedBytes_ + tail.size(), -1,
+                                     currentDownloadExpectedBytes_)) {
+            if (downloadFileError_.isEmpty()) {
+                downloadFileError_ = tr("The download exceeds the allowed model size.");
+            }
+        } else {
+            downloadHash_->addData(tail);
+            if (downloadTempFile_->write(tail) != tail.size() && downloadFileError_.isEmpty()) {
+                downloadFileError_ = downloadTempFile_->errorString();
+            }
+            downloadReceivedBytes_ += tail.size();
         }
-        downloadReceivedBytes_ += tail.size();
     }
     currentDownload_->deleteLater();
     currentDownload_ = nullptr;

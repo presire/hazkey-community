@@ -27,7 +27,7 @@ jobs:
       RPM_GPG_PASSPHRASE: ${{ secrets.RPM_GPG_PASSPHRASE }}
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           pattern: "*-hazkey-*"
           path: packages
@@ -77,12 +77,12 @@ jobs:
           cat SHA256SUMS
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: 'packages/*-hazkey-*'
 
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: packages/*
           generate_release_notes: true

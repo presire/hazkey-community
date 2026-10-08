@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 
 // バックエンドプローブ用の隠し再実行モード
 //
@@ -10,6 +11,9 @@ import Foundation
 if CommandLine.arguments.contains("--probe-backends") {
     runBackendProbeAndExit()
 }
+
+umask(0o077)
+HazkeyServerConfig.tightenPrivateDirectories()
 
 do {
     // サーバを起動する

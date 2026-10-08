@@ -36,7 +36,7 @@ enum BackendProbeOutcome: Equatable {
 ///
 /// [crashed]、[failedExit]、[timedOut]の場合に真を返す
 ///
-/// [spawnFailed]とnilはフォールバックではなく、プローブ導入前と同様にバックエンドを直接読み込む
+/// プローブを起動できない場合も安全性を確認できないためフォールバックする
 ///
 /// CPU専用への切り替えは[zenzai_gpu_probe_fallback]として公開し、設定GUIが無言の性能低下を警告できるようにする
 ///
@@ -44,9 +44,9 @@ enum BackendProbeOutcome: Equatable {
 /// - Returns: CPU専用で実行する場合に真を返す
 func zenzaiGPUFallbackActive(_ outcome: BackendProbeOutcome?) -> Bool {
     switch outcome {
-    case .crashed, .failedExit, .timedOut:
+    case .crashed, .failedExit, .timedOut, .spawnFailed:
         return true
-    case .success, .spawnFailed, nil:
+    case .success, nil:
         return false
     }
 }
@@ -153,22 +153,24 @@ func probeVulkanBackendsSafely(
     return .success
 }
 
-/// Vulkan用を除いたバックエンドの一時ディレクトリを構築する
-///
-/// baseDirectory内のエントリからVulkan用だけを除外して、一時ディレクトリへシンボリックリンクを作成する
-///
-/// 除外対象名はGGMLが走査する[libggml-vulkan-*] / [libggml-vulkan.so]に一致させる (ggml-backend-reg.cppのggml_backend_load_best()を参照する)
-///
-/// GGMLは候補ディレクトリ内をすべてdlopenするため、個別名を除外するAPIがなく、走査対象から隠すことがVulkanの再読み込みを避ける唯一の方法である
-///
-/// 参照元ディレクトリはbaseDirectory、[GGML_BACKEND_DIR]、systemLibraryPath配下のlibllama/backends/の順に解決する
-///
-/// ディレクトリを読めない場合またはVulkan以外のエントリが残らない場合はnilを返す
-///
-/// - Parameters:
-///   - baseDirectory: 走査元のバックエンドディレクトリ (nilの場合は環境変数と既定配置から解決する)
-///   - fileManager: ファイル操作に使用するマネージャ
-/// - Returns: 構築した一時ディレクトリのパス、構築できない場合はnilを返す
+private final class CPUBackendDirectoryCache: @unchecked Sendable {
+    static let shared = CPUBackendDirectoryCache()
+    let lock = NSLock()
+    var paths: [String: String] = [:]
+
+    private init() {
+        atexit { CPUBackendDirectoryCache.shared.removeAll() }
+    }
+
+    func removeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        for path in paths.values { try? FileManager.default.removeItem(atPath: path) }
+        paths.removeAll()
+    }
+}
+
+/// CPUライブラリだけを私有の一時ディレクトリへリンクし、失敗時は読み込みを禁止する
 func cpuOnlyBackendDirectory(
     baseDirectory: String? = nil,
     fileManager: FileManager = .default
@@ -177,28 +179,44 @@ func cpuOnlyBackendDirectory(
         baseDirectory
         ?? ProcessInfo.processInfo.environment["GGML_BACKEND_DIR"]
         ?? (systemLibraryPath + "/libllama/backends/")
+    let cache = CPUBackendDirectoryCache.shared
+    cache.lock.lock()
+    defer { cache.lock.unlock() }
+    let cacheKey = sourceDirectory + "\n" + fileManager.temporaryDirectory.path
+    if let cached = cache.paths[cacheKey] { return cached }
     guard let entries = try? fileManager.contentsOfDirectory(atPath: sourceDirectory) else {
+        NSLog("[BackendProbe] Cannot read CPU backend source; disabling Zenzai.")
         return nil
     }
     let keptEntries = entries.filter {
-        !($0.hasPrefix("libggml-vulkan-") || $0 == "libggml-vulkan.so")
+        ($0.hasPrefix("libggml-cpu-") && $0.hasSuffix(".so")) || $0 == "libggml-cpu.so"
     }
-    guard !keptEntries.isEmpty else { return nil }
-
-    let stagingDirectory = fileManager.temporaryDirectory
-        .appendingPathComponent("hazkey-community-cpu-only-backends-\(ProcessInfo.processInfo.processIdentifier)")
-    try? fileManager.removeItem(at: stagingDirectory)
-    guard (try? fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)) != nil else {
+    guard !keptEntries.isEmpty else {
+        NSLog("[BackendProbe] No CPU backend libraries found; disabling Zenzai.")
         return nil
     }
 
-    let sourceURL = URL(fileURLWithPath: sourceDirectory, isDirectory: true)
-    for entry in keptEntries {
-        try? fileManager.createSymbolicLink(
-            at: stagingDirectory.appendingPathComponent(entry),
-            withDestinationURL: sourceURL.appendingPathComponent(entry)
-        )
+    var template = Array(fileManager.temporaryDirectory
+        .appendingPathComponent("hazkey-community-cpu-only-backends-XXXXXX").path.utf8CString)
+    guard let created = mkdtemp(&template) else {
+        NSLog("[BackendProbe] mkdtemp failed: \(errno); disabling Zenzai.")
+        return nil
     }
+    let stagingDirectory = URL(fileURLWithPath: String(cString: created), isDirectory: true)
+
+    let sourceURL = URL(fileURLWithPath: sourceDirectory, isDirectory: true)
+    do {
+        for entry in keptEntries {
+            try fileManager.createSymbolicLink(
+                at: stagingDirectory.appendingPathComponent(entry),
+                withDestinationURL: sourceURL.appendingPathComponent(entry))
+        }
+    } catch {
+        NSLog("[BackendProbe] Failed to stage CPU backends: \(error); disabling Zenzai.")
+        try? fileManager.removeItem(at: stagingDirectory)
+        return nil
+    }
+    cache.paths[cacheKey] = stagingDirectory.path
     return stagingDirectory.path
 }
 
@@ -213,6 +231,12 @@ func cpuOnlyZenzaiDevices() -> [GGMLBackendDevice] {
     guard let directory = cpuOnlyBackendDirectory() else {
         NSLog("[BackendProbe] Could not build a Vulkan-free backend directory; disabling Zenzai for this session.")
         return []
+    }
+    let additionalBackend = ProcessInfo.processInfo.environment["GGML_BACKEND_PATH"]
+    unsetenv("GGML_BACKEND_PATH")
+    defer {
+        if let additionalBackend { setenv("GGML_BACKEND_PATH", additionalBackend, 1) }
+        CPUBackendDirectoryCache.shared.removeAll()
     }
     return getZenzaiDevices(backendDirectoryOverride: directory).filter { $0.type == .cpu }
 }
@@ -278,8 +302,8 @@ func loadZenzaiDevicesSafely() -> (devices: [GGMLBackendDevice], probeOutcome: B
     case .spawnFailed(let reason):
         NSLog(
             "[BackendProbe] Failed to spawn backend probe (\(reason)); "
-                + "loading backends directly without the safety check."
+                + "using CPU backends only."
         )
-        return (getZenzaiDevices(), outcome)
+        return (cpuOnlyZenzaiDevices(), outcome)
     }
 }

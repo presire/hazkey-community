@@ -563,19 +563,21 @@ bool ZenzaiModelManager::deactivateModel() {
 
 bool ZenzaiModelManager::deleteModel(const QString& key) {
     QString path = getModelPath(key);
+    // 先に切れた管理対象リンクを掃除しておく (対象が既に無い場合の孤立リンクも残さない)
+    const bool wasActive = getActiveModelKey() == key;
     if (!QFile::exists(path)) {
         invalidateCachedSHA256(path);
         return false;
     }
 
-    // 有効化中のモデルなら先にシンボリックリンクを外す
-    if (getActiveModelKey() == key) {
-        deactivateModel();
-    }
-
     const bool removed = QFile::remove(path);
     if (removed) {
         invalidateCachedSHA256(path);
+        // 有効化中のモデルを消した場合は、切れたシンボリックリンクを残さず外す
+        // (ファイル削除に失敗したときは有効化状態を保つため、削除成功後に外す)
+        if (wasActive) {
+            deactivateModel();
+        }
     }
     return removed;
 }
@@ -641,12 +643,22 @@ void ZenzaiModelManager::migrateLegacyModel(
 QString ZenzaiModelManager::getActiveModelKey() {
     QString link = getSymlinkPath();
     QFileInfo info(link);
-    if (!info.exists() || !info.isSymLink()) {
+    // exists()はリンク先を辿るため、切れたリンクを見落とさないようisSymLink()で判定する
+    if (!info.isSymLink()) {
         return QString();
     }
 
     QString target = info.symLinkTarget();
     QFileInfo targetInfo(target);
+    if (!targetInfo.exists()) {
+        // リンク先が無い切れたリンクは「有効なモデル無し」として扱う
+        // 管理対象ディレクトリ内を指すものだけ、安全に掃除する (外部のカスタムパスは触らない)
+        if (QDir::cleanPath(targetInfo.absolutePath()) ==
+            QDir::cleanPath(getModelsDir())) {
+            QFile::remove(link);
+        }
+        return QString();
+    }
     QString filename = targetInfo.fileName();
     if (filename.endsWith(".gguf")) {
         return filename.left(filename.length() - 5);

@@ -1,4 +1,6 @@
 import Foundation
+import Glibc
+import CHazkeyLinux
 
 /// サーバが実装するソケットイベントの委譲先
 ///
@@ -25,6 +27,15 @@ protocol SocketManagerDelegate: AnyObject {
     ///   - manager: イベント元のSocketManager
     ///   - clientFd: 切断したクライアントfd
     func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32)
+    /// 接続上限時に、非活動の接続を閉じて枠を回収してよいかを返す
+    ///
+    /// 未確定の組成を持つ接続を閉じると入力が失われるため、委譲先が判断する
+    ///
+    /// - Parameters:
+    ///   - manager: 問い合わせ元のSocketManager
+    ///   - clientFd: 回収候補のクライアントfd
+    /// - Returns: 閉じてよい場合はtrue
+    func socketManager(_ manager: SocketManager, canReclaimIdleClient clientFd: Int32) -> Bool
 }
 
 /// 同時接続クライアントの受入ポリシー
@@ -82,6 +93,11 @@ class SocketManager {
     ///
     /// poll集合と接続数の根拠になる
     private var clientFds: [Int32] = []
+    private var lastActivity: [Int32: ContinuousClock.Instant] = [:]
+    var activityClock: () -> ContinuousClock.Instant = { .now }
+    static let idleClientTimeout: Duration = .seconds(60)
+    static let requestTimeout: Duration = .milliseconds(2000)
+    static let responseTimeout: Duration = .milliseconds(10000)
     /// 待ち受けるUNIXドメインソケットのパス
     ///
     /// 初期化時に受け取り以後は変わらない
@@ -90,6 +106,7 @@ class SocketManager {
     ///
     /// 初期値は無効値の対であり書込端のクローズがループ停止の合図になる
     private var pipeFds: [Int32] = [-1, -1]
+    private var ownsSocketPath = false
 
     /// ソケットパスを保持して初期化する
     ///
@@ -113,16 +130,24 @@ class SocketManager {
     ///
     /// - Throws: 作成とbindと権限設定とlistenとパイプ作成の失敗時に、SocketError.readFailedを送出する
     func setupSocket() throws {
+        var addr = sockaddr_un()
+        guard socketPath.utf8.count < MemoryLayout.size(ofValue: addr.sun_path),
+            !socketPath.utf8.contains(0) else {
+            throw SocketError.readFailed("Socket path is too long or contains NUL", ENAMETOOLONG)
+        }
         unlink(socketPath)
 
-        serverFd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        serverFd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue | SOCK_CLOEXEC.rawValue), 0)
         guard serverFd != -1 else {
             throw SocketError.readFailed("Failed to create socket", errno)
         }
 
-        var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        strncpy(&addr.sun_path.0, socketPath, MemoryLayout.size(ofValue: addr.sun_path))
+        socketPath.withCString { source in
+            withUnsafeMutableBytes(of: &addr.sun_path) { destination in
+                destination.copyBytes(from: UnsafeRawBufferPointer(start: source, count: socketPath.utf8.count + 1))
+            }
+        }
 
         let addrSize = socklen_t(MemoryLayout.size(ofValue: addr))
         let bindResult = withUnsafePointer(to: &addr) {
@@ -134,6 +159,7 @@ class SocketManager {
         guard bindResult != -1 else {
             throw SocketError.readFailed("Failed to bind socket", errno)
         }
+        ownsSocketPath = true
 
         guard chmod(socketPath, 0o600) != -1 else {
             throw SocketError.readFailed("Failed to set socket permissions", errno)
@@ -151,7 +177,7 @@ class SocketManager {
         }
 
         var fds: [Int32] = [0, 0]
-        guard pipe(&fds) != -1 else {
+        guard hazkey_pipe_cloexec(&fds) != -1 else {
             throw SocketError.readFailed("Failed to bind pipe socket", errno)
         }
         pipeFds = fds
@@ -265,20 +291,29 @@ class SocketManager {
     ///
     /// 上限超過時は即時クローズで拒否して、それ以外は非ブロッキング化して追加し委譲先へ通知する
     ///
-    /// 各接続は独自セッションを保ち、新規接続が既存クライアントを追い出すことはない
+    /// 上限時は60秒以上非活動で、委譲先が回収を許可した接続のうち最古の1件だけを回収する
     ///
     /// - Note: pollループを介さずテストが実際のaccept経路を実行できるよう、internalにしている
     func handleNewConnection() {
-        var clientAddr = sockaddr()
-        var clientLen: socklen_t = socklen_t(MemoryLayout<sockaddr>.size)
-        let newClientFd = accept(serverFd, &clientAddr, &clientLen)
+        let newClientFd = hazkey_accept_cloexec(serverFd)
 
         if newClientFd != -1 {
-            // マルチクライアントの契約である
-            //
-            // 各接続は独自セッションを保ち新規接続が既存クライアントを追い出すことはない
-            //
-            // 上限超過時は新規接続を即時クローズで拒否する
+            var peerUID: uid_t = 0
+            guard hazkey_peer_uid(newClientFd, &peerUID) == 0, peerUID == getuid() else {
+                NSLog("Rejecting unauthenticated peer on fd \(newClientFd)")
+                close(newClientFd)
+                return
+            }
+            let now = activityClock()
+            if clientFds.count == Self.maxClientCount,
+                let oldest = clientFds.filter({ fd in
+                    guard let activeAt = lastActivity[fd], now - activeAt >= Self.idleClientTimeout
+                    else { return false }
+                    return delegate?.socketManager(self, canReclaimIdleClient: fd) ?? true
+                }).min(by: { (lastActivity[$0] ?? now) < (lastActivity[$1] ?? now) })
+            {
+                closeClient(oldest)
+            }
             if !ClientSessionLimit.accepts(currentCount: clientFds.count) {
                 NSLog(
                     "Client limit reached (\(Self.maxClientCount)); rejecting connection \(newClientFd)"
@@ -298,6 +333,7 @@ class SocketManager {
                 close(newClientFd)
             } else {
                 clientFds.append(newClientFd)
+                lastActivity[newClientFd] = now
                 delegate?.socketManager(self, clientDidConnect: newClientFd)
             }
         }
@@ -310,16 +346,18 @@ class SocketManager {
     /// 委譲先の処理結果に4バイト長を付けて書き込みfsyncする
     ///
     /// - Parameter clientFd: 処理対象のクライアントfd
-    private func handleClientData(_ clientFd: Int32) {
+    func handleClientData(_ clientFd: Int32) {
+        let readDeadline = ContinuousClock.now.advanced(by: Self.requestTimeout)
+        lastActivity[clientFd] = activityClock()
         do {
             // クライアントのリクエストを処理する
             let maxMessageSize: UInt32 = 1024 * 1024  // 1[MB]の上限
 
             // メッセージ長ヘッダを読み込む
             debugLog("Reading data from client \(clientFd)...")
-            let lengthData = try readData(from: clientFd, count: 4)
+            let lengthData = try readData(from: clientFd, count: 4, deadline: readDeadline)
             let readLen = lengthData.withUnsafeBytes {
-                $0.load(as: UInt32.self).bigEndian
+                $0.loadUnaligned(as: UInt32.self).bigEndian
             }
             debugLog("Message length: \(readLen)")
 
@@ -329,7 +367,7 @@ class SocketManager {
             }
 
             // メッセージボディを読み込む
-            let query = try readData(from: clientFd, count: Int(readLen))
+            let query = try readData(from: clientFd, count: Int(readLen), deadline: readDeadline)
             debugLog("Successfully read \(query.count) bytes")
 
             // 処理してレスポンスを返す
@@ -340,12 +378,14 @@ class SocketManager {
             // レスポンス長を書き込む
             var writeLen = UInt32(response.count).bigEndian
             let lengthHeader = withUnsafeBytes(of: &writeLen) { Data($0) }
-            try writeData(to: clientFd, data: lengthHeader)
+            let writeDeadline = ContinuousClock.now.advanced(by: Self.responseTimeout)
+            try writeData(to: clientFd, data: lengthHeader, deadline: writeDeadline)
 
             // レスポンスボディを書き込む
-            try writeData(to: clientFd, data: response)
+            try writeData(to: clientFd, data: response, deadline: writeDeadline)
 
             fsync(clientFd)
+            lastActivity[clientFd] = activityClock()
             debugLog("Successfully wrote response")
 
         } catch let error as SocketError {
@@ -394,6 +434,7 @@ class SocketManager {
         NSLog("Closing client connection: \(clientFd)")
         close(clientFd)
         clientFds.removeAll { $0 == clientFd }
+        lastActivity.removeValue(forKey: clientFd)
         delegate?.socketManager(self, clientDidDisconnect: clientFd)
     }
 
@@ -405,12 +446,18 @@ class SocketManager {
             close(clientFd)
         }
         clientFds.removeAll()
+        lastActivity.removeAll()
+        for fd in pipeFds where fd != -1 { close(fd) }
+        pipeFds = [-1, -1]
 
         if serverFd != -1 {
             close(serverFd)
             serverFd = -1
         }
 
-        unlink(socketPath)
+        if ownsSocketPath {
+            unlink(socketPath)
+            ownsSocketPath = false
+        }
     }
 }

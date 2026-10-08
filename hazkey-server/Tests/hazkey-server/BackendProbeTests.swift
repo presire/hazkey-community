@@ -7,6 +7,34 @@ import XCTest
 /// 実際のVulkan / GGMLバックエンドローダーの代わりに、/bin/shフィクスチャを使用して、backendProbe.swiftのクラッシュ隔離機構を検証する
 /// これにより、GPUハードウェアやドライバ状態に依存せず、終了・シグナル・タイムアウトの分類ロジックを確認できる
 final class BackendProbeTests: XCTestCase {
+    private final class FailingLinkFileManager: FileManager, @unchecked Sendable {
+        override func createSymbolicLink(at url: URL, withDestinationURL destURL: URL) throws {
+            throw POSIXError(.EACCES)
+        }
+    }
+
+    func testCPUBackendDirectoryIsPrivateUnpredictableAndCached() throws {
+        let root = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["libggml-cpu-x64.so", "libggml-vulkan.so", "libggml-cuda.so"] {
+            try Data().write(to: root.appendingPathComponent(name))
+        }
+        let directory = try XCTUnwrap(cpuOnlyBackendDirectory(baseDirectory: root.path))
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        XCTAssertEqual(cpuOnlyBackendDirectory(baseDirectory: root.path), directory)
+        XCTAssertFalse(directory.hasSuffix("-\(getpid())"))
+        var info = stat()
+        XCTAssertEqual(lstat(directory, &info), 0)
+        XCTAssertEqual(info.st_mode & 0o777, 0o700)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory), ["libggml-cpu-x64.so"])
+    }
+
+    func testCPUBackendDirectoryFailsClosedOnSymlinkFailure() throws {
+        let root = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data().write(to: root.appendingPathComponent("libggml-cpu-x64.so"))
+        XCTAssertNil(cpuOnlyBackendDirectory(baseDirectory: root.path, fileManager: FailingLinkFileManager()))
+    }
 
     // MARK: Vulkan環境変数の上書き判定
 
@@ -70,11 +98,11 @@ final class BackendProbeTests: XCTestCase {
         XCTAssertTrue(zenzaiGPUFallbackActive(.crashed(signal: SIGILL)))
         XCTAssertTrue(zenzaiGPUFallbackActive(.failedExit(code: 1)))
         XCTAssertTrue(zenzaiGPUFallbackActive(.timedOut))
+        XCTAssertTrue(zenzaiGPUFallbackActive(.spawnFailed("reason")))
     }
 
     func testGPUFallbackInactiveForSafeOrUnhandledOutcomes() {
         XCTAssertFalse(zenzaiGPUFallbackActive(nil))
         XCTAssertFalse(zenzaiGPUFallbackActive(.success))
-        XCTAssertFalse(zenzaiGPUFallbackActive(.spawnFailed("reason")))
     }
 }

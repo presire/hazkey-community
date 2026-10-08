@@ -36,7 +36,9 @@
 #include "composing_cursor_view.h"
 #include "hazkey_frontend.h"
 #include "hazkey_frontend_hooks.h"
+#include "hazkey_candidate_selection.h"
 #include "hazkey_state.h"
+#include "hazkey_utf8.h"
 #include "live_convert_mode.h"
 #include "serial_task_executor.h"
 
@@ -474,6 +476,43 @@ void testSelectionLabels() {
     assert(HazkeyState::selectionLabelForIndex(10).empty());
 
     std::cout << "[PASS] Fcitx-compatible candidate selection labels\n";
+}
+
+void testCandidatePageSizeMatchesSelectionLabels() {
+    assert(hazkey::ibus::clampCandidatePageSize(0) == 1);
+    assert(hazkey::ibus::clampCandidatePageSize(10) == 10);
+    assert(hazkey::ibus::clampCandidatePageSize(16) ==
+           hazkey::ibus::kCandidateSelectionLabelCount);
+    const int pageSize = hazkey::ibus::clampCandidatePageSize(16);
+    assert(HazkeyState::pageLocalToGlobalIndex(pageSize, 20, 0, 9) == 9);
+    assert(HazkeyState::pageLocalToGlobalIndex(pageSize, 20, 0, 10) == -1);
+
+    std::cout << "[PASS] candidate page size matches selection labels\n";
+}
+
+void testSecureInputContentType() {
+#if IBUS_CHECK_VERSION(1, 5, 4)
+    assert(HazkeyFrontend::isSecureInputContentType(
+        IBUS_INPUT_PURPOSE_PASSWORD, 0));
+    assert(HazkeyFrontend::isSecureInputContentType(IBUS_INPUT_PURPOSE_PIN, 0));
+#endif
+#if IBUS_CHECK_VERSION(1, 5, 26)
+    assert(HazkeyFrontend::isSecureInputContentType(
+        0, IBUS_INPUT_HINT_PRIVATE));
+#endif
+    assert(!HazkeyFrontend::isSecureInputContentType(0, 0));
+
+    std::cout << "[PASS] secure input content-type decision\n";
+}
+
+void testInvalidUtf8IsMadeValid() {
+    const std::string invalid = std::string("before") + "\xff" + "after";
+    const std::string valid = hazkey::ibus::makeValidUtf8(invalid);
+    assert(g_utf8_validate(valid.c_str(), -1, nullptr));
+    assert(valid.starts_with("before"));
+    assert(valid.ends_with("after"));
+
+    std::cout << "[PASS] invalid UTF-8 is replaced before IBus rendering\n";
 }
 
 /**
@@ -1005,6 +1044,16 @@ class SurroundingFakeServer {
         revision_ = revision;
     }
 
+    int prefixCompletions() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return prefixCompletions_;
+    }
+
+    std::string romaji() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return romaji_;
+    }
+
     std::optional<std::pair<std::string, int>> lastContext() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (contexts_.empty()) {
@@ -1105,8 +1154,11 @@ class SurroundingFakeServer {
         response.set_status(hazkey::SUCCESS);
         response.set_config_revision(revision_);
         switch (request.payload_case()) {
-            case hazkey::RequestEnvelope::kNewComposingText:
             case hazkey::RequestEnvelope::kPrefixComplete:
+                ++prefixCompletions_;
+                romaji_.clear();
+                break;
+            case hazkey::RequestEnvelope::kNewComposingText:
                 romaji_.clear();
                 break;
             case hazkey::RequestEnvelope::kSetContext:
@@ -1156,6 +1208,7 @@ class SurroundingFakeServer {
     std::thread thread_;
     std::mutex mutex_;
     std::string romaji_;
+    int prefixCompletions_ = 0;
     std::vector<std::pair<std::string, int>> contexts_;
     bool rightContext_ = true;
     uint64_t revision_ = 1;
@@ -1296,6 +1349,69 @@ void testSurroundingTextWiring() {
     }
     rmdir(root);
     std::cout << "surrounding text wiring: OK\n";
+}
+
+/**
+ * @brief 安全入力への切替より前に積まれたキー処理が、確定・学習しないことを検証する
+ *
+ * メインループのsetContentType()は、ワーカーのキューに積まれた[Return]より先にrequestSecureInput()を呼ぶ
+ * その後に実行される[Return]は処理されずに未処理を返し、サーバへ確定 (学習) を送らず、組成を破棄する
+ */
+void testQueuedKeyAfterSecureRequestIsDiscarded() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-secure-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS | IBUS_CAP_PROPERTY);
+            state->focusIn();
+        });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_i);
+        assert(server.romaji() == "ai");
+
+        // メインループ上の切替 (setContentType()) は、積まれた[Return]の実行より先に通知する
+        state->requestSecureInput(true);
+        gboolean handled = TRUE;
+        runOnWorker(executor, [&] { handled = state->processKeyEvent(IBUS_KEY_Return, 0, 0); });
+        assert(handled == FALSE);
+        assert(server.prefixCompletions() == 0);
+        assert(server.romaji().empty());
+        assert(!state->ingressSnapshot().composing);
+
+        // 安全入力中のフォーカスアウトも、組成を確定しない
+        runOnWorker(executor, [&] {
+            state->focusOut();
+            state->setSecureInput(true);
+        });
+        assert(server.prefixCompletions() == 0);
+
+        // 解除後は通常どおり確定できる
+        state->requestSecureInput(false);
+        runOnWorker(executor, [&] {
+            state->setSecureInput(false);
+            state->focusIn();
+        });
+        typeKey(executor, state, IBUS_KEY_a);
+        typeKey(executor, state, IBUS_KEY_Return);
+        assert(server.prefixCompletions() == 1);
+
+        runOnWorker(executor, [&] { state->focusOut(); });
+        executor.shutdown();
+    }
+    rmdir(root);
+    std::cout << "queued key after secure request is discarded: OK\n";
 }
 
 /**
@@ -1511,6 +1627,9 @@ int main() {
     testLoneShiftModifierState();
     testAltShiftSpaceOrTabPredicate();
     testSelectionLabels();
+    testCandidatePageSizeMatchesSelectionLabels();
+    testSecureInputContentType();
+    testInvalidUtf8IsMadeValid();
     testCapabilityAvailability();
     testLookupPageArithmetic();
     testConsumeDecision();
@@ -1521,6 +1640,7 @@ int main() {
     testSurroundingGateConditions();
     testSurroundingGateMachine();
     testSurroundingTextWiring();
+    testQueuedKeyAfterSecureRequestIsDiscarded();
     testFrontendForwardsReleaseOfFrameworkForwardedPress();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;

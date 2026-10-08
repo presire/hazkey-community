@@ -16,9 +16,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <chrono>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <optional>
@@ -161,16 +163,9 @@ HazkeyServerConnector::~HazkeyServerConnector() {
  * @brief サーバのUNIXドメインソケットパスを返す
  * @return XDG_RUNTIME_DIR または /tmp配下のソケットパス
  */
-std::string HazkeyServerConnector::getSocketPath() {
-    const char* xdg_runtime_dir = std::getenv("XDG_RUNTIME_DIR");
-    uid_t uid = getuid();
-    std::string sockname =
-        "hazkey-community-server." + std::to_string(uid) + ".sock";
-    if (xdg_runtime_dir && xdg_runtime_dir[0] != '\0') {
-        return std::string(xdg_runtime_dir) + "/" + sockname;
-    } else {
-        return "/tmp/" + sockname;
-    }
+hazkey::frontend::ServerSocketPath HazkeyServerConnector::getSocketPath() {
+    return hazkey::frontend::resolveServerSocketPath(
+        std::getenv("XDG_RUNTIME_DIR"), getuid());
 }
 
 /**
@@ -198,22 +193,42 @@ void HazkeyServerConnector::startHazkeyServer(bool force_restart) {
  *          失敗時は呼び出し側が再接続を担う
  */
 bool writeAll(int fd, const void* data, size_t len) {
+    using Clock = std::chrono::steady_clock;
+    const auto deadline = Clock::now() + std::chrono::seconds(2);
     size_t sent = 0;
     while (sent < len) {
+        if (Clock::now() >= deadline) {
+            HAZKEY_LOG_ERROR() << "write timeout";
+            return false;
+        }
         ssize_t n = write(fd, (const char*)data + sent, len - sent);
         if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                fd_set wfds;
-                FD_ZERO(&wfds);
-                FD_SET(fd, &wfds);
-                timeval tv = {2, 0};  // 書き込み待機の上限は2秒
-                int r = select(fd + 1, NULL, &wfds, NULL, &tv);
-                if (r <= 0) {
+                const auto remaining = deadline - Clock::now();
+                if (remaining <= Clock::duration::zero()) {
                     HAZKEY_LOG_ERROR() << "write timeout";
+                    return false;
+                }
+                const auto timeout = std::chrono::ceil<std::chrono::milliseconds>(
+                    remaining);
+                pollfd pfd{fd, POLLOUT, 0};
+                const int result = poll(
+                    &pfd, 1, static_cast<int>(timeout.count()));
+                if (result == 0) {
+                    HAZKEY_LOG_ERROR() << "write timeout";
+                    return false;
+                }
+                if (result < 0 && errno != EINTR) {
                     return false;
                 }
                 continue;
             }
+            return false;
+        }
+        if (n == 0) {
             return false;
         }
         sent += n;
@@ -233,18 +248,35 @@ bool writeAll(int fd, const void* data, size_t len) {
  *          応答遅延上限を超えた到着は停止と区別しない
  */
 bool readAll(int fd, void* data, size_t len, int timeoutSeconds) {
+    using Clock = std::chrono::steady_clock;
+    const auto deadline = Clock::now() + std::chrono::seconds(timeoutSeconds);
     size_t recved = 0;
     while (recved < len) {
+        if (Clock::now() >= deadline) {
+            HAZKEY_LOG_ERROR() << "read timeout";
+            return false;
+        }
         ssize_t n = read(fd, (char*)data + recved, len - recved);
         if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(fd, &rfds);
-                timeval tv = {timeoutSeconds, 0};  // 読み取り待機の上限
-                int r = select(fd + 1, &rfds, NULL, NULL, &tv);
-                if (r <= 0) {
+                const auto remaining = deadline - Clock::now();
+                if (remaining <= Clock::duration::zero()) {
                     HAZKEY_LOG_ERROR() << "read timeout";
+                    return false;
+                }
+                const auto timeout = std::chrono::ceil<std::chrono::milliseconds>(
+                    remaining);
+                pollfd pfd{fd, POLLIN, 0};
+                const int result = poll(
+                    &pfd, 1, static_cast<int>(timeout.count()));
+                if (result == 0) {
+                    HAZKEY_LOG_ERROR() << "read timeout";
+                    return false;
+                }
+                if (result < 0 && errno != EINTR) {
                     return false;
                 }
                 continue;
@@ -268,13 +300,48 @@ static bool peerClosedOrPending(int fd) {
     return poll(&pfd, 1, 0) != 0;
 }
 
+/** @brief 指定期限まで記述子の準備完了をpollで待つ */
+bool waitForPollEvent(int fd, short events,
+                      std::chrono::steady_clock::time_point deadline) {
+    while (true) {
+        const auto remaining = deadline - std::chrono::steady_clock::now();
+        if (remaining <= std::chrono::steady_clock::duration::zero()) {
+            return false;
+        }
+        const auto timeout = std::chrono::ceil<std::chrono::milliseconds>(
+            remaining);
+        pollfd pfd{fd, events, 0};
+        const int result = poll(&pfd, 1, static_cast<int>(timeout.count()));
+        if (result > 0) {
+            return pfd.revents != 0;
+        }
+        if (result == 0 || errno != EINTR) {
+            return false;
+        }
+    }
+}
+
+/** @brief 接続先ソケットの所有者UIDが現在のユーザかを検証する */
+bool peerUidMatches(int fd) {
+    struct ucred credentials {};
+    socklen_t length = sizeof(credentials);
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) != 0) {
+        HAZKEY_LOG_ERROR() << "Failed to read server peer credentials";
+        return false;
+    }
+    if (length != sizeof(credentials) || credentials.uid != getuid()) {
+        HAZKEY_LOG_ERROR() << "Rejected server with unexpected peer credentials";
+        return false;
+    }
+    return true;
+}
+
 /**
  * @brief サーバへの非ブロッキング接続を確立する
  * @details 接続失敗時は、通常起動または必要に応じた強制再起動を試みる
  */
 void HazkeyServerConnector::connectServer() {
     lastSentContext_.reset();  // 新しい接続のサーバ側セッションは文脈を持たない
-    std::string socket_path = getSocketPath();
 
     // 通常起動は最初の失敗後に1回だけ試す
     constexpr int ATTEMPT_TRY_START = 0;
@@ -285,50 +352,68 @@ void HazkeyServerConnector::connectServer() {
     constexpr int MAX_RETRIES = 8;
     constexpr int RETRY_INTERVAL_MS = 250;
 
+    bool runtimePathErrorLogged = false;
+    bool pathLengthErrorLogged = false;
+
     int attempt;
     for (attempt = 0; attempt < MAX_RETRIES; ++attempt) {
-        sock_ = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (sock_ < 0) {
-            HAZKEY_LOG_ERROR() << "Failed to create socket";
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(RETRY_INTERVAL_MS));
-            continue;
-        }
-        int fcntlRes =
-            fcntl(sock_, F_SETFL, fcntl(sock_, F_GETFL, 0) | O_NONBLOCK);
-        if (fcntlRes != 0) {
-            HAZKEY_LOG_ERROR() << "fcntl() failed";
-            close(sock_);
-            sock_ = -1;
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(RETRY_INTERVAL_MS));
-            continue;
-        }
+        const auto socketPath = getSocketPath();
+        if (!socketPath.runtimeDirectoryTrusted) {
+            if (!runtimePathErrorLogged) {
+                HAZKEY_LOG_ERROR()
+                    << "Server runtime directory is missing or untrusted";
+                runtimePathErrorLogged = true;
+            }
+        } else if (!socketPath.pathFits) {
+            if (!pathLengthErrorLogged) {
+                HAZKEY_LOG_ERROR() << "Server socket path exceeds sun_path";
+                pathLengthErrorLogged = true;
+            }
+        } else {
+            sock_ = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            if (sock_ < 0) {
+                HAZKEY_LOG_ERROR() << "Failed to create socket";
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(RETRY_INTERVAL_MS));
+                continue;
+            }
+            const int flags = fcntl(sock_, F_GETFL, 0);
+            if (flags < 0 || fcntl(sock_, F_SETFL, flags | O_NONBLOCK) < 0) {
+                HAZKEY_LOG_ERROR() << "fcntl() failed";
+                close(sock_);
+                sock_ = -1;
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(RETRY_INTERVAL_MS));
+                continue;
+            }
 
-        sockaddr_un addr{};
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
+            sockaddr_un addr{};
+            addr.sun_family = AF_UNIX;
+            std::memcpy(addr.sun_path, socketPath.path.c_str(),
+                        socketPath.path.size());
 
-        int ret = connect(sock_, (sockaddr*)&addr, sizeof(addr));
-        if (ret == 0) {
-            // 接続成功
-            return;
-        }
-        if (errno == EINPROGRESS) {
-            fd_set wfds;
-            FD_ZERO(&wfds);
-            FD_SET(sock_, &wfds);
-            timeval tv = {2, 0};
-            int sel = select(sock_ + 1, NULL, &wfds, NULL, &tv);
-            if (sel > 0 && FD_ISSET(sock_, &wfds)) {
-                int so_error = 0;
-                socklen_t len = sizeof(so_error);
-                getsockopt(sock_, SOL_SOCKET, SO_ERROR, &so_error, &len);
-                if (so_error == 0) {
-                    // 接続成功
-                    return;
+            const int result = connect(sock_, (sockaddr*)&addr, sizeof(addr));
+            const int connectError = errno;
+            bool connected = result == 0;
+            if (result < 0 &&
+                (connectError == EINPROGRESS || connectError == EINTR)) {
+                const auto deadline = std::chrono::steady_clock::now() +
+                                      std::chrono::seconds(2);
+                if (waitForPollEvent(sock_, POLLOUT, deadline)) {
+                    int socketError = 0;
+                    socklen_t length = sizeof(socketError);
+                    if (getsockopt(sock_, SOL_SOCKET, SO_ERROR, &socketError,
+                                   &length) == 0 &&
+                        length == sizeof(socketError) && socketError == 0) {
+                        connected = true;
+                    }
                 }
             }
+            if (connected && peerUidMatches(sock_)) {
+                return;
+            }
+            close(sock_);
+            sock_ = -1;
         }
         HAZKEY_LOG_INFO() << "Failed to connect hazkey-server, retry "
                      << (attempt + 1);
@@ -368,6 +453,23 @@ void HazkeyServerConnector::connectServer() {
     }
     HAZKEY_LOG_INFO() << "Failed to connect hazkey-server after " << MAX_RETRIES
                  << " attempts";
+}
+
+bool HazkeyServerConnector::duplicateSocketToForTest(int targetFd) {
+    if (sock_ < 0 || targetFd < 0 || targetFd == sock_) {
+        return false;
+    }
+    const int duplicated = dup2(sock_, targetFd);
+    if (duplicated < 0) {
+        return false;
+    }
+    if (fcntl(duplicated, F_SETFD, FD_CLOEXEC) < 0) {
+        close(duplicated);
+        return false;
+    }
+    close(sock_);
+    sock_ = duplicated;
+    return true;
 }
 
 /** @brief 全ての読み取りキャッシュを無効化する */
@@ -544,8 +646,7 @@ std::string HazkeyServerConnector::getComposingText(
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "getComposingText: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "getComposingText: server request failed";
         return "";
     }
 
@@ -580,8 +681,7 @@ HazkeyServerConnector::getComposingHiraganaWithCursor() {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "getHiraganaWithCursor: "
-                           << "Server returned an error: "
-                           << responseVal.error_message();
+                           << "server request failed";
         return hazkey::frontend::ComposingTextWithCursor{};
     }
     if (!responseVal.has_text_with_cursor()) {
@@ -613,8 +713,7 @@ void HazkeyServerConnector::inputChar(std::string text) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "inputChar: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "inputChar: server request failed";
         return;
     }
     return;
@@ -642,8 +741,7 @@ void HazkeyServerConnector::shiftKeyEvent(bool isRelease, bool alone) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "shiftKeyEvent: " << "Server returned an error: "
-                           << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "shiftKeyEvent: server request failed";
         return;
     }
     return;
@@ -667,8 +765,7 @@ bool HazkeyServerConnector::currentInputModeIsDirect() {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "currentInputModeIsDirect: "
-                      << "Server returned an error: "
-                      << responseVal.error_message();
+                           << "server request failed";
         return false;
     }
     cachedInputModeDirect_ =
@@ -690,8 +787,7 @@ void HazkeyServerConnector::deleteLeft() {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "deleteLeft: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "deleteLeft: server request failed";
         return;
     }
     return;
@@ -709,8 +805,7 @@ void HazkeyServerConnector::deleteRight() {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "deleteRight: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "deleteRight: server request failed";
         return;
     }
     return;
@@ -732,8 +827,7 @@ void HazkeyServerConnector::moveCursor(int offset) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "moveCursor:" << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "moveCursor: server request failed";
         return;
     }
     return;
@@ -757,9 +851,7 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "adjustClauseBoundary: "
-                      << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "adjustClauseBoundary: server request failed";
         return std::nullopt;
     }
     if (!responseVal.has_clause_boundary_result()) {
@@ -794,8 +886,7 @@ HazkeyServerConnector::deleteCandidateLearningData(int index) {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "deleteCandidateLearningData: "
-                           << "Server returned an error: "
-                           << responseVal.error_message();
+                           << "server request failed";
         return std::nullopt;
     }
     if (!responseVal.has_delete_candidate_learning_data_result()) {
@@ -837,8 +928,7 @@ void HazkeyServerConnector::setContext(std::string context, int anchor) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "setContext:" << "Server returned an error: "
-                           << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "setContext: server request failed";
         return;
     }
     lastSentContext_.emplace(std::move(context), anchor);
@@ -860,8 +950,7 @@ void HazkeyServerConnector::newComposingText() {
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
         HAZKEY_LOG_ERROR() << "createComposingTextInstance:"
-                           << "Server returned an error: "
-                           << responseVal.error_message();
+                           << "server request failed";
         return;
     }
     return;
@@ -883,8 +972,7 @@ void HazkeyServerConnector::completePrefix(int index) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "completePrefix: " << "Server returned an error: "
-                           << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "completePrefix: server request failed";
         return;
     }
     return;
@@ -908,8 +996,7 @@ bool HazkeyServerConnector::acceptPrediction(int index) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_DEBUG() << "acceptPrediction: Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_DEBUG() << "acceptPrediction: server request failed";
         return false;
     }
     return true;
@@ -929,8 +1016,7 @@ std::optional<bool> HazkeyServerConnector::toggleZenzai() {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "toggleZenzai: Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "toggleZenzai: server request failed";
         return std::nullopt;
     }
     if (!responseVal.has_toggle_zenzai_result()) {
@@ -955,9 +1041,7 @@ void HazkeyServerConnector::saveLearningData(bool tryConnect) {
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "saveLearningData:"
-                      << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "saveLearningData: server request failed";
         return;
     }
     return;
@@ -977,8 +1061,7 @@ std::optional<hazkey::config::CurrentConfig> HazkeyServerConnector::getServerCon
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "getServerConfig: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "getServerConfig: server request failed";
         return std::nullopt;
     }
     return responseVal.current_config();
@@ -1004,8 +1087,7 @@ bool HazkeyServerConnector::setServerConfig(
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "setServerConfig: " << "Server returned an error: "
-                          << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "setServerConfig: server request failed";
         return false;
     }
     return true;
@@ -1038,8 +1120,7 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     }
     auto responseVal = response.value();
     if (responseVal.status() != hazkey::SUCCESS) {
-        HAZKEY_LOG_ERROR() << "getCandidates: " << "Server returned an error: "
-                      << responseVal.error_message();
+        HAZKEY_LOG_ERROR() << "getCandidates: server request failed";
         std::vector<CandidateData> empty_vec;
         return hazkey::commands::CandidatesResult();
     }

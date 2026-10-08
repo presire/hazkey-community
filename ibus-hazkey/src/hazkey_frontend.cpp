@@ -145,6 +145,23 @@ HazkeyFrontend::HazkeyFrontend(IBusEngine* engine)
 
 HazkeyFrontend::~HazkeyFrontend() = default;
 
+bool HazkeyFrontend::isSecureInputContentType(guint purpose, guint hints) {
+#if IBUS_CHECK_VERSION(1, 5, 4)
+    if (purpose == IBUS_INPUT_PURPOSE_PASSWORD ||
+        purpose == IBUS_INPUT_PURPOSE_PIN) {
+        return true;
+    }
+#else
+    (void)purpose;
+#endif
+#if IBUS_CHECK_VERSION(1, 5, 26)
+    return (hints & IBUS_INPUT_HINT_PRIVATE) != 0;
+#else
+    (void)hints;
+    return false;
+#endif
+}
+
 void HazkeyFrontend::retire() {
     if (retired_) {
         return;
@@ -197,6 +214,7 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
     auto logic = state_;
     auto ui = ui_;
     uint64_t generation = gate_.generation();
+    const uint64_t contentEpoch = contentEpoch_;
     if (gateCheck) {
         generation = gate_.beginCheck();
         gatedKeyval_ = keyval;
@@ -206,14 +224,14 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
     const hazkey::frontend::SerialTaskExecutor::Token token =
         sharedExecutor().submit(
             [self, logic, ui, keyval, keycode, state, consume, gateCheck,
-             generation] {
+             generation, contentEpoch] {
                 bool gated = false;
                 const gboolean handled = logic->processKeyEvent(
                     keyval, keycode, state, gateCheck ? &gated : nullptr);
                 const auto snapshot = logic->ingressSnapshot();
                 hazkey::frontend::postToMainLoop(
                     [self, ui, snapshot, handled, consume, keyval, keycode,
-                     state, gateCheck, gated, generation] {
+                     state, gateCheck, gated, generation, contentEpoch] {
                         self->applyIngress(snapshot);
                         if (self->pendingOps_ > 0) {
                             --self->pendingOps_;
@@ -223,6 +241,7 @@ void HazkeyFrontend::enqueueKeyOp(guint keyval, guint keycode, guint state,
                         // 解放は対応する押下も転送済みの場合にのみ転送する:
                         // ワーカーは解放を処理せず、解放フラグを見られないクライアントは幻のキー押下を受け取ってしまう
                         if (consume && !handled && !self->retired_ &&
+                            contentEpoch == self->contentEpoch_ &&
                             shouldForwardUnhandledKey(
                                 (state & IBUS_RELEASE_MASK) != 0, keyval,
                                 self->forwardedPressKeyvals_)) {
@@ -504,7 +523,7 @@ bool HazkeyFrontend::shouldForwardUnhandledKey(
 
 gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
                                          guint state) {
-    if (retired_) {
+    if (retired_ || secureInput_) {
         return FALSE;
     }
     // 周辺テキスト待ちの間は、解放と素通しを含む全キーを投機的に消費して保持し、待機の解決後に到着順で投入する
@@ -581,6 +600,8 @@ void HazkeyFrontend::focusIn() {
 void HazkeyFrontend::focusOut() {
     if (retired_) return;
     abortSurroundingGate();
+    // secureInput_は保持する: ibus-daemonは同じ値のContentTypeを再送しないため、
+    // 同じパスワード欄へ戻ったときに保護が外れないようにする
     specComposing_ = false;
     specListFocused_ = false;
     forwardedPressKeyvals_.clear();
@@ -598,8 +619,12 @@ void HazkeyFrontend::reset() {
 
 void HazkeyFrontend::enable() {
     if (retired_) return;
-    gate_.submitOrHold(false, [this] {
-        enqueue([](const std::shared_ptr<HazkeyState>& s) { s->enable(); });
+    const bool secure = secureInput_;
+    gate_.submitOrHold(false, [this, secure] {
+        enqueue([secure](const std::shared_ptr<HazkeyState>& s) {
+            s->setSecureInput(secure);
+            s->enable();
+        });
     });
 }
 
@@ -618,6 +643,30 @@ void HazkeyFrontend::setCapabilities(guint caps) {
         enqueue([caps](const std::shared_ptr<HazkeyState>& s) {
             s->setCapabilities(caps);
         });
+    });
+}
+
+void HazkeyFrontend::setContentType(guint purpose, guint hints) {
+    if (retired_) return;
+    const bool secure = isSecureInputContentType(purpose, hints);
+    if (secureInput_ == secure) {
+        return;
+    }
+    secureInput_ = secure;
+    ++contentEpoch_;
+    // ワーカーのキューに積まれた処理と、投稿済みの描画より先に効かせる
+    state_->requestSecureInput(secure);
+    if (ui_) {
+        ui_->setSecureInput(secure);
+    }
+    if (secure) {
+        abortSurroundingGate();
+        specComposing_ = false;
+        specListFocused_ = false;
+        forwardedPressKeyvals_.clear();
+    }
+    enqueue([secure](const std::shared_ptr<HazkeyState>& s) {
+        s->setSecureInput(secure);
     });
 }
 
@@ -658,7 +707,7 @@ void HazkeyFrontend::setCursorLocation(gint x, gint y, gint w, gint h) {
 
 void HazkeyFrontend::setSurroundingText(IBusText* text, guint cursorIndex,
                                         guint anchorPos) {
-    if (retired_) return;
+    if (retired_ || secureInput_) return;
     // メインループ上でプレーンな文字列へ複写する
     // IBusTextは保持しない
     const std::string surrounding =

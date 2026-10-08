@@ -18,11 +18,11 @@ enum SocketError: Error {
     case writeFailed(String, Int32)
     /// 要求バイト数を書き切れなかったことを示す
     case incompleteWrite(String)
-    /// 期限内に進捗が無かったことを示す
+    /// 入出力全体の期限が切れたことを示す
     case ioTimeout(String)
 }
 
-/// readData/writeDataが単一クライアントの進捗を待つ最大時間(ミリ秒)
+/// readData/writeDataの入出力全体に使う最大時間(ミリ秒)
 ///
 /// サーバループはシングルスレッドなので1つの接続を無制限に待つと他の全クライアントが止まってしまう
 ///
@@ -42,18 +42,22 @@ let socketIOProgressTimeoutMs: Int32 = 10_000
 /// - Parameters:
 ///   - fd: 待ち対象のファイル記述子
 ///   - events: pollに渡す待ちイベント ([POLLIN]または[POLLOUT])
-///   - timeoutMs: 進捗を待つ上限時間 (ミリ秒)
+///   - deadline: 入出力全体で共有する絶対期限
 /// - Throws: 期限切れやpoll失敗のとき対応するSocketErrorを投げる
-private func waitForSocketReady(fd: Int32, events: Int16, timeoutMs: Int32) throws {
+private func waitForSocketReady(fd: Int32, events: Int16, deadline: ContinuousClock.Instant) throws {
     var pfd = pollfd(fd: fd, events: events, revents: 0)
     while true {
-        let res = poll(&pfd, 1, timeoutMs)
+        let remaining = ContinuousClock.now.duration(to: deadline)
+        guard remaining > .zero else { throw SocketError.ioTimeout("socket deadline expired") }
+        let parts = remaining.components
+        let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1
+        let res = poll(&pfd, 1, Int32(clamping: milliseconds))
         if res < 0 {
             if errno == EINTR { continue }
             throw SocketError.pollFailed(errno)
         }
         if res == 0 {
-            throw SocketError.ioTimeout("no socket progress within \(timeoutMs) ms")
+            throw SocketError.ioTimeout("socket deadline expired")
         }
         return
     }
@@ -75,20 +79,33 @@ private func waitForSocketReady(fd: Int32, events: Int16, timeoutMs: Int32) thro
 /// - Throws: 失敗や切断や期限切れの時、対応するSocketErrorを投げる
 /// - Note: 既定ではsocketIOProgressTimeoutMsを使用する
 func readData(from fd: Int32, count: Int, timeoutMs: Int32 = socketIOProgressTimeoutMs) throws -> Data {
+    try readData(from: fd, count: count, deadline: .now.advanced(by: .milliseconds(timeoutMs)))
+}
+
+/// ヘッダと本体で同じ絶対期限を共有して読み込む
+func readData(from fd: Int32, count: Int, deadline: ContinuousClock.Instant) throws -> Data {
+    guard count >= 0 else { throw SocketError.incompleteRead("Negative byte count") }
+    guard count > 0 else { return Data() }
     var buffer = Data(count: count)
     var bytesRead = 0
 
     try buffer.withUnsafeMutableBytes { bufPtr in
-        let baseAddress = bufPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)
+        guard let baseAddress = bufPtr.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+            throw SocketError.incompleteRead("Missing read buffer")
+        }
 
         while bytesRead < count {
+            guard ContinuousClock.now < deadline else {
+                throw SocketError.ioTimeout("request deadline expired")
+            }
             let n = read(fd, baseAddress.advanced(by: bytesRead), count - bytesRead)
 
             if n < 0 {
                 if errno == EAGAIN || errno == EWOULDBLOCK {
-                    try waitForSocketReady(fd: fd, events: Int16(POLLIN), timeoutMs: timeoutMs)
+                    try waitForSocketReady(fd: fd, events: Int16(POLLIN), deadline: deadline)
                     continue
                 }
+                if errno == EINTR { continue }
                 throw SocketError.readFailed("Read failed", errno)
             }
             if n == 0 {
@@ -120,19 +137,31 @@ func readData(from fd: Int32, count: Int, timeoutMs: Int32 = socketIOProgressTim
 /// - Throws: 失敗や切断や期限切れのとき対応するSocketErrorを投げる
 /// - Note: 既定ではsocketIOProgressTimeoutMsを使用する
 func writeData(to fd: Int32, data: Data, timeoutMs: Int32 = socketIOProgressTimeoutMs) throws {
+    try writeData(to: fd, data: data, deadline: .now.advanced(by: .milliseconds(timeoutMs)))
+}
+
+/// レスポンスのヘッダと本体で同じ絶対期限を共有して書き込む
+func writeData(to fd: Int32, data: Data, deadline: ContinuousClock.Instant) throws {
+    guard !data.isEmpty else { return }
     var bytesWritten = 0
 
     try data.withUnsafeBytes { bufPtr in
-        let baseAddress = bufPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)
+        guard let baseAddress = bufPtr.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+            throw SocketError.incompleteWrite("Missing write buffer")
+        }
 
         while bytesWritten < data.count {
+            guard ContinuousClock.now < deadline else {
+                throw SocketError.ioTimeout("response deadline expired")
+            }
             let n = write(fd, baseAddress.advanced(by: bytesWritten), data.count - bytesWritten)
 
             if n < 0 {
                 if errno == EAGAIN || errno == EWOULDBLOCK {
-                    try waitForSocketReady(fd: fd, events: Int16(POLLOUT), timeoutMs: timeoutMs)
+                    try waitForSocketReady(fd: fd, events: Int16(POLLOUT), deadline: deadline)
                     continue
                 }
+                if errno == EINTR { continue }
                 throw SocketError.writeFailed("Write failed", errno)
             }
             if n == 0 {

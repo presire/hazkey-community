@@ -77,7 +77,7 @@ jobs:
             swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Update submodules
         run: git submodule update --init --recursive
@@ -119,7 +119,7 @@ jobs:
             debian)
               apt-get update
               apt-get install -y \
-                build-essential ca-certificates curl git gettext gzip tar ninja-build pkg-config \
+                build-essential ca-certificates curl git gettext gnupg gzip tar ninja-build pkg-config \
                 cmake qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
                 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev \
                 libibus-1.0-dev \
@@ -129,7 +129,7 @@ jobs:
               ;;
             fedora)
               dnf install -y \
-                @development-tools ca-certificates curl git gzip tar gettext \
+                @development-tools ca-certificates curl git gnupg2 gzip tar gettext \
                 ninja-build pkgconf-pkg-config cmake rpm-build \
                 qt6-qtbase-devel qt6-qttools-devel \
                 fcitx5-devel fcitx5-qt-devel \
@@ -142,7 +142,7 @@ jobs:
             opensuse)
               zypper --non-interactive --gpg-auto-import-keys refresh
               zypper --non-interactive install --no-recommends \
-                ca-certificates \
+                ca-certificates gpg2 \
                 pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel libicu-devel \
                 libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \
                 cmake ninja gettext-tools protobuf-devel fcitx5-devel \
@@ -177,6 +177,25 @@ jobs:
           mkdir -p /work/swift
           curl -fL --retry 5 --retry-all-errors -o /tmp/swift.tar.gz \
             "$SWIFT_URL"
+          # 展開の前に、公式の署名をSwift 6.x Release Signing Keyの指紋で検証する
+          # 鍵の配布元は改ざんの検出に使わず、指紋の一致 (VALIDSIGの主鍵指紋) だけを根拠にする
+          # 署名時点で有効な鍵の期限切れ (EXPKEYSIG) は許容し、不正な署名・失効・鍵の欠落は失敗にする
+          curl -fL --retry 5 --retry-all-errors -o /tmp/swift.tar.gz.sig \
+            "$SWIFT_URL.sig"
+          curl -fsSL --compressed --retry 5 --retry-all-errors -o /tmp/swift-keys.asc \
+            https://www.swift.org/keys/all-keys.asc
+          SWIFT_SIGNING_KEY_FPR=52BB7E3DE28A71BE22EC05FFEF80A866B47A981F
+          SWIFT_GNUPGHOME="$(mktemp -d)"
+          gpg --homedir "$SWIFT_GNUPGHOME" --batch --quiet --import /tmp/swift-keys.asc
+          gpg --homedir "$SWIFT_GNUPGHOME" --batch --status-fd 1 \
+            --verify /tmp/swift.tar.gz.sig /tmp/swift.tar.gz > /tmp/swift-verify.status || true
+          cat /tmp/swift-verify.status
+          if grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|REVKEYSIG|NO_PUBKEY)' /tmp/swift-verify.status; then
+            echo "Swift toolchain signature verification failed" >&2
+            exit 1
+          fi
+          grep -Eq "^\[GNUPG:\] VALIDSIG .* ${SWIFT_SIGNING_KEY_FPR}\$" /tmp/swift-verify.status
+          rm -rf "$SWIFT_GNUPGHOME"
           tar -xzf /tmp/swift.tar.gz --strip-components=1 -C /work/swift
           export PATH="/work/swift/usr/bin:$PATH"
           swift --version
@@ -758,14 +777,14 @@ jobs:
           EOF
 
       - name: Upload fcitx5-hazkey-community package artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: fcitx5-hazkey-community-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
           path: packages/fcitx5-hazkey-community*
           if-no-files-found: error
 
       - name: Upload ibus-hazkey-community package artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ibus-hazkey-community-${{ matrix.package_suffix }}-${{ matrix.package_arch }}
           path: packages/ibus-hazkey-community*
@@ -798,7 +817,7 @@ jobs:
             package_suffix: leap16
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build and verify SELinux policy module inside container
         env:
@@ -820,7 +839,7 @@ jobs:
           ls -l selinux-packages
 
       - name: Upload SELinux policy artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           # release.ymlの"*-hazkey-*"パターンに一致させ、リリースの添付ファイルに自動で含める
           name: selinux-hazkey-community-${{ matrix.package_suffix }}

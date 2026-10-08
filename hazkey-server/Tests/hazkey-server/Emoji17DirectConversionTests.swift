@@ -393,14 +393,15 @@ final class Emoji17DirectConversionTests: XCTestCase {
         // 検証: 削除可能の注釈は付かない
         XCTAssertFalse(result.candidates[index].hasLearningEntry_p)
 
-        // 実行: 絵文字を確定し、その学習データを削除する
-        XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
-        XCTAssertFalse(state.learningDataNeedsCommit)
+        // 実行: 組成を変更する前に絵文字候補の学習データを削除する
         let deleteResponse = state.deleteCandidateLearningData(candidateIndex: index)
 
         // 検証: 削除件数0を返す (converter由来ではないケース)
         XCTAssertEqual(deleteResponse.status, .success)
         XCTAssertEqual(deleteResponse.deleteCandidateLearningDataResult.deletedCount, 0)
+        XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
+        XCTAssertFalse(state.learningDataNeedsCommit)
+        XCTAssertEqual(state.deleteCandidateLearningData(candidateIndex: index).status, .failed)
     }
 
     // MARK: - 構築のキャッシュ

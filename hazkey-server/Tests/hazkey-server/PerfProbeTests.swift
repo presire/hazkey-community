@@ -103,8 +103,7 @@ final class PerfProbeTests: XCTestCase {
     }
 
     private var evidenceDirectory: URL {
-        packageRoot.deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent(".omo/evidence/hazkey-performance", isDirectory: true)
+        packageRoot.appendingPathComponent(".build/evidence/hazkey-performance", isDirectory: true)
     }
 
     private func runCorpus(zenzaiEnabled: Bool) throws -> ProbeRun {

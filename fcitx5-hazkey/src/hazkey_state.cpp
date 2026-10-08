@@ -74,6 +74,7 @@ void HazkeyState::commitPreedit() {
 
 /** @brief 入力モードに応じて、キーイベントを振り分ける */
 void HazkeyState::keyEvent(KeyEvent& event) {
+    secureInputDiscarded_ = false;
     FCITX_DEBUG() << "HazkeyState keyEvent";
 
     if (!event.isRelease() && event.key().sym() != FcitxKey_Shift_L && event.key().sym() != FcitxKey_Shift_R) {
@@ -632,7 +633,7 @@ bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
             isDirectConversionMode_ = true;
             break;
         default:
-            FCITX_INFO() << "keysym" << keysym;
+            FCITX_DEBUG() << "HazkeyState ctrlShortcutHandler: unhandled shortcut";
             return false;
     }
     return true;
@@ -658,8 +659,7 @@ void HazkeyState::functionKeyHandler(KeyEvent& event) {
             directCharactorConversion(ConversionMode::RawHalfwidth);
             break;
         default:
-            FCITX_ERROR() << "functionKeyHandler: unhandled key code: "
-                          << keysym;
+            FCITX_ERROR() << "functionKeyHandler: unhandled key code";
             return;
     }
     isDirectConversionMode_ = true;
@@ -1105,6 +1105,16 @@ void HazkeyState::reset() {
     surroundingFreeze_.finish(live.available, live.text, live.cursor, live.anchor);
     engine_->server().newComposingText();
     ic_->inputPanel().reset();
+}
+
+bool HazkeyState::discardForSecureInput() {
+    if (secureInputDiscarded_) {
+        return false;
+    }
+    secureInputDiscarded_ = true;
+    reset();
+    discardSurroundingCarry();
+    return true;
 }
 
 }  // namespace fcitx

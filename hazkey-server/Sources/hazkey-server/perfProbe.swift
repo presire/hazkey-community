@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 import KanaKanjiConverterModule
 
 /// テスト専用のリクエスト計測シンク
@@ -48,20 +49,20 @@ final class PerfProbe: @unchecked Sendable {
     /// - Parameter path: 証跡ファイルのパス
     /// - Note: 失敗時は呼び出し側のmakeIfEnabled()がnilを返す
     private init?(path: String) {
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: path) {
-            guard fileManager.createFile(atPath: path, contents: nil) else {
-                NSLog("Failed to create HAZKEY_PERF_EVIDENCE file")
-                return nil
-            }
-        }
-        do {
-            fileHandle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
-            fileHandle.seekToEndOfFile()
-        } catch {
-            NSLog("Failed to open HAZKEY_PERF_EVIDENCE: \(error)")
+        let fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
+        guard fd >= 0 else {
+            NSLog("Failed to open HAZKEY_PERF_EVIDENCE: errno \(errno); evidence output disabled")
             return nil
         }
+        var info = stat()
+        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_uid == getuid(), info.st_nlink == 1, fchmod(fd, 0o600) == 0
+        else {
+            NSLog("HAZKEY_PERF_EVIDENCE is not a private regular file; evidence output disabled")
+            close(fd)
+            return nil
+        }
+        fileHandle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }
 
     /// ファイルハンドルを閉じる

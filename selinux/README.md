@@ -32,7 +32,7 @@ Fcitx 5のアドオン、IBusのエンジン、設定GUI、ラッパースクリ
 |---|---|
 | hazkey_community_exec_t | 変換サーバの実行ファイル |
 | hazkey_community_conf_home_t | `~/.config/hazkey-community`<br>ユーザ辞書、env等 (変換サーバは読み取りだけ) |
-| hazkey_community_config_t | `~/.config/hazkey-community/config.json`<br>変換サーバが書き込む設定ファイル |
+| hazkey_community_config_t | `~/.config/hazkey-community/config.json`、`config.json.tmp`<br>変換サーバが書き込む設定ファイルと、その保存に使う一時ファイル |
 | hazkey_community_data_home_t | `~/.local/share/hazkey-community`<br>Zenzaiのモデル |
 | hazkey_community_state_home_t | `~/.local/state/hazkey-community`<br>学習データ |
 | hazkey_community_cache_home_t | `~/.cache/hazkey-community`<br>キャッシュ |
@@ -198,10 +198,14 @@ sudo make install
 pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 ```
 
-変換サーバが起動しない場合は、古いソケットとロックファイルを削除してから、もう一度起動してください。  
-この2つのファイルは、`restorecon`ではラベルが戻らないため、削除して作り直します。  
+rootでCMakeのインストールを実行した場合は、実行中のセッションの古いソケットとロックファイルにも、`chcon`でhazkey_community_runtime_tを付けます。  
+また、モジュールが対象とする他のインストール先 (`/usr/lib64/hazkey-community`など) にある変換サーバのラベルも付け直します。  
+ラベルのない変換サーバはunconfined_tで動作して、ソケットとロックファイルをuser_tmp_tで作るため、hazkey_community_server_tの変換サーバがロックファイルを開けなくなるためです (`tcontext=...user_tmp_t`で`write`が拒否されます)。  
+
+それでも変換サーバが起動しない場合は、古いソケットとロックファイルを削除してから、もう一度起動してください。  
+この2つのファイルは、`restorecon`ではラベルが戻りません。  
 (基本ポリシーに、`/run/user`直下の全てのファイルを対象とする規則があり、モジュールの規則より優先されるため)  
-作り直したファイルには、名前付きの型遷移により、hazkey_community_runtime_tが自動で付きます。  
+作り直したファイルには、型遷移により、hazkey_community_runtime_tが自動で付きます。  
 
 ```sh
 rm -f $XDG_RUNTIME_DIR/hazkey-community-server.*

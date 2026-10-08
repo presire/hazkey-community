@@ -93,9 +93,10 @@ HOME_DIR/\.local/libexec/ibus-hazkey-community(/.*)?		system_u:object_r:bin_t:s0
 # 設定ディレクトリと、変換サーバが書き込めないファイル (ユーザ辞書 user_dictionary.tsv、環境変数ファイル env、keymap、table)
 HOME_DIR/\.config/hazkey-community(/.*)?		system_u:object_r:hazkey_community_conf_home_t:s0
 
-# 変換サーバが書き込む設定ファイル
+# 変換サーバが書き込む設定ファイルと、その保存に使う一時ファイル
 # 環境変数ファイルは起動元のドメインでシェルとして読み込まれるため、変換サーバが書き込めるファイルをこれだけに限定する
 HOME_DIR/\.config/hazkey-community/config\.json	--	system_u:object_r:hazkey_community_config_t:s0
+HOME_DIR/\.config/hazkey-community/config\.json\.tmp	--	system_u:object_r:hazkey_community_config_t:s0
 
 # モデル (zenzai)、ホームディレクトリへインストールした辞書
 HOME_DIR/\.local/share/hazkey-community(/.*)?		system_u:object_r:hazkey_community_data_home_t:s0

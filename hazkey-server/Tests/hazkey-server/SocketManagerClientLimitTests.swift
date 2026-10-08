@@ -14,6 +14,7 @@ final class SocketManagerClientLimitTests: XCTestCase {
     private final class CountingDelegate: SocketManagerDelegate {
         var connected: [Int32] = []
         var disconnected: [Int32] = []
+        var composing: Set<Int32> = []
         func socketManager(
             _ manager: SocketManager, didReceiveData data: Data, from clientFd: Int32
         ) -> Data { Data() }
@@ -22,6 +23,9 @@ final class SocketManagerClientLimitTests: XCTestCase {
         }
         func socketManager(_ manager: SocketManager, clientDidDisconnect clientFd: Int32) {
             disconnected.append(clientFd)
+        }
+        func socketManager(_ manager: SocketManager, canReclaimIdleClient clientFd: Int32) -> Bool {
+            !composing.contains(clientFd)
         }
     }
 
@@ -103,5 +107,75 @@ final class SocketManagerClientLimitTests: XCTestCase {
         var byte: UInt8 = 0
         let readResult = read(extraFd, &byte, 1)
         XCTAssertEqual(readResult, 0, "expected EOF on rejected connection")
+    }
+
+    func testIdleSlotIsReclaimedOnlyAtSixtySeconds() throws {
+        let root = try TestTempRoot.make()
+        temporaryDirectory = root
+        let socketPath = root.appendingPathComponent("test.sock").path
+        let manager = SocketManager(socketPath: socketPath)
+        self.manager = manager
+        var now = ContinuousClock.now
+        manager.activityClock = { now }
+        try manager.setupSocket()
+        let delegate = CountingDelegate()
+        manager.delegate = delegate
+        for _ in 0..<SocketManager.maxClientCount {
+            _ = connectClient(to: socketPath)
+            manager.handleNewConnection()
+            now = now.advanced(by: .seconds(1))
+        }
+        let first = try XCTUnwrap(delegate.connected.first)
+        now = now.advanced(by: .seconds(51))
+        _ = connectClient(to: socketPath)
+        manager.handleNewConnection()
+        XCTAssertTrue(delegate.disconnected.isEmpty)
+        XCTAssertEqual(delegate.connected.count, SocketManager.maxClientCount)
+        now = now.advanced(by: .seconds(1))
+        _ = connectClient(to: socketPath)
+        manager.handleNewConnection()
+        XCTAssertEqual(delegate.disconnected, [first])
+        XCTAssertEqual(delegate.connected.count, SocketManager.maxClientCount + 1)
+        XCTAssertEqual(manager.connectedClientCount, SocketManager.maxClientCount)
+        for fd in delegate.connected.dropFirst() {
+            XCTAssertNotEqual(fcntl(fd, F_GETFD) & FD_CLOEXEC, 0)
+        }
+    }
+
+    /// 未確定の組成を持つ非活動接続は回収せず、組成の無い非活動接続だけを回収する
+    func testIdleClientWithCompositionIsNotReclaimed() throws {
+        let root = try TestTempRoot.make()
+        temporaryDirectory = root
+        let socketPath = root.appendingPathComponent("test.sock").path
+        let manager = SocketManager(socketPath: socketPath)
+        self.manager = manager
+        var now = ContinuousClock.now
+        manager.activityClock = { now }
+        try manager.setupSocket()
+        let delegate = CountingDelegate()
+        manager.delegate = delegate
+        for _ in 0..<SocketManager.maxClientCount {
+            _ = connectClient(to: socketPath)
+            manager.handleNewConnection()
+            now = now.advanced(by: .seconds(1))
+        }
+        let first = delegate.connected[0]
+        let second = delegate.connected[1]
+        delegate.composing = Set(delegate.connected)
+        now = now.advanced(by: .seconds(120))
+
+        let rejectedFd = connectClient(to: socketPath)
+        manager.handleNewConnection()
+        XCTAssertTrue(delegate.disconnected.isEmpty)
+        XCTAssertEqual(manager.connectedClientCount, SocketManager.maxClientCount)
+        var byte: UInt8 = 0
+        XCTAssertEqual(read(rejectedFd, &byte, 1), 0, "expected EOF on rejected connection")
+
+        delegate.composing.remove(second)
+        _ = connectClient(to: socketPath)
+        manager.handleNewConnection()
+        XCTAssertEqual(delegate.disconnected, [second])
+        XCTAssertFalse(delegate.disconnected.contains(first))
+        XCTAssertEqual(manager.connectedClientCount, SocketManager.maxClientCount)
     }
 }

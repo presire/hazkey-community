@@ -125,8 +125,7 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertNil(keymap["B"]?.1)
         XCTAssertNil(keymap["D"])
         XCTAssertNil(keymap["E"])
-        XCTAssertEqual(keymap["C"]?.0, "う")
-        XCTAssertEqual(keymap["C"]?.1, "e")
+        XCTAssertNil(keymap["C"])
     }
 
     func testZenzaiModelResolverUsesValidCustomWeightAndRejectsInvalidCustomWeight() throws {

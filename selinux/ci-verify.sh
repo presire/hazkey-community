@@ -121,6 +121,7 @@ expect_label /home/user/.local/lib64/hazkey-community/hazkey-community-server ha
 expect_label /usr/lib64/hazkey-community/libllama/libllama.so lib_t
 expect_label /usr/lib64/hazkey-community/hazkey-community-settings bin_t
 expect_label /home/user/.config/hazkey-community/config.json hazkey_community_config_t
+expect_label /home/user/.config/hazkey-community/config.json.tmp hazkey_community_config_t
 expect_label /home/user/.config/hazkey-community/user_dictionary.tsv hazkey_community_conf_home_t
 expect_label /home/user/.local/state/hazkey-community hazkey_community_state_home_t
 expect_label /home/user/.cache/hazkey-community hazkey_community_cache_home_t
@@ -159,6 +160,32 @@ if sesearch -A -s hazkey_community_server_t -t hazkey_community_conf_home_t -c f
 else
     echo "OK: conf_home_t files are not writable"
 fi
+
+# config.jsonの保存に使う一時ファイル (config.json.tmp) にも、書き込める型を付ける
+sesearch -T -s hazkey_community_server_t -t hazkey_community_conf_home_t -c file | grep 'config.json.tmp' \
+    | grep -q 'hazkey_community_config_t' \
+    || fail "no file transition for config.json.tmp"
+
+# envの作成・削除・置換の経路を許可しない
+#   - 設定ディレクトリの通常のファイル: 作成、削除、名前の変更、リンク、属性の変更
+#   - 書き込める設定ファイル: 名前の変更とリンク (config.jsonをenvへ改名できるため)
+#   - 設定ディレクトリ: 属性の変更 (パーミッションを緩めて他のユーザに置き換えさせられるため)、削除、名前の変更
+expect_not_allowed() {
+    target="$1"
+    class="$2"
+    shift 2
+    for perm in "$@"; do
+        if sesearch -A -s hazkey_community_server_t -t "$target" -c "$class" -p "$perm" | grep -q '^allow hazkey_community_server_t'; then
+            fail "hazkey_community_server_t has $perm on $target:$class"
+        else
+            echo "OK: no $perm on $target:$class"
+        fi
+    done
+}
+expect_not_allowed hazkey_community_conf_home_t file create append unlink rename link setattr
+expect_not_allowed hazkey_community_conf_home_t lnk_file create unlink rename
+expect_not_allowed hazkey_community_config_t file rename link
+expect_not_allowed hazkey_community_conf_home_t dir setattr rmdir rename reparent
 
 ########################################
 # 5. .fcと.fc.inの一致 (置換用の行を除く)

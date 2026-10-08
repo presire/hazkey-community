@@ -92,6 +92,18 @@ class HazkeyUi {
     void retire();
 
     /**
+     * @brief 安全入力の状態を設定する
+     *
+     * 安全入力中は確定・preedit・候補・補助テキストの表示と周辺テキストの要求をNOPにし、
+     * 切替より前にワーカーが投稿した描画を安全入力欄へ出さない
+     * 有効化時は表示中のpreedit・候補・補助テキストを即座に隠す
+     *
+     * @param secure 安全入力なら、true
+     * @note メインループ専用である
+     */
+    void setSecureInput(bool secure);
+
+    /**
      * @brief ハイライト/下線付き区間を1つ持つpreeditを表示する
      *
      * 候補モードでは変換対象区間を示し、subHiraganaが空の場合は文字列全体を選択する
@@ -244,6 +256,7 @@ class HazkeyUi {
 
     // 寿命・描画スナップショット
     bool retired_ = false;               ///< retire()済みで描画が無効なら、true
+    bool secureInput_ = false;           ///< 安全入力中で表示と確定を抑止するなら、true
     LookupSnapshot snapshot_{};          ///< 現在表示中の候補テーブルの内容
 };
 
