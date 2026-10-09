@@ -141,7 +141,18 @@ jobs:
               ;;
             opensuse)
               zypper --non-interactive --gpg-auto-import-keys refresh
-              zypper --non-interactive install --no-recommends \
+              # コンテナーイメージとミラーのリポジトリの同期時期がずれると、
+              # イメージ側の libmount1 等がリポジトリの *-devel より新しくなり、依存関係が解決できず終了コード4になる
+              # (例: libmount1-2.42.4 に対し libmount-devel が要求する libmount1 = 2.42.3)
+              # 使い捨てのビルドコンテナーのため、1回目の失敗時はメタデータを再取得し、
+              # ダウングレードを許可して依存関係を自動解決する
+              zypper_install() {
+                zypper --non-interactive install --no-recommends "$@" \
+                  || { zypper --non-interactive --gpg-auto-import-keys refresh --force \
+                       && zypper --non-interactive install --no-recommends \
+                            --allow-downgrade --force-resolution "$@"; }
+              }
+              zypper_install \
                 ca-certificates gpg2 \
                 pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel libicu-devel \
                 libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \

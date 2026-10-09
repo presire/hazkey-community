@@ -108,6 +108,22 @@ final class ServerWrapperEnvTests: XCTestCase {
             standardError: String(decoding: errorData, as: UTF8.self))
     }
 
+    // PATHの先頭に置いた偽のstatを、シェルが実際に呼び出すかを返す
+    private func shellResolvesCommandsFromPath(_ shell: [String], stubDirectory: URL) throws -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell[0])
+        process.arguments = Array(shell.dropFirst()) + ["-c", "stat -c %C -- /"]
+        process.environment = ["PATH": "\(stubDirectory.path):/usr/bin:/bin"]
+        let standardOutput = Pipe()
+        process.standardOutput = standardOutput
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = standardOutput.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            == "unconfined_u:object_r:user_tmp_t:s0"
+    }
+
     private func writeEnvFile(_ contents: String, configHome: URL) throws {
         let directory = configHome.appendingPathComponent("hazkey-community", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -339,6 +355,11 @@ final class ServerWrapperEnvTests: XCTestCase {
 
         for shell in shells {
             let label = shell.joined(separator: " ")
+            guard try shellResolvesCommandsFromPath(shell, stubDirectory: stubDirectory) else {
+                // busyboxの組み込みコマンド (applet) がPATH上のコマンドより優先されるビルド (Debian/Ubuntuのbusybox-static等) では、
+                // 偽のstatが使われず、実際のstatがラベルなしの環境の値を返すため、このシェルでは検証が成立しない
+                continue
+            }
             func launch(serverContext: String) throws -> Invocation {
                 try run(
                     shell: shell, wrapper: wrapper, root: root, configHome: configHome.path,
