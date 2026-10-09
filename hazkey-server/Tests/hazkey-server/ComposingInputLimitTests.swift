@@ -22,6 +22,17 @@ final class ComposingInputLimitTests: XCTestCase {
         return HazkeyServerState()
     }
 
+    /// 表示が空になる入力要素を1回の挿入でまとめて追加する
+    ///
+    /// 変換エンジンのフォークは、DEBUGビルドで挿入のたびに組成テキスト全体を標準出力へ出す
+    /// 4096個を1個ずつ挿入すると出力量が入力要素数の二乗に比例し、1テストで約1GBに達してCIのログ転送が詰まる
+    /// 1回の挿入なら出力は1回で済み、[inputChar]を1個ずつ繰り返した場合と同じ[input]になる
+    private func insertEmptyInputs(_ state: HazkeyServerState, count: Int) {
+        state.composingText.value.insertAtCursorPosition(
+            String(repeating: "a", count: count),
+            inputStyle: .mapped(id: .tableName(state.currentTableName)))
+    }
+
     private func prediction(reading: String) -> DisplayedCandidate {
         .fromConverter(Candidate(
             text: "仮名", value: 0, composingCount: .surfaceCount(1), lastMid: MIDData.一般.mid,
@@ -33,9 +44,8 @@ final class ComposingInputLimitTests: XCTestCase {
             try withIsolatedServerEnvironment { _ in
                 let state = try makeState(tableContents: table)
                 defer { state.close() }
-                for index in 0..<HazkeyServerState.maxComposingInputElements {
-                    XCTAssertEqual(state.inputChar(inputString: "a").status, .success, "input \(index + 1)")
-                }
+                insertEmptyInputs(state, count: HazkeyServerState.maxComposingInputElements - 1)
+                XCTAssertEqual(state.inputChar(inputString: "a").status, .success, "input 4096")
                 XCTAssertEqual(state.composingText.value.input.count, 4096)
                 XCTAssertEqual(state.composingText.value.convertTarget, table.hasPrefix("aa") ? "a" : "")
                 state.currentCandidateList = [prediction(reading: "カナ")]
@@ -74,9 +84,7 @@ final class ComposingInputLimitTests: XCTestCase {
             try withIsolatedServerEnvironment { _ in
                 let state = try makeState(tableContents: "a\t{any character}\n")
                 defer { state.close() }
-                for _ in 0..<emptyInputs {
-                    XCTAssertEqual(state.inputChar(inputString: "a").status, .success)
-                }
+                insertEmptyInputs(state, count: emptyInputs)
                 XCTAssertEqual(state.inputChar(inputString: "か").status, .success)
                 XCTAssertEqual(state.composingText.value.input.count, emptyInputs + 1)
                 state.currentCandidateList = [prediction(reading: "カナ")]
@@ -104,8 +112,15 @@ final class ComposingInputLimitTests: XCTestCase {
         try withIsolatedServerEnvironment { _ in
             let state = try makeState(tableContents: "a\t{any character}\n")
             defer { state.close() }
+            // 先頭の数回だけ実際に変換して増加量を確かめ、残りは上限直前までまとめて挿入する
             XCTAssertEqual(state.inputChar(inputString: "a").status, .success)
-            for count in 2...HazkeyServerState.maxComposingInputElements {
+            XCTAssertEqual(state.getCandidates(is_suggest: false).status, .success)
+            XCTAssertEqual(state.composingText.value.input.count, 2)
+            XCTAssertEqual(state.getCandidates(is_suggest: false).status, .success)
+            XCTAssertEqual(state.composingText.value.input.count, 3)
+            insertEmptyInputs(state, count: HazkeyServerState.maxComposingInputElements - 6)
+            XCTAssertEqual(state.composingText.value.input.count, HazkeyServerState.maxComposingInputElements - 3)
+            for count in (HazkeyServerState.maxComposingInputElements - 2)...HazkeyServerState.maxComposingInputElements {
                 XCTAssertEqual(state.getCandidates(is_suggest: false).status, .success, "input count \(count)")
                 XCTAssertEqual(state.composingText.value.input.count, count)
                 XCTAssertEqual(state.composingText.value.convertTarget, "")
