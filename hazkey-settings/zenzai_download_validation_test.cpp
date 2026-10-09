@@ -414,7 +414,11 @@ void ZenzaiDownloadValidationTest::testSizeLimitWithKnownExpectedBytes() {
 
 void ZenzaiDownloadValidationTest::testSizeLimitWithUnknownExpectedBytes() {
     const qint64 limit = kUnknownSizeModelDownloadLimitBytes;
-    QVERIFY(limit >= Q_INT64_C(1) << 30);
+    // 配布中の最大モデル (jinen-v2-small f16, 219865856バイト) を余裕を持って受け入れ、4 GiB未満に抑える
+    QCOMPARE(limit, Q_INT64_C(1) << 30);
+    QVERIFY(limit > Q_INT64_C(219865856) * 4);
+    QVERIFY(!downloadExceedsSizeLimit(Q_INT64_C(219865856), Q_INT64_C(219865856), 0));
+    QVERIFY(downloadExceedsSizeLimit(Q_INT64_C(2) << 30, -1, 0));
     for (const qint64 expected : {qint64(0), qint64(-1)}) {
         QVERIFY(!downloadExceedsSizeLimit(limit, limit, expected));
         QVERIFY(downloadExceedsSizeLimit(limit + 1, -1, expected));

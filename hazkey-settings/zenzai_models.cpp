@@ -102,7 +102,8 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
      *
      * @details 各エントリのURL、SHA256、表示サイズ、推奨フラグ、旧世代フラグ、期待バイト数はアプリケーションデータ契約の一部であり、実行時には変更されない
      *          先頭3件は単一バリアントのzenz系列 (推奨の現行small、小容量のxsmall、旧世代small) であり、末尾2件はjinen-v2 small/xsmall系列 (各4量子化バリアント) である
-     *          zenz系列のexpectedBytesは0 (未知) で従来の動作を保つ
+     *          全バリアントのexpectedBytesは実測値である (zenz系列はHugging Faceが返すx-linked-sizeで、同時に返るx-linked-etagがここに固定したSHA256と一致することを確認済み)
+     *          このためダウンロードは全て正確なサイズ検証と上限判定の対象となり、未知サイズ用の上限 (kUnknownSizeModelDownloadLimitBytes) はカタログ外のオプションに対する安全網にとどまる
      *          zenz系列の帰属フィールド (author/sourceUrl/licenseName/licenseUrl) は空のままで、帰属を要求するjinen系列のみtogatogahとCC-BY-SA-4.0の情報を保持する
      */
     static const QVector<ZenzaiModelFamily> families = {
@@ -127,6 +128,7 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
                     QStringLiteral("~74 MB"),
                     true,
                     false,
+                    73871936,
                 },
             },
             QString(), // 作成者 (帰属表示なしのため空)
@@ -157,6 +159,7 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
                     QStringLiteral("~21 MB"),
                     false,
                     false,
+                    20970304,
                 },
             },
             QString(), // 作成者 (帰属表示なしのため空)
@@ -187,6 +190,7 @@ const QVector<ZenzaiModelFamily>& availableZenzaiModelFamilies() {
                     QStringLiteral("~74 MB"),
                     false,
                     true,
+                    73871968,
                 },
             },
         },
@@ -407,7 +411,7 @@ bool zenzaiModelSupportsConditioning(const QString& modelKey) {
 }
 
 namespace {
-// ファイル名から"zenz-v<major>[.<minor>]"を拾う共通推定 (右文脈とアラインメント区切りで共有)
+// ファイル名から"zenz-v<major>.<minor>"を拾う共通推定 (マイナー部省略時は0扱い、右文脈とアラインメント区切りで共有)
 // 拡張子 (.gguf) を除いた小文字名の部分一致で判定して、マッチしなければfalseを返す
 bool zenzVersionFromModelName(const QString& modelKeyOrPath, int& major, int& minor) {
     QString fileName = QFileInfo(modelKeyOrPath).fileName();
@@ -490,6 +494,38 @@ QString ZenzaiModelManager::getSymlinkPath() {
 
 QString ZenzaiModelManager::getModelPath(const QString& key) {
     return getModelsDir() + "/" + key + ".gguf";
+}
+
+bool isManagedLegacyGenerationModel(const QString& path,
+                                    const QVector<ZenzaiModelOption>& catalog) {
+    // 用途は「最新ではありません」という案内表示だけで、機能の有効化には関与しない
+    // そのため内容の検証 (SHA256) はGUIスレッドでは行わず、管理ディレクトリ内の
+    // カタログ名ファイルをメタデータ (名前とサイズ) だけで識別する
+    // 任意パスのカスタム重みは常に対象外 (未検証のカスタム扱い) で、1バイトも読まない
+    // トレードオフ:
+    //   管理ディレクトリ内で旧世代と同名かつ同サイズに差し替えられたファイルにも案内が出る
+    //   影響は案内の文言だけである
+    const QFileInfo info(path);
+    const QString canonical = info.canonicalFilePath();
+    if (canonical.isEmpty() || !QFileInfo(canonical).isFile()) {
+        return false;
+    }
+    const QString canonicalModelsDir =
+        QFileInfo(ZenzaiModelManager::getModelsDir()).canonicalFilePath();
+    const QFileInfo target(canonical);
+    if (canonicalModelsDir.isEmpty() || target.absolutePath() != canonicalModelsDir ||
+        !target.fileName().endsWith(QStringLiteral(".gguf"))) {
+        return false;
+    }
+    const QString key = target.fileName().chopped(5);
+    const qint64 size = target.size();
+    for (const ZenzaiModelOption& m : catalog) {
+        if (m.isLegacyGen && m.key == key && m.expectedBytes > 0 &&
+            m.expectedBytes == size) {
+            return true;
+        }
+    }
+    return false;
 }
 
 QString ZenzaiModelManager::calculateSHA256(const QString& filePath) {

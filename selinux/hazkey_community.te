@@ -3,14 +3,14 @@ module hazkey_community 1.0.0;
 ########################################
 # Hazkey Community SELinuxポリシーモジュール
 #
-# AIによるニューラル変換 (Zenzai) に対応した日本語インプットメソッドHazkey Communityのうち、
-# 変換サーバ (hazkey-community-server) に強制アクセス制御(MAC)を適用する
+# AIニューラル変換 (Zenzai) に対応した日本語インプットメソッドHazkey Communityのうち、
+# 変換サーバ (hazkey-community-server) に強制アクセス制御 (MAC) を適用する
 #
 # インストール先が/usr以外 (/usr/local、/opt、ホームディレクトリ) でも同じドメインで動作するように、
 # 各インストール先の実行ファイルとライブラリへのラベルは.fcファイルで定義する
 #
 # ドメイン :
-#   hazkey_community_server_t : 変換サーバのドメイン (一般ユーザ権限、ログインユーザごとに1プロセス)
+#   hazkey_community_server_t : 変換サーバのドメイン (一般ユーザ権限で動作し、ログインユーザごとに1プロセス)
 #
 # 変換サーバ以外のプログラムは、起動元のドメインのまま動作する
 #   Fcitx 5のアドオン (fcitx5-hazkey-community.so) : fcitx5プロセス内で読み込まれる
@@ -23,19 +23,21 @@ module hazkey_community 1.0.0;
 #   設定ファイル (~/.config/hazkey-community/config.json) の書き込み
 #   学習データ (~/.local/state/hazkey-community)、モデル (~/.local/share/hazkey-community)、
 #   キャッシュ (~/.cache/hazkey-community) の読み書き
-#   クライアント接続用のUNIXドメインソケットとロックファイル ([XDG_RUNTIME_DIR]) の作成
+#   クライアント接続用のUNIXドメインソケットとロックファイル ([XDG_RUNTIME_DIR]、未設定時は/tmpへの代替配置) の作成
+#   いずれも作成時に型遷移で専用の型を付け、実行時の付け替えは行わない
 #   Vulkanバックエンドの安全確認のための自身の再実行 (posix_spawnで起動し、waitpidで終了を待つ)
 #   GPUデバイスの利用 (boolean [hazkey_community_use_gpu]、既定は有効)
 #   GPUドライバによる実行可能なメモリの確保 (boolean [hazkey_community_gpu_execmem]、既定は有効)
 #   ユーザが指定した任意の場所のモデル・辞書の読み取り (boolean [hazkey_community_read_user_files]、既定は有効)
 #
 # セキュリティモデル :
-#   変換サーバは全てのキー入力を受け取るため、TCPとUDPの通信、ネットワーク上の名前の束縛 (name_bind) を一切許可しない
+#   変換サーバは全てのキー入力を受け取るため、TCPとUDPの通信とネットワーク上の名前の束縛 (name_bind) を一切許可しない
 #   ホームディレクトリへの書き込みは、Hazkey Community専用のディレクトリだけに限定する
 #   ラッパースクリプトが起動元のドメインで読み込む環境変数ファイル (~/.config/hazkey-community/env) は、
-#   変換サーバが作成・変更・置換できないようにする (変換サーバを侵害されても、起動元のドメインへ戻れないようにする)
-#   クライアント (Fcitx 5、IBus、設定GUI) は、ソケットのファイル権限(0600)とUIDで接続を制限し、
-#   SELinuxは接続できるドメインを非制限ユーザと一般的な制限ユーザ (user_t、staff_t) に限定する
+#   変換サーバが作成・変更・置換できないようにする
+#   これにより、変換サーバを侵害されても起動元のドメインへ戻れないようにする
+#   クライアント (Fcitx 5、IBus、設定GUI) は、ソケットのファイル権限 (0600) とUIDで接続を制限する
+#   SELinuxは、接続できるドメインを非制限ユーザと一般的な制限ユーザ (user_t、staff_t) に限定する
 #   変換サーバへのドメイン遷移は、unconfined_t、user_t、staff_tから実行ファイルを実行した時に起こる
 #   これ以外のドメインから実行した場合は、遷移も実行もせず、.ifファイルのインターフェースで個別に許可する
 ########################################
@@ -43,9 +45,9 @@ module hazkey_community 1.0.0;
 ########################################
 # 基本ポリシーから参照する型とクラス
 #
-# 本モジュールのルールで使用する型・属性・ロール・クラスを宣言する
+# 本モジュールのルールで使う型・属性・ロール・クラスをここで宣言する
 # 制限ユーザのドメインやNVIDIA等のデバイスの型のように、環境によって存在しない型は、
-# ここではなくoptionalブロック内でrequireする
+# ここで宣言せず、optionalブロック内でrequireする
 ########################################
 
 require {
@@ -63,7 +65,7 @@ require {
     type etc_t;          # /etc配下の設定ファイル (/etc/vulkan、nsswitch.conf等)
     type etc_runtime_t;  # 実行時に生成される/etc配下のファイル
     type locale_t;       # ロケールとタイムゾーンのデータ
-    type passwd_file_t;  # /etc/passwd (ホームディレクトリの取得)
+    type passwd_file_t;  # /etc/passwd (ホームディレクトリの取得に使う)
 
     # ファイルシステムの型
     type tmp_t;           # /tmp
@@ -76,7 +78,7 @@ require {
     type sysctl_t;        # /proc/sys
     type sysctl_kernel_t; # /proc/sys/kernel
     type sysctl_vm_t;     # /proc/sys/vm
-    type root_t;          # ルートディレクトリ(/)
+    type root_t;          # ルートディレクトリ (/)
 
     # デバイスの型
     type device_t;         # /dev
@@ -118,7 +120,7 @@ require {
     class unix_stream_socket { create bind connect listen accept read write getattr setattr getopt shutdown connectto ioctl }; # UNIXドメインのストリームソケット
     class unix_dgram_socket { create connect read write sendto getattr };    # UNIXドメインのデータグラムソケット
     class fd { use };                                                        # 他のプロセスのファイルディスクリプタの使用
-    class capability { dac_override dac_read_search sys_ptrace };            # rootの特権 (dontauditだけに使用する)
+    class capability { dac_override dac_read_search sys_ptrace };            # rootの特権 (dontauditだけに使う)
     class filesystem { getattr };                                            # ファイルシステムの属性の取得
 }
 
@@ -136,7 +138,7 @@ type hazkey_community_config_t;     # 変換サーバが書き込む設定ファ
 type hazkey_community_data_home_t;  # モデルとホームディレクトリへインストールした辞書 (~/.local/share/hazkey-community)
 type hazkey_community_state_home_t; # 学習データ (~/.local/state/hazkey-community)
 type hazkey_community_cache_home_t; # キャッシュ (~/.cache/hazkey-community)
-type hazkey_community_runtime_t;    # クライアント接続用のソケットとロックファイル ($XDG_RUNTIME_DIR)
+type hazkey_community_runtime_t;    # クライアント接続用のソケットとロックファイル ([XDG_RUNTIME_DIR]、未設定時は/tmpへの代替配置)
 type hazkey_community_tmp_t;        # /tmpに作成するディレクトリ (ソケットの代替置き場、CPU専用バックエンドの一時配置)
 type hazkey_community_tmpfs_t;      # tmpfsに作成する共有メモリのファイル (GPUドライバのmemfd等)
 
@@ -155,8 +157,9 @@ typeattribute hazkey_community_tmpfs_t file_type;
 # ホームディレクトリ配下の型と/run/user配下の型には、制限ユーザのドメインが管理できる属性を付ける
 # 制限ユーザ (user_t、staff_t) が設定GUIで設定を保存したり、データを削除したりできるようにするため
 # 属性user_home_typeとuser_tmp_typeは、基本ポリシーによっては存在しない
-# (Debian 13とUbuntu 26.04のselinux-policy-defaultには、user_home_typeの代わりにuser_home_content_typeがあり、user_tmp_typeは無い)
-# 存在しない環境で読み込みに失敗しないように、属性ごとにoptionalブロックにする
+# Debian 13とUbuntu 26.04のselinux-policy-defaultには、
+# user_home_typeの代わりにuser_home_content_typeがあり、user_tmp_typeは無い
+# 存在しない環境で読み込みに失敗しないように、属性ごとにoptionalブロックに分ける
 # ユーザの一時ファイルの属性が無い環境でも、制限ユーザによる変換サーバへの接続は、各ユーザのoptionalブロックの個別の許可で行う
 optional {
     require {
@@ -217,15 +220,16 @@ optional {
 role unconfined_r types hazkey_community_server_t;
 
 ########################################
-# boolean
+# boolean (管理者が切り替えられる設定)
 #
 # 環境によって必要な権限が異なり、かつ権限の範囲が広いものを、管理者が無効化できるようにする
-# 変更は、setsebool -P <boolean名> on|off で行う
+# 変更するには、次のコマンドを実行する
+#   setsebool -P <boolean名> on|off
 ########################################
 
 # GPUデバイス (/dev/dri、NVIDIAのデバイス) の利用を許可する
 # 無効にすると、ニューラル変換はCPUだけで動作する (GPUの安全確認の子プロセスが失敗し、CPU専用へ切り替わる)
-bool hazkey_community_use_gpu true;
+bool hazkey_community_use_gpu true;         # GPUデバイスの利用
 
 # GPUの利用時に、実行可能なメモリの確保 (execmem) を許可する ([hazkey_community_use_gpu] が有効な場合のみ効く)
 # ソフトウェア実装のVulkan (lavapipe) やNVIDIAのドライバは、実行時にCPU向けのコードを生成するためにこの権限を必要とする
@@ -233,25 +237,25 @@ bool hazkey_community_use_gpu true;
 # 書き込み可能かつ実行可能なメモリを禁止すると、変換サーバが侵害された場合に任意のコードを実行されにくくなる
 # 無効にしてドライバが動作しない場合は、GPUの安全確認の子プロセスが失敗し、CPU専用へ切り替わる
 # 既定を有効にしているのは、上記のドライバの利用者のGPUによる変換を、ポリシーの更新で無効にしないため
-bool hazkey_community_gpu_execmem true;
+bool hazkey_community_gpu_execmem true;     # GPUドライバの実行可能なメモリの確保
 
 # GPUドライバが~/.cache直下に作成する共有のシェーダキャッシュ (mesa_shader_cache等) への書き込みを許可する
 # この権限は、他のアプリケーションのキャッシュ (~/.cache配下の一般的なファイル) の変更も含む
 # 無効にする場合は、環境変数ファイルで [MESA_SHADER_CACHE_DIR] 等を~/.cache/hazkey-community配下へ向ける
 # 向けない場合でも、シェーダキャッシュが無効になるだけで、GPUによる変換は動作する
-bool hazkey_community_write_gpu_cache true;
+bool hazkey_community_write_gpu_cache true; # GPUの共有シェーダキャッシュへの書き込み
 
 # ホームディレクトリ配下の一般的なファイル (user_home_t等) の読み取りを許可する
-# 設定GUIのカスタム重み、環境変数 [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY] 等で、
+# 設定GUIのカスタム重みや環境変数 [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY] 等で、
 # Hazkey Community専用ディレクトリの外にあるモデルや辞書を指定する場合に必要となる
 # 変換サーバにはネットワークの権限が無いため、読み取った内容を外部へ送信することはできない
-bool hazkey_community_read_user_files true;
+bool hazkey_community_read_user_files true; # ホームディレクトリ配下の任意のファイルの読み取り
 
 ########################################
 # 非制限ユーザ (unconfined_t) から変換サーバへのドメイン遷移
 #
-# fcitx5のアドオン、IBusのエンジン、設定GUIは、ラッパースクリプト (bin_t) をPATHから起動して、
-# ラッパースクリプトがexecで変換サーバの実行ファイルを実行した時点でhazkey_community_server_tへ遷移する
+# fcitx5のアドオン、IBusのエンジン、設定GUIは、ラッパースクリプト (bin_t) をPATHから起動する
+# ラッパースクリプトがexecで変換サーバの実行ファイルを実行した時点で、hazkey_community_server_tへ遷移する
 # ラッパースクリプト自体は起動元のドメインで動作するため、~/.config/hazkey-community/envの読み込みは起動元の権限で行う
 ########################################
 
@@ -260,7 +264,7 @@ allow unconfined_t hazkey_community_server_t:process transition;
 type_transition unconfined_t hazkey_community_exec_t:process hazkey_community_server_t;
 
 # ドメイン遷移の時に、起動元の環境変数・シグナルの状態・リソースの上限を引き継ぐ
-# 引き継がない場合、glibcがセキュアモード (AT_SECURE) で起動して環境変数を削除し、
+# 引き継がないと、glibcがセキュアモード (AT_SECURE) で起動して環境変数を削除し、
 # Vulkanのローダーが環境変数 [VK_DRIVER_FILES]、[VK_ICD_FILENAMES]、[XDG_DATA_HOME] を無視する
 # このため、~/.config/hazkey-community/envでGPUを固定する設定が効かなくなる
 allow unconfined_t hazkey_community_server_t:process { noatsecure siginh rlimitinh };
@@ -300,8 +304,8 @@ allow hazkey_community_server_t self:process { fork signal signull sigkill sigst
 allow hazkey_community_server_t self:fifo_file { getattr open read write ioctl };
 
 # /proc/self配下の参照
-# GPUの安全確認では/proc/self/exeから自身のパスを取得して再実行し、
-# 子プロセスの生成時には/proc/self/fdを列挙して不要なファイルディスクリプタを閉じる
+# GPUの安全確認では/proc/self/exeから自身のパスを取得して再実行する
+# 子プロセスの生成時には/proc/self/fdを列挙して、不要なファイルディスクリプタを閉じる
 allow hazkey_community_server_t self:dir { getattr open read search };
 allow hazkey_community_server_t self:file { getattr open read };
 allow hazkey_community_server_t self:lnk_file { getattr read };
@@ -324,9 +328,11 @@ allow hazkey_community_server_t textrel_shlib_t:file { getattr open read execute
 ########################################
 # システムのデータと設定ファイル
 #
-# 変換辞書 (share/hazkey-community/Dictionary)、絵文字辞書、住所辞書、工学用語辞書、
-# システムに配置したZenzaiモデル (share/hazkey-community/zenzai.gguf)、
-# VulkanのICD定義 (/usr/share/vulkan、/etc/vulkan)、ロケールとタイムゾーンの読み取りに必要
+# 次のファイルの読み取りに必要となる
+#   変換辞書 (share/hazkey-community/Dictionary)、絵文字辞書、住所辞書、工学用語辞書
+#   システムに配置したZenzaiモデル (share/hazkey-community/zenzai.gguf)
+#   VulkanのICD定義 (/usr/share/vulkan、/etc/vulkan)
+#   ロケールとタイムゾーン
 # /opt配下にインストールした場合は、辞書等のデータにusr_tが付く
 ########################################
 
@@ -389,8 +395,8 @@ allow hazkey_community_server_t user_devpts_t:chr_file { getattr read write ioct
 # ホームディレクトリの探索
 #
 # 専用ディレクトリへ到達するために、途中のディレクトリの探索だけを許可する
-# ホームディレクトリ配下の任意の場所 (~/apps等) へインストールした場合に、
-# 実行ファイルとライブラリへ到達するため、一般的なディレクトリ (user_home_t) の探索も許可する
+# ホームディレクトリ配下の任意の場所 (~/apps等) へインストールした場合も、実行ファイルとライブラリへ到達できるように、
+# 一般的なディレクトリ (user_home_t) の探索も許可する
 # この探索は、boolean [hazkey_community_read_user_files] を無効にしても必要となる
 ########################################
 
@@ -439,16 +445,22 @@ allow hazkey_community_server_t { hazkey_community_data_home_t hazkey_community_
 #
 # ラッパースクリプトは、変換サーバへ遷移する前に起動元のドメインで環境変数ファイル (env) をシェルとして読み込む
 # 変換サーバがこのファイルを作成・変更・置換できると、侵害された変換サーバが起動元のドメインで任意のコマンドを実行できる
-# このため、変換サーバが書き込めるファイルは、名前付きの型遷移で専用の型を付けた設定ファイル (config.json) と、
-# その保存に使う一時ファイル (config.json.tmp) だけに限定する
-# 削除はこの型のファイルだけに許可し、設定ディレクトリ内のファイルの名前の変更・リンクの作成と、
-# ディレクトリ自体の削除・名前の変更・属性の変更は許可しない
-#   - 名前の変更を許可すると、作成したconfig.jsonをenvへ改名できる
-#   - ディレクトリの属性の変更を許可すると、パーミッションを緩めて、他のユーザにenvを置き換えさせられる
+# このため、変換サーバが書き込めるファイルは、次の2つだけに限定する
+# どちらにも、ファイル名を指定した型遷移で専用の型を付ける
+#   設定ファイル (config.json)
+#   設定ファイルの保存に使う一時ファイル (config.json.tmp)
 #
-# 変換サーバは、ユーザ辞書 (user_dictionary.tsv)、キーマップ (keymap)、入力テーブル (table) を読み取り、
+# 削除は、この型のファイルだけに許可する
+# 設定ディレクトリ内のファイルの名前の変更・リンクの作成と、ディレクトリ自体の削除・名前の変更・属性の変更は許可しない
+#   名前の変更を許可すると、作成したconfig.jsonをenvへ改名できる
+#   ディレクトリの属性の変更を許可すると、パーミッションを緩めて、他のユーザにenvを置き換えさせられる
+#
+# 変換サーバは、ユーザ辞書 (user_dictionary.tsv)、キーマップ (keymap)、入力テーブル (table) を読み取る
 # キーマップと入力テーブルのディレクトリが無い場合は作成する
-# config.jsonは、名前の変更を使わずに、完全な内容を先にconfig.json.tmpへ書いてから上書きし、最後にconfig.json.tmpを削除する
+# config.jsonの保存では名前の変更を使わず、次の順に行う
+#   完全な内容を、先にconfig.json.tmpへ書く
+#   同じ内容でconfig.jsonを上書きする
+#   最後にconfig.json.tmpを削除する
 # 旧版が作成したconfig.json (0644等) は、保存時に0600へ変更する
 # 変換サーバは起動時に設定ディレクトリを0700へ変更しようとするが、上記の理由で許可しないため、監査ログへ記録しない
 ########################################
@@ -466,6 +478,20 @@ dontaudit hazkey_community_server_t hazkey_community_conf_home_t:dir setattr;
 #
 # [XDG_RUNTIME_DIR] (/run/user/<UID>) にソケットとロックファイルを作成し、ロックファイルをflockで排他する
 # [XDG_RUNTIME_DIR] が未設定の場合は、/tmp/hazkey-community-runtime-<UID>を作成して代わりに使う
+#
+# 作成時のラベル付けは、ポリシー側の型遷移で行う (実行時のchconは使わない)
+# ファイル名にUIDを含むため (hazkey-community-server.<UID>.sockとhazkey-community-server.<UID>.lock)、
+# ファイル名を指定した型遷移では、全てのユーザに対応できない
+# このため、ユーザの実行時ディレクトリの型 (user_tmp_t、Debian / Ubuntuではuser_runtime_t) から、
+# 名前を指定しない型遷移で、ソケットと通常のファイルにhazkey_community_runtime_tを付ける
+# /tmpへの代替配置のディレクトリにも、作成時にhazkey_community_tmp_tが付く
+# その配下のソケットと通常のファイルにも、名前を指定しない型遷移でhazkey_community_runtime_tを付ける
+# ファイルコンテキスト (.fc) の2つの規則は、restoreconでラベルを戻す場合だけに使う
+# モジュールの読み込み前 (またはラベルのない変換サーバの実行中) に作られたファイルは、前のラベル (user_tmp_t等) のままになる
+# 変換サーバにはuser_tmp_tのソケットとファイルの削除と書き込みを許可しない
+# 同じディレクトリにある他のサービスのソケット (pipewire-0やgpg-agent等) を削除して置き換えられるため
+# 古いソケットとロックファイルは、呼び出し元のドメインで動作する起動スクリプト (hazkey-server.sh.in) が、
+# 使用中でないことを確かめてから削除する
 ########################################
 
 allow hazkey_community_server_t var_run_t:dir { getattr search };
@@ -488,7 +514,7 @@ allow hazkey_community_server_t self:unix_stream_socket { create bind connect li
 ########################################
 # /tmp配下の一時ディレクトリ
 #
-# GPUの安全確認が失敗した場合に、Vulkan以外のGGMLバックエンドへのシンボリックリンクを集めたディレクトリを作成し、
+# GPUの安全確認が失敗した場合は、Vulkan以外のGGMLバックエンドへのシンボリックリンクを集めたディレクトリを作成し、
 # そこからCPU専用のバックエンドを読み込む
 ########################################
 
@@ -561,16 +587,15 @@ optional {
     allow hazkey_community_server_t udev_var_run_t:file { getattr open read };
 }
 
-# GPUを使用しない設定でも、起動元から継承したGPUのファイルディスクリプタや、
-# Vulkanのローダーによるデバイスの探索が拒否として記録される
+# GPUを使用しない設定でも、起動元から継承したGPUのファイルディスクリプタや、Vulkanのローダーによるデバイスの探索が拒否として記録される
 # CPU専用で正常に動作するため、記録しない
 dontaudit hazkey_community_server_t dri_device_t:chr_file { getattr open read write ioctl map };
 
 ########################################
 # ホームディレクトリ配下の任意のファイルの読み取り (boolean [hazkey_community_read_user_files])
 #
-# 設定GUIのカスタム重みや、環境変数 [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY]、[HAZKEY_ADDRESS_DICTIONARY]、
-# [HAZKEY_ENGINEERING_DICTIONARY] で指定したファイルは、ホームディレクトリ配下の任意の場所に置かれる
+# 設定GUIのカスタム重みや、次の環境変数で指定したファイルは、ホームディレクトリ配下の任意の場所に置かれる
+#   [HAZKEY_ZENZAI_MODEL]、[HAZKEY_DICTIONARY]、[HAZKEY_ADDRESS_DICTIONARY]、[HAZKEY_ENGINEERING_DICTIONARY]
 # ホームディレクトリへインストールした場合のVulkanの設定 (~/.local/share/vulkan、~/.config/vulkan) の読み取りにも使う
 ########################################
 
@@ -649,7 +674,7 @@ optional {
     allow hazkey_community_server_t systemd_userdbd_t:unix_stream_socket connectto;
 }
 
-# nss-systemdは、グループ情報の取得のたびに /run/systemd/userdb 配下の全ソケットへ問い合わせる
+# nss-systemdは、グループ情報の取得のたびに/run/systemd/userdb配下の全ソケットへ問い合わせる
 # nsswitch.confの [group: compat [SUCCESS=merge] systemd] の設定では、compatで見つかった場合も問い合わせる
 # 次の2つのソケットは、systemd-userdbd以外のドメインが持つため、個別に許可する
 #   io.systemd.DynamicUser : 起動の早い段階で作られるため、持ち主のドメインがkernel_tになる
@@ -701,7 +726,7 @@ optional {
 }
 
 ########################################
-# cgroup
+# cgroup (CPU割り当ての制御)
 #
 # 利用できるCPUの数を、cgroupのCPU割り当て (cpu.max) から判断する場合がある
 ########################################

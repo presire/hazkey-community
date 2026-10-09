@@ -11,6 +11,7 @@
  */
 
 #include <QAbstractButton>
+#include <QCloseEvent>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QPointer>
@@ -60,6 +61,18 @@ class MainWindow : public QWidget {
     MainWindow(QWidget* parent = nullptr);
     /** @brief 進行中のダウンロードを中止し、所有する生成UIを破棄する */
     ~MainWindow();
+
+   protected:
+    /**
+     * @brief ウィンドウを閉じる際、実行中のサーバRPCを中断してから基底クラスの処理へ委譲する
+     *
+     * 作業スレッドで応答待ちのRPC (最長120秒) があると、終了処理がそのタイムアウトまで待たされる
+     * そのため ServerConnector::cancelPendingTransaction() で応答待ちを直ちに打ち切る
+     * RPCが実行中でなければ何もしない
+     *
+     * @param event 閉じるイベント
+     */
+    void closeEvent(QCloseEvent* event) override;
 
    private slots:
     /**

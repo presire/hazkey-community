@@ -11,6 +11,8 @@
 
 #include <chrono>
 #include <cstddef>
+#include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -103,9 +105,8 @@ class ServerConnector {
      *
      * @param profileId 対象プロファイルの識別子
      * @param entries 削除対象の履歴エントリキー
-     * @return 成功時はサーバが削除した件数、それ以外は `std::nullopt`
-     *         `std::nullopt` は通信失敗、サーバの失敗ステータス、または
-     *         削除結果ペイロード欠落を表す
+     * @return 成功時はサーバが削除した件数、それ以外はstd::nullopt
+     *         std::nulloptは通信失敗、サーバの失敗ステータス、または削除結果ペイロード欠落を表す
      */
     std::optional<uint32_t> deleteLearningEntries(
         const std::string& profileId,
@@ -165,12 +166,110 @@ class ServerConnector {
      */
     bool reloadZenzaiModelInSession();
 
+    /**
+     * @brief このコネクターを終了状態にし、実行中のRPCを別スレッドから中断する (アプリケーション終了時用)
+     *
+     * 終了状態は永続的で、呼び出し後の全RPC (一時接続・セッションとも) は接続も送受信も始めず、
+     * 通信失敗 (std::nullopt / false / [setCurrentConfig]では例外) として直ちに戻る
+     * そのため、作業スレッドの開始前や、[beginSession]とその後のRPCの間で呼ばれても中断は失われない
+     * 作業スレッドが応答を待っている最中なら、その接続ソケットに対して shutdown(SHUT_RDWR) を呼び、
+     * 読み書きを直ちにEOFまたはエラーで失敗させる
+     * 接続の確立待ち・再試行の最中なら、次の試行の前に打ち切る
+     * 何度呼んでもよく、RPCが実行中でなくても副作用は終了状態の設定だけである
+     *
+     * GUIスレッドと作業スレッドから同時に呼べる
+     * ソケットのクローズは作業スレッドだけが行い、
+     * 追跡するディスクリプターはクローズ前に (例外経路でもRAIIで) 取り除くため、
+     * 再利用された別のfdに対してshutdownを呼ぶことはない
+     */
+    void cancelPendingTransaction();
+
    private:
+    /**
+     * @brief 応答待ちに入るソケットを中断可能として登録し、スコープを抜けると必ず登録を外すRAII
+     *
+     * 登録の解除はデストラクターで行うので、RPC中に例外が伝播しても追跡が残らない
+     * 呼び出し側はこのスコープの終了後にソケットをcloseすること (再利用されたfdへのshutdownを防ぐ)
+     *
+     * owner_ : 登録先のコネクターで、本オブジェクトより長く生存している必要がある
+     * active_ : 登録できたかどうか
+     * @internal 実装専用
+     */
+    class SocketTracking {
+       public:
+        /**
+         * @brief ソケットを [trackSocket] で登録する
+         * @param owner 登録先のコネクター
+         * @param sock 登録する接続済みソケット
+         *             所有権は呼び出し元にある
+         */
+        SocketTracking(ServerConnector& owner, int sock)
+            : owner_(owner), active_(owner.trackSocket(sock)) {}
+        SocketTracking(const SocketTracking&) = delete;
+        SocketTracking& operator=(const SocketTracking&) = delete;
+        /** @brief 登録済みなら [untrackSocket] で登録を外す */
+        ~SocketTracking() {
+            if (active_) owner_.untrackSocket();
+        }
+        /**
+         * @brief 登録できたかを返す
+         * @return 登録できた場合はtrue
+         *         終了状態だった場合はfalseで、呼び出し側は送受信せずに失敗させる
+         */
+        bool active() const { return active_; }
+
+       private:
+        ServerConnector& owner_;
+        bool active_;
+    };
+
+    /**
+     * @brief 応答待ちに入るソケットを中断可能として登録する
+     * @param sock 登録する接続済みソケット
+     * @return 既に終了状態ならfalse (登録しない)
+     * @internal 実装専用 SocketTrackingから呼ぶ
+     */
+    bool trackSocket(int sock);
+
+    /**
+     * @brief 追跡中のソケットを取り除く
+     * @internal 実装専用 SocketTrackingから呼ぶ ソケットをcloseする前に完了していること
+     */
+    void untrackSocket();
+
+    /**
+     * @brief 終了状態かを返す
+     * @internal 実装専用
+     */
+    bool isShuttingDown() const;
+
+    /**
+     * @brief 追跡付きで @ref transactOnSocket を実行する
+     *
+     * 実行中のソケットを [cancelPendingTransaction] から中断できるようにする
+     * 戻る時点 (例外時も) で追跡は解除済みなので、呼び出し側がソケットをcloseしてよい
+     *
+     * @param sock 接続済みのソケット
+     *             所有権は呼び出し元にある
+     * @param send_data 送信するリクエスト
+     * @param readTimeoutSeconds 応答フレームの読み込み期限[秒]
+     * @return パース済みの応答
+     *         終了状態、または通信失敗ならstd::nullopt
+     * @internal 実装専用
+     */
+    std::optional<hazkey::ResponseEnvelope> transactTracked(
+        int sock, const hazkey::RequestEnvelope& send_data,
+        int readTimeoutSeconds = 10);
+
     /**
      * @brief サーバのUNIXドメインソケットパスを組み立てる
      *
-     * @return 環境変数XDG_RUNTIME_DIRが設定されていればその配下、
-     *         そうでなければ、/tmp配下のhazkey-community-server.<uid>.sock
+     * 環境変数[XDG_RUNTIME_DIR]が空でなく、現在のユーザ専有 (所有者一致かつgroup/other権限なし) のディレクトリを指す場合はその配下を使う
+     * そうでなければ /tmp/hazkey-community-runtime-<uid> を使う
+     * このディレクトリはGUIからは作成せず、存在しないか安全でない場合は接続しない
+     *
+     * @return hazkey-community-server.<uid>.sock の絶対パス
+     *         使用できるランタイムディレクトリがなければ空文字列
      * @internal 通信実装専用で、接続やソケットの所有権は変更しない
      */
     std::string getSocketPath();
@@ -178,9 +277,11 @@ class ServerConnector {
     /**
      * @brief サーバへの非ブロッキングUNIXソケット接続を作成する
      *
-     * 最大8回試行し、試行間に150[ms]待機する
-     * 接続待ちのselectは、2秒でタイムアウトする
-     * 接続試行が接続失敗として処理された場合、初回の失敗後に通常起動を、4回目の失敗後に-r付き強制再起動を試みる
+     * 最大8回試行し、試行の間に250[ms]待機する
+     * 試行ごとにソケットパスを解決し直し、接続待ちのpollは2秒でタイムアウトする
+     * 接続後は SO_PEERCRED で相手が同一ユーザであることを確認し、一致しなければ失敗として扱う
+     * 初回の失敗後にサーバの通常起動を、4回目の失敗後に[-r]付きの強制再起動を試みる
+     * 試行の前に終了状態 ([cancelPendingTransaction]) を確認し、終了状態なら打ち切る
      *
      * @return 接続済みソケットディスクリプタ
      *         確立できなければ-1
@@ -189,23 +290,27 @@ class ServerConnector {
      */
     int createConnection();
 
+    /** @brief 応答フレームを待つ通常の読み込み期限[秒] */
+    static constexpr int kDefaultReadTimeoutSeconds = 10;
+    /** @brief サーバがZenzaiの読み込みや初期化で応答を遅らせ得るRPC用の読み込み期限[秒] */
+    static constexpr int kZenzaiReloadReadTimeoutSeconds = 120;
+
     /**
      * @brief 1回のRPCを専用接続で実行する
      *
      * 呼び出しごとに @ref createConnection で接続し、完了後にソケットを閉じる
      * すべての通常RPCはこの経路を使い、同時実行をtransact_mutexで直列化する
      * リクエストと応答は @ref transactOnSocket の長さプレフィックス付きprotobufフレームで送受信する
+     * 実行中は @ref transactTracked により [cancelPendingTransaction] から中断できる
+     * 終了状態の場合は接続も再試行も始めない
      *
      * @param send_data 送信するリクエスト
+     * @param readTimeoutSeconds 応答フレームの読み込み期限[秒]
      * @return protobuf応答
-     *         接続、シリアライズ、送受信、サイズ制限、またはパースに失敗した場合はstd::nullopt
-     *         サーバのRPC失敗
-     *         ステータスは応答として返される
+     *         終了状態、接続、シリアライズ、送受信、サイズ制限、またはパースに失敗した場合はstd::nullopt
+     *         サーバのRPC失敗ステータスは応答として返される
      * @internal 実装専用
      */
-    static constexpr int kDefaultReadTimeoutSeconds = 10;
-    static constexpr int kZenzaiReloadReadTimeoutSeconds = 120;
-
     std::optional<hazkey::ResponseEnvelope> transact(
         const hazkey::RequestEnvelope& send_data,
         int readTimeoutSeconds = kDefaultReadTimeoutSeconds);
@@ -216,12 +321,13 @@ class ServerConnector {
      * フレームは「ネットワークバイトオーダーの4バイト長 + protobuf本体」で、
      * 要求と応答の双方に同じ形式を使う
      * 応答本体は、2[MiB]を超えると拒否する
-     * 書き込み待ちは2秒、読み込み待ちは10秒でタイムアウトする
+     * 要求フレームの書き込みは2秒、応答フレームの読み込みはreadTimeoutSeconds秒の期限で打ち切る
      * このメソッドはソケットを閉じず、ロックも取得しない
      *
      * @param sock 接続済みの非ブロッキングUNIXソケット
      *             所有権は呼び出し元にある
      * @param send_data 送信するリクエスト
+     * @param readTimeoutSeconds 応答フレームの読み込み期限[秒]
      * @return パース済みの応答
      *         シリアライズ、送受信、応答サイズ制限、またはprotobufパースに失敗した場合はstd::nullopt
      * @internal 実装専用 呼び出し元が必要なロックとcloseを管理する
@@ -240,6 +346,21 @@ class ServerConnector {
      *           外部から借用・解放してはならない
      */
     int session_socket_;
+
+    /**
+     * @brief 追跡状態 ([tracked_socket_] と [shutting_down_] の書込み) を守るミューテックス
+     * @internal [transact_mutex] (RPC全体の直列化) とは別物にする
+     *           作業スレッドはRPC中ずっと [transact_mutex] を保持するため、中断側が同じ鍵を待つと中断できない
+     *           「終了状態の確認とソケット登録」と「終了状態の設定とshutdown」を不可分にして、取りこぼしを防ぐ
+     */
+    std::mutex cancel_mutex_;
+    /** @brief 応答待ち中のソケットで、なければ-1 ([cancel_mutex_] で保護) */
+    int tracked_socket_ = -1;
+    /**
+     * @brief [cancelPendingTransaction] が呼ばれた後はtrueで、二度とfalseに戻らない
+     * @internal 書込みは [cancel_mutex_] の下で行い、読取りはロックなしで行える
+     */
+    std::atomic<bool> shutting_down_{false};
 };
 
 /**

@@ -189,6 +189,11 @@ expect_not_allowed hazkey_community_conf_home_t lnk_file create unlink rename
 expect_not_allowed hazkey_community_config_t file rename link
 expect_not_allowed hazkey_community_conf_home_t dir setattr rmdir rename reparent
 
+# 実行時ディレクトリにある他のサービスのソケットとファイル (pipewire-0やgpg-agent等) の削除・置換・書き換えを、
+# このモジュールで許可しない (ラベルのない古いソケットとロックファイルは、起動スクリプトが呼び出し元のドメインで片付ける)
+expect_not_allowed "$RUNTIME_TYPE" sock_file unlink rename write setattr
+expect_not_allowed "$RUNTIME_TYPE" file unlink rename write append setattr
+
 ########################################
 # 5. .fcと.fc.inの一致 (置換用の行を除く)
 ########################################

@@ -94,11 +94,39 @@ class SocketManager {
     ///
     /// poll集合と接続数の根拠になる
     private var clientFds: [Int32] = []
+    /// 接続ごとの未処理の受信バイト列
+    ///
+    /// 部分フレームと1回の処理上限を超えた完成済みフレームを保持し、切断時に破棄する
+    private var receiveBuffers: [Int32: Data] = [:]
+    /// 未完成の要求フレームの開始位置と絶対期限
+    ///
+    /// 追加受信では期限を延長せず、先行するフレームを処理した場合は開始位置だけを補正する
+    private struct PartialFrame {
+        /// 受信バッファ内で部分フレームが始まるバイト位置
+        var offset: Int
+        /// 部分フレームの最初の受信時点から数える絶対期限
+        let deadline: ContinuousClock.Instant
+    }
+    /// 接続ごとに保持する部分フレームの期限情報
+    private var partialFrames: [Int32: PartialFrame] = [:]
     private var lastActivity: [Int32: ContinuousClock.Instant] = [:]
     var activityClock: () -> ContinuousClock.Instant = { .now }
     static let idleClientTimeout: Duration = .seconds(60)
-    static let requestTimeout: Duration = .milliseconds(2000)
     static let responseTimeout: Duration = .milliseconds(2000)
+    /// 部分フレームの最初の受信から完成までに許容する時間
+    ///
+    /// 追加受信では延長しない2秒の絶対期限を使う
+    static let partialFrameTimeout: Duration = .milliseconds(2000)
+    /// [handleClientData]を1回呼び出したときに処理する完成済みフレーム数の上限
+    ///
+    /// 16件で他の接続へ処理を譲り、残件は次の呼び出しへ持ち越す
+    static let maxFramesPerTurn = 16
+    /// 長さヘッダを含まない要求本体の最大バイト数
+    static let maxMessageSize = 1024 * 1024
+    /// 接続ごとの受信バッファに保持できる最大バイト数
+    ///
+    /// [maxMessageSize]の要求本体と4バイトの長さヘッダを保持できる大きさに制限する
+    static let maxReceiveBufferSize = maxMessageSize + 4
     /// 待ち受けるUNIXドメインソケットのパス
     ///
     /// 初期化時に受け取り以後は変わらない
@@ -209,7 +237,7 @@ class SocketManager {
 
     /// 全fdをpollする単一スレッドの主ループを実行する
     ///
-    /// poll集合はサーバソケットとパイプ読取端と全クライアントfdであり待機は1000[ms]である
+    /// [poll]集合はサーバソケットとパイプ読取端と全クライアントfdであり、完成済みの残件があれば待機0、なければ1000[ms]である
     ///
     /// [EINTR]とタイムアウトはループを継続する
     ///
@@ -220,6 +248,7 @@ class SocketManager {
         setupSignalHandlers()
         defer { closeSocket() }
         while continueServing {
+            drainBufferedClientData()
             var pollFds: [pollfd] = []
 
             // 新規接続を検知するため、サーバソケットは常にpoll対象に含める
@@ -235,7 +264,7 @@ class SocketManager {
             }
             let polledClientFds = clientFds
 
-            let pollRes = poll(&pollFds, nfds_t(pollFds.count), 1000)
+            let pollRes = poll(&pollFds, nfds_t(pollFds.count), pollTimeoutMs)
 
             if pollRes < 0 {
                 if errno == EINTR {
@@ -333,67 +362,176 @@ class SocketManager {
                 close(newClientFd)
             } else {
                 clientFds.append(newClientFd)
+                receiveBuffers[newClientFd] = Data()
                 lastActivity[newClientFd] = now
                 delegate?.socketManager(self, clientDidConnect: newClientFd)
             }
         }
     }
 
-    /// 1要求を読み処理し応答を書き戻す
+    /// 現在読めるバイトを蓄積し、完成した要求だけを処理して応答を書き戻す
     ///
-    /// 4バイトのビッグエンディアン長を読み本体が1[MB]以下であることを検証する
+    /// 4バイトのビッグエンディアン長を読み、要求本体が[maxMessageSize]以下であることを検証する
     ///
-    /// 委譲先の処理結果に4バイト長を付けて書き込みfsyncする
+    /// 委譲先の処理結果に4バイトの長さヘッダを付けて書き込み、[fsync]を呼ぶ
+    ///
+    /// 1回の呼び出しで受信する量は64KiB、処理する完成済みフレームは[maxFramesPerTurn]件までに制限する
     ///
     /// - Parameter clientFd: 処理対象のクライアントfd
     func handleClientData(_ clientFd: Int32) {
-        let readDeadline = ContinuousClock.now.advanced(by: Self.requestTimeout)
-        lastActivity[clientFd] = activityClock()
+        guard var buffer = receiveBuffers[clientFd] else { return }
         do {
-            // クライアントのリクエストを処理する
-            let maxMessageSize: UInt32 = 1024 * 1024  // 1[MB]の上限
-
-            // メッセージ長ヘッダを読み込む
-            debugLog("Reading data from client \(clientFd)...")
-            let lengthData = try readData(from: clientFd, count: 4, deadline: readDeadline)
-            let readLen = lengthData.withUnsafeBytes {
-                $0.loadUnaligned(as: UInt32.self).bigEndian
+            // 接続の受け入れ時に[O_NONBLOCK]を設定済みのため、[read]は現在読める分だけを扱う
+            // 受信量64KiBまたは完成済みフレーム16件で処理を譲り、単一接続による他の[poll]対象の占有を抑える
+            // 部分フレームの追加受信は次の[POLLIN]へ委ね、追加受信では2秒の絶対期限を延長しない
+            var readBudget = 64 * 1024
+            var framesRemaining = Self.maxFramesPerTurn
+            var chunk = [UInt8](repeating: 0, count: readBudget)
+            if let partial = partialFrames[clientFd], activityClock() >= partial.deadline {
+                throw SocketError.ioTimeout("Incomplete request frame exceeded its absolute deadline")
             }
-            debugLog("Message length: \(readLen)")
-
-            // 妥当性チェック
-            guard readLen <= maxMessageSize else {
-                throw SocketError.messageTooLarge(readLen)
+            while true {
+                var consumed = 0
+                while framesRemaining > 0, buffer.count - consumed >= 4 {
+                    let length = buffer.withUnsafeBytes {
+                        $0.loadUnaligned(fromByteOffset: consumed, as: UInt32.self).bigEndian
+                    }
+                    guard length <= UInt32(Self.maxMessageSize) else {
+                        throw SocketError.messageTooLarge(length)
+                    }
+                    let frameSize = 4 + Int(length)
+                    guard buffer.count - consumed >= frameSize else { break }
+                    let start = buffer.startIndex + consumed + 4
+                    let query = buffer.subdata(in: start..<(start + Int(length)))
+                    try respond(to: query, clientFd: clientFd)
+                    consumed += frameSize
+                    framesRemaining -= 1
+                }
+                if consumed > 0 {
+                    buffer = Data(buffer.dropFirst(consumed))
+                    if var partial = partialFrames[clientFd] {
+                        partial.offset -= consumed
+                        partialFrames[clientFd] = partial
+                    }
+                }
+                guard framesRemaining > 0, readBudget > 0 else { break }
+                if let partial = partialFrames[clientFd], activityClock() >= partial.deadline {
+                    throw SocketError.ioTimeout("Incomplete request frame exceeded its absolute deadline")
+                }
+                let capacity = min(readBudget, Self.maxReceiveBufferSize - buffer.count)
+                guard capacity > 0 else {
+                    throw SocketError.readFailed("Receive buffer limit exceeded", EMSGSIZE)
+                }
+                let count = Glibc.read(clientFd, &chunk, capacity)
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { break }
+                    throw SocketError.readFailed("Failed to read available client data", errno)
+                }
+                guard count > 0 else {
+                    throw SocketError.clientDisconnected("Client closed the receive stream")
+                }
+                guard buffer.count + count <= Self.maxReceiveBufferSize else {
+                    throw SocketError.readFailed("Receive buffer limit exceeded", EMSGSIZE)
+                }
+                buffer.append(contentsOf: chunk.prefix(count))
+                readBudget -= count
+                lastActivity[clientFd] = activityClock()
+                try updatePartialFrameDeadline(buffer: buffer, clientFd: clientFd)
             }
-
-            // メッセージボディを読み込む
-            let query = try readData(from: clientFd, count: Int(readLen), deadline: readDeadline)
-            debugLog("Successfully read \(query.count) bytes")
-
-            // 処理してレスポンスを返す
-            let response =
-                delegate?.socketManager(self, didReceiveData: query, from: clientFd) ?? Data()
-            debugLog("Processed request, response size: \(response.count)")
-
-            // レスポンス長を書き込む
-            var writeLen = UInt32(response.count).bigEndian
-            let lengthHeader = withUnsafeBytes(of: &writeLen) { Data($0) }
-            let writeDeadline = ContinuousClock.now.advanced(by: Self.responseTimeout)
-            try writeData(to: clientFd, data: lengthHeader, deadline: writeDeadline)
-
-            // レスポンスボディを書き込む
-            try writeData(to: clientFd, data: response, deadline: writeDeadline)
-
-            fsync(clientFd)
-            lastActivity[clientFd] = activityClock()
-            debugLog("Successfully wrote response")
-
+            receiveBuffers[clientFd] = buffer
         } catch let error as SocketError {
             handleSocketError(error, clientFd: clientFd)
         } catch {
             hazkeyLog("An unexpected error occurred: \(error)")
             closeClient(clientFd)
         }
+    }
+
+    /// 部分フレームの期限を検査し、受信済みの完成した要求を処理する
+    ///
+    /// 主ループの各反復で期限切れの接続を閉じ、新たな[POLLIN]がなくても完成済みの残件を処理する
+    ///
+    /// - Note: 接続ごとの残件処理は[handleClientData]へ委譲し、1回あたり[maxFramesPerTurn]件に制限する
+    func drainBufferedClientData() {
+        let now = activityClock()
+        for clientFd in clientFds {
+            guard clientFds.contains(clientFd) else { continue }
+            if let partial = partialFrames[clientFd], now >= partial.deadline {
+                handleSocketError(.ioTimeout("Incomplete request frame exceeded its absolute deadline"), clientFd: clientFd)
+            }
+        }
+        for clientFd in clientFds {
+            guard clientFds.contains(clientFd), let buffer = receiveBuffers[clientFd], buffer.count >= 4 else { continue }
+            let length = buffer.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian }
+            if length > UInt32(Self.maxMessageSize) || buffer.count >= 4 + Int(length) {
+                handleClientData(clientFd)
+            }
+        }
+    }
+
+    /// 受信バッファの状態に応じた[poll]の待機時間
+    ///
+    /// 完成済みの残件があれば待機を省略し、部分フレームだけの場合は追加受信を待ってビジーループを避ける
+    ///
+    /// - Returns: 完成済みの残件がある場合は0、それ以外は1000[ms]
+    var pollTimeoutMs: Int32 {
+        for clientFd in clientFds {
+            guard let buffer = receiveBuffers[clientFd], buffer.count >= 4 else { continue }
+            let length = buffer.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian }
+            if length <= UInt32(Self.maxMessageSize), buffer.count >= 4 + Int(length) {
+                return 0
+            }
+        }
+        return 1000
+    }
+
+    /// 受信バッファ内の部分フレームを特定し、絶対期限を更新する
+    ///
+    /// 同じ部分フレームへの追加受信では期限を維持し、後続の新しい部分フレームを受信した場合だけ期限を設定する
+    ///
+    /// - Parameters:
+    ///   - buffer: 現在の未処理の受信バイト列
+    ///   - clientFd: 期限情報を更新する接続のfd
+    /// - Throws: 要求本体の長さが[maxMessageSize]を超える場合は[SocketError.messageTooLarge]
+    /// - Note: バッファが空の場合や完成済みフレームだけの場合は、期限情報を破棄する
+    private func updatePartialFrameDeadline(buffer: Data, clientFd: Int32) throws {
+        var offset = 0
+        while buffer.count - offset >= 4 {
+            let length = buffer.withUnsafeBytes {
+                $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self).bigEndian
+            }
+            guard length <= UInt32(Self.maxMessageSize) else { throw SocketError.messageTooLarge(length) }
+            let size = 4 + Int(length)
+            guard buffer.count - offset >= size else { break }
+            offset += size
+        }
+        if offset == buffer.count {
+            partialFrames.removeValue(forKey: clientFd)
+        } else if partialFrames[clientFd]?.offset != offset {
+            // 完成済みフレームの後ろにある部分フレームも、要求の処理を待たず受信時点から期限を数える
+            partialFrames[clientFd] = PartialFrame(
+                offset: offset, deadline: activityClock().advanced(by: Self.partialFrameTimeout))
+        }
+    }
+
+    /// 完成した要求を委譲先へ渡し、長さヘッダ付きの応答を返す
+    ///
+    /// ヘッダと本体の書き込みには、[responseTimeout]から求めた共通の絶対期限を使う
+    ///
+    /// - Parameters:
+    ///   - query: 長さヘッダを除いた要求本体
+    ///   - clientFd: 応答先の接続のfd
+    /// - Throws: 応答の書き込みに失敗した場合や期限を超えた場合は[SocketError]
+    private func respond(to query: Data, clientFd: Int32) throws {
+        let response = delegate?.socketManager(self, didReceiveData: query, from: clientFd) ?? Data()
+        var writeLen = UInt32(response.count).bigEndian
+        let lengthHeader = withUnsafeBytes(of: &writeLen) { Data($0) }
+        let writeDeadline = ContinuousClock.now.advanced(by: Self.responseTimeout)
+        try writeData(to: clientFd, data: lengthHeader, deadline: writeDeadline)
+        try writeData(to: clientFd, data: response, deadline: writeDeadline)
+        fsync(clientFd)
+        lastActivity[clientFd] = activityClock()
     }
 
     /// SocketErrorの種類を記録してクライアントを閉じる
@@ -434,6 +572,8 @@ class SocketManager {
         hazkeyLog("Closing client connection: \(clientFd)")
         close(clientFd)
         clientFds.removeAll { $0 == clientFd }
+        receiveBuffers.removeValue(forKey: clientFd)
+        partialFrames.removeValue(forKey: clientFd)
         lastActivity.removeValue(forKey: clientFd)
         delegate?.socketManager(self, clientDidDisconnect: clientFd)
     }
@@ -449,6 +589,8 @@ class SocketManager {
             close(clientFd)
         }
         clientFds.removeAll()
+        receiveBuffers.removeAll()
+        partialFrames.removeAll()
         lastActivity.removeAll()
         for fd in pipeFds where fd != -1 { close(fd) }
         pipeFds = [-1, -1]

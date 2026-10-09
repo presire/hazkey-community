@@ -897,6 +897,10 @@ class HazkeyServerState {
     }
     private var candidateCompositionSnapshot: ComposingText?
     static let maxComposingCharacters = 512
+    /// 組成テキストとして保持できる入力要素数の上限
+    ///
+    /// 表示が空になる入力や短い読みへ縮約される入力も数え、見えない入力列の増大を防ぐ
+    static let maxComposingInputElements = 4096
     /// 組成テキストのUTF-8バイト数の上限 (結合文字を連ねた巨大な1文字で文字数の上限を回避させない)
     static let maxComposingUTF8Bytes = 8192
     /// 1回の入力で受け付ける1文字のUTF-8バイト数の上限 (ZWJ絵文字の最長の列より十分に大きい)
@@ -908,6 +912,86 @@ class HazkeyServerState {
     /// - Returns: 文字数またはUTF-8バイト数の上限を超える場合はtrue
     static func exceedsComposingLimit(_ text: String) -> Bool {
         text.utf8.count > maxComposingUTF8Bytes || text.count > maxComposingCharacters
+    }
+
+    /// 組成テキストの入力列と読みが保持上限を超えるかを返す
+    ///
+    /// 表示されない要素も含む[input]の数と、[convertTarget]の文字数・UTF-8バイト数を検査する
+    ///
+    /// - Parameter text: 判定する組成テキスト
+    /// - Returns: いずれかの上限を超える場合はtrue
+    static func exceedsComposingLimit(_ text: ComposingText) -> Bool {
+        text.input.count > maxComposingInputElements || exceedsComposingLimit(text.convertTarget)
+    }
+
+    /// 編集前後の組成テキストを比較し、保持上限に抵触する編集の失敗応答を返す
+    ///
+    /// 削除・部分確定でも、[mapped]の出力途中を編集すると[frozen]への展開で入力要素が増える
+    ///
+    /// コピーで検査し、上限を超える項目があれば、その項目が編集前より小さくなる場合だけ許可する
+    ///
+    /// - Parameters:
+    ///   - previous: 編集前の組成テキスト
+    ///   - next: コピー上で編集した後の組成テキスト
+    /// - Returns: 拒否する場合は[.failed]を含むレスポンス、許可する場合はnil
+    /// - Note: 呼び出し元は組成・候補・学習・セッションを変更する前に検査し、リセットによる回復も可能にする
+    static func composingEditLimitFailure(from previous: ComposingText, to next: ComposingText)
+        -> Hazkey_ResponseEnvelope? {
+        if next.input.count > maxComposingInputElements, next.input.count >= previous.input.count {
+            return composingInputLimitFailure()
+        }
+        if (next.convertTarget.utf8.count > maxComposingUTF8Bytes
+            && next.convertTarget.utf8.count >= previous.convertTarget.utf8.count)
+            || (next.convertTarget.count > maxComposingCharacters
+                && next.convertTarget.count >= previous.convertTarget.count) {
+            return composingLimitFailure()
+        }
+        return nil
+    }
+
+    /// 組成テキストの入力要素数が上限を超える場合の失敗応答を作る
+    ///
+    /// - Returns: [.failed]と[maxComposingInputElements]を示すエラーメッセージを含むレスポンス
+    private static func composingInputLimitFailure() -> Hazkey_ResponseEnvelope {
+        Hazkey_ResponseEnvelope.with {
+            $0.status = .failed
+            $0.errorMessage = "Composing text is limited to \(maxComposingInputElements) inputs."
+        }
+    }
+
+    /// 予測候補の受け入れ後に保持する入力要素数の上界を求める
+    ///
+    /// 未確定ローマ字の除去あり・なしをコピー上で試し、入力要素数の大きい方を返す
+    ///
+    /// - Parameters:
+    ///   - reading: 予測候補の読み全体
+    ///   - composing: 受け入れ前の組成テキスト
+    /// - Returns: 現在の入力要素数以上の上界、カーソルが末尾にない場合は現在の入力要素数
+    /// - Note: カスタム入力テーブルの出力途中を削除して、入力要素が展開される場合も数える
+    static func predictionInputElementUpperBound(reading: String, composing: ComposingText) -> Int {
+        guard composing.isAtEndIndex else { return composing.input.count }
+        let reading = reading.toHiragana()
+        let currentReading = composing.convertTarget.toHiragana()
+        let pendingRomanCount = composing.input.last?.inputStyle == .direct ? 0 :
+            currentReading.reversed().prefix { character in
+                character.isASCII && character.isLetter
+            }.count
+        // 変換エンジンのフォークは、必要に応じて未確定ローマ字を除き、残りの読みを[direct]入力で追加する
+        // 接尾辞の判定APIは非公開のため、除去あり・なしをコピーで試し、大きい方を事前検査する
+        // コピーでの削除は、カスタム入力テーブルの出力途中の分割による[input]の増加も捕捉する
+        // 通常のかな入力や[direct]入力では、実際の受け入れ後の入力要素数と一致する
+        var upperBound = composing.input.count
+        for droppedSuffixCount in Set([0, pendingRomanCount]) {
+            let baseReading = String(currentReading.dropLast(droppedSuffixCount))
+            guard reading.hasPrefix(baseReading), reading.count > baseReading.count else { continue }
+            var grown = composing
+            if droppedSuffixCount > 0 {
+                grown.deleteBackwardFromCursorPosition(count: droppedSuffixCount)
+            }
+            grown.insertAtCursorPosition(String(reading.dropFirst(baseReading.count)), inputStyle: .direct)
+            upperBound = max(upperBound, grown.input.count)
+        }
+        return upperBound
     }
 
     private static func composingLimitFailure() -> Hazkey_ResponseEnvelope {
@@ -1184,7 +1268,7 @@ class HazkeyServerState {
     /// [Shift]キーを単独で押下した状態で直接入力の開始文字 (設定の大文字等) を入力すると、直接入力モードに入る
     ///
     /// - Parameter inputString: 入力された文字 (先頭の1文字だけを使用する)
-    /// - Returns: 成功時は.success、文字列が空の場合は.failedを含むレスポンス
+    /// - Returns: 成功時は[.success]、文字列が空の場合や入力・組成の保持上限に抵触する場合は[.failed]を含むレスポンス
     func inputChar(inputString: String) -> Hazkey_ResponseEnvelope {
         guard composingText.value.convertTarget.count < Self.maxComposingCharacters else {
             return Self.composingLimitFailure()
@@ -1220,7 +1304,11 @@ class HazkeyServerState {
                     inputStyle: .mapped(id: .tableName(currentTableName)))
             ])
         }
-        guard !Self.exceedsComposingLimit(nextComposingText.convertTarget) else {
+        // コピー上の挿入結果を検査し、拒否時は組成・候補・入力モードを変更しない
+        guard nextComposingText.input.count <= Self.maxComposingInputElements else {
+            return Self.composingInputLimitFailure()
+        }
+        guard !Self.exceedsComposingLimit(nextComposingText) else {
             return Self.composingLimitFailure()
         }
         composingText.value = nextComposingText
@@ -1312,9 +1400,14 @@ class HazkeyServerState {
 
     /// カーソルの左の1文字を削除する ([BackSpace]キー)
     ///
-    /// - Returns: 常に.successを含むレスポンス
+    /// コピー上で削除し、保持上限に抵触しない場合だけ組成へ反映する
+    ///
+    /// - Returns: 成功時は[.success]、上限を超えた項目が縮小しない場合は[.failed]を含むレスポンス
     func deleteLeft() -> Hazkey_ResponseEnvelope {
-        composingText.value.deleteBackwardFromCursorPosition(count: 1)
+        var next = composingText.value
+        next.deleteBackwardFromCursorPosition(count: 1)
+        if let failure = Self.composingEditLimitFailure(from: composingText.value, to: next) { return failure }
+        composingText.value = next
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -1322,9 +1415,14 @@ class HazkeyServerState {
 
     /// カーソルの右の1文字を削除する ([Delete]キー)
     ///
-    /// - Returns: 常に.successを含むレスポンス
+    /// コピー上で削除し、保持上限に抵触しない場合だけ組成へ反映する
+    ///
+    /// - Returns: 成功時は[.success]、上限を超えた項目が縮小しない場合は[.failed]を含むレスポンス
     func deleteRight() -> Hazkey_ResponseEnvelope {
-        composingText.value.deleteForwardFromCursorPosition(count: 1)
+        var next = composingText.value
+        next.deleteForwardFromCursorPosition(count: 1)
+        if let failure = Self.composingEditLimitFailure(from: composingText.value, to: next) { return failure }
+        composingText.value = next
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
         }
@@ -1337,7 +1435,7 @@ class HazkeyServerState {
     /// 相対日付・かな数字・絵文字等の注入候補は学習しない
     ///
     /// - Parameter candidateIndex: 候補リスト内の確定する候補の位置
-    /// - Returns: 成功時は.success、候補が見つからない場合は.failedを含むレスポンス
+    /// - Returns: 成功時は[.success]、候補が見つからない場合や古い場合、部分確定が保持上限に抵触する場合は[.failed]を含むレスポンス
     func completePrefix(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
         if let failure = staleCandidateFailure() { return failure }
         // 範囲を先に確認する
@@ -1351,7 +1449,8 @@ class HazkeyServerState {
         let entry = list[candidateIndex]
         switch entry {
         case .fromConverter(let completedCandidate):
-            completeComposingPrefix(completedCandidate.composingCount)
+            // 組成の部分確定が保持上限に抵触する場合は、セッションの確定状態や学習を変更する前に拒否する
+            if let failure = completeComposingPrefix(completedCandidate.composingCount) { return failure }
             let learnsFromCandidate = !completedCandidate.data.contains {
                 $0.metadata.contains(.isFromUserDictionary)
             }
@@ -1365,7 +1464,7 @@ class HazkeyServerState {
         case .fromTypoCorrection(let correctedCandidate, _, let originalPrefixCount):
             // 元の入力の先頭だけを消費し、訂正対象でない接尾辞は組成に残して変換可能なまま保つ
             if originalPrefixCount < composingText.value.convertTarget.count {
-                completeComposingPrefix(.surfaceCount(originalPrefixCount))
+                if let failure = completeComposingPrefix(.surfaceCount(originalPrefixCount)) { return failure }
             } else {
                 composingText = ComposingTextBox()
             }
@@ -1386,15 +1485,15 @@ class HazkeyServerState {
         case .fromDateProvider(_, let composingCount):
             // 日付候補はカーソルまでの相対日付トリガーの読みだけを消費し、右側の読みを保持する
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
-            completeComposingPrefix(composingCount)
+            if let failure = completeComposingPrefix(composingCount) { return failure }
         case .fromKanaNumberProvider(_, let composingCount):
             // かな数字候補はカーソルまでの数詞の読みだけを消費し、右側の読みを保持する
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
-            completeComposingPrefix(composingCount)
+            if let failure = completeComposingPrefix(composingCount) { return failure }
         case .fromEmoji(_, let composingCount):
             // 絵文字直接変換候補は一致した正規化クエリのprefixだけを消費し、後続suffixは保持する
             // 変換エンジンの確定 / 学習APIには触れないため、共有dirtyフラグは変更しない (他の接続に永続化待ちの学習がある可能性がある)
-            completeComposingPrefix(composingCount)
+            if let failure = completeComposingPrefix(composingCount) { return failure }
         }
         currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
@@ -1411,15 +1510,24 @@ class HazkeyServerState {
         }
     }
 
-    /// forkのprefixCompleteが負のカーソルを残しても、次の入力前に範囲内へ戻す
-    private func completeComposingPrefix(_ count: ComposingCount) {
-        composingText.value.prefixComplete(composingCount: count)
-        let text = composingText.value
+    /// 組成テキストの先頭をコピー上で確定し、保持上限を検査して反映する
+    ///
+    /// 変換エンジンのフォークの[prefixComplete]が範囲外のカーソルを残した場合は、読みの末尾へ戻す
+    ///
+    /// - Parameter count: 確定して取り除く先頭部分の長さと、その長さの単位
+    /// - Returns: 保持上限に抵触する場合は失敗応答、反映できた場合はnil
+    /// - Note: 拒否時は元の組成テキストを変更しない
+    private func completeComposingPrefix(_ count: ComposingCount) -> Hazkey_ResponseEnvelope? {
+        var text = composingText.value
+        text.prefixComplete(composingCount: count)
+        if let failure = Self.composingEditLimitFailure(from: composingText.value, to: text) { return failure }
         if text.convertTargetCursorPosition < 0 || text.convertTargetCursorPosition > text.convertTarget.count {
-            composingText.value = ComposingText(
+            text = ComposingText(
                 convertTargetCursorPosition: text.convertTarget.count, input: text.input,
                 convertTarget: text.convertTarget)
         }
+        composingText.value = text
+        return nil
     }
 
     /// 予測候補を先頭の固定表記として受け入れる (上流ad714fe / #357)
@@ -1429,7 +1537,7 @@ class HazkeyServerState {
     /// まだ確定していないため、学習データは更新しない
     ///
     /// - Parameter candidateIndex: 候補リスト内の受け入れる候補の位置
-    /// - Returns: 成功時は.success、候補が見つからない場合や受け入れられない候補の場合は.failedを含むレスポンス
+    /// - Returns: 成功時は[.success]、候補が見つからない場合や受け入れられない場合、組成の保持上限に抵触する場合は[.failed]を含むレスポンス
     /// - Note: 受入のホットキーは設定で変更できる (既定は[F5]キー)
     func acceptPrediction(candidateIndex: Int) -> Hazkey_ResponseEnvelope {
         if let failure = staleCandidateFailure() { return failure }
@@ -1447,10 +1555,15 @@ class HazkeyServerState {
                 $0.errorMessage = "Candidate index \(candidateIndex) is not a converter candidate."
             }
         }
-        // 受入後の組成は候補の読み全体になる
-        // 変換エンジンのセッション状態を書き換える前に、上限を超える候補を拒否する
-        guard !Self.exceedsComposingLimit(candidate.data.map(\.ruby).joined()) else {
+        // 受け入れ後の組成は候補の読み全体になるため、文字数・UTF-8バイト数と入力要素数の上界を検査する
+        // 変換エンジンのセッション状態を書き換える前に、保持上限を超える候補を拒否する
+        let candidateReading = candidate.data.map(\.ruby).joined()
+        guard !Self.exceedsComposingLimit(candidateReading) else {
             return Self.composingLimitFailure()
+        }
+        guard Self.predictionInputElementUpperBound(reading: candidateReading, composing: composingText.value)
+            <= Self.maxComposingInputElements else {
+            return Self.composingInputLimitFailure()
         }
         var composing = composingText.value
         let accepted = withConversionSession {
@@ -1597,19 +1710,29 @@ class HazkeyServerState {
     ///
     /// 区切りを挿入すると、末尾の未確定のローマ字 (例: n) がかなへ確定される
     ///
+    /// コピー上で挿入した後、入力要素数と読みの文字数・UTF-8バイト数が上限内の場合だけ組成へ反映する
+    ///
+    /// - Returns: 保持上限を超える場合は失敗応答、挿入できた場合や挿入不要の場合はnil
     /// - Note: カーソルが末尾に無い場合や、既に区切りがある場合は何もしない
-    func ensureCompositionSeparatorForConversion() {
+    func ensureCompositionSeparatorForConversion() -> Hazkey_ResponseEnvelope? {
         guard composingText.value.isAtEndIndex else {
-            return
+            return nil
         }
         if composingText.value.input.last?.piece == .compositionSeparator {
-            return
+            return nil
         }
-        composingText.value.insertAtCursorPosition([
+        var next = composingText.value
+        next.insertAtCursorPosition([
             ComposingText.InputElement(
                 piece: .compositionSeparator,
                 inputStyle: .mapped(id: .tableName(currentTableName)))
         ])
+        guard next.input.count <= Self.maxComposingInputElements else {
+            return Self.composingInputLimitFailure()
+        }
+        guard !Self.exceedsComposingLimit(next) else { return Self.composingLimitFailure() }
+        composingText.value = next
+        return nil
     }
 
     /// 変換エンジンへ渡す組成テキストを返す
@@ -2316,7 +2439,7 @@ class HazkeyServerState {
     /// - Returns: 候補結果を含むレスポンス
     func getCandidates(is_suggest: Bool) -> Hazkey_ResponseEnvelope {
         if !is_suggest {
-            ensureCompositionSeparatorForConversion()
+            if let failure = ensureCompositionSeparatorForConversion() { return failure }
         }
         let (candidatesResult, serverCandidates) = makeCandidatesResult(is_suggest: is_suggest)
         self.currentCandidateList = serverCandidates

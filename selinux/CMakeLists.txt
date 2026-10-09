@@ -10,8 +10,6 @@ find_program(CHECKMODULE checkmodule)
 find_program(SEMODULE_PACKAGE semodule_package)
 find_program(SEMODULE semodule PATHS /usr/sbin /sbin)
 find_program(RESTORECON restorecon PATHS /usr/sbin /sbin)
-# rootのインストール時に実行するため、利用者のPATHにあるchconは使わない
-find_program(CHCON chcon PATHS /usr/bin /bin NO_DEFAULT_PATH)
 
 if(NOT CHECKMODULE OR NOT SEMODULE_PACKAGE)
     message(WARNING "SELinux policy tools not found (checkmodule, semodule_package).")
@@ -282,6 +280,7 @@ install(FILES
 #
 # rootで実行した場合だけ、semoduleでモジュールを読み込み、restoreconでインストール済みのファイルと
 # 既存ユーザのHazkey Community専用ディレクトリのラベルを付け直す (ソケットとロックファイルは、restoreconでは戻らないため、削除して作り直す)
+# モジュールが対象とする他のインストール先は付け直さず、ラベルが規則と一致しない場合だけ警告する
 # DESTDIRを指定したパッケージの作成時は、ビルド環境のポリシーを変更しないように読み込まない
 # .ppに含まれるファイルコンテキストは設定時のインストール先から生成するため、
 # cmake --install --prefixで別の場所へインストールした場合も読み込まない
@@ -312,9 +311,10 @@ if(SEMODULE AND RESTORECON)
         if(NOT \"${HAZKEY_SELINUX_PREFIX_RELABEL}\" STREQUAL \"\")
             list(INSERT RELABEL_PATHS 0 \"${HAZKEY_SELINUX_PREFIX_RELABEL}\")
         endif()
-        # モジュールが対象とする他のインストール先の変換サーバも、ラベルを付け直す
+        # モジュールが対象とする他のインストール先は、ラベルを付け直さずに、規則との不一致だけを調べる
+        # 利用者が別の手順で入れた版の挙動 (隔離の有無) を、このインストールで変えないため
         # ラベルのない (lib_tの) 変換サーバはunconfined_tで動作して、ソケットとロックファイルをuser_tmp_tで作るため、
-        # hazkey_community_server_tで動作する変換サーバが、それらを開けなくなる
+        # その変換サーバの動作中は、hazkey_community_server_tで動作する変換サーバが起動できない (不一致の場合は警告する)
         set(KNOWN_SERVER_DIRS
             /usr/lib/hazkey-community
             /usr/lib64/hazkey-community
@@ -397,13 +397,16 @@ if(SEMODULE AND RESTORECON)
                     /root/.local/share/hazkey-community
                     /root/.local/state/hazkey-community
                     /root/.cache/hazkey-community
+                )
+                # ホームディレクトリへのインストール先も、他のインストール先として扱う (付け直さない)
+                file(GLOB _user_install_dirs
                     /home/*/.local/lib/hazkey-community
                     /home/*/.local/lib64/hazkey-community
                     /root/.local/lib/hazkey-community
                     /root/.local/lib64/hazkey-community
                 )
 
-                set(_relabel_paths \${RELABEL_PATHS} \${KNOWN_SERVER_DIRS} \${_user_paths})
+                set(_relabel_paths \${RELABEL_PATHS} \${_user_paths})
                 list(REMOVE_DUPLICATES _relabel_paths)
                 set(_failed_paths \"\")
                 foreach(_path IN LISTS _relabel_paths)
@@ -422,38 +425,30 @@ if(SEMODULE AND RESTORECON)
                     endif()
                 endforeach()
 
-                # 実行中のセッションのソケットとロックファイルは、chconで型を直接付ける
-                # 基本ポリシーの/run/user/[^/]+/.+ (<<none>>) が優先されて、restoreconでは戻らないため
-                # 付け直した後は、unconfined_tの変換サーバが使用中でも、hazkey_community_server_tの変換サーバから開ける
-                if(EXISTS \"${CHCON}\")
-                    file(GLOB _runtime_files
-                        /run/user/*/hazkey-community-server.*.lock
-                        /run/user/*/hazkey-community-server.*.sock
-                    )
-                    foreach(_file IN LISTS _runtime_files)
-                        if(IS_SYMLINK \"\${_file}\" OR IS_DIRECTORY \"\${_file}\")
-                            continue()
-                        endif()
-                        # ディレクトリのUIDとファイル名のUIDが一致するものだけを対象にする
-                        if(NOT \"\${_file}\" MATCHES \"^/run/user/([0-9]+)/hazkey-community-server[.]([0-9]+)[.](lock|sock)$\")
-                            continue()
-                        endif()
-                        if(NOT CMAKE_MATCH_1 STREQUAL CMAKE_MATCH_2)
-                            continue()
-                        endif()
-                        message(STATUS \"Running: ${CHCON} -h -t hazkey_community_runtime_t \${_file}\")
+                # 他のインストール先は、restorecon -n (変更しない確認) で、規則と一致しないファイルがあるかだけを調べる
+                # Would relabel (古い版はrestorecon reset) の行がある場合だけ、不一致とみなす
+                set(_mismatched_dirs \"\")
+                foreach(_dir IN LISTS KNOWN_SERVER_DIRS _user_install_dirs)
+                    list(FIND _relabel_paths \"\${_dir}\" _own_index)
+                    if(EXISTS \"\${_dir}\" AND _own_index EQUAL -1)
                         execute_process(
-                            COMMAND ${CHCON} -h -t hazkey_community_runtime_t \${_file}
-                            RESULT_VARIABLE _rc
-                            ERROR_VARIABLE _err
-                            ERROR_STRIP_TRAILING_WHITESPACE
+                            COMMAND ${RESTORECON} -n -v -R \${_dir}
+                            OUTPUT_VARIABLE _dry_run
+                            ERROR_QUIET
                         )
-                        if(NOT _rc EQUAL 0)
-                            message(WARNING \"  chcon failed for \${_file}: \${_err}\")
-                            list(APPEND _failed_paths \"\${_file}\")
+                        if(\"\${_dry_run}\" MATCHES \"(Would relabel|reset) /\")
+                            list(APPEND _mismatched_dirs \"\${_dir}\")
                         endif()
-                    endforeach()
-                endif()
+                    endif()
+                endforeach()
+
+                # 実行中のセッションのソケットとロックファイルは、ここでは付け直さない
+                # 基本ポリシーの/run/user/[^/]+/.+ (<<none>>) が優先されて、restoreconでは戻らないため、
+                # かつfile(GLOB)での列挙とchconの間に差し替え (TOCTOU) の余地が残るため
+                # 新しく作成するファイルには、ポリシーの名前を指定しない型遷移でhazkey_community_runtime_tが自動で付く
+                # モジュールの読み込み前に作られたファイルは、前のラベルのままになるため、
+                # 変換サーバの起動スクリプトが、使用中でないことを確かめてから削除する
+                # (下記の案内は、ラベルのない変換サーバが動作中で削除できない場合の対処)
 
                 message(STATUS \"\")
                 if(_failed_paths)
@@ -461,6 +456,21 @@ if(SEMODULE AND RESTORECON)
                     message(WARNING \"Run restorecon -R -v manually for: \${_failed_paths}\")
                 else()
                     message(STATUS \"SELinux setup completed successfully\")
+                endif()
+                if(_mismatched_dirs)
+                    message(WARNING \"\")
+                    message(WARNING \"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\")
+                    message(WARNING \"  Other hazkey-community installations do not match the file contexts\")
+                    message(WARNING \"  of this module. They were NOT relabeled, and their conversion servers\")
+                    message(WARNING \"  run without SELinux confinement. While such a server is running,\")
+                    message(WARNING \"  the confined server cannot start.\")
+                    message(WARNING \"  To confine them as well, run:\")
+                    foreach(_dir IN LISTS _mismatched_dirs)
+                        message(WARNING \"    sudo restorecon -R -v \${_dir}\")
+                    endforeach()
+                    message(WARNING \"  A full relabel (for example, restorecon -R /usr) also relabels them.\")
+                    message(WARNING \"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\")
+                    message(WARNING \"\")
                 endif()
                 message(STATUS \"Restart the conversion server to apply the new domain:\")
                 message(STATUS \"  pkill -u USER -f hazkey-community-server\")

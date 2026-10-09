@@ -142,7 +142,7 @@ bool zenzaiModelSupportsConditioning(const QString& modelKey);
  *
  * @details カタログに登録された系列はそのsupportsRightContextを返す
  *          未登録のキー (カスタム重み等) はファイル名から世代を推定し、
- *          "jinen" を含む場合は非対応、"zenz-v<major>[.<minor>]" が3.2以上なら対応、
+ *          "jinen" を含む場合は非対応、"zenz-v<major>.<minor>" が3.2以上なら対応 (マイナー部は省略可、省略時は0扱い)、
  *          それ未満なら非対応、世代を判別できない場合は対応側に倒す
  *          空文字列はアクティブモデル未確定として対応側に倒す
  *
@@ -184,6 +184,25 @@ bool isJinenModelPath(const QString& path);
  * @return 固定カタログへの読み取り専用参照
  */
 const QVector<ZenzaiModelOption>& availableZenzaiModels();
+
+/**
+ * @brief 指定ファイルが、管理ディレクトリ内の旧世代カタログモデルかをメタデータだけで判定する
+ *
+ * @details 結果は「最新ではありません」という案内の表示にだけ使い、機能の有効化には関与しない
+ *          そのためファイルの内容は一切読まない (SHA256を計算しない)
+ *          名前とサイズだけで識別するので、GUIスレッドで任意サイズのファイルを読んで固まることがない
+ *          シンボリックリンクは解決し、実体が ZenzaiModelManager::getModelsDir() 直下にある
+ *          <key>.gguf で、<key>が旧世代エントリと一致し、サイズが正のexpectedBytesと等しい場合にだけtrueを返す
+ *          管理ディレクトリ内で旧世代と同名かつ同サイズに差し替えられたファイルも対象になるが、影響は案内の文言だけである
+ *          任意の場所のカスタム重みは常にfalse (未検証のカスタム扱い)
+ *          expectedBytesが0以下 (未知) の旧世代エントリは、サイズで絞れないため対象にしない
+ *
+ * @param path 判定するモデルファイルのパス
+ * @param catalog 照合に使うカタログ
+ * @return 条件を満たす場合はtrue 存在しない、非通常ファイル、管理ディレクトリ外、不一致はfalse
+ */
+bool isManagedLegacyGenerationModel(const QString& path,
+                                    const QVector<ZenzaiModelOption>& catalog);
 
 /**
  * @brief Zenzaiモデルの保存・選択・移行を管理するユーティリティ

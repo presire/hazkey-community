@@ -1,10 +1,12 @@
 #!/usr/bin/env sh
 
-# hazkey-community-serverラッパースクリプト
-# 環境変数XDG_CONFIG_HOMEは、XDG Base Directory仕様では任意であり、多くのデスクトップセッションでは未設定である
-# このフォールバックが無いと、パスは"/hazkey-community/env"に潰れてしまい、以下のユーザ設定がすべて無言で無視される
-# XDG Base Directory仕様に従い、絶対パスでない値は無効として既定位置を使う (サーバ・設定GUIと同じ規則)
-# 相対パスを受け入れると、作業ディレクトリ配下に置かれたファイルの設定を読み込んでしまう
+# hazkey-community-serverの起動スクリプト
+# 環境変数[XDG_CONFIG_HOME]は、XDG Base Directory仕様では省略可能であり、多くのデスクトップセッションでは未設定である
+# このフォールバックが無いと、パスが"/hazkey-community/env"に潰れてしまい、後述のユーザ設定がすべて無言で無視される
+#
+# XDG Base Directory仕様に従い、絶対パスでない値は無効として既定位置を使用する (変換サーバや設定GUIと同じ規則)
+#
+# 相対パスを受け入れると、作業ディレクトリ配下に置かれたファイルの設定を読み込んでしまうため
 case "${XDG_CONFIG_HOME:-}" in
     /*) CONFIG_HOME="$XDG_CONFIG_HOME" ;;
     *) CONFIG_HOME="$HOME/.config" ;;
@@ -13,43 +15,107 @@ ENV_FILE="$CONFIG_HOME/hazkey-community/env"
 
 # ユーザ定義の環境変数を読み込む
 #
-# このファイルはシェルとして実行 ("." でsource) せず、1行ずつ "KEY=value" のデータとして解釈する
+# このファイルはシェルとして実行 ("." によるsource) せず、1行ずつ"KEY=value"のデータとして解釈する
 # sourceすると、ファイルに書かれたコマンド置換やコマンドがIMEの起動のたびに実行されてしまう
-# (このファイルへの書き込みを得たプロセスが、変換サーバの起動に便乗して任意のコードを実行し続けられる)
+# (このファイルへの書き込みを得たプロセスが、変換サーバの起動に便乗して任意のコードを実行し続けられるため)
 #
 # 読み込んだ変数は、このシェル自身には代入しない
 # 名前を接頭辞付きの変数 (hazkey_env_user_<KEY>) に保持して、最後にenv(1)の引数として変換サーバへ渡す
+#
 # bashでは、RANDOMやOPTIND等の特殊変数へ代入すると値を算術式として評価するため、
 # 単一引用符で囲んだ値でも、配列の添字に書いたコマンド置換が実行されてしまう
+#
 # また、読み取り専用の変数 (UID等) への代入はシェルを終了させ、この解析器自身の変数への代入は解析を乱す
 #
-# 受け付ける書式 (従来の "KEY=value" 形式の設定はそのまま使える)
-#   - 空行と "#" で始まる行は無視する。行頭の "export " は省略可能として読み飛ばす
-#   - KEYは英字または "_" で始まる英数字と "_" の並び
-#   - 'value' は内容をそのまま使う (展開しない。$、`、\ も文字として扱う)
-#   - "value" と引用符なしの値は、$NAME と ${NAME} だけを展開する (例: $HOME/.cache/...)
+# 受け付ける書式 (従来の"KEY=value"形式の設定はそのまま使える)
+#   - 空行と"#"で始まる行は無視する (行頭の"export"は省略可能として読み飛ばす)
+#   - [KEY]は英字、"_"で始まる英数字、"_"の並び
+#   - 'value'は内容をそのまま使用する (展開せず、$やバッククォートや\も文字として扱う)
+#   - "value"と引用符なしの値は、$NAMEと${NAME}だけを展開する (例: $HOME/.cache/...)
 #     このファイルの前の行で設定した変数は、その値を展開する
-#     引用符なしの値は最初の空白までで、その後ろには "#" で始まるコメントだけを置ける
-#     (空白を挟まない "#" は値の一部として扱う。例: KEY=abc#def の値は abc#def)
-#     引用符なしの値の先頭の "~" と "~/" は$HOMEに展開する
-#   - 二重引用符の値と引用符なしの値で、コマンド置換 ($(...) と `...`)、${NAME:-x} 等の展開、
-#     バックスラッシュ、シェルの制御文字を含む行は、警告を出して読み飛ばす
-#   - 同じKEYを複数回設定した場合は、最後の行の値を使う
+#     引用符なしの値は最初の空白までで、その後ろには"#"で始まるコメントだけを置ける
+#     (空白を挟まない"#"は、値の一部として扱う、例: KEY=abc#def の値は abc#def)
+#     引用符なしの値の先頭の"~"と"~/"は$HOMEに展開する
+#   - 2重引用符の値と引用符なしの値で、コマンド置換 (バッククォートによるコマンド置換や $(...) など)、
+#     ${NAME:-x} 等の展開、バックスラッシュ、シェルの制御文字を含む行は、警告を出して読み飛ばす
+#   - 同じ[KEY]を複数回設定した場合は、最後の行の値を使用する
 #
-# 動的リンカとglibcがsetuidプログラムで取り除く変数 (LD_*、GCONV_PATH等) は設定しない
+# 動的リンカとglibcがsetuidプログラムで取り除く変数 ([LD_*]、[GCONV_PATH]等) は設定しない
 # SELinuxポリシーは変換サーバへのドメイン遷移でnoatsecureを許可しており、glibcはこれらを取り除かないため、
-# ここで共有ライブラリの差し込み (LD_PRELOAD等) を防ぐ
+# ここで共有ライブラリの差し込み ([LD_PRELOAD]等) を防ぐ
 hazkey_env_names=
 hazkey_env_lineno=0
+
+# 展開後の値の大きさの上限 (バイト単位)
+#
+# A=xに続けて、A="$A$A"を繰り返すだけの数十バイトのファイルでも、値が指数関数的に膨らみ、メモリとCPU時間を使い尽くしてしまう
+# そのため、値1つあたりの大きさと、受け入れた値の合計に上限を設ける
+#
+# 正当な用途 (パスやICDファイル名やCPUスレッド数等の短い値) は1KiBを大きく下回るため、以下はそれに対して十分すぎる余裕を持たせた値である
+#   - 値1つあたり65536バイト (64[KiB])
+#     正当な値の数十倍以上あり、巨大な単一行の読み込みも抑える
+#   - 合計262144バイト (256[KiB])
+#     値上限の4つ分にあたり、多数の変数で少しずつ積み上げる方式の膨張も抑える
+#
+# 上限を超える行は適用せず、警告を出して次の行へ進む
+# (変数は変更前の値のままか未設定のままにし、部分的な代入は決して行わない)
+#
+# 大きさはバイト数で数える
+# ${#変数}は、UTF-8ロケールでは文字数を数えるため、
+# 65536文字の「あ」 (196608バイト) のような値が上限をすり抜け、最後のexecがE2BIGで失敗する
+# そのため、長さの検査は全て[hazkey_env_bytelen()] (下記) で行う
+# POSIXシェルの構成要素 (パラメータ展開とcaseと$((...))) のみを使用する
+# (このスクリプトは、/bin/shとdashとbash --posixとbusybox shで検証する)
+hazkey_env_max_value_len=65536
+hazkey_env_max_total_len=262144
+hazkey_env_total_len=0
 
 hazkey_env_warn() {
     printf 'hazkey-community-server: %s:%s: %s\n' "$ENV_FILE" "$hazkey_env_lineno" "$1" >&2
 }
 
-# 引数の $NAME と ${NAME} を値へ置き換えて、結果をhazkey_env_expandedに入れる
-# このファイルで設定済みの名前はその値を、それ以外は現在の環境変数の値を使う
-# 名前は英数字と "_" に限定してから参照するため、evalへ渡す文字列はシェルの構文を含まない
-# 対応しない展開 (${NAME:-x}等) を含む場合は、1を返す
+# "$1"のバイト数を数え、結果を[hazkey_env_bytelen]に入れる
+# "$( )"の中での"LC_ALL=C"代入は子シェルに閉じるため、呼び出し元のlocaleも、最後にexecする変換サーバのlocaleも変えない
+# "wc -c"コマンドは、ロケールによらずバイト数を数えるが、前後の空白の除去を"LC_ALL=C"で安定させる
+#
+# POSIX構成要素 (コマンド置換とパイプとパラメータ展開とcase) のみを使用する
+hazkey_env_bytelen() {
+    hazkey_env_bytelen=$(LC_ALL=C; printf '%s' "$1" | wc -c)
+    hazkey_env_bytelen=${hazkey_env_bytelen#"${hazkey_env_bytelen%%[![:space:]]*}"}
+    hazkey_env_bytelen=${hazkey_env_bytelen%"${hazkey_env_bytelen##*[![:space:]]}"}
+    case $hazkey_env_bytelen in
+        '' | *[!0-9]*)
+            hazkey_env_bytelen=999999999
+            ;;
+    esac
+}
+
+# $1に渡した長さの値を[hazkey_env_key]へ載せ替えた場合の合計が上限内かを検査する
+# 上限内のときは0を、上限を超える場合は1を返す
+#
+# 同じ[KEY]の載せ替えでは、古い値の分を差し引く (最後の行の値だけが残るため)
+# 判定に使った古い値の長さは[hazkey_env_check_old_len]に残して、受け入れ確定時の[hazkey_env_total_len]の更新にそのまま使用する
+hazkey_env_check_total() {
+    hazkey_env_check_old_len=0
+    if [ -n "${hazkey_env_key:-}" ]; then
+        case " $hazkey_env_names " in
+            *" $hazkey_env_key "*)
+                eval "hazkey_env_check_old=\$hazkey_env_user_$hazkey_env_key"
+                hazkey_env_bytelen "$hazkey_env_check_old"
+                hazkey_env_check_old_len=$hazkey_env_bytelen
+                ;;
+        esac
+    fi
+    [ "$((hazkey_env_total_len + $1 - hazkey_env_check_old_len))" -le "$hazkey_env_max_total_len" ]
+}
+
+# 引数の$NAMEと${NAME}を値へ置き換え、結果を[hazkey_env_expanded]に入れる
+# このファイルで設定済みの名前はその値を、それ以外は現在の環境変数の値を使用する
+#
+# 名前は英数字と"_"に限定してから参照するため、evalへ渡す文字列はシェルの構文を含まない
+#
+# 対応しない展開 (${NAME:-x}等) を含む場合は1を返す
+# 展開後の値が値上限か合計上限を超える場合は2を返す (変数は変更しない)
 hazkey_env_expand() {
     hazkey_env_rest=$1
     hazkey_env_expanded=
@@ -58,6 +124,14 @@ hazkey_env_expand() {
             *'$'*) ;;
             *)
                 hazkey_env_expanded=$hazkey_env_expanded$hazkey_env_rest
+                hazkey_env_bytelen "$hazkey_env_expanded"
+                if [ "$hazkey_env_bytelen" -gt "$hazkey_env_max_value_len" ]; then
+                    return 2
+                fi
+                hazkey_env_expanded_len=$hazkey_env_bytelen
+                if ! hazkey_env_check_total "$hazkey_env_expanded_len"; then
+                    return 2
+                fi
                 return 0
                 ;;
         esac
@@ -86,13 +160,19 @@ hazkey_env_expand() {
             *) eval "hazkey_env_value=\${$hazkey_env_name-}" ;;
         esac
         hazkey_env_expanded=$hazkey_env_expanded$hazkey_env_value
+        # A="$A$A"の繰り返しが指数関数的に膨らむ前に打ち切る (変数は変更しない)
+        # バイト数で判定する (文字数では多バイト文字が上限をすり抜けるため)
+        hazkey_env_bytelen "$hazkey_env_expanded"
+        if [ "$hazkey_env_bytelen" -gt "$hazkey_env_max_value_len" ]; then
+            return 2
+        fi
     done
 }
 
 if [ -f "$ENV_FILE" ]; then
     while IFS= read -r hazkey_env_line || [ -n "$hazkey_env_line" ]; do
         hazkey_env_lineno=$((hazkey_env_lineno + 1))
-        # 行末のCR (CRLF改行) と前後の空白を除く
+        # 行末のCR (CRLF改行のCR) と前後の空白を除く
         hazkey_env_line=${hazkey_env_line%"$(printf '\r')"}
         hazkey_env_line=${hazkey_env_line#"${hazkey_env_line%%[![:space:]]*}"}
         hazkey_env_line=${hazkey_env_line%"${hazkey_env_line##*[![:space:]]}"}
@@ -125,7 +205,7 @@ if [ -f "$ENV_FILE" ]; then
         esac
         case $hazkey_env_raw in
             "'"*)
-                # 単一引用符: 閉じ引用符の後ろは空白と "#" で始まるコメントだけを許す
+                # 単一引用符の値: 閉じ引用符の後ろには、空白と"#"で始まるコメントのみを置ける
                 hazkey_env_value=${hazkey_env_raw#"'"}
                 case $hazkey_env_value in
                     *"'"*) ;;
@@ -154,7 +234,12 @@ if [ -f "$ENV_FILE" ]; then
                         continue
                         ;;
                 esac
-                if ! hazkey_env_expand "$hazkey_env_value"; then
+                hazkey_env_expand "$hazkey_env_value"
+                hazkey_env_rc=$?
+                if [ "$hazkey_env_rc" -eq 2 ]; then
+                    hazkey_env_warn "ignored (value too large)"
+                    continue
+                elif [ "$hazkey_env_rc" -ne 0 ]; then
                     hazkey_env_warn "ignored (only \$NAME and \${NAME} expansions are supported)"
                     continue
                 fi
@@ -173,7 +258,12 @@ if [ -f "$ENV_FILE" ]; then
                     '~') hazkey_env_value=$HOME ;;
                     '~/'*) hazkey_env_value=$HOME/${hazkey_env_value#'~/'} ;;
                 esac
-                if ! hazkey_env_expand "$hazkey_env_value"; then
+                hazkey_env_expand "$hazkey_env_value"
+                hazkey_env_rc=$?
+                if [ "$hazkey_env_rc" -eq 2 ]; then
+                    hazkey_env_warn "ignored (value too large)"
+                    continue
+                elif [ "$hazkey_env_rc" -ne 0 ]; then
                     hazkey_env_warn "ignored (only \$NAME and \${NAME} expansions are supported)"
                     continue
                 fi
@@ -188,9 +278,24 @@ if [ -f "$ENV_FILE" ]; then
                 continue
                 ;;
         esac
-        # KEYは英数字と "_" だけなので、evalへ渡す文字列はシェルの構文を含まない
+        # [KEY]は英数字と"_"のみであるので、evalへ渡す文字列はシェルの構文を含まない
         # 値は変数の参照として代入するため、内容は展開も評価もされない
+        # 大きさの上限を検査する (単一引用符の値など、展開を経ない行もここで抑える)
+        # 判定はバイト数で行う
+        # 上限を超える行は適用せず、変数は変更前の値のままか未設定のままにする
+        hazkey_env_bytelen "$hazkey_env_value"
+        hazkey_env_new_len=$hazkey_env_bytelen
+        if [ "$hazkey_env_new_len" -gt "$hazkey_env_max_value_len" ]; then
+            hazkey_env_warn "ignored (value too large)"
+            continue
+        fi
+        if ! hazkey_env_check_total "$hazkey_env_new_len"; then
+            hazkey_env_warn "ignored (value too large)"
+            continue
+        fi
         eval "hazkey_env_user_$hazkey_env_key=\$hazkey_env_value"
+        # [hazkey_env_check_total]が求めた古い値の分を差し引いて、合計を更新する
+        hazkey_env_total_len=$((hazkey_env_total_len + hazkey_env_new_len - hazkey_env_check_old_len))
         case " $hazkey_env_names " in
             *" $hazkey_env_key "*) ;;
             *) hazkey_env_names="$hazkey_env_names $hazkey_env_key" ;;
@@ -202,32 +307,110 @@ fi
 # HAZKEY_ZENZAI_CPU_THREADS=1..8
 # HAZKEY_ZENZAI_DEADLINE_MS=0..2000 ("0"は期限なし)
 
-# Vulkan ICDの選択は、システムのVulkan Loaderの標準探索へ意図的に委ねる
-# (VK_DRIVER_FILES/VK_ICD_FILENAMESを上書きしない)
+# Vulkan ICDの選択は、システムのVulkan Loaderの標準探索へ委ねる
+# ([VK_DRIVER_FILES]や[VK_ICD_FILENAMES]を上書きしない)
+#
 # 以前は、マルチGPU環境でのSIGILLクラッシュ (https://github.com/7ka-Hiira/hazkey/issues/29) を回避するため、
 # 最初に検出したベンダーのICDへ固定するヒューリスティックをこのスクリプトに置いていた
 #
-# しかし、その最初のmanifestが未認識またはアーキテクチャ不一致のドライバーである場合、
-# GPUアクセラレーションが無言で無効化されていた
+# しかし、その最初のmanifestが未認識のドライバやアーキテクチャ不一致のドライバである場合、GPUアクセラレーションが無言で無効化されていた
 # (https://github.com/presire/hazkey-community/issues/2)
 #
-# Vulkan Loader (>=1.3.219) は、library_archが不一致のマニフェストを既に除外し、Mesa (>=25.2.1) はそのフィールドを出力するため、
-# このスクリプトが探索を推測し直す必要はない
+# Vulkan Loader (>=1.3.219) は、library_archが不一致のマニフェストを既に除外して、
+# Mesa (>=25.2.1) はそのフィールドを出力するため、このスクリプトが探索を推測し直す必要はない
 #
 # マルチベンダー構成のクラッシュ対策は現在、hazkey-server自身が隔離バックエンドプローブ子プロセスでセッションごとに処理する
 # ("backendProbe.swift"ファイルを参照すること)
+#
 # この方式は、静的なファイル一覧への固定と異なり、動作するGPUを無言で隠すことがない
-# 特定のドライバを強制したい場合は、引き続き、
-# "$XDG_CONFIG_HOME/hazkey-community/env"ファイルのVK_DRIVER_FILES、VK_ICD_FILENAMES、VK_LOADER_DRIVERS_SELECT等を使用する
+# 特定のドライバを強制したい場合は、引き続き、envファイル ([XDG_CONFIG_HOME]/hazkey-community/env) の
+# [VK_DRIVER_FILES]、[VK_ICD_FILENAMES]、[VK_LOADER_DRIVERS_SELECT]等を使用する
+#
 # 例は、README.mdを参照すること
 hazkey_server="@CMAKE_INSTALL_FULL_LIBDIR@/hazkey-community/hazkey-community-server"
+
+# SELinuxのラベルのない古いソケットとロックファイルを片付ける
+#
+# ラベルのない変換サーバ (モジュールの読み込み前や、ラベルの付け直し前の変換サーバ) は、unconfined_tで動作して、ソケットとロックファイルをuser_tmp_tで作る
+# hazkey_community_server_tで動作する変換サーバは、それらを開くことも削除することもできず、起動に失敗し続ける
+#
+# 変換サーバにuser_tmp_tのファイルの削除を許可すると、同じディレクトリにある他のサービスのソケット
+# (pipewire-0やgpg-agent等) を削除して置き換えられてしまうため、ポリシーでは許可しない
+#
+# 代わりに、呼び出し元のドメインで動作するこのスクリプトが、次のすべてを満たす場合だけ削除する
+#   - 変換サーバの実行ファイルにhazkey_community_exec_tが付いている (変換サーバがSELinuxで制限される)
+#   - ロックファイルが通常のファイルで、ロックファイルかソケットにhazkey_community_runtime_tが付いていない
+#   - ロックファイルを誰もロックしていない (動作中の変換サーバがない)
+#
+# 判定に必要なもの (statの%Cとflock) が使えない場合は何もしない
+# ロックを保持したまま、ソケット、ロックファイルの順に削除する
+# (ロックファイルを先に削除すると、その直後に起動した変換サーバのソケットを削除し得るため)
+#
+# ロックファイルがない場合も何もしない
+# (変換サーバがロックファイルを作ってから終了するため、次の起動時にここで片付けられる)
+#
+# 実行時ディレクトリは変換サーバと同じ規則で選ぶ
+# ([XDG_RUNTIME_DIR]が自分のUIDの所有で、グループとその他の権限がない場合だけ使い、それ以外は/tmp配下を使う)
+
+# $1が自分のUIDの所有で、グループとその他の権限がないディレクトリかを確かめる
+# $2がfollowの場合だけシンボリックリンクを辿る (変換サーバと同じ規則)
+hazkey_runtime_private_dir() {
+    if [ "$2" = follow ]; then
+        [ -d "$1" ] || return 1
+        hazkey_runtime_stat=$(stat -L -c '%u %a' -- "$1" 2> /dev/null) || return 1
+    else
+        { [ -d "$1" ] && [ ! -L "$1" ]; } || return 1
+        hazkey_runtime_stat=$(stat -c '%u %a' -- "$1" 2> /dev/null) || return 1
+    fi
+    case $hazkey_runtime_stat in
+        "$hazkey_runtime_uid 0" | "$hazkey_runtime_uid "*00) return 0 ;;
+    esac
+    return 1
+}
+
+hazkey_cleanup_stale_runtime_files() {
+    command -v flock > /dev/null 2>&1 || return 0
+    hazkey_runtime_context=$(stat -c '%C' -- "$hazkey_server" 2> /dev/null) || return 0
+    case $hazkey_runtime_context in
+        *:hazkey_community_exec_t | *:hazkey_community_exec_t:*) ;;
+        *) return 0 ;;
+    esac
+    hazkey_runtime_uid=$(id -u) || return 0
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] && hazkey_runtime_private_dir "$XDG_RUNTIME_DIR" follow; then
+        hazkey_runtime_dir=$XDG_RUNTIME_DIR
+    else
+        hazkey_runtime_dir=/tmp/hazkey-community-runtime-$hazkey_runtime_uid
+        hazkey_runtime_private_dir "$hazkey_runtime_dir" nofollow || return 0
+    fi
+    hazkey_runtime_lock=$hazkey_runtime_dir/hazkey-community-server.$hazkey_runtime_uid.lock
+    hazkey_runtime_sock=$hazkey_runtime_dir/hazkey-community-server.$hazkey_runtime_uid.sock
+    { [ -f "$hazkey_runtime_lock" ] && [ ! -L "$hazkey_runtime_lock" ]; } || return 0
+    [ ! -L "$hazkey_runtime_sock" ] || return 0
+    hazkey_runtime_stale=
+    for hazkey_runtime_file in "$hazkey_runtime_lock" "$hazkey_runtime_sock"; do
+        [ -e "$hazkey_runtime_file" ] || continue
+        hazkey_runtime_context=$(stat -c '%C' -- "$hazkey_runtime_file" 2> /dev/null) || return 0
+        case $hazkey_runtime_context in
+            *:hazkey_community_runtime_t | *:hazkey_community_runtime_t:*) ;;
+            *) hazkey_runtime_stale=1 ;;
+        esac
+    done
+    [ -n "$hazkey_runtime_stale" ] || return 0
+    # ロックを取れない (動作中の変換サーバがある) 場合は削除しない
+    # この場合、新しい変換サーバは、ロックファイルを開けないことと対処方法をログに出して終了する
+    if (flock -n 9 || exit 1; rm -f -- "$hazkey_runtime_sock" "$hazkey_runtime_lock") 9< "$hazkey_runtime_lock" 2> /dev/null; then
+        printf 'hazkey-community-server: removed the socket and lock file without the SELinux label in %s\n' \
+            "$hazkey_runtime_dir" >&2
+    fi
+}
+hazkey_cleanup_stale_runtime_files
+
 if [ -z "$hazkey_env_names" ]; then
     exec "$hazkey_server" "$@"
 fi
 
-# 読み込んだ変数を "KEY=value" の引数にして、env(1)から変換サーバを起動する
-# 位置パラメータの末尾へ "KEY=value" と変換サーバのパスを追加してから、元の引数を末尾へ回すと、
-# "KEY=value"... 変換サーバのパス 元の引数... の順になる
+# 読み込んだ変数を"KEY=value"の引数にして、env(1)から変換サーバを起動する
+# 位置パラメータの末尾へ"KEY=value"と変換サーバのパスを追加してから元の引数を末尾へ回すと、"KEY=value"... 変換サーバのパス 元の引数... の順になる
 hazkey_env_argc=$#
 IFS=' '
 for hazkey_env_name in $hazkey_env_names; do

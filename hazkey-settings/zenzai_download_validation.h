@@ -14,8 +14,14 @@ enum class ModelDownloadValidation {
     ChecksumMismatch,
 };
 
-/** @brief 期待バイト数が未知 (0以下) のモデルに適用する受信サイズの絶対上限 (4 GiB) */
-constexpr qint64 kUnknownSizeModelDownloadLimitBytes = Q_INT64_C(4) * 1024 * 1024 * 1024;
+/**
+ * @brief 期待バイト数が未知 (0以下) のモデルに適用する受信サイズの絶対上限 (1 GiB)
+ *
+ * 組み込みカタログの全バリアントは正のexpectedBytesを持つため、この上限はカタログ外のオプションへの安全網である
+ * 配布中の最大モデルはjinen-v2-small f16の219865856バイト (約210[MiB]) で、1[GiB]はその約4.9倍の余裕を持つ
+ * 将来これを超えるモデルを追加する場合は、expectedBytesを必ず設定すること
+ */
+constexpr qint64 kUnknownSizeModelDownloadLimitBytes = Q_INT64_C(1) * 1024 * 1024 * 1024;
 
 /**
  * @brief 受信中のモデルが許容サイズを超えたかを判定する

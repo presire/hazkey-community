@@ -61,11 +61,11 @@ Fcitx 5のアドオン、IBusのエンジン、設定GUI、ラッパースクリ
 
 Debian 13とUbuntu 26.04のSELinuxは、公式の設定済みの環境ではなく、利用者が`selinux-policy-default`を導入して有効にする構成です。  
 この2つのディストリビューションでは、基本ポリシーの型名が、upstreamのReference Policy (xdg_config_t等) です。  
-このため、モジュールのソースを、ビルド時に自動で型名を置き換えます (下記の「型名の系統」を参照)。  
+このため、モジュールのソースを、ビルド時に自動で型名を置き換えます。(下記の「型名の系統」を参照)  
 
 ### 型名の系統 (FLAVOR)
 
-hazkey_community.teは、Fedora / RHEL / openSUSEの基本ポリシーの型名 (config_home_t、data_home_t等) で書かれています。  
+hazkey_community.teは、Fedora / openSUSEの基本ポリシーの型名 (config_home_t、data_home_t等) で書かれています。  
 Debian 13とUbuntu 26.04の基本ポリシーには、これらの型がありません。  
 代わりに、xdg_config_t、xdg_data_t、xdg_cache_t、user_bin_t、etc_tが同じ役割を持ちます。  
 
@@ -73,10 +73,10 @@ Debian 13とUbuntu 26.04の基本ポリシーには、これらの型があり�
 refpolicyの系統では、hazkey_community_refpolicy.awkが、型名を置き換えたソースをビルド用ディレクトリへ生成します。  
 Makefileは`.build/`、CMakeはビルドディレクトリへ生成します。  
 
-系統が違う環境で作った.ppは、読み込めません (型が存在しないため`semodule -i`が失敗します)。  
-.ppは、導入先のディストリビューションの系統でビルドしてください。  
+系統が違う環境で作成した`.pp`は、読み込めません。(型が存在しないため`semodule -i`コマンドが失敗します)  
+`.pp`は、導入先のディストリビューションの系統でビルドしてください。  
 
-別のディストリビューション向けの.ppを作る場合は、系統を明示的に指定します。  
+別のLinuxディストリビューション向けの`.pp`を作成する場合は、系統を明示的に指定します。  
 パッケージ作成用のコンテナ (`/etc/selinux`が無い環境) やクロスビルドでは、系統を判定できません。  
 この場合は、警告が表示されてredhatになるため、Debian / Ubuntu向けは必ず明示してください。  
 
@@ -93,11 +93,11 @@ cmake -DHAZKEY_SELINUX_POLICY_FLAVOR=refpolicy ...
 ### 前提条件
 
 ```sh
-# openSUSE
-sudo zypper install selinux-policy-devel checkpolicy policycoreutils policycoreutils-python-utils
-
 # Fedora / RHEL
 sudo dnf install selinux-policy-devel checkpolicy policycoreutils policycoreutils-python-utils
+
+# openSUSE / SLE
+sudo zypper install selinux-policy-devel checkpolicy policycoreutils policycoreutils-python-utils
 
 # Debian / Ubuntu
 sudo apt install selinux-policy-default checkpolicy policycoreutils semodule-utils selinux-utils make
@@ -105,7 +105,7 @@ sudo apt install selinux-policy-default checkpolicy policycoreutils semodule-uti
 
 ### リリースに添付されたファイルの利用
 
-GitHubのリリースには、ディストリビューションごとにビルドした.ppファイルを、パッケージとは別に添付しています。  
+GitHubのリリースには、ディストリビューションごとにビルドした`.pp`ファイルを、パッケージとは別に添付しています。  
 .deb / .rpmパッケージには、ポリシーモジュールを含めていません。  
 ビルド環境を用意せずに使う場合は、使用中のディストリビューションに対応するファイルを選んでください。  
 
@@ -117,7 +117,7 @@ GitHubのリリースには、ディストリビューションごとにビル�
 | selinux-hazkey-community-leap16.pp | openSUSE Leap 16 |
 | selinux-hazkey-community-tumbleweed.pp | openSUSE Tumbleweed (リリース時点のスナップショットでビルド) |
 
-.ppファイルは、基本ポリシーの型名とバージョンに依存するため、他のディストリビューションでは読み込めない場合があります。  
+`.pp`ファイルは、基本ポリシーの型名とバージョンに依存するため、他のディストリビューションでは読み込めない場合があります。  
 その場合は、下記のビルド手順で、使用中の環境で作り直してください。  
 
 ```sh
@@ -128,10 +128,11 @@ sudo semodule -i selinux-hazkey-community-fc44.pp
 sudo restorecon -R -v /usr/lib64/hazkey-community /usr/share/hazkey-community
 ```
 
-配布した.ppが対応するインストール先は、`/usr`、`/usr/local`、`/opt/hazkey-community`、`~/.local`です。  
+配布した`.pp`が対応するインストール先は、`/usr`、`/usr/local`、`/opt/hazkey-community`、`~/.local`です。  
 これ以外のインストール先 (例: `/opt/hazkey`) には対応していません。  
-その場合は、後述のCMakeでのビルドで、インストール先を指定して作り直してください。  
-ビルドのたびに、CIでも、4種類のディストリビューションのコンテナ内で、読み込みとファイルのラベルを検証しています (selinux/ci-verify.sh)。  
+その場合は、後述のCMakeでのビルドで、インストール先を指定して作成し直してください。  
+
+ビルドのたびに、CIでも、4種類のディストリビューションのコンテナ内で、読み込みとファイルのラベルを検証しています。(`selinux/ci-verify.sh`)  
 
 ### CMakeでのビルド (推奨)
 
@@ -145,31 +146,34 @@ cmake --build build
 sudo cmake --install build
 ```
 
-`-DENABLE_SELINUX=ON`を指定すると、以下を行います。  
+`-DENABLE_SELINUX=ON`オプションを指定すると、以下を行います。  
 
-- [CMAKE_INSTALL_PREFIX]と[CMAKE_INSTALL_LIBDIR]等から、標準以外のインストール先のラベル規則を生成する  
-  (hazkey_community.fc.inからhazkey_community.fcを生成)  
-- hazkey_community.ppを`<datadir>/selinux/packages`へインストールする  
+- `CMAKE_INSTALL_PREFIX`オプションと`CMAKE_INSTALL_LIBDIR`オプション等から、標準以外のインストール先のラベル規則を生成する  
+  (`hazkey_community.fc.in`から`hazkey_community.fc`を生成)  
+- `hazkey_community.pp`を`<datadir>/selinux/packages`へインストールする  
 - rootで実行した場合は、以下も行う  
-  - `semodule -i`によるモジュールの読み込み  
-  - `restorecon`による、次のもののラベルの付け直し  
+  - `semodule -i`コマンドによるモジュールの読み込み  
+  - `restorecon`コマンドによる、次のもののラベルの付け直し  
     インストールしたファイルと、既存ユーザのデータディレクトリ  
-    [CMAKE_INSTALL_PREFIX]が`/opt/<名前>`の形式のときは、そのディレクトリ全体を対象にする  
+    `CMAKE_INSTALL_PREFIX`が`/opt/<名前>`の形式の時は、そのディレクトリ全体を対象にする  
     (`/usr`や`/usr/local`は、他のパッケージのファイルを含むため、Hazkey Communityのファイルだけを対象にする)  
+  - モジュールが対象とする他のインストール先 (`/usr/lib64/hazkey-community`など) は付け直さず、  
+    ラベルが規則と一致しない場合は、警告と`restorecon`のコマンドを表示する  
 
-[DESTDIR]を指定した場合 (パッケージの作成時) は、モジュールの読み込みとラベルの付け直しを行いません。  
-パッケージの`%post`等で、`semodule -i`と`restorecon`を実行してください。  
+`DESTDIR`オプションを指定した場合 (パッケージの作成時) は、モジュールの読み込みとラベルの付け直しを行いません。  
+パッケージの`%post`等で、`semodule -i`コマンド および `restorecon`コマンドを実行してください。  
 
-`cmake --install --prefix`で、設定時と異なるインストール先を指定した場合も、モジュールを読み込みません。  
+`cmake --install --prefix`コマンドで、設定時と異なるインストール先を指定した場合も、モジュールを読み込みません。  
 ラベル規則は設定時のインストール先で生成されるため、`-DCMAKE_INSTALL_PREFIX`を指定し直してください。  
 
 ホームディレクトリへインストールする場合 (例: `-DCMAKE_INSTALL_PREFIX=$HOME/.local`) は、  
-`cmake --install`を一般ユーザで実行した後に、モジュールの読み込みだけをrootで行います。  
+`cmake --install`コマンドを一般ユーザで実行した後に、モジュールの読み込みだけをrootで行います。  
 
 ```sh
 cmake --install build
 sudo semodule -i build/selinux/hazkey_community.pp
-restorecon -R -v ~/.local/lib*/hazkey-community ~/.local/lib*/fcitx5/fcitx5-hazkey-community.so \
+restorecon -R -v ~/.local/lib*/hazkey-community \
+                 ~/.local/lib*/fcitx5/fcitx5-hazkey-community.so \
                  ~/.local/libexec/ibus-hazkey-community \
                  ~/.config/hazkey-community ~/.local/share/hazkey-community \
                  ~/.local/state/hazkey-community ~/.cache/hazkey-community
@@ -182,7 +186,7 @@ Fcitx 5の設定によっては、アドオン (fcitx5-hazkey-community.so) が�
 
 ### スタンドアロンでのビルド (Makefile)
 
-`/usr`、`/usr/local`、`/opt/hazkey-community`、`~/.local`にインストールした場合は、CMakeを使わずにビルドできます。  
+`/usr`、`/usr/local`、`/opt/hazkey-community`、`~/.local`にインストールした場合は、CMakeを使用せずにビルドできます。  
 `sudo make install`は、モジュールの読み込みと、インストールしたファイルのラベルの付け直しを行います。  
 
 ```sh
@@ -200,14 +204,32 @@ sudo make install
 pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 ```
 
-rootでCMakeのインストールを実行した場合は、実行中のセッションの古いソケットとロックファイルにも、`chcon`でhazkey_community_runtime_tを付けます。  
-また、モジュールが対象とする他のインストール先 (`/usr/lib64/hazkey-community`など) にある変換サーバのラベルも付け直します。  
-ラベルのない変換サーバはunconfined_tで動作して、ソケットとロックファイルをuser_tmp_tで作るため、hazkey_community_server_tの変換サーバがロックファイルを開けなくなるためです (`tcontext=...user_tmp_t`で`write`が拒否されます)。  
+rootでCMakeのインストールを実行しても、実行中のセッションの古いソケットとロックファイルは再ラベル付けされません。  
+(実行時の`chcon`による付け替えは、check-to-chconのTOCTOUを避けるため廃止)  
 
-それでも変換サーバが起動しない場合は、古いソケットとロックファイルを削除してから、もう一度起動してください。  
-この2つのファイルは、`restorecon`ではラベルが戻りません。  
+また、モジュールが対象とする他のインストール先 (`/usr/lib64/hazkey-community`など) にある変換サーバのラベルは、付け直しません。  
+利用者が別の手順で入れた版の挙動 (隔離の有無) を、このインストールで変えないためです。  
+
+ラベルが規則と一致しない場合は、インストールの最後に警告と`restorecon`のコマンドを表示します。  
+
+ラベルのない変換サーバはunconfined_tで動作して、ソケットとロックファイルをuser_tmp_tで作るため、  
+その変換サーバが動作している間は、hazkey_community_server_tの変換サーバが起動できません。(`tcontext=...user_tmp_t`で`write`が拒否されます)  
+
+両方のインストール先を使用する場合は、表示されたコマンドでラベルを付け直すか、どちらか一方だけを残してください。  
+なお、システム全体の再ラベル付け (`restorecon -R /usr`等) を行うと、他のインストール先にもラベルが付きます。  
+
+モジュールの読み込み前 (またはラベルのない変換サーバの実行中) に作られた古いソケットとロックファイルは、user_tmp_tのままになり、`restorecon`ではラベルが戻りません。  
 (基本ポリシーに、`/run/user`直下の全てのファイルを対象とする規則があり、モジュールの規則より優先されるため)  
-作り直したファイルには、型遷移により、hazkey_community_runtime_tが自動で付きます。  
+
+hazkey_community_server_tの変換サーバは、これらを開くことも削除することもできません。  
+(他のサービスのソケットを削除して置き換えられないように、user_tmp_tのファイルの削除は許可していません)  
+
+このため、変換サーバの起動スクリプト (`hazkey-community-server`) が、変換サーバを起動する前に、使用中でない古いソケットとロックファイルを削除します。(追加の操作は不要)  
+作成し直したファイルには、型遷移により、hazkey_community_runtime_tが自動で付きます。  
+
+ラベルのない変換サーバが動作している間は、ロックファイルが使用中のため削除されず、変換サーバがエラーメッセージを出して終了します。  
+その場合は、ラベルのない変換サーバを終了してから、もう一度起動してください。  
+それでも起動しない場合は、古いソケットとロックファイルを手動で削除してください。  
 
 ```sh
 rm -f $XDG_RUNTIME_DIR/hazkey-community-server.*
@@ -338,9 +360,10 @@ sudo make unload
 # CMakeでインストールした場合 (インストール先が/usr/localの例)
 sudo semodule -r hazkey_community
 sudo restorecon -R -v /usr/local/lib64/hazkey-community
-sudo restorecon -R -v /usr/local/libexec/ibus-hazkey-community /usr/local/share/hazkey-community
+sudo restorecon -R -v /usr/local/libexec/ibus-hazkey-community \
+                      /usr/local/share/hazkey-community
 
-# 各ユーザのデータ (ユーザごとに実行する。変換サーバは、終了しておく)
+# 各ユーザのデータ (ユーザごとに実行する。変換サーバは終了)
 pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 restorecon -R -v ~/.config/hazkey-community ~/.local/share/hazkey-community \
                  ~/.local/state/hazkey-community ~/.cache/hazkey-community

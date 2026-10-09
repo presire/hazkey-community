@@ -12,6 +12,34 @@ let KEYMAP_FILE_SIZE_LIMIT = 1024 * 1024
 ///
 /// - Note: 上限は1[MB]であり、上限を超えたファイルは無視される
 let TABLE_FILE_SIZE_LIMIT = 1024 * 1024
+/// 入力テーブルのキー列のUTF-8バイト数の上限である
+///
+/// キー要素数に比例する[TrieNode.add]の再帰深度を、解析前の検査で制限する
+let TABLE_KEY_COLUMN_BYTE_LIMIT = 1024
+/// 入力テーブルの値列のUTF-8バイト数の上限である
+///
+/// [parseValue]は閉じられていない[{]ごとに[}]を探して残りの列を走査するため、最悪時の二乗時間の処理を制限する
+let TABLE_VALUE_COLUMN_BYTE_LIMIT = 1024
+
+/// 入力テーブルの列サイズ検証で検出したエラーを表す
+///
+/// 変換エンジンへ内容を渡す前に、キー列と値列のUTF-8バイト数を検査する
+enum InputTableValidationError: LocalizedError, Equatable {
+    /// キー列が[TABLE_KEY_COLUMN_BYTE_LIMIT]を超えた行番号とバイト数を示す
+    case keyColumnTooLong(line: Int, bytes: Int)
+    /// 値列が[TABLE_VALUE_COLUMN_BYTE_LIMIT]を超えた行番号とバイト数を示す
+    case valueColumnTooLong(line: Int, bytes: Int)
+
+    /// 上限を超えた列の種類・行番号・バイト数を含むエラーメッセージ
+    var errorDescription: String? {
+        switch self {
+        case .keyColumnTooLong(let line, let bytes):
+            return "Input table key on line \(line) is \(bytes) bytes; limit is \(TABLE_KEY_COLUMN_BYTE_LIMIT) bytes."
+        case .valueColumnTooLong(let line, let bytes):
+            return "Input table value on line \(line) is \(bytes) bytes; limit is \(TABLE_VALUE_COLUMN_BYTE_LIMIT) bytes."
+        }
+    }
+}
 
 /// 設定の検証と書き込みに関するエラーを表す
 ///
@@ -1414,12 +1442,33 @@ class HazkeyServerConfig {
 
     /// 上限付きで読み込んだ内容から入力テーブルを解析する
     ///
-    /// 変換エンジンの`InputStyleManager.loadTable(from:)`はURLから全体を読み直すため、内容を書き込み封印したmemfdへ写し、その複製だけを読ませる
+    /// キー列と値列のサイズを事前検査し、再帰によるスタック消費と解析時間を制限する
+    ///
+    /// 変換エンジンの[InputStyleManager.loadTable(from:)]はURLから全体を読み直すため、内容を書き込み封印した[memfd]へ写し、その複製だけを読ませる
     ///
     /// - Parameter contents: 上限付きで読み込んだTSVの内容
     /// - Returns: 解析した入力テーブルを返す
-    /// - Throws: memfdを作成できない場合と、解析に失敗した場合にエラーを送出する
+    /// - Throws: 列サイズが上限を超える場合は[InputTableValidationError]、[memfd]の作成・書き込み・封印や解析に失敗した場合はそのエラー
     static func loadInputTable(fromBoundedContents contents: String) throws -> InputTable {
+        // キー要素数はキー列のUTF-8バイト数以下で、[TrieNode.add]の再帰深度はキー要素数に比例する
+        // 実測のスタック消費は1要素あたり約175〜256バイトのため、1024バイトのキー列なら最悪時も1MiBを十分に下回る
+        // [InputTable]の構築後では手遅れになるため、パーサへ渡す前に全行を検査する
+        for (index, line) in contents.components(separatedBy: .newlines).enumerated() {
+            // 変換エンジンのフォークと同じく、空白だけの行と空列を除いた列数が2未満の行は無視する
+            // 空列を除いた後の先頭2列をキー・値として検査し、残りの列は検査対象にしない
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            let columns = line.split(separator: "\t")
+            guard columns.count >= 2 else { continue }
+            let keyBytes = columns[0].utf8.count
+            guard keyBytes <= TABLE_KEY_COLUMN_BYTE_LIMIT else {
+                throw InputTableValidationError.keyColumnTooLong(line: index + 1, bytes: keyBytes)
+            }
+            // [parseValue]が閉じられていない[{]ごとに残りの列を走査する二乗時間の処理も、解析前に制限する
+            let valueBytes = columns[1].utf8.count
+            guard valueBytes <= TABLE_VALUE_COLUMN_BYTE_LIMIT else {
+                throw InputTableValidationError.valueColumnTooLong(line: index + 1, bytes: valueBytes)
+            }
+        }
         let fd = Array(contents.utf8).withUnsafeBytes { bytes in
             hazkey_sealed_memfd("hazkey-input-table", bytes.baseAddress, bytes.count)
         }
@@ -1489,7 +1538,7 @@ class HazkeyServerConfig {
                         try Self.loadInputTable(fromBoundedContents: contents)
                     }
                 } catch {
-                    hazkeyLog("Failed to load custom table \(enabledTable.name)Q \(error)")
+                    hazkeyLog("Failed to load custom table \(enabledTable.name): \(error.localizedDescription)")
                     continue outer
                 }
             }

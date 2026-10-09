@@ -667,24 +667,14 @@ void MainWindow::updateZenzaiAvailabilityUi() {
         // インストール済みモデルが既知の旧世代エントリ (例: zenz-v3.1) と一致した場合のみユーザに通知する
         // カスタムモデルや現行世代モデル (推奨モデルやxsmall等の正規バリアント含む) には何も表示しない
         QString modelPath = QString::fromStdString(currentConfig_.zenzai_model_path());
-        if (!modelPath.isEmpty()) {
-            const QString currentChecksum = ZenzaiModelManager::calculateSHA256(modelPath);
-            if (!currentChecksum.isEmpty()) {
-                const QVector<ZenzaiModelOption>& models = availableZenzaiModels();
-                bool isLegacyGen = false;
-                for (const ZenzaiModelOption& m : models) {
-                    if (m.sha256.compare(currentChecksum, Qt::CaseInsensitive) == 0) {
-                        isLegacyGen = m.isLegacyGen;
-                        break;
-                    }
-                }
-                if (isLegacyGen) {
-                    QWidget* warningWidget = createWarningWidget(tr("The current model is not the latest version."),
-                                                                 "lightblue", tr("Download Update"),
-                                                                 [this]() { onDownloadZenzaiModel(); });
-                    ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
-                }
-            }
+        // 案内表示だけの判定なので、GUIスレッドでは内容を読まない
+        // 管理ディレクトリ内の旧世代モデルを、名前とサイズだけで識別する
+        // 任意パスのカスタム重みは未検証のカスタム扱いで、案内を出さない
+        if (!modelPath.isEmpty() && isManagedLegacyGenerationModel(modelPath, availableZenzaiModels())) {
+            QWidget* warningWidget = createWarningWidget(tr("The current model is not the latest version."),
+                                                         "lightblue", tr("Download Update"),
+                                                         [this]() { onDownloadZenzaiModel(); });
+            ui_->aiTabScrollContentsLayout->insertWidget(1, warningWidget);
         }
     }
 
@@ -703,7 +693,7 @@ void MainWindow::updateZenzaiAvailabilityUi() {
 }
 
 void MainWindow::updateConditioningUi() {
-    // AIタブ全体が無効な場合はupdateZenzaiAvailabilityUi()が全項目を無効化済み
+    // AIタブ全体が無効な場合は [updateZenzaiAvailabilityUi] が全項目を無効化済み
     if (!ui_->enableZenzai->isEnabled()) {
         return;
     }
@@ -745,7 +735,7 @@ void MainWindow::updateConditioningUi() {
 }
 
 void MainWindow::updateRightContextUi() {
-    // AIタブ全体が無効な場合はupdateZenzaiAvailabilityUi()が全項目を無効化済み
+    // AIタブ全体が無効な場合は [updateZenzaiAvailabilityUi] が全項目を無効化済み
     if (!ui_->enableZenzai->isEnabled()) {
         return;
     }
@@ -2156,6 +2146,11 @@ MainWindow::~MainWindow() {
     delete ui_;
 }
 
+void MainWindow::closeEvent(QCloseEvent* event) {
+    server_.cancelPendingTransaction();
+    QWidget::closeEvent(event);
+}
+
 void MainWindow::onDownloadZenzaiModel() {
     if (openingZenzaiModelDialog_) {
         return;
@@ -3017,23 +3012,25 @@ void MainWindow::loadUserDictFromDisk() {
     QTextStream in(&file);
     in.setEncoding(QStringConverter::Utf8);
     while (!in.atEnd()) {
-        const QString line = in.readLine();
+        // 単独の'\r'もサーバと同じく行区切りとして扱う ([splitUserDictionaryRecords])
+        const QStringList records = splitUserDictionaryRecords(in.readLine());
+        for (const QString& line : records) {
+            if (line.startsWith('#')) continue;
 
-        if (line.isEmpty() || line.startsWith('#')) continue;
+            const QStringList cols = line.split('\t');
 
-        const QStringList cols = line.split('\t');
+            if (cols.size() < 2) continue;
 
-        if (cols.size() < 2) continue;
+            UserDictEntry e;
+            e.reading = cols[0].trimmed();
+            e.word = cols[1];
+            e.comment = cols.size() >= 3 ? cols[2] : QString();
+            e.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
 
-        UserDictEntry e;
-        e.reading = cols[0].trimmed();
-        e.word = cols[1];
-        e.comment = cols.size() >= 3 ? cols[2] : QString();
-        e.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
+            if (e.reading.isEmpty() || e.word.isEmpty()) continue;
 
-        if (e.reading.isEmpty() || e.word.isEmpty()) continue;
-
-        userDictEntries_.append(e);
+            userDictEntries_.append(e);
+        }
     }
 }
 
@@ -3127,16 +3124,21 @@ bool MainWindow::editUserDictEntryDialog(UserDictEntry& entry, const QString& ti
                              tr("Reading and Word must not be empty."));
         return false;
     }
+    const QString comment = commentEdit->text();
+    // タブ・LF・CRはTSVの列や行をずらすため、読み・表記・コメントのいずれにも許さない
+    // サーバは単独のCRも行区切りとして扱うので、CRも検査する ([isValidUserDictEntry] と同じ規則)
     if (reading.contains('\t') || word.contains('\t') ||
-        commentEdit->text().contains('\t') || reading.contains('\n') ||
-        word.contains('\n')) {
+        comment.contains('\t') || reading.contains('\n') ||
+        word.contains('\n') || comment.contains('\n') ||
+        reading.contains('\r') || word.contains('\r') ||
+        comment.contains('\r')) {
         QMessageBox::warning(this, tr("User Dictionary"),
                              tr("Tab and newline characters are not allowed."));
         return false;
     }
     entry.reading = reading;
     entry.word = word;
-    entry.comment = commentEdit->text();
+    entry.comment = comment;
     entry.pos = posCombo->currentData().toString();
     return true;
 }
@@ -3202,26 +3204,28 @@ void MainWindow::onUserDictImport() {
     QTextStream in(&file);
     in.setEncoding(QStringConverter::Utf8);
     while (!in.atEnd()) {
-        const QString line = in.readLine();
+        // 単独の'\r'もサーバと同じく行区切りとして扱う ([splitUserDictionaryRecords])
+        const QStringList records = splitUserDictionaryRecords(in.readLine());
+        for (const QString& line : records) {
+            if (line.startsWith('#')) continue;
 
-        if (line.isEmpty() || line.startsWith('#')) continue;
+            const QStringList cols = line.split('\t');
+            if (cols.size() < 2) {
+                ++skippedRows;
+                continue;
+            }
 
-        const QStringList cols = line.split('\t');
-        if (cols.size() < 2) {
-            ++skippedRows;
-            continue;
+            UserDictEntry entry;
+            entry.reading = cols[0].trimmed();
+            entry.word = cols[1];
+            entry.comment = cols.size() >= 3 ? cols[2] : QString();
+            entry.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
+            if (entry.reading.isEmpty() || entry.word.isEmpty()) {
+                ++skippedRows;
+                continue;
+            }
+            importedEntries.append(entry);
         }
-
-        UserDictEntry entry;
-        entry.reading = cols[0].trimmed();
-        entry.word = cols[1];
-        entry.comment = cols.size() >= 3 ? cols[2] : QString();
-        entry.pos = cols.size() >= 4 ? normalizePosToken(cols[3]) : QStringLiteral("noun");
-        if (entry.reading.isEmpty() || entry.word.isEmpty()) {
-            ++skippedRows;
-            continue;
-        }
-        importedEntries.append(entry);
     }
 
     if (importedEntries.isEmpty()) {

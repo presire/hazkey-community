@@ -88,6 +88,8 @@ private slots:
     void testSha256CacheAvoidsRehash();
     /** @brief deleteModelがSHA256キャッシュを無効化することを検証する */
     void testDeleteModelInvalidatesCache();
+    /** @brief 旧世代判定が管理ディレクトリ内のカタログ名ファイルだけを対象にし、内容を一切読まないことを検証する */
+    void testManagedLegacyGenerationDetectionNeverReadsContent();
 
 private:
     /** @brief 全テストでファイルを作成する一時ディレクトリ */
@@ -486,6 +488,92 @@ void ZenzaiModelManagementTest::testSha256CacheAvoidsRehash() {
     QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 2);
 }
 
+void ZenzaiModelManagementTest::testManagedLegacyGenerationDetectionNeverReadsContent() {
+    const QByteArray legacyData("legacy-generation-model-bytes");
+    ZenzaiModelOption legacy;
+    legacy.key = QStringLiteral("legacy-gen-probe");
+    legacy.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(legacyData, QCryptographicHash::Sha256).toHex());
+    legacy.recommended = false;
+    legacy.isLegacyGen = true;
+    legacy.expectedBytes = legacyData.size();
+
+    ZenzaiModelOption current = legacy;
+    current.key = QStringLiteral("current-gen-probe");
+    current.isLegacyGen = false;
+
+    ZenzaiModelOption unknownSize = legacy;
+    unknownSize.key = QStringLiteral("unknown-size-legacy-probe");
+    unknownSize.expectedBytes = 0;
+
+    const QVector<ZenzaiModelOption> catalog = {legacy, current, unknownSize};
+
+    const QString modelsDir = ZenzaiModelManager::getModelsDir();
+    QVERIFY(QDir().mkpath(modelsDir));
+    auto writeFile = [](const QString& path, const QByteArray& data) {
+        QFile f(path);
+        const bool opened = f.open(QIODevice::WriteOnly);
+        if (opened) f.write(data);
+        return opened;
+    };
+
+    ZenzaiModelManager::resetSha256ActualComputeCount();
+
+    // 管理ディレクトリ内の旧世代キーでサイズ一致 -> true (内容は読まない)
+    const QString managed = ZenzaiModelManager::getModelPath(legacy.key);
+    QVERIFY(writeFile(managed, legacyData));
+    QVERIFY(isManagedLegacyGenerationModel(managed, catalog));
+
+    // 内容が異なっても同名・同サイズなら案内だけは出る (案内専用でハッシュ検証をしない方針の明示)
+    QByteArray sameSizeOther = legacyData;
+    sameSizeOther[0] = static_cast<char>(sameSizeOther[0] ^ 0x01);
+    QVERIFY(writeFile(managed, sameSizeOther));
+    QVERIFY(isManagedLegacyGenerationModel(managed, catalog));
+
+    // 管理ディレクトリ内でもサイズが違えばfalse
+    QVERIFY(writeFile(managed, legacyData + QByteArray(4096, 'z')));
+    QVERIFY(!isManagedLegacyGenerationModel(managed, catalog));
+    QVERIFY(writeFile(managed, legacyData));
+
+    // 管理ディレクトリ外の任意パスは、名前・サイズ・内容が完全に一致していても対象外 (未検証のカスタム)
+    const QString customDir = tempDir.path() + "/custom-weights";
+    QVERIFY(QDir().mkpath(customDir));
+    const QString custom = customDir + "/" + legacy.key + ".gguf";
+    QVERIFY(writeFile(custom, legacyData));
+    QVERIFY(!isManagedLegacyGenerationModel(custom, catalog));
+
+    // 管理ディレクトリ内でも、カタログ名でないファイルは対象外
+    const QString unnamed = modelsDir + "/not-in-catalog.gguf";
+    QVERIFY(writeFile(unnamed, legacyData));
+    QVERIFY(!isManagedLegacyGenerationModel(unnamed, catalog));
+
+    // 現行世代のみ、または未知サイズの旧世代エントリは対象にならない
+    const QString currentPath = ZenzaiModelManager::getModelPath(current.key);
+    QVERIFY(writeFile(currentPath, legacyData));
+    QVERIFY(!isManagedLegacyGenerationModel(currentPath, {current}));
+    const QString unknownPath = ZenzaiModelManager::getModelPath(unknownSize.key);
+    QVERIFY(writeFile(unknownPath, legacyData));
+    QVERIFY(!isManagedLegacyGenerationModel(unknownPath, {unknownSize}));
+
+    // アクティブ化リンク (zenzai.gguf) 経由でも、実体が管理ディレクトリ内なら一致する
+    QVERIFY(ZenzaiModelManager::activateModel(legacy.key));
+    QVERIFY(isManagedLegacyGenerationModel(ZenzaiModelManager::getSymlinkPath(), catalog));
+
+    // 管理ディレクトリ外の実体を指すリンクは対象外
+    QVERIFY(ZenzaiModelManager::deactivateModel());
+    QVERIFY(QFile::link(custom, ZenzaiModelManager::getSymlinkPath()));
+    QVERIFY(!isManagedLegacyGenerationModel(ZenzaiModelManager::getSymlinkPath(), catalog));
+    QVERIFY(ZenzaiModelManager::deactivateModel());
+
+    // 存在しないパス、ディレクトリ、空パスはfalse
+    QVERIFY(!isManagedLegacyGenerationModel(modelsDir + "/missing.gguf", catalog));
+    QVERIFY(!isManagedLegacyGenerationModel(modelsDir, catalog));
+    QVERIFY(!isManagedLegacyGenerationModel(QString(), catalog));
+
+    // 全ての判定を通じてSHA256は一度も計算されない (GUIスレッドで内容を読まない)
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 0);
+}
+
 void ZenzaiModelManagementTest::testDeleteModelInvalidatesCache() {
     const QByteArray good("cache-invalidate-good!");
     const QByteArray bad("cache-invalidate-bad!_");
@@ -548,23 +636,24 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         const char* sizeDisplay;
         bool recommended;
         bool isLegacyGen;
+        qint64 expectedBytes;
     };
     const ExpectedZenz expectedZenz[3] = {
         {"zenz-v3.2-small", "zenz-v3.2-small (Q5_K_M)",
          "Recommended: Latest version. Best conversion accuracy.",
          "https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf",
          "29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673",
-         "~74 MB", true, false},
+         "~74 MB", true, false, 73871936},
         {"zenz-v3.2-xsmall", "zenz-v3.2-xsmall (Q5_K_M)",
          "Smaller size. Faster on CPU, slightly lower accuracy.",
          "https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf",
          "00c64b3d318045a708d0cad5434faccab10f5481a49e6362864551fd0995fa58",
-         "~21 MB", false, false},
+         "~21 MB", false, false, 20970304},
         {"zenz-v3.1-small", "zenz-v3.1-small (Q5_K_M)",
          "Previous version. Legacy compatibility.",
          "https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf",
          "4de930c06bef8c263aa1aa40684af206db4ce1b96375b3b8ed0ea508e0b14f6c",
-         "~74 MB", false, true},
+         "~74 MB", false, true, 73871968},
     };
     for (int i = 0; i < 3; ++i) {
         QCOMPARE(families[i].variants.size(), 1);
@@ -577,7 +666,7 @@ void ZenzaiModelManagementTest::testJinenCatalogPresence() {
         QCOMPARE(v.sizeDisplay, QString(expectedZenz[i].sizeDisplay));
         QCOMPARE(v.recommended, expectedZenz[i].recommended);
         QCOMPARE(v.isLegacyGen, expectedZenz[i].isLegacyGen);
-        QCOMPARE(v.expectedBytes, qint64(0));
+        QCOMPARE(v.expectedBytes, expectedZenz[i].expectedBytes);
         QVERIFY2(v.quantLabel.isEmpty(),
                  qPrintable(QString("zenz variant %1 must have empty quantLabel").arg(v.key)));
     }

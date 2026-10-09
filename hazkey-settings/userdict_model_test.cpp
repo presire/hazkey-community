@@ -93,6 +93,13 @@ private slots:
     void testFailureRetainsExistingFile();
     /** @brief umask 022でも新規作成・置換後のファイル権限が0600になることを確認する */
     void testWrittenFileIsOwnerOnlyUnderPermissiveUmask();
+    /** @brief タブ・CR・LFを含むフィールドを持つエントリが保存拒否され、既存ファイルが不変であることを確認する */
+    void testWriteRejectsControlCharactersAndKeepsExistingFile_data();
+    void testWriteRejectsControlCharactersAndKeepsExistingFile();
+    /** @brief [isValidUserDictEntry] がフィールド種別ごとに判定することを確認する */
+    void testIsValidUserDictEntry();
+    /** @brief 単独の'\r'をサーバと同じ行区切りとして分割することを確認する */
+    void testSplitUserDictionaryRecordsTreatsCarriageReturnAsSeparator();
 
 private:
     /** @brief テスト間で利用する自動削除対象の一時ディレクトリ */
@@ -194,7 +201,7 @@ void UserDictModelTest::testFailureRetainsExistingFile() {
              "write into a read-only directory must fail");
 
     // 既存ファイルがバイト単位で保持され、一時ファイルも残らないことを確認する
-    // （直接書込フォールバックは無効）
+    // (直接書込フォールバックは無効)
     QCOMPARE(readFileBytes(path), original);
     QCOMPARE(QDir(dir).entryList(QDir::Files),
              QStringList{QStringLiteral("user_dictionary.tsv")});
@@ -239,6 +246,80 @@ void UserDictModelTest::testWrittenFileIsOwnerOnlyUnderPermissiveUmask() {
 #else
     QSKIP("File mode checks are only implemented for Unix.");
 #endif
+}
+
+void UserDictModelTest::testWriteRejectsControlCharactersAndKeepsExistingFile_data() {
+    QTest::addColumn<QString>("reading");
+    QTest::addColumn<QString>("word");
+    QTest::addColumn<QString>("comment");
+    QTest::addColumn<QString>("pos");
+
+    const QString ok = QStringLiteral("あ");
+    QTest::newRow("cr-in-reading") << QStringLiteral("a\rb") << ok << ok << QStringLiteral("noun");
+    QTest::newRow("cr-in-word") << ok << QStringLiteral("a\rb") << ok << QStringLiteral("noun");
+    QTest::newRow("cr-in-comment") << ok << ok << QStringLiteral("a\rb") << QStringLiteral("noun");
+    QTest::newRow("cr-in-pos") << ok << ok << ok << QStringLiteral("no\run");
+    QTest::newRow("lf-in-comment") << ok << ok << QStringLiteral("a\nb") << QStringLiteral("noun");
+    QTest::newRow("crlf-in-comment") << ok << ok << QStringLiteral("a\r\nb") << QStringLiteral("noun");
+    QTest::newRow("lf-in-reading") << QStringLiteral("a\nb") << ok << ok << QStringLiteral("noun");
+    QTest::newRow("lf-in-word") << ok << QStringLiteral("a\nb") << ok << QStringLiteral("noun");
+    QTest::newRow("tab-in-comment") << ok << ok << QStringLiteral("a\tb") << QStringLiteral("noun");
+}
+
+void UserDictModelTest::testWriteRejectsControlCharactersAndKeepsExistingFile() {
+    QFETCH(QString, reading);
+    QFETCH(QString, word);
+    QFETCH(QString, comment);
+    QFETCH(QString, pos);
+
+    const QString path = tempDir_.path() + "/reject.tsv";
+    const QByteArray original("# reading<TAB>word<TAB>comment[<TAB>pos]\n"
+                              "きぞん\t既存\n");
+    {
+        QFile file(path);
+        QVERIFY2(file.open(QIODevice::WriteOnly), "seed pre-existing file");
+        file.write(original);
+    }
+
+    QVector<UserDictEntry> entries;
+    entries.append({QStringLiteral("せいじょう"), QStringLiteral("正常"), QString(),
+                    QStringLiteral("noun")});
+    entries.append({reading, word, comment, pos});
+
+    QVERIFY2(!writeUserDictionaryFile(path, entries),
+             "an entry with a TSV separator character must be rejected");
+    QCOMPARE(readFileBytes(path), original);
+    QCOMPARE(QDir(tempDir_.path()).entryList({QStringLiteral("reject.tsv*")}, QDir::Files),
+             QStringList{QStringLiteral("reject.tsv")});
+}
+
+void UserDictModelTest::testIsValidUserDictEntry() {
+    const UserDictEntry valid{QStringLiteral("あ"), QStringLiteral("亜"),
+                              QStringLiteral("comment"), QStringLiteral("noun")};
+    QVERIFY(isValidUserDictEntry(valid));
+
+    UserDictEntry e = valid;
+    e.comment = QStringLiteral("x\ry");
+    QVERIFY(!isValidUserDictEntry(e));
+    e.comment = QStringLiteral("x\ny");
+    QVERIFY(!isValidUserDictEntry(e));
+    e = valid;
+    e.reading = QStringLiteral("x\ry");
+    QVERIFY(!isValidUserDictEntry(e));
+    e = valid;
+    e.word = QStringLiteral("x\ty");
+    QVERIFY(!isValidUserDictEntry(e));
+}
+
+void UserDictModelTest::testSplitUserDictionaryRecordsTreatsCarriageReturnAsSeparator() {
+    QCOMPARE(splitUserDictionaryRecords(QStringLiteral("a\tb")),
+             QStringList{QStringLiteral("a\tb")});
+    QCOMPARE(splitUserDictionaryRecords(QStringLiteral("a\tb\rc\td")),
+             (QStringList{QStringLiteral("a\tb"), QStringLiteral("c\td")}));
+    QCOMPARE(splitUserDictionaryRecords(QStringLiteral("\ra\tb\r\r")),
+             QStringList{QStringLiteral("a\tb")});
+    QVERIFY(splitUserDictionaryRecords(QString()).isEmpty());
+    QVERIFY(splitUserDictionaryRecords(QStringLiteral("\r")).isEmpty());
 }
 
 QTEST_MAIN(UserDictModelTest)

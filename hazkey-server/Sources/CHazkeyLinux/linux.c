@@ -11,6 +11,19 @@
 
 extern char **environ;
 
+/**
+ * @brief 古いヘッダでも[pidfd]のシステムコール番号を数値で指定できる既知のABIだけを列挙する
+ *
+ * [SYS_pidfd_open]が未定義の場合は434、[SYS_pidfd_send_signal]が未定義の場合は424を使う
+ * MIPSやx32など番号体系が異なるABIや、この条件で列挙しないABIでは数値による代替を行わない
+ * 対応する[SYS_*]が未定義の場合は[errno]を[ENOSYS]に設定して-1を返し、別のシステムコールを誤って実行しない
+ */
+#if (defined(__x86_64__) && !defined(__ILP32__)) || defined(__i386__) || \
+    defined(__aarch64__) || defined(__arm__) || defined(__riscv) || \
+    defined(__powerpc64__) || defined(__s390x__) || defined(__loongarch__) || defined(__sparc__)
+#define HAZKEY_GENERIC_PIDFD_SYSCALL_ABI 1
+#endif
+
 int hazkey_accept_cloexec(int fd) {
     return accept4(fd, NULL, NULL, SOCK_CLOEXEC);
 }
@@ -31,6 +44,8 @@ int hazkey_peer_uid(int fd, uid_t *uid) {
 int hazkey_pidfd_open(pid_t pid) {
 #ifdef SYS_pidfd_open
     return syscall(SYS_pidfd_open, pid, 0);
+#elif defined(HAZKEY_GENERIC_PIDFD_SYSCALL_ABI)
+    return syscall(434, pid, 0);
 #else
     errno = ENOSYS;
     return -1;
@@ -40,6 +55,8 @@ int hazkey_pidfd_open(pid_t pid) {
 int hazkey_pidfd_send_signal(int fd, int signal) {
 #ifdef SYS_pidfd_send_signal
     return syscall(SYS_pidfd_send_signal, fd, signal, NULL, 0);
+#elif defined(HAZKEY_GENERIC_PIDFD_SYSCALL_ABI)
+    return syscall(424, fd, signal, NULL, 0);
 #else
     errno = ENOSYS;
     return -1;

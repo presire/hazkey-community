@@ -7,6 +7,7 @@
 #define USERDICT_MODEL_H
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 /**
@@ -36,6 +37,29 @@ struct UserDictEntry {
 };
 
 /**
+ * @brief エントリの全フィールドがTSVとして安全かを返す
+ *
+ * reading/word/comment/posのいずれかに'\t' '\n' '\r'が含まれると、列や行がずれて
+ * エントリが壊れる(サーバは'\n'と'\r'の両方で行分割する)ため、不正とみなす
+ *
+ * @param e 検査するエントリ
+ * @return 全フィールドが安全ならtrue
+ */
+bool isValidUserDictEntry(const UserDictEntry& e);
+
+/**
+ * @brief QTextStream::readLine()が返した1行を、サーバと同じ規則でレコードへ分割する
+ *
+ * readLine()は'\n'と"\r\n"しか行終端として扱わないが、サーバは単独の'\r'も行終端として扱う
+ * 読込・インポートはこの関数の結果を1レコードずつ処理し、サーバと同じ見え方にする
+ * 空のレコードは含まない
+ *
+ * @param line readLine()が返した行
+ * @return '\r'で分割した空でないレコードの列
+ */
+QStringList splitUserDictionaryRecords(const QString& line);
+
+/**
  * @brief ユーザ辞書を正規形式のUTF-8 TSVとしてアトミックに保存する
  *
  * 先頭に"# reading<TAB>word<TAB>comment[<TAB>pos]\n"を出力して、各エントリを1行ずつLF終端で出力する
@@ -45,8 +69,11 @@ struct UserDictEntry {
  *
  * @param path 保存先のファイルパス
  * @param entries 保存するユーザー辞書エントリの列
- * @return 保存がcommitまで成功した場合はtrue、
- *         ファイルを開けない場合やストリームエラーが発生した場合、または、コミットに失敗した場合はfalse
+ * @return 保存がcommitまで成功した場合はtrue
+ *         次のいずれかの場合はfalse
+ *         ・いずれかのエントリが [isValidUserDictEntry] を満たさない (ファイルは開かず変更しない)
+ *         ・ファイルを開けない、またはストリームエラーが発生した
+ *         ・commitに失敗した
  *         失敗時は保留中の書込を取り消し、既存ファイルを変更しない
  */
 bool writeUserDictionaryFile(const QString& path,

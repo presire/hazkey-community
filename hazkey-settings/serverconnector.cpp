@@ -72,8 +72,14 @@ bool peerIsCurrentUser(int sock) {
     return cred.uid == getuid();
 }
 
+/** @brief 送受信の絶対期限を表す単調時計の時刻 */
 using Deadline = std::chrono::steady_clock::time_point;
 
+/**
+ * @brief 現在時刻からtimeoutMs後の絶対期限を作る
+ * @param timeoutMs 期限までの時間[ms]
+ * @return 単調時計上の期限
+ */
 Deadline deadlineAfter(int timeoutMs) {
     return std::chrono::steady_clock::now() +
            std::chrono::milliseconds(timeoutMs);
@@ -153,7 +159,8 @@ std::string ServerConnector::getSocketPath() {
         isPrivateOwnDirectory(xdg_runtime_dir, true)) {
         runtimeDir = xdg_runtime_dir;
     } else {
-        // GUIはこのディレクトリを作らない (サーバが作成する)。未作成や不信頼なら接続失敗にする
+        // GUIはこのディレクトリを作らない (サーバが作成する)
+        // 未作成や信頼できない場合は接続失敗にする
         runtimeDir = "/tmp/hazkey-community-runtime-" + std::to_string(uid);
         if (!isPrivateOwnDirectory(runtimeDir, false)) {
             return std::string();
@@ -163,19 +170,19 @@ std::string ServerConnector::getSocketPath() {
 }
 
 /**
- * @brief 指定バイト数をソケットへ書き切る内部ヘルパー
+ * @brief 指定バイト数をソケットへ書き切るフレーム搬送ヘルパー
  *
  * 部分書き込みを繰り返し、EAGAIN/EWOULDBLOCKでは書き込み可能になるまで期限まで待つ
  * その他の書き込みエラーまたは期限切れでは失敗する
  * send(MSG_NOSIGNAL)を使うため、相手がソケットを閉じていてもSIGPIPEでプロセスは終了せず、falseを返す
  * この関数はソケットを閉じず、呼び出し元が所有権を保持する
+ * 単体テストから呼び出すため、serverconnector.hで公開している
  *
  * @param fd 書き込み対象のソケットディスクリプター
  * @param data 送信バッファ
  * @param len 送信するバイト数
  * @param deadline フレーム全体の絶対期限 (少しずつ受け取る相手でも延長しない)
  * @return lenバイトを書き終えた場合はtrue、それ以外はfalse
- * @internal ServerConnectorのフレーム搬送専用
  */
 bool writeAll(int fd, const void* data, size_t len, Deadline deadline) {
     size_t sent = 0;
@@ -246,6 +253,9 @@ int ServerConnector::createConnection() {
     constexpr int RETRY_INTERVAL_MS = 250;
 
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
+        if (isShuttingDown()) {
+            return -1;
+        }
         // サーバが起動後にランタイムディレクトリを作るため、毎回パスを解決し直す
         const std::string socket_path = getSocketPath();
         if (socket_path.size() >= sizeof(sockaddr_un::sun_path)) {
@@ -318,21 +328,86 @@ std::optional<hazkey::ResponseEnvelope> ServerConnector::transactOnSocket(
     return resp;
 }
 
+namespace {
+
+/**
+ * @brief 接続済みソケットのクローズをスコープ終了で保証するRAII
+ *
+ * 例外が伝播してもfdを漏らさない
+ * [ServerConnector::transact] では [ServerConnector::transactTracked] を呼ぶ側のスコープで保持するので、
+ * ソケットは追跡の解除 (SocketTracking) の後にcloseされる
+ *
+ * fd_ : 所有するソケットディスクリプター、-1なら何も閉じない
+ * @internal 翻訳単位内の実装詳細
+ */
+class OwnedSocket {
+   public:
+    explicit OwnedSocket(int fd) : fd_(fd) {}
+    OwnedSocket(const OwnedSocket&) = delete;
+    OwnedSocket& operator=(const OwnedSocket&) = delete;
+    ~OwnedSocket() {
+        if (fd_ != -1) close(fd_);
+    }
+
+   private:
+    int fd_;
+};
+
+}  // namespace
+
 std::optional<hazkey::ResponseEnvelope> ServerConnector::transact(
     const hazkey::RequestEnvelope& send_data, int readTimeoutSeconds) {
     std::lock_guard<std::mutex> lock(transact_mutex);
 
+    // 終了状態なら接続も再試行も始めない
+    if (isShuttingDown()) {
+        return std::nullopt;
+    }
     // Create new connection for each transaction
     int sock = createConnection();
     if (sock == -1) {
         return std::nullopt;
     }
+    OwnedSocket owned(sock);
 
-    auto resp = transactOnSocket(sock, send_data, readTimeoutSeconds);
+    // 追跡は [transactTracked] の中で完結し、戻る前 (例外時も) に外れるため、
+    // 続くcloseは追跡されていないfdに対してだけ行われる (再利用されたfdへのshutdownを防ぐ)
+    return transactTracked(sock, send_data, readTimeoutSeconds);
+}
 
-    // Close connection after transaction
-    close(sock);
-    return resp;
+bool ServerConnector::trackSocket(int sock) {
+    std::lock_guard<std::mutex> lock(cancel_mutex_);
+    if (shutting_down_.load()) {
+        return false;
+    }
+    tracked_socket_ = sock;
+    return true;
+}
+
+void ServerConnector::untrackSocket() {
+    std::lock_guard<std::mutex> lock(cancel_mutex_);
+    tracked_socket_ = -1;
+}
+
+bool ServerConnector::isShuttingDown() const { return shutting_down_.load(); }
+
+std::optional<hazkey::ResponseEnvelope> ServerConnector::transactTracked(
+    int sock, const hazkey::RequestEnvelope& send_data,
+    int readTimeoutSeconds) {
+    SocketTracking tracking(*this, sock);
+    if (!tracking.active()) {
+        return std::nullopt;
+    }
+    return transactOnSocket(sock, send_data, readTimeoutSeconds);
+}
+
+void ServerConnector::cancelPendingTransaction() {
+    std::lock_guard<std::mutex> lock(cancel_mutex_);
+    shutting_down_.store(true);
+    if (tracked_socket_ != -1) {
+        // closeは作業スレッドだけが行い、追跡はその前に外れるため、ここでshutdownするfdは常に有効
+        ::shutdown(tracked_socket_, SHUT_RDWR);
+    }
 }
 
 bool ServerConnector::beginSession() {
@@ -344,6 +419,10 @@ bool ServerConnector::beginSession() {
         session_socket_ = -1;
     }
 
+    // 終了状態なら接続も再試行も始めない
+    if (isShuttingDown()) {
+        return false;
+    }
     session_socket_ = createConnection();
     return session_socket_ != -1;
 }
@@ -367,7 +446,7 @@ ServerConnector::getConfigInSession() {
 
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_get_config();
-    auto response = transactOnSocket(session_socket_, request);
+    auto response = transactTracked(session_socket_, request);
     if (response == std::nullopt) {
         return std::nullopt;
     }
@@ -391,7 +470,7 @@ ServerConnector::getDefaultProfileInSession() {
 
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_get_default_profile();
-    auto response = transactOnSocket(session_socket_, request);
+    auto response = transactTracked(session_socket_, request);
     if (response == std::nullopt) {
         return std::nullopt;
     }
@@ -414,7 +493,7 @@ bool ServerConnector::reloadZenzaiModelInSession() {
 
     hazkey::RequestEnvelope request;
     auto _ = request.mutable_reload_zenzai_model();
-    auto response = transactOnSocket(session_socket_, request);
+    auto response = transactTracked(session_socket_, request);
     if (response == std::nullopt) {
         return false;
     }

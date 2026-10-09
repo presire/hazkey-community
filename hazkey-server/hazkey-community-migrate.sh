@@ -1,7 +1,5 @@
 #!/usr/bin/env sh
 #
-# hazkey-community-migrate.sh
-#
 # 上流版Hazkeyのユーザデータを、hazkey-communityのディレクトリへ手動でコピーする移行スクリプト
 #
 # hazkey-communityは、上流版Hazkeyと併存できるように、ユーザデータを別ディレクトリに保存する
@@ -18,14 +16,15 @@
 #   - config.json (例: zenzaiWeightPath) と envファイル内のパス
 #
 # hazkey-community-serverが起動中の場合は、コピー前にこのスクリプトが終了させる (SIGTERM: サーバは終了時に学習データを保存する)
-# Fcitx 5 / IBusは、キー入力のたびにサーバが無ければ再起動するため、利用者が事前にpkillしても、
-# このスクリプトを実行する[Enter]キーの押下でサーバが再起動してしまう
-# 移行後にもう1度終了させ、次のキー入力で再起動したサーバが移行済みのデータを読み込むようにする
+# Fcitx 5 / IBusは、キー入力のたびにサーバが無ければ再起動するため、
+# 利用者が事前にpkillしても、このスクリプトを実行する[Enter]キーの押下でサーバが再起動してしまう
+# そのため、移行後にもう1度終了させ、次のキー入力で再起動したサーバが移行済みのデータを読み込むようにする
 #
 # 起動済みのサーバは、コピー先に空のディレクトリ (keymap/、table/、memory/ 等) を自動作成する
 # ファイルを1つも含まないコピー先は未使用とみなし、--forceなしでコピーする
 #
 # Fcitx 5の入力メソッド一覧 (profile) やIBusのpreload-enginesは書き換えない
+#
 # 移行後、入力メソッド"Hazkey-Community"を手動で追加すること
 
 set -eu
@@ -93,9 +92,9 @@ run() {
     fi
 }
 
-# 指定したPIDが、自UIDのhazkey-community-serverであるかを/procで確認する
-# pgrepの列挙からシグナル送信までの間にサーバが終了してPIDが別プロセスへ再利用された場合に、
-# 無関係なプロセスへシグナルを送らないよう、送信の直前に照合する (argv[0]の照合はpgrepのパターンと同じ)
+# 指定したPIDが自身のUIDのhazkey-community-serverであるかを、/procで確認する
+# pgrepの列挙からシグナル送信までの間にサーバが終了して、PIDが別プロセスへ再利用された場合に
+# 無関係なプロセスへシグナルを送らないよう送信の直前に照合する ([argv[0]]の照合はpgrepのパターンと同じ)
 is_community_server() {
     status_file="/proc/$1/status"
     [ -r "$status_file" ] || return 1
@@ -111,12 +110,19 @@ is_community_server() {
 stop_community_servers() {
     pgrep -u "$UID_NUM" -f '^([^ ]*/)?hazkey-community-server( |$)' | while IFS= read -r pid; do
         [ -n "$pid" ] || continue
-        # pgrepの列挙後に終了したサーバ (PIDが再利用された場合を含む) は停止済みとして扱う
+        # pgrepの列挙後に終了したサーバ (PIDが再利用された場合を含む)は停止済みとして扱う
         is_community_server "$pid" || continue
         info "Stopping hazkey-community-server (PID $pid)"
+        # シグナル送信の直前に再度照合して、[check-to-kill]の窓を最小化する
+        # (同一UIDの悪意あるプロセスには完全には対抗できない)
+        # (厳密な排除には、[pidfd]が必要であるが、POSIXシェルからは利用できないため最小の窓が残る)
+        if ! is_community_server "$pid"; then
+            warn "hazkey-community-server (PID $pid) changed before SIGTERM, skipped"
+            continue
+        fi
         kill -TERM "$pid" 2>/dev/null || continue
         attempts=0
-        # 終了後にPIDが別プロセスへ再利用されても待ち続けないよう、生存確認にも同じ照合を使う
+        # 終了後にPIDが別プロセスへ再利用されても待ち続けないよう、生存確認にも同じ照合を使用する
         while is_community_server "$pid"; do
             attempts=$((attempts + 1))
             if [ "$attempts" -ge 100 ]; then
@@ -158,12 +164,12 @@ sed_escape_pattern() {
     printf '%s' "$1" | sed -e 's/[][\\.*^$+?(){}|/]/\\&/g'
 }
 
-# sed の置換文字列用に \ & / をエスケープする
+# sedの置換文字列用に、"\", """, "&", "/"をエスケープする
 sed_escape_replacement() {
     printf '%s' "$1" | sed -e 's/[\\&/]/\\&/g'
 }
 
-# テキストファイル内の旧パス (境界: 直後が "/" 、 "\"" 、空白、行末) を新パスへ書き換える
+# テキストファイル内の旧パス (境界: 直後が "/", "\"",、空白、行末) を新パスへ書き換える
 rewrite_paths_in_file() {
     file=$1
     [ -f "$file" ] || return 0
@@ -195,7 +201,7 @@ rewrite_paths_in_file() {
 
 # コピー先ツリー内で、旧ディレクトリ配下を指す絶対パスのシンボリックリンクを新ディレクトリへ張り替える
 repoint_symlinks() {
-    # 改行を含むファイル名でも1リンクずつ扱えるよう、行単位の読み取りではなく -exec で引数として渡す
+    # 改行を含むファイル名でも1リンクずつ扱えるよう、行単位の読み取りではなく"-exec"で引数として渡す
     find "$1" -type l -exec sh -c '
         set -eu
         old_root=$1
