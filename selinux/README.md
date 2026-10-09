@@ -53,7 +53,7 @@ Fcitx 5のアドオン、IBusのエンジン、設定GUI、ラッパースクリ
 | ディストリビューション | ポリシー | 型名の系統 (FLAVOR) | 動作確認 |
 |---|---|---|---|
 | openSUSE Leap 16 | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
-| openSUSE Tumbleweed | targeted | redhat | Leap 16と同じ系統 |
+| openSUSE Tumbleweed | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
 | Fedora 44 | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
 | RHEL 9 / RHEL 10系 | targeted | redhat | Fedoraと同じ系統 (未確認) |
 | Debian 13 | default (selinux-policy-default) | refpolicy | コンテナで、ビルド・読み込み・ラベルを確認 |
@@ -115,6 +115,7 @@ GitHubのリリースには、ディストリビューションごとにビル�
 | selinux-hazkey-community-ubuntu2604.pp | Ubuntu 26.04 |
 | selinux-hazkey-community-fc44.pp | Fedora 44 |
 | selinux-hazkey-community-leap16.pp | openSUSE Leap 16 |
+| selinux-hazkey-community-tumbleweed.pp | openSUSE Tumbleweed (リリース時点のスナップショットでビルド) |
 
 .ppファイルは、基本ポリシーの型名とバージョンに依存するため、他のディストリビューションでは読み込めない場合があります。  
 その場合は、下記のビルド手順で、使用中の環境で作り直してください。  

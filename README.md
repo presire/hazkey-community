@@ -338,7 +338,7 @@ Debian 13 / Ubuntu 26.04では、`selinux-policy-default`、`checkpolicy`、`pol
 
 | 項目 | 内容 |
 |---|---|
-| 動作確認 | openSUSE Leap 16 (targetedポリシー、MLS有効) の実機<br>Fedora 44、Debian 13、Ubuntu 26.04のコンテナ (ビルド・読み込み・ラベルの確認) |
+| 動作確認 | openSUSE Leap 16 (targetedポリシー、MLS有効) の実機<br>Fedora 44、Debian 13、Ubuntu 26.04、openSUSE Tumbleweedのコンテナ (ビルド・読み込み・ラベルの確認) |
 | 対象のドメイン | 変換サーバだけ<br>Fcitx 5のアドオン、IBusのエンジン、設定GUIは、起動元のドメインのまま動作する |
 | 許可の範囲 | unconfined_t / user_t / staff_tからの起動とソケット接続 |
 

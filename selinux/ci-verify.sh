@@ -16,7 +16,7 @@
 # 使い方:
 #   sh selinux/ci-verify.sh <出力する.ppのパス>
 #
-# 対応するイメージ: fedora、opensuse-leap、debian、ubuntu
+# 対応するイメージ: fedora、opensuse-leap、opensuse-tumbleweed、debian、ubuntu
 ########################################
 
 set -eu
@@ -39,7 +39,7 @@ case "$ID" in
         EXPECTED_FLAVOR=redhat
         RUNTIME_TYPE=user_tmp_t
         ;;
-    opensuse-leap)
+    opensuse-leap|opensuse-tumbleweed)
         zypper -n install selinux-policy-targeted checkpolicy policycoreutils make gawk \
             selinux-tools setools-console cmake ninja
         STORE=targeted

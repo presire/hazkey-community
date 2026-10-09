@@ -815,6 +815,9 @@ jobs:
           - name: openSUSE Leap 16
             image: opensuse/leap:16
             package_suffix: leap16
+          - name: openSUSE Tumbleweed
+            image: opensuse/tumbleweed:latest
+            package_suffix: tumbleweed
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
