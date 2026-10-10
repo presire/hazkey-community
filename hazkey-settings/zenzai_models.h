@@ -304,12 +304,37 @@ public:
      *          既存のシンボリックリンクは (リンク先が存在しない場合も含めて) 削除して置き換えるが、
      *          同じパスにある通常ファイルは暗黙に置き換えない
      *          基本ディレクトリを作成した後、管理対象ファイルを指すリンクを作る
-     *          SHA256の検査はこのメソッドでは行わない
+     *          SHA256の検査はこのメソッドでは行わない (GUIスレッドで巨大ファイルを読まないため)
+     *          ユーザー操作によるアクティブ化では、呼び出し側が先に作業スレッドで
+     *          verifyModelFileIntegrity() を実行し、成功を確認してから呼ぶこと
      *
      * @param key アクティブにするモデルのキー
      * @return リンクの作成まで成功した場合はtrue
      */
     static bool activateModel(const QString& key);
+
+    /**
+     * @brief 管理対象モデルファイルのサイズとSHA256をカタログ値と照合する (スレッドセーフ)
+     *
+     * @details getModelPath(model.key) をO_RDONLY|O_CLOEXEC|O_NOFOLLOWで開き、
+     *          開いた記述子が通常ファイルであることを確認した上で、同じ記述子の内容を
+     *          先頭から読んでサイズとSHA256を計算し、validateStreamedModelDownload() で
+     *          model.expectedBytes / model.sha256 と比較する (SHA256は大文字小文字を区別しない)
+     *          末尾がシンボリックリンクのモデルは拒否する
+     *
+     *          stat基盤のSHA256キャッシュ (calculateSHA256()) は参照も更新もせず、
+     *          sha256ActualComputeCount() も変えない 副作用を持たないため作業スレッドから呼べる
+     *          (GUIスレッドで呼ぶと巨大ファイルの読み込みで固まる)
+     *
+     *          検証からシンボリックリンク作成・サーバの読込までの間の差し替え (TOCTOU) は防がない
+     *          同一UIDの攻撃者は利用者のモデルを直接書き換えられるため、多層防御としての位置付けである
+     *
+     * @param model 検証対象モデルのカタログ情報 (expectedBytesが0以下なら未知サイズ用の上限で読む)
+     * @param errorMessage 失敗理由 (英語の詳細) を受け取る任意の出力先
+     * @return ファイルが存在し、サイズとSHA256が一致する場合のみtrue
+     */
+    static bool verifyModelFileIntegrity(const ZenzaiModelOption& model,
+                                         QString* errorMessage = nullptr);
 
     /**
      * @brief 管理対象のアクティブモデル用リンクを解除する

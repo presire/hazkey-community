@@ -152,13 +152,38 @@ class ProtocolHandler {
     private func serializeResult(unserialized: Hazkey_ResponseEnvelope) -> Data {
         var response = unserialized
         response.configRevision = state.serverConfig.configRevision
+        return Self.serializeBounded(response, limit: SocketManager.maxResponseSize)
+    }
+
+    /// 応答をバイト列に変換し、上限を超える場合は失敗応答に置き換える
+    ///
+    /// クライアントは上限を超える応答を受け取らずに接続を切るため、本文の代わりに理由付きの失敗応答を返す
+    ///
+    /// 失敗応答は[config_revision]を引き継ぐ
+    ///
+    /// - Parameters:
+    ///   - response: 変換する応答エンベロープ
+    ///   - limit: 応答本体の最大バイト数
+    /// - Returns: 応答エンベロープのバイト列、変換に失敗した場合は空である
+    static func serializeBounded(_ response: Hazkey_ResponseEnvelope, limit: Int) -> Data {
+        let payloadType = responsePayloadType(response.payload)
+        let serialized: Data
         do {
-            let serialized = try response.serializedData()
-            return serialized
+            serialized = try response.serializedData()
         } catch {
-            hazkeyLog("Failed to serialize response payload: \(Self.responsePayloadType(response.payload))")
+            hazkeyLog("Failed to serialize response payload: \(payloadType)")
             return Data()
         }
+        guard serialized.count > limit else {
+            return serialized
+        }
+        hazkeyLog("Response payload too large: \(payloadType), \(serialized.count) bytes (limit \(limit))")
+        let replacement = Hazkey_ResponseEnvelope.with {
+            $0.status = .failed
+            $0.errorMessage = "Response too large: \(payloadType)"
+            $0.configRevision = response.configRevision
+        }
+        return (try? replacement.serializedData()) ?? Data()
     }
 
     /// 応答の本文 (入力文字・候補・設定) をログへ出さずに種類だけを返す

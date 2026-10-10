@@ -15,6 +15,8 @@
 #include <QTemporaryDir>
 #include "zenzai_models.h"
 
+#include <sys/stat.h>
+
 /**
  * @brief Zenzaiモデル管理のファイルシステム動作を検証するテストクラス
  *
@@ -90,6 +92,8 @@ private slots:
     void testDeleteModelInvalidatesCache();
     /** @brief 旧世代判定が管理ディレクトリ内のカタログ名ファイルだけを対象にし、内容を一切読まないことを検証する */
     void testManagedLegacyGenerationDetectionNeverReadsContent();
+    /** @brief 作業スレッド用の整合性検証が、一致するファイルだけを受理しキャッシュに触れないことを検証する */
+    void testVerifyModelFileIntegrity();
 
 private:
     /** @brief 全テストでファイルを作成する一時ディレクトリ */
@@ -934,6 +938,70 @@ void ZenzaiModelManagementTest::testAlignmentSeparatorSupport() {
 
     // 4. 大文字拡張子でも v3.2 以降は対応
     QVERIFY(zenzaiModelSupportsAlignmentSeparator("ZENZ-V3.2-SMALL.GGUF"));
+}
+
+void ZenzaiModelManagementTest::testVerifyModelFileIntegrity() {
+    const QByteArray data("verify-integrity-model-payload");
+    ZenzaiModelOption model;
+    model.key = QStringLiteral("verify-probe");
+    model.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+    model.expectedBytes = data.size();
+
+    QVERIFY(QDir().mkpath(ZenzaiModelManager::getModelsDir()));
+    const QString path = ZenzaiModelManager::getModelPath(model.key);
+    auto writeFile = [](const QString& p, const QByteArray& bytes) {
+        QFile f(p);
+        const bool opened = f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        if (opened) f.write(bytes);
+        return opened;
+    };
+
+    ZenzaiModelManager::resetSha256ActualComputeCount();
+
+    // 欠落ファイルは失敗
+    QString error;
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model, &error));
+    QVERIFY(!error.isEmpty());
+
+    // 一致するファイルは成功
+    QVERIFY(writeFile(path, data));
+    error.clear();
+    QVERIFY2(ZenzaiModelManager::verifyModelFileIntegrity(model, &error), qPrintable(error));
+
+    // 期待SHA256が大文字でも成功 (比較は大文字小文字を区別しない)
+    ZenzaiModelOption upper = model;
+    upper.sha256 = model.sha256.toUpper();
+    QVERIFY(ZenzaiModelManager::verifyModelFileIntegrity(upper));
+
+    // 同サイズで内容だけ異なる場合は失敗
+    QByteArray sameSizeOther = data;
+    sameSizeOther[0] = static_cast<char>(sameSizeOther[0] ^ 0x01);
+    QVERIFY(writeFile(path, sameSizeOther));
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model));
+
+    // サイズ不一致 (長い/短い) は失敗
+    QVERIFY(writeFile(path, data + "x"));
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model));
+    QVERIFY(writeFile(path, data.left(data.size() - 1)));
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model));
+
+    // 有効なファイルを指すシンボリックリンクは O_NOFOLLOW で拒否
+    QVERIFY(QFile::remove(path));
+    const QString linkTarget = tempDir.path() + "/verify-link-target.gguf";
+    QVERIFY(writeFile(linkTarget, data));
+    QVERIFY(QFile::link(linkTarget, path));
+    QVERIFY(QFileInfo(path).isSymLink());
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model));
+
+    // 書き手のいないFIFOは open() で停止せずに拒否する (停止すればテストがタイムアウトする)
+    QVERIFY(QFile::remove(path));
+    QCOMPARE(::mkfifo(QFile::encodeName(path).constData(), 0600), 0);
+    QVERIFY(!ZenzaiModelManager::verifyModelFileIntegrity(model));
+    QVERIFY(QFile::remove(path));
+
+    // 検証はSHA256キャッシュ経路を使わない
+    QCOMPARE(ZenzaiModelManager::sha256ActualComputeCount(), 0);
 }
 
 QTEST_MAIN(ZenzaiModelManagementTest)

@@ -41,9 +41,10 @@
     SwiftPMのスクラッチチェックアウト `${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter` に対して無条件で適用します。  
     (`JapaneseNumber.swift` はコアの `KanaKanjiConverterModule` の一部であるため、`HAZKEY_SERVER_ZENZAI_TRAIT` によるゲートはありません)  
     チェックアウトに既にアンカー文字列 `hazkey-community patch` が含まれている場合はスキップされます。(冪等)  
-    `git apply` が失敗した場合も警告のみで、ビルドは失敗しません。  
+    アンカーが無くても `git apply --reverse --check` が通る (変更内容がすでに含まれている) 場合は、適用済みとみなしてスキップします。  
+    順方向にも逆方向にも適用できない場合 (フォーク側の変更でパッチが古くなった場合等) と、対象ファイルが存在しない場合は、修正を欠いたサーバを配布しないように `FATAL_ERROR` でビルドを中止します。  
     CIのXCTest経路では、`.github/workflows/test.yml` が `swift test` の前に、  
-    通常の `.build/checkouts/AzooKeyKanaKanjiConverter` チェックアウトに対して同じパッチ (同じアンカーガード) を適用します。  
+    通常の `.build/checkouts/AzooKeyKanaKanjiConverter` チェックアウトに対して同じパッチを同じ規則 (アンカーガード・逆適用検査・適用不能時の失敗) で適用します。  
   
 - **0006 - 廃止 (retired)**  
   旧 `0006-zenzai-preserve-user-dictionary.patch`  
@@ -143,8 +144,9 @@ e4fba90 hazkey: minimal compile fixes for llama.cpp pin 00842b94
   何かを適用する前に `swift package resolve --scratch-path=${CMAKE_CURRENT_BINARY_DIR}/swift-build` でコンバータのチェックアウトを解決します。  
   CMakeビルドが使用するのは `${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter` です。  
 - 0003の適用ステップは `grep -q "hazkey-community patch" ${NUMBER_TARGET_FILE}` でガードされ、  
-  アンカーが存在しない場合にのみ `git apply` を実行します。  
+  アンカーが存在しない場合にのみ `git apply --check` / `git apply` を実行します。  
   そのため、パッチ適用済みのチェックアウトに対してCMakeビルドを再実行しても何も行われません。(no-op)  
+  順方向に適用できず、`git apply --reverse --check` も失敗する場合は `FATAL_ERROR` で中止します。  
 - CIのXCTestジョブ (`.github/workflows/test.yml`) は通常の `swift package resolve` (スクラッチパスではない) を使用するため、  
   チェックアウトは `.build/checkouts/AzooKeyKanaKanjiConverter` です。  
   `swift test --traits ZenzaiSupport` の前に、同じアンカーガード付きで同じ0003パッチを適用します。  

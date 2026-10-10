@@ -6,11 +6,20 @@
  */
 
 #include "zenzai_models.h"
+#include "zenzai_download_validation.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QFileInfo>
 #include <QHash>
 #include <QRegularExpression>
+
+#include <cerrno>
+#include <cstring>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace {
 // NOTE:
@@ -584,6 +593,48 @@ bool ZenzaiModelManager::activateModel(const QString& key) {
 
     QDir().mkpath(getZenzaiDir());
     return QFile::link(target, link);
+}
+
+bool ZenzaiModelManager::verifyModelFileIntegrity(const ZenzaiModelOption& model,
+                                                  QString* errorMessage) {
+    // 作業スレッドから呼ばれるため、GUIスレッド専用のSHA256キャッシュには一切触れない
+    const auto fail = [errorMessage](const QString& message) {
+        if (errorMessage) {
+            *errorMessage = message;
+        }
+        return false;
+    };
+
+    const QByteArray path = QFile::encodeName(getModelPath(model.key));
+    // O_NONBLOCK: 書き手のいないFIFOへ差し替えられても open() で停止させず、下の通常ファイル検査で拒否する
+    const int fd = ::open(path.constData(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) {
+        return fail(QStringLiteral("Failed to open model file: %1")
+                        .arg(QString::fromLocal8Bit(std::strerror(errno))));
+    }
+
+    struct stat st {};
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        ::close(fd);
+        return fail(QStringLiteral("Model file is not a regular file"));
+    }
+
+    const qint64 limit = model.expectedBytes > 0 ? model.expectedBytes
+                                                 : kUnknownSizeModelDownloadLimitBytes;
+    qint64 bytesRead = 0;
+    QString shaHex;
+    QString hashError;
+    const bool hashed = hashDescriptorContents(fd, limit, &bytesRead, &shaHex, &hashError);
+    ::close(fd);
+    if (!hashed) {
+        return fail(hashError);
+    }
+
+    if (validateStreamedModelDownload(bytesRead, model.expectedBytes, shaHex,
+                                      model.sha256) != ModelDownloadValidation::Accepted) {
+        return fail(QStringLiteral("Model file size or SHA256 does not match the catalog"));
+    }
+    return true;
 }
 
 bool ZenzaiModelManager::deactivateModel() {

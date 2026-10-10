@@ -33,6 +33,7 @@ set(PROTO_FILES
 # protobuf生成は、このターゲットで1回のみ行う
 add_library(hazkey-frontend-common STATIC
     hazkey_server_connector.cpp
+    hazkey_utf8.cpp
     hazkey_frontend_hooks.cpp
     serial_task_executor.cpp
     composing_cursor_view.cpp
@@ -191,6 +192,18 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_candidate_annotation_test hazkey-proto-headers)
     add_test(NAME hazkey_candidate_annotation_test
         COMMAND hazkey_candidate_annotation_test)
+
+    # 両フロントエンドが共有するGLib互換UTF-8修復のテスト
+    add_executable(hazkey_utf8_test
+        hazkey_utf8_test.cpp)
+    target_link_libraries(hazkey_utf8_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_utf8_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_utf8_test hazkey-proto-headers)
+    add_test(NAME hazkey_utf8_test
+        COMMAND hazkey_utf8_test)
 
     # IBusのキー処理をブロックさせない非同期通信基盤のテスト
     add_executable(hazkey_frontend_async_test

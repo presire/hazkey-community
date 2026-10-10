@@ -250,8 +250,14 @@ jobs:
           number_checkout=".build/checkouts/AzooKeyKanaKanjiConverter"
           number_source="${number_checkout}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift"
           number_patch="${GITHUB_WORKSPACE}/hazkey-server/patches/0003-fix-standalone-unit-japanese-number.patch"
+          # build_swift.cmakeと同じ規則: 変更内容がすでに含まれていればスキップし、適用できなければ失敗する
           if ! grep -q "hazkey-community patch" "${number_source}"; then
-            git -C "${number_checkout}" apply "${number_patch}"
+            if git -C "${number_checkout}" apply --check "${number_patch}"; then
+              git -C "${number_checkout}" apply "${number_patch}"
+            elif ! git -C "${number_checkout}" apply --reverse --check "${number_patch}" 2>/dev/null; then
+              echo "0003 patch neither applies nor is already contained in the converter checkout" >&2
+              exit 1
+            fi
           fi
           # user-dictionaryのリトライ保持修正 (旧patches/0006-zenzai-preserve-user-dictionary.patch) は、
           # AzooKeyKanaKanjiConverterフォークのhazkeyブランチ (commit 2cef753) に組み込み済みであるため、ビルド時に適用するものはない

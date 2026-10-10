@@ -2267,6 +2267,33 @@ void MainWindow::onDownloadZenzaiModel() {
                         return;
                     }
                     const ZenzaiModelOption& chosen = rows[selectedIdx]->artifact();
+
+                    // リンク作成の前に、モデルファイルのサイズとSHA256をカタログ値と再照合する
+                    // 巨大ファイルを読むため作業スレッドで行う (ラムダにはウィジェットを渡さない)
+                    // 検証からリンク作成・サーバ読込までの差し替えは防がない (同一UID前提の多層防御)
+                    // 待機ダイアログを即座に表示し、検証中にこのダイアログの[キャンセル]を押せないようにする
+                    // (猶予中にキャンセルされても、検証の完了後に有効化へ進んでしまうため)
+                    const auto verification = runServerCallAsync(
+                        &dialog, tr("Verifying model file..."),
+                        [model = chosen]() {
+                            return ZenzaiModelManager::verifyModelFileIntegrity(model);
+                        },
+                        0);
+                    if (verification.aborted()) {
+                        applicationQuitting = true;
+                        return;
+                    }
+                    if (!verification.completed()) {
+                        return;
+                    }
+                    if (!verification.value.value_or(false)) {
+                        QMessageBox::critical(
+                            &dialog, tr("Error"),
+                            tr("The model file failed integrity verification. "
+                               "Please delete it and download the model again."));
+                        return;
+                    }
+
                     if (ZenzaiModelManager::activateModel(chosen.key)) {
                         const ZenzaiReloadOutcome outcome = reloadZenzaiModelAsync(&dialog);
                         if (outcome == ZenzaiReloadOutcome::Aborted) {

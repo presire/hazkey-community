@@ -121,7 +121,6 @@ if(HAZKEY_SERVER_BUILD_LLAMA_LIBS)
     option(GGML_VULKAN "Build llama.cpp with Vulkan backend (CPU-only build: -DGGML_VULKAN=OFF)" ON)
     set(GGML_CUDA OFF CACHE BOOL "")
     set(GGML_HIP OFF CACHE BOOL "")
-    set(CMAKE_SKIP_BUILD_RPATH ON CACHE BOOL "")
 
     add_subdirectory(llama.cpp EXCLUDE_FROM_ALL)
 

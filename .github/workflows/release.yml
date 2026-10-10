@@ -76,6 +76,21 @@ jobs:
           sha256sum fcitx5-hazkey-* ibus-hazkey-* selinux-hazkey-* > SHA256SUMS
           cat SHA256SUMS
 
+      # DEBは個々のパッケージに署名する標準的な検証手段がないため、DEBを含むSHA256SUMSに、RPMと同じ鍵で分離署名する
+      - name: Sign SHA256SUMS with GPG
+        if: steps.rpm-gpg.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          printf '%s\n' "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
+          KEYID="$(gpg --batch --list-keys --with-colons | awk -F: '/^pub:/ { getline; print $10; exit }')"
+          test -n "$KEYID"
+          cd packages
+          gpg --batch --pinentry-mode loopback --passphrase-fd 3 -u "$KEYID" \
+            --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS 3<<< "${RPM_GPG_PASSPHRASE:-}"
+          gpg --batch --verify SHA256SUMS.asc SHA256SUMS
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:

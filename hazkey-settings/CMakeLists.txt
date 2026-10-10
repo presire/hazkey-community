@@ -167,6 +167,7 @@ enable_testing()
 qt_add_executable(zenzai_model_management_test
     zenzai_model_management_test.cpp
     zenzai_models.cpp
+    zenzai_download_validation.cpp
 )
 target_link_libraries(zenzai_model_management_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME zenzai_model_management_test COMMAND zenzai_model_management_test)
@@ -189,6 +190,7 @@ qt_add_executable(zenzai_family_row_test
     zenzai_family_row_test.cpp
     zenzai_family_row.cpp
     zenzai_models.cpp
+    zenzai_download_validation.cpp
 )
 target_link_libraries(zenzai_family_row_test PRIVATE Qt6::Test Qt6::Widgets)
 add_test(NAME zenzai_family_row_test COMMAND zenzai_family_row_test)

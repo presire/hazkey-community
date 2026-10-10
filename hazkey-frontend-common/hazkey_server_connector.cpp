@@ -31,6 +31,7 @@
 #include "base.pb.h"
 #include "commands.pb.h"
 #include "config.pb.h"
+#include "hazkey_utf8.h"
 
 // 通信層のログは注入されたフロントエンドのログ出力先へ送る
 // 既定の出力先は何も行わず、ストリーム形式は従来のFCITXマクロと同じ
@@ -50,6 +51,17 @@ static std::mutex transact_mutex;
 
 /** @brief この実装ファイルだけで使用する補助要素を隠す無名名前空間 */
 namespace {
+
+void sanitizeCandidatesResult(hazkey::commands::CandidatesResult& result) {
+    for (int index = 0; index < result.candidates_size(); ++index) {
+        auto* candidate = result.mutable_candidates(index);
+        candidate->set_text(hazkey::frontend::makeValidUtf8(candidate->text()));
+        candidate->set_sub_hiragana(
+            hazkey::frontend::makeValidUtf8(candidate->sub_hiragana()));
+    }
+    result.set_live_text(
+        hazkey::frontend::makeValidUtf8(result.live_text()));
+}
 
 /**
  * @brief 要求封筒から計測用種別名を返す
@@ -693,8 +705,9 @@ std::string HazkeyServerConnector::getComposingText(
     //     return "";
     // }
 
-    cachedComposingText_[cacheKey] = responseVal.text();
-    return responseVal.text();
+    std::string text = hazkey::frontend::makeValidUtf8(responseVal.text());
+    cachedComposingText_[cacheKey] = text;
+    return text;
 }
 
 /**
@@ -726,9 +739,12 @@ HazkeyServerConnector::getComposingHiraganaWithCursor() {
         return hazkey::frontend::ComposingTextWithCursor{};
     }
     cachedHiraganaWithCursor_ = hazkey::frontend::ComposingTextWithCursor{
-        responseVal.text_with_cursor().beforecursosr(),
-        responseVal.text_with_cursor().oncursor(),
-        responseVal.text_with_cursor().aftercursor()};
+        hazkey::frontend::makeValidUtf8(
+            responseVal.text_with_cursor().beforecursosr()),
+        hazkey::frontend::makeValidUtf8(
+            responseVal.text_with_cursor().oncursor()),
+        hazkey::frontend::makeValidUtf8(
+            responseVal.text_with_cursor().aftercursor())};
     return cachedHiraganaWithCursor_.value();
 }
 
@@ -898,7 +914,9 @@ HazkeyServerConnector::adjustClauseBoundary(int offset) {
 
     ClauseBoundaryResult result;
     result.candidates = responseVal.clause_boundary_result().candidates();
-    result.hiragana = responseVal.clause_boundary_result().hiragana();
+    sanitizeCandidatesResult(result.candidates);
+    result.hiragana = hazkey::frontend::makeValidUtf8(
+        responseVal.clause_boundary_result().hiragana());
     return result;
 }
 
@@ -934,7 +952,9 @@ HazkeyServerConnector::deleteCandidateLearningData(int index) {
     DeleteCandidateLearningDataResult result;
     result.deleted_count = responseVal.delete_candidate_learning_data_result().deleted_count();
     result.candidates = responseVal.delete_candidate_learning_data_result().candidates();
-    result.hiragana = responseVal.delete_candidate_learning_data_result().hiragana();
+    sanitizeCandidatesResult(result.candidates);
+    result.hiragana = hazkey::frontend::makeValidUtf8(
+        responseVal.delete_candidate_learning_data_result().hiragana());
     return result;
 }
 
@@ -1169,6 +1189,8 @@ hazkey::commands::CandidatesResult HazkeyServerConnector::getCandidates(
     //     return hazkey::commands::CandidatesResult();
     // }
 
-    cacheSlot = responseVal.candidates();
-    return responseVal.candidates();
+    auto candidates = responseVal.candidates();
+    sanitizeCandidatesResult(candidates);
+    cacheSlot = candidates;
+    return candidates;
 }

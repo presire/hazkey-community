@@ -448,6 +448,46 @@ final class SocketManagerSafetyTests: XCTestCase {
         XCTAssertEqual(try readData(from: client, count: 4, deadline: .now.advanced(by: .seconds(1))), Data([0, 0, 0, 0]))
     }
 
+    func testOversizedResponseDisconnectsWithoutWritingAFrame() throws {
+        let root = try TestTempRoot.make()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("test.sock").path
+        let manager = SocketManager(socketPath: path)
+        try manager.setupSocket()
+        defer { manager.closeSocket() }
+        let delegate = Delegate()
+        delegate.response = Data(repeating: 65, count: SocketManager.maxResponseSize + 1)
+        manager.delegate = delegate
+        let client = try connectClient(path)
+        defer { close(client) }
+        manager.handleNewConnection()
+        let server = try XCTUnwrap(delegate.connected.last)
+        try writeData(to: client, data: Data([0, 0, 0, 0]), deadline: .now.advanced(by: .seconds(1)))
+        manager.handleClientData(server)
+        XCTAssertEqual(delegate.received, [Data()])
+        XCTAssertEqual(delegate.disconnected, [server])
+        XCTAssertEqual(manager.connectedClientCount, 0)
+        var byte: UInt8 = 0
+        XCTAssertEqual(recv(client, &byte, 1, Int32(MSG_DONTWAIT)), 0, "no frame may precede the close")
+    }
+
+    func testOversizedSerializedResponseIsReplacedWithFailure() throws {
+        var large = Hazkey_ResponseEnvelope()
+        large.status = .success
+        large.text = String(repeating: "あ", count: 64)
+        large.configRevision = 7
+        let fitting = ProtocolHandler.serializeBounded(large, limit: 1024)
+        XCTAssertEqual(try Hazkey_ResponseEnvelope(serializedBytes: fitting), large)
+
+        let replaced = ProtocolHandler.serializeBounded(large, limit: 16)
+        let decoded = try Hazkey_ResponseEnvelope(serializedBytes: replaced)
+        XCTAssertEqual(decoded.status, .failed)
+        XCTAssertEqual(decoded.errorMessage, "Response too large: text")
+        XCTAssertEqual(decoded.configRevision, 7)
+        XCTAssertNil(decoded.payload)
+        XCTAssertLessThanOrEqual(replaced.count, SocketManager.maxResponseSize)
+    }
+
     func testSignalShutdownClosesSocketAndPersistsPendingLearning() throws {
         for signalNumber in [SIGTERM, SIGINT, SIGHUP] {
             try withIsolatedServerEnvironment { _ in

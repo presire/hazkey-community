@@ -47,35 +47,67 @@ endif()
 #
 # 冪等:
 # パッチ適用済みの場合 (再ビルド時等) はスキップする
+# 目印のコメントが無くても、パッチを逆適用できる (変更内容がすでに含まれている) 場合は適用済みとみなしてスキップする
 #
-# 非致命的:
-# git applyコマンドに失敗しても警告を出して続行する
-# 上流フォークにすでに修正が含まれる場合も、Swiftビルドを妨げないためである
+# 適用できない場合は致命的:
+# パッチを順方向にも逆方向にも適用できない場合 (フォーク側の変更でパッチが古くなった場合等) は、
+# 修正を欠いたサーバを配布しないように、FATAL_ERRORでビルドを中止する
+# フォークに同等の修正が別の形で取り込まれた場合は、このパッチを廃止すること (patches/README.md に記録する)
 set(NUMBER_PATCH_FILE "${SWIFT_WORK_DIR}/patches/0003-fix-standalone-unit-japanese-number.patch")
 set(NUMBER_CHECKOUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-build/checkouts/AzooKeyKanaKanjiConverter")
 set(NUMBER_TARGET_FILE "${NUMBER_CHECKOUT_DIR}/Sources/KanaKanjiConverterModule/DictionaryManagement/JapaneseNumber.swift")
 
-if(EXISTS "${NUMBER_PATCH_FILE}" AND EXISTS "${NUMBER_TARGET_FILE}")
+if(EXISTS "${NUMBER_PATCH_FILE}")
+    if(NOT EXISTS "${NUMBER_TARGET_FILE}")
+        message(FATAL_ERROR
+            "Standalone-unit Japanese-number conversion fix cannot be applied: "
+            "target file not found: ${NUMBER_TARGET_FILE}")
+    endif()
     execute_process(
         COMMAND grep -q "hazkey-community patch" "${NUMBER_TARGET_FILE}"
         RESULT_VARIABLE number_patch_check_result
     )
     if(NOT number_patch_check_result EQUAL 0)
-        message(STATUS "Applying standalone-unit Japanese-number conversion fix")
         execute_process(
-            COMMAND git apply "${NUMBER_PATCH_FILE}"
+            COMMAND git apply --check "${NUMBER_PATCH_FILE}"
             WORKING_DIRECTORY "${NUMBER_CHECKOUT_DIR}"
-            RESULT_VARIABLE number_patch_result
-            OUTPUT_VARIABLE number_patch_output
-            ERROR_VARIABLE number_patch_error
+            RESULT_VARIABLE number_patch_forward_check
+            OUTPUT_QUIET
+            ERROR_VARIABLE number_patch_forward_error
         )
-        if(NOT number_patch_result EQUAL 0)
-            message(WARNING
-                "Failed to apply standalone-unit Japanese-number conversion fix.\n"
-                "git apply output: ${number_patch_output}\n"
-                "git apply error:  ${number_patch_error}")
-        else()
+        if(number_patch_forward_check EQUAL 0)
+            message(STATUS "Applying standalone-unit Japanese-number conversion fix")
+            execute_process(
+                COMMAND git apply "${NUMBER_PATCH_FILE}"
+                WORKING_DIRECTORY "${NUMBER_CHECKOUT_DIR}"
+                RESULT_VARIABLE number_patch_result
+                OUTPUT_VARIABLE number_patch_output
+                ERROR_VARIABLE number_patch_error
+            )
+            if(NOT number_patch_result EQUAL 0)
+                message(FATAL_ERROR
+                    "Failed to apply standalone-unit Japanese-number conversion fix.\n"
+                    "git apply output: ${number_patch_output}\n"
+                    "git apply error:  ${number_patch_error}")
+            endif()
             message(STATUS "Standalone-unit Japanese-number conversion fix applied successfully")
+        else()
+            execute_process(
+                COMMAND git apply --reverse --check "${NUMBER_PATCH_FILE}"
+                WORKING_DIRECTORY "${NUMBER_CHECKOUT_DIR}"
+                RESULT_VARIABLE number_patch_reverse_check
+                OUTPUT_QUIET
+                ERROR_QUIET
+            )
+            if(number_patch_reverse_check EQUAL 0)
+                message(STATUS "Standalone-unit Japanese-number conversion fix already contained in the checkout (skipping)")
+            else()
+                message(FATAL_ERROR
+                    "Standalone-unit Japanese-number conversion fix does not apply to the converter checkout "
+                    "and is not already contained in it.\n"
+                    "Update or retire ${NUMBER_PATCH_FILE}.\n"
+                    "git apply --check error: ${number_patch_forward_error}")
+            endif()
         endif()
     else()
         message(STATUS "Standalone-unit Japanese-number conversion fix already applied (skipping)")

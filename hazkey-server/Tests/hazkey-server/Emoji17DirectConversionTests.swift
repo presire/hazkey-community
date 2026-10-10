@@ -467,6 +467,45 @@ final class Emoji17DirectConversionTests: XCTestCase {
         XCTAssertFalse(result.candidates.map(\.text).contains(Self.sentinelEmoji))
     }
 
+    func testMalformedLineIsSkippedAndLaterEntriesStayAvailable() throws {
+        // 前提: 不正な行 (列数不足・base空・query空) が有効な行の間に挟まる固定データ
+        let contents = [
+            "\(Self.vs16Emoji)\tにっこりほほえみ\t",
+            "column-count-mismatch",
+            "\tからのべーす\t",
+            "🙃\t\t",
+            "\(Self.sentinelEmoji)\t\(Self.sentinelReading)\t",
+        ].joined(separator: "\n") + "\n"
+        let fixture = try writeFixture(contents)
+
+        // 実行: providerを構築し、不正な行より後ろにある目印の読みと、base空の行の読みを検索する
+        let provider = try XCTUnwrap(EmojiCandidateProvider(dictionaryURL: fixture))
+        let sentinelHits = provider.emojiCandidates(for: Self.sentinelReading)
+        let emptyBaseHits = provider.emojiCandidates(for: "からのべーす")
+
+        // 検証: 不正な行より後ろの絵文字も候補に残り、不正な行の内容は登録されない
+        XCTAssertTrue(sentinelHits.contains(where: { $0.text == Self.sentinelEmoji }))
+        XCTAssertTrue(emptyBaseHits.isEmpty, "malformed line leaked: \(emptyBaseHits.map(\.text))")
+        let result = try candidateResult(
+            forReading: Self.sentinelReading, isSuggest: false, fixtureURL: fixture)
+        XCTAssertTrue(
+            result.candidates.map(\.text).contains(Self.sentinelEmoji),
+            "emoji after malformed line missing: \(result.candidates.map(\.text))")
+    }
+
+    func testValidEntriesReportsInvalidLineCountAndFirstLineNumber() {
+        // 前提: 2行目と4行目が不正で、3行目が空行の内容
+        let contents = "a\tあ\t\nbroken\n\nb\t\t\nc\tし\t"
+
+        // 実行: 有効な行と不正な行に分ける
+        let entries = EmojiCandidateProvider.validEntries(contents)
+
+        // 検証: 有効な行は元の順序で残り、空行は不正として数えない
+        XCTAssertEqual(entries.validLines, ["a\tあ\t", "c\tし\t"])
+        XCTAssertEqual(entries.invalidLineCount, 2)
+        XCTAssertEqual(entries.firstInvalidLineNumber, 2)
+    }
+
     func testDefaultDictionaryURLPointsAtE17Asset() {
         // 既定provider URLはE17アセットを指す
         // テストではシステムパスから内容を読まない

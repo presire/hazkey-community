@@ -140,7 +140,9 @@ jobs:
                 spirv-headers-devel
               ;;
             opensuse)
-              zypper --non-interactive --gpg-auto-import-keys refresh
+              # リポジトリの署名鍵は公式イメージで信頼済みのため、未知の鍵を自動で信頼する --gpg-auto-import-keys は付けない
+              # (鍵が変わった場合は、取り込まずに失敗させる)
+              zypper --non-interactive refresh
               # コンテナーイメージとミラーのリポジトリの同期時期がずれると、
               # イメージ側の libmount1 等がリポジトリの *-devel より新しくなり、依存関係が解決できず終了コード4になる
               # (例: libmount1-2.42.4 に対し libmount-devel が要求する libmount1 = 2.42.3)
@@ -148,7 +150,7 @@ jobs:
               # ダウングレードを許可して依存関係を自動解決する
               zypper_install() {
                 zypper --non-interactive install --no-recommends "$@" \
-                  || { zypper --non-interactive --gpg-auto-import-keys refresh --force \
+                  || { zypper --non-interactive refresh --force \
                        && zypper --non-interactive install --no-recommends \
                             --allow-downgrade --force-resolution "$@"; }
               }

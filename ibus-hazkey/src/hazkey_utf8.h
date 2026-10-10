@@ -1,24 +1,14 @@
 #ifndef IBUS_HAZKEY_UTF8_H
 #define IBUS_HAZKEY_UTF8_H
 
-#include <glib.h>
-#include <memory>
 #include <string>
 #include <string_view>
+#include "../../hazkey-frontend-common/hazkey_utf8.h"
 
 namespace hazkey::ibus {
 
-inline std::string makeValidUtf8(std::string_view text) {
-    if (text.empty()) {
-        return {};
-    }
-    const auto length = static_cast<gssize>(text.size());
-    if (g_utf8_validate(text.data(), length, nullptr)) {
-        return std::string(text);
-    }
-    std::unique_ptr<gchar, decltype(&g_free)> valid(
-        g_utf8_make_valid(text.data(), length), &g_free);
-    return std::string(valid.get());
+inline std::string makeValidUtf8(std::string_view input) {
+    return hazkey::frontend::makeValidUtf8(input);
 }
 
 }

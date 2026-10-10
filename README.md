@@ -153,7 +153,16 @@ Releasesページにはパッケージと合わせて、`SHA256SUMS`が配置さ
 sha256sum -c SHA256SUMS
 ```
 
-RPMパッケージはGPG署名付きで頒布されています。(DEBは署名検証を行わないため不要です)  
+`SHA256SUMS`には、RPMと同じ鍵によるGPG署名 (`SHA256SUMS.asc`) が付いています。  
+DEBパッケージ自体には署名が無いため、DEBの改竄の有無は、`SHA256SUMS`の署名を検証してから`sha256sum -c`を実行して確認します。  
+
+```sh
+# 公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を取り込み、SHA256SUMSの署名を検証
+gpg --import RPM-GPG-KEY-hazkey
+gpg --verify SHA256SUMS.asc SHA256SUMS
+```
+
+RPMパッケージはGPG署名付きで頒布されています。  
 
 初回に1回だけ公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を登録すると、  
 以降のdnf / zypperコマンドでのインストール時に署名警告が表示されなくなります。  

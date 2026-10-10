@@ -127,6 +127,10 @@ class SocketManager {
     ///
     /// [maxMessageSize]の要求本体と4バイトの長さヘッダを保持できる大きさに制限する
     static let maxReceiveBufferSize = maxMessageSize + 4
+    /// 長さヘッダを含まない応答本体の最大バイト数
+    ///
+    /// Fcitx 5 / IBus (hazkey-frontend-common) と設定GUIは、これを超える長さヘッダを受け取ると応答を読まずに接続を切る
+    static let maxResponseSize = 2 * 1024 * 1024
     /// 待ち受けるUNIXドメインソケットのパス
     ///
     /// 初期化時に受け取り以後は変わらない
@@ -522,9 +526,12 @@ class SocketManager {
     /// - Parameters:
     ///   - query: 長さヘッダを除いた要求本体
     ///   - clientFd: 応答先の接続のfd
-    /// - Throws: 応答の書き込みに失敗した場合や期限を超えた場合は[SocketError]
+    /// - Throws: 応答の書き込みに失敗した場合や期限を超えた場合は[SocketError]、応答本体が[maxResponseSize]を超える場合は[SocketError.messageTooLarge]
     private func respond(to query: Data, clientFd: Int32) throws {
         let response = delegate?.socketManager(self, didReceiveData: query, from: clientFd) ?? Data()
+        guard response.count <= Self.maxResponseSize else {
+            throw SocketError.messageTooLarge(UInt32(clamping: response.count))
+        }
         var writeLen = UInt32(response.count).bigEndian
         let lengthHeader = withUnsafeBytes(of: &writeLen) { Data($0) }
         let writeDeadline = ContinuousClock.now.advanced(by: Self.responseTimeout)
