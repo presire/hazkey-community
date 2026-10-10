@@ -85,6 +85,10 @@ swift --version
 > sudo ln -sf libxml2.so.16 /usr/lib64/libxml2.so.2
 > ```
 
+> この対処が必要なのは、**ソースからビルドする環境のSwiftツールチェーン (`swiftly`/`swift`コマンド) を動かす場合だけ**です。  
+> ビルドしたhazkey-community-serverはSwiftランタイムを静的にリンクしており、`libxml2.so.2`に依存しません。  
+> GitHub Releasesの`.rpm` / `.deb`パッケージの導入・実行に、`libxml2.so.2`は不要です。  
+
 ### Debian 13 (Trixie) / Ubuntu 26.04
 
 ```sh
@@ -119,6 +123,10 @@ swift --version
 > sudo ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
 >             /usr/lib/x86_64-linux-gnu/libxml2.so.2
 > ```
+
+> この対応が必要なのは、**ソースからビルドする環境のSwiftツールチェーンを動かす場合だけ**です。  
+> hazkey-community-serverはSwiftランタイムを静的にリンクしており、`libxml2.so.2`に依存しません。  
+> GitHub Releasesの`.deb` / `.rpm`パッケージの導入・実行には、`libxml2.so.2`もシンボリックリンクも不要です。  
 
 ## 依存パッケージのインストール
 
