@@ -330,6 +330,29 @@
                <item row="7" column="1">
                 <widget class="QKeySequenceEdit" name="acceptPredictionHotkey"/>
                </item>
+               <item row="8" column="0">
+                <widget class="QLabel" name="kanaCycleHotkeyLabel">
+                 <property name="minimumSize">
+                  <size>
+                   <width>200</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Kana type cycle hotkey</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="8" column="1">
+                <widget class="QKeySequenceEdit" name="kanaCycleHotkey">
+                 <property name="toolTip">
+                  <string>While composing, converts the whole text to full-width katakana, half-width katakana and hiragana in turn. Clear the field to disable it.</string>
+                 </property>
+                 <property name="clearButtonEnabled">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
              </layout>
            </item>
            <item>

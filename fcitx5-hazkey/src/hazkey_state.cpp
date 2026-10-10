@@ -210,6 +210,12 @@ void HazkeyState::preeditKeyEvent(
     auto key = event.key();
     auto keysym = key.sym();
 
+    // カナ種切替キーは、[F6]～[F10]等の固定キーへ割り当てた場合も優先する
+    if (kanaCycleHotkey_.isValid() && key.check(kanaCycleHotkey_)) {
+        directCharactorConversion(ConversionMode::KanaCycle);
+        return event.filterAndAccept();
+    }
+
     switch (keysym) {
         case FcitxKey_Return: {
             // 古いpreeditではなく最新の組成を確定できるよう、保留中の更新を反映する
@@ -237,8 +243,10 @@ void HazkeyState::preeditKeyEvent(
         case FcitxKey_F8:
         case FcitxKey_F9:
         case FcitxKey_F10:
-        case FcitxKey_Muhenkan:
             functionKeyHandler(event);
+            break;
+        case FcitxKey_Muhenkan:
+            // カナ種切替を別のキーへ割り当てた場合や無効にした場合も、組成中はアプリケーションへ渡さずに消費する
             break;
         case FcitxKey_Escape:
             reset();
@@ -380,6 +388,12 @@ void HazkeyState::candidateKeyEvent(
         return event.filterAndAccept();
     }
 
+    // カナ種切替は、学習データ削除キーと予測候補受入キーの後に判定する
+    if (kanaCycleHotkey_.isValid() && key.check(kanaCycleHotkey_)) {
+        directCharactorConversion(ConversionMode::KanaCycle);
+        return event.filterAndAccept();
+    }
+
     std::vector<std::string> preedit;
     switch (keysym) {
         case FcitxKey_Right:
@@ -432,6 +446,9 @@ void HazkeyState::candidateKeyEvent(
         case FcitxKey_F9:
         case FcitxKey_F10:
             functionKeyHandler(event);
+            break;
+        case FcitxKey_Muhenkan:
+            // 組成中と同じく消費して、候補の選択中にアプリケーションへ渡さない
             break;
         case FcitxKey_Shift_L:
         case FcitxKey_Shift_R:
@@ -526,6 +543,10 @@ void HazkeyState::loadServerProfile() {
     const std::string& deleteHotkey = profile.delete_learning_hotkey();
     deleteLearningHotkey_ =
         Key(deleteHotkey.empty() ? "Control+D" : deleteHotkey);
+    // カナ種切替キーは、フィールドが無い場合 (旧サーバ) に既定値を使い、空文字列の場合は無効にする
+    kanaCycleHotkey_ = profile.has_kana_cycle_hotkey()
+                           ? Key(profile.kana_cycle_hotkey())
+                           : Key("Muhenkan");
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     using M = hazkey::config::Profile_AutoConvertMode;
@@ -610,27 +631,22 @@ bool HazkeyState::ctrlShortcutHandler(KeyEvent& event) {
         case FcitxKey_u:
         case FcitxKey_U:
             directCharactorConversion(ConversionMode::Hiragana);
-            isDirectConversionMode_ = true;
             break;
         case FcitxKey_i:
         case FcitxKey_I:
             directCharactorConversion(ConversionMode::KatakanaFullwidth);
-            isDirectConversionMode_ = true;
             break;
         case FcitxKey_o:
         case FcitxKey_O:
             directCharactorConversion(ConversionMode::KatakanaHalfwidth);
-            isDirectConversionMode_ = true;
             break;
         case FcitxKey_p:
         case FcitxKey_P:
             directCharactorConversion(ConversionMode::RawFullwidth);
-            isDirectConversionMode_ = true;
             break;
         case FcitxKey_t:
         case FcitxKey_T:
             directCharactorConversion(ConversionMode::RawHalfwidth);
-            isDirectConversionMode_ = true;
             break;
         default:
             FCITX_DEBUG() << "HazkeyState ctrlShortcutHandler: unhandled shortcut";
@@ -662,11 +678,10 @@ void HazkeyState::functionKeyHandler(KeyEvent& event) {
             FCITX_ERROR() << "functionKeyHandler: unhandled key code";
             return;
     }
-    isDirectConversionMode_ = true;
 }
 
 /** @brief 組成文字列を指定した文字種へ直接変換する */
-void HazkeyState::directCharactorConversion(ConversionMode mode) {
+bool HazkeyState::directCharactorConversion(ConversionMode mode) {
     // 変換元のpreeditが古くならないよう保留中の更新を先に反映する
     flushPendingRefresh();
     std::string converted;
@@ -697,14 +712,31 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
                 hazkey::commands::GetComposingString_CharType_ALPHABET_HALF,
                 preedit_.text());
             break;
+        case ConversionMode::KanaCycle:
+            converted = engine_->server().getComposingText(
+                hazkey::commands::GetComposingString_CharType_KANA_CYCLE,
+                preedit_.text());
+            break;
     }
+    // 組成中の変換結果は空にならないため、空は通信失敗またはKANA_CYCLEを知らない旧サーバを表す
+    // 表示中の組成と候補を消さずに、キーの消費だけで終える
+    if (converted.empty()) {
+        return false;
+    }
+    // 直接変換は組成全体を対象とするため、カーソルを末尾へ戻し、文節境界の調整も終える
+    // 戻さないと、[Left]や文節境界の調整で途中にあるカーソルが残り、
+    // 続く[BackSpace]が表示上の末尾ではなく途中の文字を削除する
+    engine_->server().moveCursor(1024);
+    isClauseBoundaryAdjusting_ = false;
     preedit_.setSimplePreeditHighlighted(converted);
     livePreeditIndex_ = -1;
+    isDirectConversionMode_ = true;
     auto candidateList = ic_->inputPanel().candidateList();
     if (candidateList) {
         ic_->inputPanel().setCandidateList(nullptr);
         setAuxDownText(std::nullopt);
     }
+    return true;
 }
 
 /** @brief サーバから候補を取得して入力パネルへ設定する */
@@ -723,6 +755,7 @@ bool HazkeyState::showCandidateList(bool isSuggest) {
 void HazkeyState::showPausedRawPreedit(
     const hazkey::frontend::ComposingTextWithCursor& parts) {
     ic_->inputPanel().reset();
+    isDirectConversionMode_ = false;
     preedit_.setRawPreeditWithCaret(hazkey::frontend::composingTextOf(parts), static_cast<int>(hazkey::frontend::caretByteOffset(parts)));
     // ライブ変換結果を表示していないため、[Return]では見えていない候補ではなく、生かなを確定する
     livePreeditIndex_ = -1;
@@ -803,6 +836,9 @@ bool HazkeyState::showCandidateList(
     candidateResult->setSelectionKey(defaultSelectionKeys);
 
     ic_->inputPanel().reset();
+    // 組成を表示し直すため、直接変換の表示を終える
+    // 終えないと、[BackSpace]等の後の入力が、表示中の変換結果を直接変換の結果として確定してしまう
+    isDirectConversionMode_ = false;
 
     if (cachedAutoConvertMode_ != hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_DISABLED && !response.live_text().empty()) {
         // ライブ変換が有効で結果がある場合は、変換結果を表示する

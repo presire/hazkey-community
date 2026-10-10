@@ -18,7 +18,7 @@ Swiftのインストールから依存パッケージの導入までを個別に
 
 ## Swiftのインストール
 
-Hazkey-Communityのビルドには Swift 6.1 以上が必要です。  
+Hazkey Communityのビルドには Swift 6.1 以上が必要です。  
 公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
 
 > **2026年9月時点の注意**:  
@@ -35,6 +35,7 @@ sudo dnf install git curl
 
 curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
 tar zxf swiftly-$(uname -m).tar.gz
+
 ./swiftly init --quiet-shell-followup --platform fedora39
 . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
 
@@ -43,8 +44,8 @@ swift --version
 ```
 
 > Fedora 44は`fedora44`として自動検出されないため、公式リリースtoolchainが存在する`fedora39`を明示指定します。  
-> `fedora39` ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
-> (`fedora41` ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
+> `fedora39`ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
+> (`fedora41`ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
 
 ### openSUSE Leap 16
 

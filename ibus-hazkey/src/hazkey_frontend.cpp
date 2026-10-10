@@ -117,6 +117,8 @@ bool isCandidateHandledKey(guint keyval) {
         case IBUS_KEY_F8:
         case IBUS_KEY_F9:
         case IBUS_KEY_F10:
+        // ワーカーのcandidateKeyEvent()は、カナ種切替を別のキーへ割り当てた場合も[無変換]キーを消費する
+        case IBUS_KEY_Muhenkan:
             return true;
         default:
             return false;
@@ -154,6 +156,7 @@ HazkeyFrontend::HazkeyFrontend(IBusEngine* engine)
     zenzaiToggle_ = HazkeyState::parseHotkey("", "Control+Alt+Z");
     acceptPrediction_ = HazkeyState::parseHotkey("", "F5");
     deleteLearning_ = HazkeyState::parseHotkey("", "Control+D");
+    kanaCycle_ = HazkeyState::parseHotkey("", "Muhenkan");
 }
 
 HazkeyFrontend::~HazkeyFrontend() = default;
@@ -519,6 +522,7 @@ void HazkeyFrontend::applyIngress(
     zenzaiToggle_ = snapshot.zenzaiToggle;
     acceptPrediction_ = snapshot.acceptPrediction;
     deleteLearning_ = snapshot.deleteLearning;
+    kanaCycle_ = snapshot.kanaCycle;
 }
 
 void HazkeyFrontend::clearIngressAfterWorkerFailure() {
@@ -530,6 +534,7 @@ void HazkeyFrontend::clearIngressAfterWorkerFailure() {
     zenzaiToggle_ = HazkeyState::parseHotkey("", "Control+Alt+Z");
     acceptPrediction_ = HazkeyState::parseHotkey("", "F5");
     deleteLearning_ = HazkeyState::parseHotkey("", "Control+D");
+    kanaCycle_ = HazkeyState::parseHotkey("", "Muhenkan");
 }
 
 gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
@@ -559,7 +564,8 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
 
     if (in.listFocused) {
         if (HazkeyState::hotkeyMatches(keyval, state, in.acceptPrediction) ||
-            HazkeyState::hotkeyMatches(keyval, state, in.deleteLearning)) {
+            HazkeyState::hotkeyMatches(keyval, state, in.deleteLearning) ||
+            HazkeyState::hotkeyMatches(keyval, state, in.kanaCycle)) {
             return TRUE;
         }
         if (HazkeyState::isAltDigitKey(keyval, state) ||
@@ -590,7 +596,8 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
 
     if (in.composing) {
         if (HazkeyState::isAltDigitKey(keyval, state) ||
-            HazkeyState::isDirectConversionShortcut(keyval, state)) {
+            HazkeyState::isDirectConversionShortcut(keyval, state) ||
+            HazkeyState::hotkeyMatches(keyval, state, in.kanaCycle)) {
             return TRUE;
         }
         if (hasModifierPassthrough) {
@@ -689,6 +696,7 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     in.zenzaiToggle = zenzaiToggle_;
     in.acceptPrediction = acceptPrediction_;
     in.deleteLearning = deleteLearning_;
+    in.kanaCycle = kanaCycle_;
     const gboolean consume = decideConsumeKey(keyval, state, in);
     if (!consume) {
         // 押下の処理が終わる前に解放が来るとバリアに入るため、フレームワーク転送した押下も記録する

@@ -69,6 +69,7 @@ class HazkeyState : public InputContextProperty {
         KatakanaHalfwidth,    ///< 半角カタカナ
         RawFullwidth,         ///< 全角英数字
         RawHalfwidth,         ///< 半角英数字
+        KanaCycle,            ///< 表示中の表記に続くカナ種 (全角カタカナ → 半角カタカナ → ひらがな)
     };
 
     /** @brief 候補表示時にpreeditへ反映する内容 */
@@ -107,8 +108,9 @@ class HazkeyState : public InputContextProperty {
     void functionKeyHandler(KeyEvent& keyEvent);
     /** @brief 組成文字列を指定した文字種へ直接変換する
      *  @param mode 出力文字種
+     *  @return 変換結果を表示した場合はtrue (失敗時は表示と状態を変更しない)
      */
-    void directCharactorConversion(ConversionMode mode);
+    bool directCharactorConversion(ConversionMode mode);
     /** @brief preeditがない状態のキーイベントを処理する
      *  @param keyEvent 対象イベント
      */
@@ -253,6 +255,7 @@ class HazkeyState : public InputContextProperty {
     fcitx::Key zenzaiToggleHotkey_{"Control+Alt+Z"};   ///< [Ctrl] + [Alt] + [Z]ニューラル変換切替ホットキー
     fcitx::Key acceptPredictionHotkey_{"F5"};          ///< [F5]予測候補受入ホットキー
     fcitx::Key deleteLearningHotkey_{"Control+D"};     ///< [Ctrl] + [D]学習データ削除ホットキー
+    fcitx::Key kanaCycleHotkey_{"Muhenkan"};           ///< [無変換]カナ種切替ホットキー (無効なキーは無効化を表す)
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;  ///< キャッシュした自動変換モード
     hazkey::config::Profile_AuxTextMode cachedAuxTextMode_ =

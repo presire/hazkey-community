@@ -295,6 +295,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("deleteLearningHotkey", ui_->deleteLearningHotkey->keySequence().toString());
     state.insert("acceptPredictionHotkey", ui_->acceptPredictionHotkey->keySequence().toString());
     state.insert("zenzaiToggleHotkey", ui_->zenzaiToggleHotkey->keySequence().toString());
+    state.insert("kanaCycleHotkey", ui_->kanaCycleHotkey->keySequence().toString());
     state.insert("zenzaiBackendDevice", ui_->zenzaiBackendDevice->currentData().toString());
     // 有効な入力テーブルを順序付きで格納する (名前+組込フラグ)
     state.insert("enabledTables", enabledListState(ui_->enabledTableList));
@@ -501,6 +502,8 @@ void MainWindow::connectSignals() {
             [this](const QKeySequence&) { recomputeDirtyState(); });
     connect(ui_->zenzaiToggleHotkey, &QKeySequenceEdit::keySequenceChanged,
             this, [this](const QKeySequence&) { recomputeDirtyState(); });
+    connect(ui_->kanaCycleHotkey, &QKeySequenceEdit::keySequenceChanged, this,
+            [this](const QKeySequence&) { recomputeDirtyState(); });
 }
 
 void MainWindow::onButtonClicked(QAbstractButton* button) {
@@ -982,6 +985,17 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
         ui_->zenzaiToggleHotkey->setKeySequence(qKeySequenceFromFcitxKeyString(fcitxZenzaiToggleStr));
     }
 
+    {
+        // カナ種切替ホットキー
+        // 他のホットキーと異なり、空文字列は無効を表すため既定値で置き換えない
+        // フィールドが無い場合 (旧サーバ) だけ、クライアントと同じ既定値を表示する
+        const QString fcitxKanaCycleStr =
+            currentProfile_->has_kana_cycle_hotkey()
+                ? QString::fromStdString(currentProfile_->kana_cycle_hotkey())
+                : QStringLiteral("Muhenkan");
+        ui_->kanaCycleHotkey->setKeySequence(qKeySequenceFromFcitxKeyString(fcitxKanaCycleStr));
+    }
+
     // 入力テーブル設定を読み込む
     loadInputTables();
 
@@ -1113,6 +1127,9 @@ bool MainWindow::saveCurrentConfig() {
             .toStdString());
     currentProfile_->set_zenzai_toggle_hotkey(
         fcitxKeyStringFromQKeySequence(ui_->zenzaiToggleHotkey->keySequence())
+            .toStdString());
+    currentProfile_->set_kana_cycle_hotkey(
+        fcitxKeyStringFromQKeySequence(ui_->kanaCycleHotkey->keySequence())
             .toStdString());
 
     // AIモデルバックエンドデバイスを保存する

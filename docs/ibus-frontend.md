@@ -7,7 +7,7 @@ GitHub Releasesのibus-hazkey-communityパッケージ (DEB / RPM) で導入す�
 
 ([README クイックスタート](../README.md#クイックスタート-github-releasesからインストール)参照)  
 
-ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` オプションを指定します。  
+ソースコードからビルドする場合は、CMakeで`-DENABLE_IBUS=ON`オプションを指定します。  
 (既定は**OFF**、**pkg-config ibus-1.0**が必要)  
 
 ```sh
@@ -23,7 +23,7 @@ sudo ninja install
 インストール後はibus-daemonを再起動して、ibus list-engineに**Hazkey Community**が表示されることを確認してください。  
 
 エンジンは、`${CMAKE_INSTALL_LIBEXECDIR}/ibus-hazkey-community/ibus-engine-hazkey-community`、  
-component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml` に配置されます。  
+component XMLは、`${CMAKE_INSTALL_DATADIR}/ibus/component/ibus-hazkey-community.xml`に配置されます。  
 
 トランスポートはFcitx 5版と共通 (`hazkey-frontend-common/`) で、候補リフレッシュの間引きポリシーも共通です。  
 (`hazkey-frontend-common/candidate_refresh_coalescer.h - hazkey::frontend::CandidateRefreshCoalescer`、30[ms]の立ち上がりエッジ型デバウンス)  
@@ -47,7 +47,7 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   接続を奪い合いません。  
 - **hazkey-community-settingsを起動しても、IME側の入力接続は切断されません。**  
 - **同時接続の上限は8です**  
-  (`hazkey-server/Sources/hazkey-server/socketManager.swift — SocketManager.maxClientCount`)  
+  (`hazkey-server/Sources/hazkey-server/socketManager.swift - SocketManager.maxClientCount`)  
   超過した新規接続は、accept直後にサーバが閉じ、既存セッションは保護されます。  
 - **停滞したクライアントが他方を巻き込みません。**  
   ソケットI/Oは期限付きpollで待機 (デフォルトは10秒) するため、  
@@ -68,14 +68,21 @@ IBus版も連続キー入力時の表示専用リフレッシュを同じポリ�
   ライブ変換トグル、文節境界調整 (`[Shift] + [Left]` / `[Shift] + [Right]`)、予測候補受入、学習データの個別削除、Zenzaiトグル、  
   `[F6]`〜`[F10]` と `[Ctrl] + [U]` / `[Ctrl] + [I]` / `[Ctrl] + [O]` / `[Ctrl] + [P]` / `[Ctrl] + [T]` の直接変換、  
   `[Alt]` + 数字での候補選択、生ひらがな + カーソル位置の補助表示 (FcitxのAuxUp / AuxDown) を含みます。  
-  無変換キーはFcitx 5版と同様に、組成中に消費されるNOPです。(直接変換は行いません)  
+  カナ種切替 (既定は`[無変換]`キー) もFcitx 5版と同様に動作し、組成中または候補の選択中に押下するたび、  
+  入力中の文字列全体を`[全角カタカナ]` → `[半角カタカナ]` → `[ひらがな]`の順に変換します。  
+  
+  (詳細は、[コミュニティ版の主な機能](./features.md#カナ種切替)を参照すること)  
+  
+  カナ種切替を別のキーへ割り当てた場合や無効にした場合も、`[無変換]`キーは組成中と候補の選択中に消費され、アプリケーションへは渡りません。  
+  (未入力時は従来どおりアプリケーションへ渡ります)  
 - **パネルの入力モード表示 (IBusProperty) に対応しています。**  
-  パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzai の状態を表示します。  
-  言語バーの「あ / A」をクリックすると、直接入力をトグルできます。([Shift]キー単体押下と同じRPC経路を利用)  
+  パネルに「あ」(通常入力) /「A」(直接入力) と、Zenzaiの状態を表示します。  
+  言語バーの「あ / A」をクリックすると、直接入力をトグルできます。  
+  ([Shift]キー単体押下と同じRPC経路を利用)  
 - **Zenzaiのトグル (ホットキー / パネルのプロパティ) とライブ変換トグル (ホットキー) は、補助テキストに一時的なヒントを約1秒表示します。**  
-  IBusにはGNOME Shellを含む全パネルが描画する一時ポップアップAPIが無い ([ibus-rime](https://github.com/rime/ibus-rime) の `status_hint.c` と同じく  
+  IBusにはGNOME Shellを含む全パネルが描画する一時ポップアップAPIが無い ([ibus-rime](https://github.com/rime/ibus-rime) の`status_hint.c`と同じく  
   補助テキストの一時表示で代替。  
-  IBus 1.5.33以降の `ibus_engine_send_message()` は、UnstableでGNOME Shell非対応のため採用していません)  
+  IBus 1.5.33以降の`ibus_engine_send_message()`は、UnstableでGNOME Shell非対応のため採用していません)  
 - **候補リストに数字ラベル (1〜9, 0) と縦向き表示を設定しています。**  
 - **クライアントのcapability (`set_capabilities`) を反映します。**  
   surrounding text非対応のクライアントでは、surrounding textの取得・送信を行いません。  

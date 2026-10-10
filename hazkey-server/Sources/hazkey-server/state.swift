@@ -1692,6 +1692,12 @@ class HazkeyServerState {
         case .alphabetHalf:
             result = cycleAlphabetCase(
                 composingText.value.toAlphabet(false), preedit: currentPreedit)
+        case .kanaCycle:
+            result = cycleKanaType(
+                hiragana: composingText.value.toHiragana(),
+                fullKatakana: composingText.value.toKatakana(true),
+                halfKatakana: composingText.value.toKatakana(false),
+                preedit: currentPreedit)
         case .UNRECOGNIZED:
             return Hazkey_ResponseEnvelope.with {
                 $0.status = .failed

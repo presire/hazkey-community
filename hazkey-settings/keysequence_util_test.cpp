@@ -52,6 +52,8 @@ void KeySequenceUtilTest::testQtToFcitxRoundTrip_data() {
                                 << QStringLiteral("Control+Alt+Z");
     QTest::newRow("f5 single key") << QStringLiteral("F5")
                                      << QStringLiteral("F5");
+    QTest::newRow("muhenkan single key") << QStringLiteral("Muhenkan")
+                                         << QStringLiteral("Muhenkan");
 }
 
 /**

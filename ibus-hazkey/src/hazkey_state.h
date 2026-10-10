@@ -430,6 +430,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
         HotkeySpec zenzaiToggle{};      ///< Zenzaiトグルホットキー
         HotkeySpec acceptPrediction{};  ///< 予測受入ホットキー
         HotkeySpec deleteLearning{};    ///< 学習削除ホットキー
+        HotkeySpec kanaCycle{};         ///< カナ種切替ホットキー
     };
     /**
      * @brief 現在のワーカ側組成状態の要約を返す
@@ -450,6 +451,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
         KatakanaHalfwidth,  ///< 半角カタカナへ変換する
         RawFullwidth,       ///< 全角英数へ変換する
         RawHalfwidth,       ///< 半角英数へ変換する
+        KanaCycle,          ///< 表示中の表記に続くカナ種 (全角カタカナ → 半角カタカナ → ひらがな) へ変換する
     };
 
     /**
@@ -543,8 +545,9 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * 保留表示を解決してから変換し直接変換突入後の確定に備えて強調preeditで表示する
      *
      * @param mode 変換対象の文字種
+     * @return 変換結果を表示した場合はtrue (失敗時は表示と状態を変更しない)
      */
-    void directCharactorConversion(ConversionMode mode);
+    bool directCharactorConversion(ConversionMode mode);
     /**
      * @brief [Ctrl]と[U] / [I] / [O] / [P] / [T]の直接変換を処理する
      *
@@ -919,6 +922,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     HotkeySpec zenzaiToggleHotkey_{};           ///< Zenzaiトグルホットキー
     HotkeySpec acceptPredictionHotkey_{};       ///< 予測受入ホットキー
     HotkeySpec deleteLearningHotkey_{};         ///< 学習削除ホットキー
+    HotkeySpec kanaCycleHotkey_{};              ///< カナ種切替ホットキー (無効時は照合しない)
     bool serverProfileLoaded_ = false;          ///< サーバプロファイルを読込済みか
 
     // --- キャッシュ ---

@@ -483,6 +483,7 @@ class HazkeyServerConfig {
         newConf.autoConvertHotkey = "Control+Shift+L"
         newConf.acceptPredictionHotkey = "F5"
         newConf.zenzaiToggleHotkey = "Control+Alt+Z"
+        newConf.kanaCycleHotkey = "Muhenkan"
         newConf.auxTextMode = Hazkey_Config_Profile.AuxTextMode.auxTextShowWhenCursorNotAtEnd
         newConf.suggestionListMode =
             Hazkey_Config_Profile.SuggestionListMode.suggestionListShowPredictiveResults
@@ -886,6 +887,10 @@ class HazkeyServerConfig {
         }
         if !normalized.hasZenzaiToggleHotkey {
             normalized.zenzaiToggleHotkey = defaults.zenzaiToggleHotkey
+        }
+        // 空文字列はカナ種切替の無効化を表すため、フィールドが無い場合だけ既定値で補う
+        if !normalized.hasKanaCycleHotkey {
+            normalized.kanaCycleHotkey = defaults.kanaCycleHotkey
         }
         if !normalized.specialConversionMode.hasHalfwidthKatakana {
             normalized.specialConversionMode.halfwidthKatakana =

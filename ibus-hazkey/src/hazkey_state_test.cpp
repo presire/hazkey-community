@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cerrno>
@@ -637,6 +638,56 @@ void testConsumeDecision() {
 }
 
 /**
+ * @brief カナ種切替キーの同期消費判定を検証する
+ *
+ * - 既定の[無変換]キーは、組成中と候補の選択中に消費し、未入力時はアプリケーションへ渡す
+ * - [Ctrl]を含むキーへ割り当てた場合も、組成中と候補の選択中はモディファイア透過より先に消費する
+ * - 別のキーへ割り当てた場合や無効にした場合も、組成中と候補の選択中の[無変換]キーは消費する
+ *
+ * @internal 匿名名前空間内の実装専用テスト
+ */
+void testKanaCycleConsumeDecision() {
+    HazkeyFrontend::DecisionInput idle;
+    idle.profileLoaded = true;
+    idle.liveConvert = HazkeyState::parseHotkey("", "Control+Shift+L");
+    idle.zenzaiToggle = HazkeyState::parseHotkey("", "Control+Alt+Z");
+    idle.acceptPrediction = HazkeyState::parseHotkey("", "F5");
+    idle.deleteLearning = HazkeyState::parseHotkey("", "Control+D");
+    idle.kanaCycle = HazkeyState::parseHotkey("", "Muhenkan");
+    assert(idle.kanaCycle.keyval == IBUS_KEY_Muhenkan);
+    assert(idle.kanaCycle.modifiers == 0);
+
+    auto composing = idle;
+    composing.composing = true;
+    auto candidate = idle;
+    candidate.listFocused = true;
+
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, idle));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, candidate));
+
+    const auto rebound = HazkeyState::parseHotkey("Control+K", "Muhenkan");
+    for (auto* in : {&idle, &composing, &candidate}) {
+        in->kanaCycle = rebound;
+    }
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_k, IBUS_CONTROL_MASK, idle));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_k, IBUS_CONTROL_MASK, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_k, IBUS_CONTROL_MASK, candidate));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, candidate));
+
+    for (auto* in : {&idle, &composing, &candidate}) {
+        in->kanaCycle = HazkeyState::HotkeySpec{};
+    }
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_k, IBUS_CONTROL_MASK, composing));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, idle));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, composing));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Muhenkan, 0, candidate));
+
+    std::cout << "[PASS] kana cycle consume decision\n";
+}
+
+/**
  * @brief HomeとEndを組成中のみ消費することを検証する
  *
  * [Home]と[End]キーは、組成カーソルを動かす (fcitx5-hazkey-communityも同じく消費する) ため、組成中はアプリケーションへ届けてはならない
@@ -1066,6 +1117,21 @@ class SurroundingFakeServer {
         blockNextContext_ = true;
     }
 
+    void setKanaCycleHotkey(std::optional<std::string> hotkey) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        kanaCycleHotkey_ = std::move(hotkey);
+    }
+
+    void setKanaCycleFails(bool fails) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        kanaCycleFails_ = fails;
+    }
+
+    int kanaCycleRequests() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return kanaCycleRequests_;
+    }
+
     bool waitForBlockedContext(std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex_);
         return contextCondition_.wait_for(lock, timeout,
@@ -1174,9 +1240,11 @@ class SurroundingFakeServer {
         }
     }
 
-    std::string kana(bool katakana) const {
+    std::string kana(bool katakana) const { return kanaOf(romaji_, katakana); }
+
+    static std::string kanaOf(const std::string& romaji, bool katakana) {
         std::string out;
-        for (const char c : romaji_) {
+        for (const char c : romaji) {
             switch (c) {
                 case 'a': out += katakana ? "ア" : "あ"; break;
                 case 'i': out += katakana ? "イ" : "い"; break;
@@ -1196,9 +1264,23 @@ class SurroundingFakeServer {
             case hazkey::RequestEnvelope::kPrefixComplete:
                 ++prefixCompletions_;
                 romaji_.clear();
+                cursor_ = 0;
                 break;
             case hazkey::RequestEnvelope::kNewComposingText:
                 romaji_.clear();
+                cursor_ = 0;
+                break;
+            case hazkey::RequestEnvelope::kMoveCursor: {
+                const long moved = static_cast<long>(cursor_) + request.move_cursor().offset();
+                cursor_ = static_cast<size_t>(
+                    std::clamp(moved, 0L, static_cast<long>(romaji_.size())));
+                break;
+            }
+            case hazkey::RequestEnvelope::kDeleteLeft:
+                if (cursor_ > 0) {
+                    romaji_.erase(cursor_ - 1, 1);
+                    --cursor_;
+                }
                 break;
             case hazkey::RequestEnvelope::kSetContext:
                 contexts_.emplace_back(request.set_context().context(),
@@ -1216,15 +1298,34 @@ class SurroundingFakeServer {
                 break;
             case hazkey::RequestEnvelope::kInputChar:
                 ++inputChars_;
-                romaji_ += request.input_char().text();
+                romaji_.insert(cursor_, request.input_char().text());
+                cursor_ += request.input_char().text().size();
                 break;
             case hazkey::RequestEnvelope::kGetComposingString:
+                if (request.get_composing_string().char_type() ==
+                    hazkey::commands::GetComposingString_CharType_KANA_CYCLE) {
+                    ++kanaCycleRequests_;
+                    if (kanaCycleFails_) {
+                        // KANA_CYCLEを知らない旧サーバと同じく失敗を返す
+                        response.set_status(hazkey::FAILED);
+                    } else {
+                        response.set_text(kana(true));
+                    }
+                    break;
+                }
                 response.set_text(kana(request.get_composing_string().char_type() ==
                                        hazkey::commands::GetComposingString_CharType_KATAKANA_FULL));
                 break;
             case hazkey::RequestEnvelope::kGetHiraganaWithCursor:
-                response.mutable_text_with_cursor()->set_beforecursosr(kana(false));
+            {
+                auto* parts = response.mutable_text_with_cursor();
+                parts->set_beforecursosr(kanaOf(romaji_.substr(0, cursor_), false));
+                if (cursor_ < romaji_.size()) {
+                    parts->set_oncursor(kanaOf(romaji_.substr(cursor_, 1), false));
+                    parts->set_aftercursor(kanaOf(romaji_.substr(cursor_ + 1), false));
+                }
                 break;
+            }
             case hazkey::RequestEnvelope::kGetCandidates: {
                 const std::string hiragana = kana(false);
                 const std::string converted = hiragana == "あい" ? "愛" : hiragana;
@@ -1244,6 +1345,9 @@ class SurroundingFakeServer {
                 profile->set_auto_convert_mode(
                     hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS);
                 profile->set_zenzai_right_context(rightContext_);
+                if (kanaCycleHotkey_.has_value()) {
+                    profile->set_kana_cycle_hotkey(*kanaCycleHotkey_);
+                }
                 break;
             }
             default:
@@ -1259,6 +1363,7 @@ class SurroundingFakeServer {
     std::mutex mutex_;
     std::condition_variable contextCondition_;
     std::string romaji_;
+    size_t cursor_ = 0;
     int inputChars_ = 0;
     int prefixCompletions_ = 0;
     std::vector<std::pair<std::string, int>> contexts_;
@@ -1267,6 +1372,9 @@ class SurroundingFakeServer {
     bool blockNextContext_ = false;
     bool contextBlocked_ = false;
     bool releaseContext_ = false;
+    std::optional<std::string> kanaCycleHotkey_;
+    bool kanaCycleFails_ = false;
+    int kanaCycleRequests_ = 0;
     uint64_t revision_ = 1;
 };
 
@@ -1297,6 +1405,158 @@ void expectLastContext(SurroundingFakeServer& server, const std::string& text, i
     }
     assert(context->first == text);
     assert(context->second == anchor);
+}
+
+/**
+ * @brief カナ種切替キーが、サーバへKANA_CYCLEを要求する経路を検証する
+ *
+ * 模擬サーバに接続した実際のHazkeyStateをワーカー上で動かす
+ *
+ * - 既定 (プロファイルにフィールドが無い場合) は[無変換]キーで要求し、確定しても学習 (prefix_complete) を送らない
+ * - 候補の選択中も要求する
+ * - 空文字列 (無効) では要求せずに[無変換]キーを消費し、[Ctrl]を含むキーへ割り当てた場合はそのキーで要求する
+ * - 要求が失敗した場合は表示中のライブ変換を変更せず、続く[Return]は通常どおりライブ変換の結果を確定する
+ */
+void testKanaCycleWiring() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-kana-cycle-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    const auto run = [&](const std::function<void(SurroundingFakeServer&)>& configure,
+                         const std::function<void(SurroundingFakeServer&,
+                                                  hazkey::frontend::SerialTaskExecutor&,
+                                                  const std::shared_ptr<HazkeyState>&)>& body) {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        configure(server);
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                   IBUS_CAP_PROPERTY | IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+        });
+        body(server, executor, state);
+        executor.shutdown();
+    };
+    const auto press = [](hazkey::frontend::SerialTaskExecutor& executor,
+                          const std::shared_ptr<HazkeyState>& state, guint keyval, guint modifiers) {
+        gboolean handled = FALSE;
+        runOnWorker(executor, [&] {
+            handled = state->processKeyEvent(keyval, 0, modifiers);
+            state->processKeyEvent(keyval, 0, modifiers | IBUS_RELEASE_MASK);
+        });
+        return handled;
+    };
+
+    // 既定: [無変換]キーで要求し、確定しても学習しない
+    run([](SurroundingFakeServer&) {},
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            typeKey(executor, state, IBUS_KEY_i);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 1);
+            assert(press(executor, state, IBUS_KEY_Return, 0) == TRUE);
+            assert(server.prefixCompletions() == 0);
+        });
+
+    // 候補の選択中も要求する
+    run([](SurroundingFakeServer& server) { server.setSelectableCandidates(true); },
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            typeKey(executor, state, IBUS_KEY_Tab);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 1);
+        });
+
+    // 無効: [無変換]キーは消費するが要求しない
+    run([](SurroundingFakeServer& server) { server.setKanaCycleHotkey(std::string()); },
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 0);
+        });
+
+    // [Ctrl] + [K]へ割り当てた場合は、そのキーで要求し、[無変換]キーは要求せずに消費する
+    run([](SurroundingFakeServer& server) { server.setKanaCycleHotkey(std::string("Control+K")); },
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 0);
+            assert(press(executor, state, IBUS_KEY_k, IBUS_CONTROL_MASK) == TRUE);
+            assert(server.kanaCycleRequests() == 1);
+        });
+
+    // [Ctrl] + [U] (ひらがな変換) や[Alt] + [1] (候補選択) へ割り当てた場合も、
+    // 組成中と候補の選択中の両方でカナ種切替が優先する (Fcitx版と同じ)
+    struct Rebinding {
+        const char* hotkey;
+        guint keyval;
+        guint modifiers;
+    };
+    for (const Rebinding& rebinding :
+         {Rebinding{"Control+U", IBUS_KEY_u, IBUS_CONTROL_MASK},
+          Rebinding{"Alt+1", IBUS_KEY_1, IBUS_MOD1_MASK}}) {
+        for (const bool candidateFocused : {false, true}) {
+            run([&](SurroundingFakeServer& server) {
+                    server.setKanaCycleHotkey(std::string(rebinding.hotkey));
+                    server.setSelectableCandidates(candidateFocused);
+                },
+                [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+                    const std::shared_ptr<HazkeyState>& state) {
+                    typeKey(executor, state, IBUS_KEY_a);
+                    if (candidateFocused) {
+                        typeKey(executor, state, IBUS_KEY_Tab);
+                    }
+                    assert(press(executor, state, rebinding.keyval, rebinding.modifiers) == TRUE);
+                    assert(server.kanaCycleRequests() == 1);
+                    assert(server.prefixCompletions() == 0);
+                });
+        }
+    }
+
+    // [Left]でカーソルを途中へ移した後も組成全体を変換し、カーソルを末尾へ戻す
+    // 続く[BackSpace]は末尾の文字を削除し、直接変換の表示を終えるため、次の入力は組成へ追加される
+    run([](SurroundingFakeServer&) {},
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            typeKey(executor, state, IBUS_KEY_i);
+            typeKey(executor, state, IBUS_KEY_u);
+            assert(press(executor, state, IBUS_KEY_Left, 0) == TRUE);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 1);
+            assert(press(executor, state, IBUS_KEY_BackSpace, 0) == TRUE);
+            assert(server.romaji() == "ai");
+            typeKey(executor, state, IBUS_KEY_u);
+            assert(server.romaji() == "aiu");
+            assert(server.prefixCompletions() == 0);
+        });
+
+    // 失敗時はライブ変換の表示を保ち、[Return]でライブ変換の結果を確定する
+    run([](SurroundingFakeServer& server) { server.setKanaCycleFails(true); },
+        [&](SurroundingFakeServer& server, hazkey::frontend::SerialTaskExecutor& executor,
+            const std::shared_ptr<HazkeyState>& state) {
+            typeKey(executor, state, IBUS_KEY_a);
+            typeKey(executor, state, IBUS_KEY_i);
+            assert(press(executor, state, IBUS_KEY_Muhenkan, 0) == TRUE);
+            assert(server.kanaCycleRequests() == 1);
+            assert(press(executor, state, IBUS_KEY_Return, 0) == TRUE);
+            assert(server.prefixCompletions() == 1);
+        });
+
+    rmdir(root);
+    std::cout << "kana cycle wiring: OK\n";
 }
 
 /**
@@ -1866,6 +2126,7 @@ int main() {
     testCapabilityAvailability();
     testLookupPageArithmetic();
     testConsumeDecision();
+    testKanaCycleConsumeDecision();
     testHomeEndConsumeDecision();
     testPauseModeRulesAreShared();
     testForwardedKeyPairing();
@@ -1875,6 +2136,7 @@ int main() {
     testSurroundingTextWiring();
     testGatedFirstInputDiscardedAfterSecureRequest();
     testCompleteCandidateDoesNotCompleteAfterSecureRequest();
+    testKanaCycleWiring();
     testQueuedKeyAfterSecureRequestIsDiscarded();
     testFrontendForwardsReleaseOfFrameworkForwardedPress();
     testFrontendWorkerExceptionRecoversGate();

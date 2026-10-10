@@ -321,7 +321,7 @@ nonisolated struct Hazkey_Commands_DeleteRight: Sendable {
 
 /// 入力中テキストを、指定した文字種へ変換して取得する
 ///
-/// ファンクションキー ([F6]〜[F10]キー) や[Ctrl] + [U] / [I] / [O] / [P] / [T]キーによる直接変換で使う
+/// ファンクションキー ([F6]〜[F10]キー)、[Ctrl] + [U] / [I] / [O] / [P] / [T]キー、カナ種切替ホットキー (既定は[無変換]キー) による直接変換で使う
 nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -330,7 +330,11 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
   /// 取得する文字種
   var charType: Hazkey_Commands_GetComposingString.CharType = .hiragana
 
-  /// 現在表示中の文字列 (英字では、これと比べて小文字 → 大文字 → 先頭だけ大文字の順に切り替える)
+  /// 現在表示中の文字列
+  ///
+  /// - Note: 英字では、これと比べて小文字 → 大文字 → 先頭だけ大文字の順に切り替える
+  /// - Note: KANA_CYCLEでは、これが全角カタカナなら半角カタカナ、半角カタカナならひらがな、それ以外 (ひらがな・漢字を含む変換結果等) なら全角カタカナを返す
+  ///         同じ文字列になる文字種は飛ばす
   var currentPreedit: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -353,6 +357,9 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
 
     /// 半角英字
     case alphabetHalf // = 4
+
+    /// カナ種切替 (現在の表示に応じて、全角カタカナ → 半角カタカナ → ひらがなの順に切り替える)
+    case kanaCycle // = 5
     case UNRECOGNIZED(Int)
 
     init() {
@@ -366,6 +373,7 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
       case 2: self = .katakanaHalf
       case 3: self = .alphabetFull
       case 4: self = .alphabetHalf
+      case 5: self = .kanaCycle
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -377,6 +385,7 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
       case .katakanaHalf: return 2
       case .alphabetFull: return 3
       case .alphabetHalf: return 4
+      case .kanaCycle: return 5
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -388,6 +397,7 @@ nonisolated struct Hazkey_Commands_GetComposingString: Sendable {
       .katakanaHalf,
       .alphabetFull,
       .alphabetHalf,
+      .kanaCycle,
     ]
 
   }
@@ -1054,7 +1064,7 @@ nonisolated extension Hazkey_Commands_GetComposingString: SwiftProtobuf.Message,
 }
 
 nonisolated extension Hazkey_Commands_GetComposingString.CharType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0HIRAGANA\0\u{1}KATAKANA_FULL\0\u{1}KATAKANA_HALF\0\u{1}ALPHABET_FULL\0\u{1}ALPHABET_HALF\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0HIRAGANA\0\u{1}KATAKANA_FULL\0\u{1}KATAKANA_HALF\0\u{1}ALPHABET_FULL\0\u{1}ALPHABET_HALF\0\u{1}KANA_CYCLE\0")
 }
 
 nonisolated extension Hazkey_Commands_GetHiraganaWithCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

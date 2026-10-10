@@ -147,6 +147,7 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
         HazkeyState::HotkeySpec zenzaiToggle{};      ///< Zenzaiトグルのホットキー
         HazkeyState::HotkeySpec acceptPrediction{};  ///< 予測受入のホットキー
         HazkeyState::HotkeySpec deleteLearning{};    ///< 学習削除のホットキー
+        HazkeyState::HotkeySpec kanaCycle{};         ///< カナ種切替のホットキー
     };
     /**
      * @brief キーを消費するかを同期的に判定する
@@ -379,6 +380,7 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     HazkeyState::HotkeySpec zenzaiToggle_{};      ///< 取込中のZenzaiトグルホットキー
     HazkeyState::HotkeySpec acceptPrediction_{};  ///< 取込中の予測受入ホットキー
     HazkeyState::HotkeySpec deleteLearning_{};    ///< 取込中の学習削除ホットキー
+    HazkeyState::HotkeySpec kanaCycle_{};         ///< 取込中のカナ種切替ホットキー
     bool surroundingGateHint_ = false;            ///< ワーカーが右文脈有効かつ周辺テキスト対応と報告したか
 
     // 周辺テキスト待ち (新しい組成の最初の入力を、周辺テキストの到着または期限切れまで保留する)

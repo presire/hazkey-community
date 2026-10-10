@@ -191,6 +191,7 @@ HazkeyState::HazkeyState(std::shared_ptr<HazkeyUi> ui,
     acceptPredictionHotkey_ = parseHotkey("", "F5");
     zenzaiToggleHotkey_ = parseHotkey("", "Control+Alt+Z");
     deleteLearningHotkey_ = parseHotkey("", "Control+D");
+    kanaCycleHotkey_ = parseHotkey("", "Muhenkan");
     // サーバ側compositionはここではリセットしない
     // フォーカスイン/enable時のresetState()からnewComposingText()を送るため、
     // 非フォーカスの入力コンテキスト用にstateを構築しても共有シングルトンconnectorのlive compositionを壊さない
@@ -232,6 +233,7 @@ HazkeyState::IngressSnapshot HazkeyState::ingressSnapshot() const {
     snapshot.zenzaiToggle = zenzaiToggleHotkey_;
     snapshot.acceptPrediction = acceptPredictionHotkey_;
     snapshot.deleteLearning = deleteLearningHotkey_;
+    snapshot.kanaCycle = kanaCycleHotkey_;
     return snapshot;
 }
 
@@ -459,6 +461,13 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
         // フォーカス済み候補リストは学習データ削除に必要なモディファイア組み合わせを持つ
         // 下のフィルタより先に振り分ける
         handled = candidateKeyEvent(keyval, state);
+    } else if (!composingText.empty() &&
+               hotkeyMatches(keyval, state, kanaCycleHotkey_)) {
+        // カナ種切替キーは、[Alt] + [数字]・[Ctrl] + [U]等・[F6]〜[F10]等の固定キーへ割り当てた場合も優先する
+        // (FcitxのpreeditKeyEvent()先頭の判定と同じ)
+        // [Ctrl]等を含めた場合も、下のモディファイア透過より先に扱う
+        directCharactorConversion(ConversionMode::KanaCycle);
+        handled = TRUE;
     } else if (!composingText.empty() && isAltDigitKey(keyval, state)) {
         // フォーカスなしsuggestリストでは、FcitxのpreeditKeyEvent()にある[Alt] + [数字]分岐に従う
         // 遅延リフレッシュを解決してからページ内候補を確定する
@@ -630,11 +639,10 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         case IBUS_KEY_F8:
         case IBUS_KEY_F9:
         case IBUS_KEY_F10:
-        case IBUS_KEY_Muhenkan:
-            // FcitxはFcitxKey_MuhenkanをpreeditKeyEvent()からfunctionKeyHandler()へ渡す
-            // functionKeyHandler()に[Muhenkan]分岐はないため、消費されるNOPになる
-            // ここも同じ動作に保つ
             functionKeyHandler(keyval);
+            return TRUE;
+        case IBUS_KEY_Muhenkan:
+            // カナ種切替を別のキーへ割り当てた場合や無効にした場合も、組成中はアプリケーションへ渡さずに消費する (Fcitx版と同じ)
             return TRUE;
         case IBUS_KEY_Escape:
             resetState();
@@ -755,6 +763,12 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         return TRUE;
     }
 
+    // カナ種切替は、学習データ削除キーと予測候補受入キーの後、[Ctrl] / [Alt]の透過より先に判定する
+    if (hotkeyMatches(keyval, state, kanaCycleHotkey_)) {
+        directCharactorConversion(ConversionMode::KanaCycle);
+        return TRUE;
+    }
+
     // [Alt] + [1]〜[9]はページ内候補を選択する
     // FcitxのcandidateKeyEvent()にあるisAltDigitKeyEvent()分岐に合わせる
     // 下の[Alt] / [Super]透過ガードより先に検査しないと、アプリケーションへ転送される
@@ -835,6 +849,9 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         case IBUS_KEY_F10:
             functionKeyHandler(keyval);
             return TRUE;
+        case IBUS_KEY_Muhenkan:
+            // 組成中と同じく消費して、候補の選択中にアプリケーションへ渡さない
+            return TRUE;
         default:
             break;
     }
@@ -895,6 +912,12 @@ void HazkeyState::loadServerProfile() {
         parseHotkey(profile.zenzai_toggle_hotkey(), "Control+Alt+Z");
     deleteLearningHotkey_ =
         parseHotkey(profile.delete_learning_hotkey(), "Control+D");
+    // カナ種切替キーは、フィールドが無い場合 (旧サーバ) に既定値を使い、空文字列の場合は無効 (照合しない) にする
+    kanaCycleHotkey_ = profile.has_kana_cycle_hotkey()
+                           ? (profile.kana_cycle_hotkey().empty()
+                                  ? HotkeySpec{}
+                                  : parseHotkey(profile.kana_cycle_hotkey(), "Muhenkan"))
+                           : parseHotkey("", "Muhenkan");
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     cachedRightContext_ = profile.zenzai_right_context();
@@ -1071,36 +1094,42 @@ void HazkeyState::functionKeyHandler(guint keyval) {
         default:
             return;
     }
-    if (discardIfSecureInput()) {
-        return;
-    }
-    isDirectConversionMode_ = true;
 }
 
-void HazkeyState::directCharactorConversion(ConversionMode mode) {
+bool HazkeyState::directCharactorConversion(ConversionMode mode) {
     if (discardIfSecureInput()) {
-        return;
+        return false;
     }
     // 遅延リフレッシュを解決する
     // 下の変換はpreeditText_を読むため、解決しないと古い値になる
     flushPendingRefresh();
     if (discardIfSecureInput()) {
-        return;
+        return false;
     }
     const std::string converted =
         server_.getComposingText(charTypeFor(mode), preeditText_);
     if (discardIfSecureInput()) {
-        return;
+        return false;
     }
+    // 組成中の変換結果は空にならないため、空は通信失敗またはKANA_CYCLEを知らない旧サーバを表す
+    // 表示中の組成と候補を消さずに、キーの消費だけで終える (Fcitx版と同じ)
+    if (converted.empty()) {
+        return false;
+    }
+    // 直接変換は組成全体を対象とするため、カーソルを末尾へ戻し、文節境界の調整も終える
+    // 戻さないと、[Left]や文節境界の調整で途中にあるカーソルが残り、
+    // 続く[BackSpace]が表示上の末尾ではなく途中の文字を削除する
+    server_.moveCursor(1024);
+    if (discardIfSecureInput()) {
+        return false;
+    }
+    isClauseBoundaryAdjusting_ = false;
     livePreeditIndex_ = -1;
     preeditText_ = converted;
-    if (converted.empty()) {
-        hidePreedit();
-    } else {
-        // FcitxのsetSimplePreeditHighlighted()は、文字列全体をハイライトする
-        // 通常の非ハイライトpreeditではカーソルが末尾にあるが、ここでは先頭 (cursorSegment=0) に置く
-        setPreeditHighlighted(converted);
-    }
+    isDirectConversionMode_ = true;
+    // FcitxのsetSimplePreeditHighlighted()は、文字列全体をハイライトする
+    // 通常の非ハイライトpreeditではカーソルが末尾にあるが、ここでは先頭 (cursorSegment=0) に置く
+    setPreeditHighlighted(converted);
     if (listVisible_ || !candidates_.empty()) {
         candidates_.clear();
         pageSize_ = 0;
@@ -1109,6 +1138,7 @@ void HazkeyState::directCharactorConversion(ConversionMode mode) {
         currentListIsSuggest_ = false;
         clearLookupTable();
     }
+    return true;
 }
 
 bool HazkeyState::ctrlShortcutHandler(guint keyval) {
@@ -1139,12 +1169,7 @@ bool HazkeyState::ctrlShortcutHandler(guint keyval) {
         default:
             return false;
     }
-    if (discardIfSecureInput()) {
-        return false;
-    }
-    // functionKeyHandler()による直接変換開始と同じ効果
-    isDirectConversionMode_ = true;
-    return true;
+    return !discardIfSecureInput();
 }
 
 void HazkeyState::moveSegmentBoundary(bool expand) {
@@ -1176,6 +1201,8 @@ hazkey::commands::GetComposingString::CharType HazkeyState::charTypeFor(
             return hazkey::commands::GetComposingString_CharType_ALPHABET_FULL;
         case ConversionMode::RawHalfwidth:
             return hazkey::commands::GetComposingString_CharType_ALPHABET_HALF;
+        case ConversionMode::KanaCycle:
+            return hazkey::commands::GetComposingString_CharType_KANA_CYCLE;
     }
     return hazkey::commands::GetComposingString_CharType_HIRAGANA;
 }
@@ -1206,6 +1233,7 @@ void HazkeyState::showPausedRawPreedit(
     validParts.after = makeValidUtf8(validParts.after);
     const std::string text = hazkey::frontend::composingTextOf(validParts);
     preeditText_ = text;
+    isDirectConversionMode_ = false;
     // 画面上にlive_textがないため、[Return]は見えない候補ではなく生かなを確定する
     livePreeditIndex_ = -1;
     const glong charLen = g_utf8_strlen(text.c_str(), -1);
@@ -1300,6 +1328,9 @@ bool HazkeyState::applyCandidateResponse(
         return false;
     }
     currentListIsSuggest_ = isSuggest;
+    // 組成を表示し直すため、直接変換の表示を終える
+    // 終えないと、[BackSpace]等の後の入力が、表示中の変換結果を直接変換の結果として確定してしまう
+    isDirectConversionMode_ = false;
     candidates_.clear();
     for (const auto& c : response.candidates()) {
         HazkeyCandidate cand;

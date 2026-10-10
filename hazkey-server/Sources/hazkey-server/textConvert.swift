@@ -77,3 +77,28 @@ func cycleAlphabetCase(_ alphabet: String, preedit: String) -> String {
         return alphabet.lowercased()
     }
 }
+
+/// 表示中の表記を見て、カナ種を全角カタカナ → 半角カタカナ → ひらがなの順に循環させる
+///
+/// 表示がいずれのカナ種とも一致しない場合 (ひらがな以外の変換結果、英字等) は全角カタカナを返す
+///
+/// 同じ文字列になるカナ種は飛ばす (例: 半角化できる文字がなく、全角カタカナと半角カタカナが同じ場合はひらがなへ進む)
+///
+/// - Parameters:
+///   - hiragana: ひらがなの表記
+///   - fullKatakana: 全角カタカナの表記
+///   - halfKatakana: 半角カタカナの表記
+///   - preedit: 現在表示中の表記
+/// - Returns: 循環後の表記
+func cycleKanaType(
+    hiragana: String, fullKatakana: String, halfKatakana: String, preedit: String
+) -> String {
+    var order: [String] = []
+    for text in [fullKatakana, halfKatakana, hiragana] where !order.contains(text) {
+        order.append(text)
+    }
+    guard let index = order.firstIndex(of: preedit) else {
+        return order[0]
+    }
+    return order[(index + 1) % order.count]
+}

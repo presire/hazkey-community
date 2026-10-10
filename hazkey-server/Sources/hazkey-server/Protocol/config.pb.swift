@@ -597,6 +597,19 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `zenzaiAlignmentSeparator`. Subsequent reads from it will return its default value.
   mutating func clearZenzaiAlignmentSeparator() {_uniqueStorage()._zenzaiAlignmentSeparator = nil}
 
+  /// 組成中・候補表示中に、組成全体のカナ種を切り替えるホットキー
+  ///
+  /// - Note: 全角カタカナ → 半角カタカナ → ひらがなの順に切り替える
+  /// - Note: フィールドが無い場合は[無変換]キー (Muhenkan)、空文字列の場合は無効
+  var kanaCycleHotkey: String {
+    get {_storage._kanaCycleHotkey ?? String()}
+    set {_uniqueStorage()._kanaCycleHotkey = newValue}
+  }
+  /// Returns true if `kanaCycleHotkey` has been explicitly set.
+  var hasKanaCycleHotkey: Bool {_storage._kanaCycleHotkey != nil}
+  /// Clears the value of `kanaCycleHotkey`. Subsequent reads from it will return its default value.
+  mutating func clearKanaCycleHotkey() {_uniqueStorage()._kanaCycleHotkey = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   /// ライブ変換 (入力中に変換結果を表示する機能) の動作
@@ -1379,7 +1392,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1427,6 +1440,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _useTypoCorrection: Bool? = nil
     var _zenzaiRightContext: Bool? = nil
     var _zenzaiAlignmentSeparator: Bool? = nil
+    var _kanaCycleHotkey: String? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1482,6 +1496,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _useTypoCorrection = source._useTypoCorrection
       _zenzaiRightContext = source._zenzaiRightContext
       _zenzaiAlignmentSeparator = source._zenzaiAlignmentSeparator
+      _kanaCycleHotkey = source._kanaCycleHotkey
     }
   }
 
@@ -1545,6 +1560,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 129: try { try decoder.decodeSingularBoolField(value: &_storage._useTypoCorrection) }()
         case 130: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiRightContext) }()
         case 131: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiAlignmentSeparator) }()
+        case 132: try { try decoder.decodeSingularStringField(value: &_storage._kanaCycleHotkey) }()
         default: break
         }
       }
@@ -1692,6 +1708,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._zenzaiAlignmentSeparator {
         try visitor.visitSingularBoolField(value: v, fieldNumber: 131)
       } }()
+      try { if let v = _storage._kanaCycleHotkey {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 132)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1746,6 +1765,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._useTypoCorrection != rhs_storage._useTypoCorrection {return false}
         if _storage._zenzaiRightContext != rhs_storage._zenzaiRightContext {return false}
         if _storage._zenzaiAlignmentSeparator != rhs_storage._zenzaiAlignmentSeparator {return false}
+        if _storage._kanaCycleHotkey != rhs_storage._kanaCycleHotkey {return false}
         return true
       }
       if !storagesAreEqual {return false}
