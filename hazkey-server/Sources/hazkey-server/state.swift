@@ -147,6 +147,59 @@ struct LearningSurfaceKey: Hashable {
     }
 }
 
+/// 選び直して確定した学習語と、確定時の左文脈の記録
+///
+/// 同じ左文脈の変換要求でだけ、Zenzaiにその学習語を保護させる (ConvertRequestOptions.ZenzaiMode.protectedLearnedWords)
+/// 全ての要求で保護すると、Zenzai OFF の学習と同じく別の文脈でも表記が固定されるため、左文脈の完全一致に限る
+/// 記録はメモリ上だけに持ち、プロセスを終了すると消える
+struct ProtectedLearnedWordStore {
+    struct Record: Hashable {
+        let leftContext: String
+        let word: LearningSurfaceKey
+    }
+
+    /// 記録の上限 (超えた場合は古い記録から捨てる)
+    static let capacity = 256
+
+    /// 古い順の記録
+    private(set) var records: [Record] = []
+
+    /// 確定した候補の各要素と、2要素以上なら連結した語を記録する (学習メモリは連結した語も覚えるため)
+    mutating func record(leftContext: String, data: [DicdataElement]) {
+        guard !leftContext.isEmpty else { return }
+        var words = data.map { LearningSurfaceKey(reading: $0.ruby, word: $0.word) }
+        if data.count >= 2 {
+            words.append(LearningSurfaceKey(reading: data.map(\.ruby).joined(), word: data.map(\.word).joined()))
+        }
+        for word in words where !word.reading.isEmpty && !word.word.isEmpty {
+            let record = Record(leftContext: leftContext, word: word)
+            records.removeAll { $0 == record }
+            records.append(record)
+        }
+        if records.count > Self.capacity {
+            records.removeFirst(records.count - Self.capacity)
+        }
+    }
+
+    /// 左文脈が完全に一致する記録の語
+    func words(forLeftContext leftContext: String) -> Set<ConvertRequestOptions.ZenzaiMode.ProtectedLearnedWord> {
+        guard !leftContext.isEmpty else { return [] }
+        return Set(records.lazy.filter { $0.leftContext == leftContext }.map {
+            ConvertRequestOptions.ZenzaiMode.ProtectedLearnedWord(ruby: $0.word.reading, word: $0.word.word)
+        })
+    }
+
+    /// 学習を削除した語の記録を捨てる (読みはひらがなでもカタカナでもよい)
+    mutating func remove(_ words: some Sequence<(reading: String, word: String)>) {
+        let keys = Set(words.map { LearningSurfaceKey(reading: $0.reading, word: $0.word) })
+        records.removeAll { keys.contains($0.word) }
+    }
+
+    mutating func removeAll() {
+        records.removeAll()
+    }
+}
+
 /// 全クライアント接続で共有するサーバ全体のリソース
 ///
 /// 変換エンジン (辞書・Zenzaiモデル・学習メモリ・メモ化キャッシュ) は重いため、プロセス全体で1つを共有する
@@ -190,6 +243,8 @@ class HazkeySharedResources {
 
     /// 永続化していない学習データがあるかどうか (全接続で共有するdirtyフラグ)
     var learningDataNeedsCommit = false
+    /// 選び直して確定した学習語と確定時の左文脈 (学習メモリと同じく全接続で共有する)
+    var protectedLearnedWords = ProtectedLearnedWordStore()
     /// allLearningMemoryEntries()が1回の走査で列挙する行数の上限
     ///
     /// - Important: HazkeyServerConfig.genBaseConvertRequestOptions()が指定するmaxMemoryCount (保存エントリ数の上限) と同じ値を維持すること
@@ -375,6 +430,8 @@ extension HazkeySharedResources {
         //
         // 許容する残差: 1つの入力途中の組成で、設定変更前のキーは旧マッピング、変更後のキーは新しいキーマップ / テーブルを使用する
         self.keymap = serverConfig.loadKeymap()
+        // プロファイルの切り替え (学習メモリのディレクトリ) や学習の無効化に追従させるため、設定の適用ごとに捨てる
+        protectedLearnedWords.removeAll()
 
         let newTableName = UUID().uuidString
         serverConfig.loadInputTable(tableName: newTableName)
@@ -520,6 +577,7 @@ extension HazkeySharedResources {
         // どちらの分岐でも変換エンジンの状態とフラグをリセットする
         converter.resetMemory()
         learningDataNeedsCommit = false
+        protectedLearnedWords.removeAll()
         // 学習メモリを消去しても、各セッションのラティス (およびZenzaiのdraft/メモ化制約) は消去前の学習エントリを含んだまま再利用される
         // 個別の削除 (forgetLearningEntries(_:)) と同じく、全接続中セッションの変換キャッシュを破棄する
         for id in liveConversionSessionIDs {
@@ -619,6 +677,7 @@ extension HazkeySharedResources {
         _ keys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)]
     ) throws -> UInt32 {
         guard keys.count <= Self.resolvedLearningDeletionLimit else { throw LearningHistoryError.tooManyDeletionEntries }
+        protectedLearnedWords.remove(keys.map { (reading: $0.reading, word: $0.word) })
         var uniqueKeys: [LearningHistoryKey] = []
         var seenKeys: Set<LearningHistoryKey> = []
         for key in keys {
@@ -689,6 +748,7 @@ extension HazkeySharedResources {
     /// - Throws: 学習メモリの照会・削除に失敗した場合はそのエラー
     func forgetLearningSurfaces(_ surfaces: [(reading: String, word: String)]) throws -> UInt32 {
         guard surfaces.count <= Self.learningDeletionLimit else { throw LearningHistoryError.tooManyDeletionEntries }
+        protectedLearnedWords.remove(surfaces)
         var requestedSurfaces: Set<LearningSurfaceKey> = []
         var resolvedKeys: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
         for surface in surfaces {
@@ -893,9 +953,16 @@ class HazkeyServerState {
     var composingText: ComposingTextBox = ComposingTextBox()
     /// 最後にクライアントへ返した候補リスト (確定・予測受入・学習削除で候補の位置から引く)
     var currentCandidateList: [DisplayedCandidate]? {
-        didSet { candidateCompositionSnapshot = currentCandidateList == nil ? nil : composingText.value }
+        didSet {
+            candidateCompositionSnapshot = currentCandidateList == nil ? nil : composingText.value
+            candidateLeftContextSnapshot = currentCandidateList == nil ? nil : zenzaiLeftContextForModel
+        }
     }
     private var candidateCompositionSnapshot: ComposingText?
+    /// 候補リストを作った時点のZenzaiの左文脈
+    ///
+    /// フロントエンドは確定の直前に確定語を周辺テキストへ加えて送るため、確定時の左文脈ではなくこれを記録に使う
+    private var candidateLeftContextSnapshot: String?
     static let maxComposingCharacters = 512
     /// 組成テキストとして保持できる入力要素数の上限
     ///
@@ -1076,6 +1143,21 @@ class HazkeyServerState {
     var learningDataNeedsCommit: Bool {
         get { shared.learningDataNeedsCommit }
         set { shared.learningDataNeedsCommit = newValue }
+    }
+
+    /// Zenzaiへ左文脈として渡す文字列 (文脈変換がOFFなら渡さないため空)
+    var zenzaiLeftContextForModel: String {
+        serverConfig.currentProfile.zenzaiContextualMode ? zenzaiLeftContext : ""
+    }
+
+    /// 選び直して確定した学習語を、確定時の左文脈とともに記録する
+    ///
+    /// 学習を保存しない設定 (入力履歴を使わない、新しい履歴を保存しない) では記録しない
+    func recordProtectedLearnedWord(_ candidate: Candidate) {
+        let profile = serverConfig.currentProfile
+        guard profile.useInputHistory, !profile.stopStoreNewHistory else { return }
+        shared.protectedLearnedWords.record(
+            leftContext: candidateLeftContextSnapshot ?? zenzaiLeftContextForModel, data: candidate.data)
     }
 
     /// 共有リソースを新しく生成して、接続セッションを生成する (主にテスト用)
@@ -1460,7 +1542,10 @@ class HazkeyServerState {
             }
             // 学習メモリはサーバ全体で共有するため、学習データを更新しなかった確定でdirtyフラグを消してはならない
             // 他の接続にある永続化待ちデータが失われる
-            if learnsFromCandidate { learningDataNeedsCommit = true }
+            if learnsFromCandidate {
+                learningDataNeedsCommit = true
+                recordProtectedLearnedWord(completedCandidate)
+            }
         case .fromTypoCorrection(let correctedCandidate, _, let originalPrefixCount):
             // 元の入力の先頭だけを消費し、訂正対象でない接尾辞は組成に残して変換可能なまま保つ
             if originalPrefixCount < composingText.value.convertTarget.count {
@@ -1477,7 +1562,10 @@ class HazkeyServerState {
                 if learnsFromCandidate { converter.updateLearningData(correctedCandidate) }
                 converter.stopComposition()
             }
-            if learnsFromCandidate { learningDataNeedsCommit = true }
+            if learnsFromCandidate {
+                learningDataNeedsCommit = true
+                recordProtectedLearnedWord(correctedCandidate)
+            }
         case .fromUserDict:
             // ユーザ辞書エントリは常に読み全体に一致するため、組成テキストを消去するだけでよい
             // 変換エンジンの学習ストアには追加しない
@@ -1976,6 +2064,10 @@ class HazkeyServerState {
             requestRichCandidates: HazkeyServerConfig.requestRichCandidates(
                 for: serverConfig.currentProfile, isSuggestion: is_suggest),
             sendsFullReadingForAlignment: sendFullReading)
+        if zenzai == "on", serverConfig.currentProfile.useInputHistory {
+            options.zenzaiMode.protectedLearnedWords = shared.protectedLearnedWords.words(
+                forLeftContext: zenzaiLeftContextForModel)
+        }
         userDictionaryStartedAt = perfProbe?.now()
         defer {
             if let candidateStartedAt, let userDictionaryStartedAt, let userDictionaryFinishedAt {
@@ -2505,6 +2597,10 @@ class HazkeyServerState {
 
         // appendCandidateと同じ式で候補の読みを算出する
         let readings = candidateReadings
+        // 保存前の学習は削除の対象にならないが、利用者が削除を求めた語は同じ文脈でも保護しない
+        shared.protectedLearnedWords.remove(
+            [readings.prefixReading, readings.fullRuby].map { (reading: $0, word: candidate.text) }
+                + candidate.data.map { (reading: $0.ruby, word: $0.word) })
 
         // CID違いをまたいで (reading, word) に一致するものを全て集める
         // 一致なし (未学習) は、正常な「削除なし」の結果であり、エラーではない
