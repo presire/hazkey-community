@@ -1348,7 +1348,7 @@ class HazkeyServerConfig {
             // .disabledは、従来の"needTypoCorrection: false"と動作上完全に等価 (誤字補正を無条件に無効化)
             // (KanaKanjiConverter.isClassicTypoCorrectionEnabledを参照)
             typoCorrectionMode: .disabled,
-            metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey-Community \(hazkeyVersion)")
+            metadata: ConvertRequestOptions.Metadata.init(versionString: "Hazkey Community \(hazkeyVersion)")
         )
     }
 
