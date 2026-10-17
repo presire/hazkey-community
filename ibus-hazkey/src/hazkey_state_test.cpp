@@ -4,7 +4,7 @@
  *
  * fcitx5-hazkey/src/hazkey_candidate_selection_test.cppのIBus側対応版:
  * IBusLookupTableはページ内選択インデックス (数字キーと候補クリック) で候補を持ち、一方サーバのprefix-complete RPCは全体インデックスを受け取る
- * HazkeyState::pageLocalToGlobalIndex()は、selectDigit()とcandidateClicked()の両方が使用する単一の純粋な写像である
+ * HazkeyState::pageLocalToGlobalIndex()は、candidateKeyEvent()とcandidateClickedGlobal()が使用する単一の純粋な写像である
  *
  * IBusデーモン、エンジンインスタンス、hazkey-serverは不要:
  * 純粋なstatic写像だけを実行するため、実行中のセッションを妨げることはない
@@ -276,6 +276,33 @@ void testAltDigitKeyPredicate() {
     assert(!HazkeyState::isAltDigitKey(IBUS_KEY_1, IBUS_MOD1_MASK | IBUS_MOD3_MASK));
 
     std::cout << "[PASS] Alt-digit predicate\n";
+}
+
+void testCandidateDigitIndex() {
+    for (int index = 0; index < 10; ++index) {
+        const guint topRowKey = index == 9
+                                    ? IBUS_KEY_0
+                                    : IBUS_KEY_1 + static_cast<guint>(index);
+        const guint keypadKey = index == 9
+                                    ? IBUS_KEY_KP_0
+                                    : IBUS_KEY_KP_1 + static_cast<guint>(index);
+        const std::optional<int> expected{index};
+        assert(HazkeyState::candidateDigitIndex(topRowKey, 0) == expected);
+        assert(HazkeyState::candidateDigitIndex(keypadKey, 0) == expected);
+    }
+
+    assert(HazkeyState::candidateDigitIndex(
+               IBUS_KEY_KP_2, IBUS_MOD2_MASK | IBUS_LOCK_MASK) == 1);
+    assert(HazkeyState::candidateDigitIndex(IBUS_KEY_3, 1u << 13) == 2);
+    assert(!HazkeyState::candidateDigitIndex(IBUS_KEY_KP_End, 0));
+    assert(!HazkeyState::candidateDigitIndex(IBUS_KEY_KP_Home, 0));
+    for (const guint modifier : {IBUS_SHIFT_MASK, IBUS_CONTROL_MASK,
+                                 IBUS_MOD1_MASK, IBUS_MOD3_MASK,
+                                 IBUS_MOD4_MASK, IBUS_MOD5_MASK}) {
+        assert(!HazkeyState::candidateDigitIndex(IBUS_KEY_1, modifier));
+    }
+
+    std::cout << "[PASS] candidate digit key mapping\n";
 }
 
 /**
@@ -621,6 +648,13 @@ void testConsumeDecision() {
     candidate.listFocused = true;
     assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_d, IBUS_CONTROL_MASK, candidate));
     assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_3, 0, candidate));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_0, 0, candidate));
+    assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_1, 0, candidate));
+    assert(HazkeyFrontend::decideConsumeKey(
+        IBUS_KEY_KP_0, IBUS_MOD2_MASK, candidate));
+    assert(!HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_End, 0, candidate));
+    assert(!HazkeyFrontend::decideConsumeKey(
+        IBUS_KEY_KP_1, IBUS_CONTROL_MASK, candidate));
     // 候補モードは移動/確定キーをControl分岐より先に扱う
     // (HazkeyState::candidateKeyEvent に対応) ため、[Ctrl]+ [Enter]キーと[Ctrl] + [F6]キーはIMEのキーになる
     assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_Return, IBUS_CONTROL_MASK, candidate));
@@ -1112,6 +1146,30 @@ class SurroundingFakeServer {
         selectableCandidates_ = enabled;
     }
 
+    void setCandidateDigitKeyAction(std::optional<bool> moveCursor) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        candidateDigitKeyMovesCursor_ = moveCursor;
+        candidateDigitKeyActionUnspecified_ = false;
+    }
+
+    void setCandidateDigitKeyActionUnspecified() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        candidateDigitKeyMovesCursor_.reset();
+        candidateDigitKeyActionUnspecified_ = true;
+    }
+
+    void setCandidatePageSize(int size) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        candidatePageSize_ = size;
+    }
+
+    void setCandidates(
+        std::vector<std::pair<std::string, std::string>> candidates) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        customCandidates_ = std::move(candidates);
+        selectableCandidates_ = true;
+    }
+
     void blockNextContext() {
         std::lock_guard<std::mutex> lock(mutex_);
         blockNextContext_ = true;
@@ -1152,6 +1210,16 @@ class SurroundingFakeServer {
     int prefixCompletions() {
         std::lock_guard<std::mutex> lock(mutex_);
         return prefixCompletions_;
+    }
+
+    std::vector<int> completedCandidateIndices() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return completedCandidateIndices_;
+    }
+
+    int suggestCandidateRequests() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return suggestCandidateRequests_;
     }
 
     std::string romaji() {
@@ -1263,8 +1331,20 @@ class SurroundingFakeServer {
         switch (request.payload_case()) {
             case hazkey::RequestEnvelope::kPrefixComplete:
                 ++prefixCompletions_;
-                romaji_.clear();
-                cursor_ = 0;
+                completedCandidateIndices_.push_back(
+                    request.prefix_complete().index());
+                if (request.prefix_complete().index() >= 0 &&
+                    request.prefix_complete().index() <
+                        static_cast<int>(customCandidates_.size()) &&
+                    !customCandidates_[static_cast<size_t>(
+                         request.prefix_complete().index())].second.empty()) {
+                    romaji_ = customCandidates_[static_cast<size_t>(
+                        request.prefix_complete().index())].second;
+                    cursor_ = romaji_.size();
+                } else {
+                    romaji_.clear();
+                    cursor_ = 0;
+                }
                 break;
             case hazkey::RequestEnvelope::kNewComposingText:
                 romaji_.clear();
@@ -1330,10 +1410,24 @@ class SurroundingFakeServer {
                 const std::string hiragana = kana(false);
                 const std::string converted = hiragana == "あい" ? "愛" : hiragana;
                 auto* candidates = response.mutable_candidates();
-                candidates->add_candidates()->set_text(converted);
-                candidates->set_live_text(converted);
+                std::vector<std::pair<std::string, std::string>> values =
+                    customCandidates_;
+                if (values.empty()) {
+                    values.emplace_back(converted, "");
+                }
+                for (const auto& [text, subHiragana] : values) {
+                    auto* candidate = candidates->add_candidates();
+                    candidate->set_text(text);
+                    candidate->set_sub_hiragana(subHiragana);
+                }
+                candidates->set_live_text(values.front().first);
                 candidates->set_live_text_index(0);
-                candidates->set_page_size(selectableCandidates_ ? 1 : 0);
+                candidates->set_page_size(selectableCandidates_
+                                              ? candidatePageSize_
+                                              : 0);
+                if (request.get_candidates().is_suggest()) {
+                    ++suggestCandidateRequests_;
+                }
                 break;
             }
             case hazkey::RequestEnvelope::kGetCurrentInputMode:
@@ -1345,6 +1439,16 @@ class SurroundingFakeServer {
                 profile->set_auto_convert_mode(
                     hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_ALWAYS);
                 profile->set_zenzai_right_context(rightContext_);
+                profile->set_num_candidates_per_page(candidatePageSize_);
+                if (candidateDigitKeyActionUnspecified_) {
+                    profile->set_candidate_digit_key_action(
+                        hazkey::config::Profile::CANDIDATE_DIGIT_KEY_ACTION_UNSPECIFIED);
+                } else if (candidateDigitKeyMovesCursor_.has_value()) {
+                    profile->set_candidate_digit_key_action(
+                        *candidateDigitKeyMovesCursor_
+                            ? hazkey::config::Profile::CANDIDATE_DIGIT_MOVE_CURSOR
+                            : hazkey::config::Profile::CANDIDATE_DIGIT_SELECT_AND_COMMIT);
+                }
                 if (kanaCycleHotkey_.has_value()) {
                     profile->set_kana_cycle_hotkey(*kanaCycleHotkey_);
                 }
@@ -1366,9 +1470,15 @@ class SurroundingFakeServer {
     size_t cursor_ = 0;
     int inputChars_ = 0;
     int prefixCompletions_ = 0;
+    std::vector<int> completedCandidateIndices_;
     std::vector<std::pair<std::string, int>> contexts_;
+    std::vector<std::pair<std::string, std::string>> customCandidates_;
     bool rightContext_ = true;
     bool selectableCandidates_ = false;
+    std::optional<bool> candidateDigitKeyMovesCursor_ = false;
+    bool candidateDigitKeyActionUnspecified_ = false;
+    int candidatePageSize_ = 9;
+    int suggestCandidateRequests_ = 0;
     bool blockNextContext_ = false;
     bool contextBlocked_ = false;
     bool releaseContext_ = false;
@@ -1819,7 +1929,7 @@ void testQueuedKeyAfterSecureRequestIsDiscarded() {
  *
  * D-Busのフィルタはワーカースレッドで呼ばれるため、記録は排他する
  */
-class ForwardedKeyRecorder {
+class EngineSignalRecorder {
    public:
     struct Event {
         guint keyval;
@@ -1827,16 +1937,33 @@ class ForwardedKeyRecorder {
         guint state;
     };
 
-    static GDBusMessage* filter(GDBusConnection*, GDBusMessage* message, gboolean incoming,
-                                gpointer data) {
-        if (incoming && g_dbus_message_get_message_type(message) == G_DBUS_MESSAGE_TYPE_SIGNAL &&
-            g_strcmp0(g_dbus_message_get_member(message), "ForwardKeyEvent") == 0) {
+    static GDBusMessage* filter(GDBusConnection*, GDBusMessage* message,
+                                gboolean incoming, gpointer data) {
+        if (!incoming ||
+            g_dbus_message_get_message_type(message) !=
+                G_DBUS_MESSAGE_TYPE_SIGNAL) {
+            return message;
+        }
+        auto* self = static_cast<EngineSignalRecorder*>(data);
+        const gchar* member = g_dbus_message_get_member(message);
+        if (g_strcmp0(member, "ForwardKeyEvent") == 0) {
             Event event{};
-            g_variant_get(g_dbus_message_get_body(message), "(uuu)", &event.keyval,
-                          &event.keycode, &event.state);
-            auto* self = static_cast<ForwardedKeyRecorder*>(data);
+            g_variant_get(g_dbus_message_get_body(message), "(uuu)",
+                          &event.keyval, &event.keycode, &event.state);
             std::lock_guard<std::mutex> lock(self->mutex_);
             self->events_.push_back(event);
+        } else if (g_strcmp0(member, "CommitText") == 0) {
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            ++self->commitTextCount_;
+        } else if (g_strcmp0(member, "UpdatePreeditText") == 0) {
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            ++self->preeditUpdateCount_;
+        } else if (g_strcmp0(member, "UpdateLookupTable") == 0) {
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            ++self->lookupTableUpdateCount_;
+        } else if (g_strcmp0(member, "HideLookupTable") == 0) {
+            std::lock_guard<std::mutex> lock(self->mutex_);
+            ++self->hideLookupTableCount_;
         }
         return message;
     }
@@ -1846,9 +1973,33 @@ class ForwardedKeyRecorder {
         return events_;
     }
 
+    int commitTextCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return commitTextCount_;
+    }
+
+    int preeditUpdateCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return preeditUpdateCount_;
+    }
+
+    int lookupTableUpdateCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return lookupTableUpdateCount_;
+    }
+
+    int hideLookupTableCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return hideLookupTableCount_;
+    }
+
    private:
     std::mutex mutex_;
     std::vector<Event> events_;
+    int commitTextCount_ = 0;
+    int preeditUpdateCount_ = 0;
+    int lookupTableUpdateCount_ = 0;
+    int hideLookupTableCount_ = 0;
 };
 
 bool pumpMainLoopUntil(const std::function<bool()>& done, std::chrono::milliseconds timeout) {
@@ -1875,6 +2026,306 @@ void sendKey(HazkeyFrontend& frontend, guint keyval, guint keycode) {
     settleFrontend();
     frontend.processKeyEvent(keyval, keycode, IBUS_RELEASE_MASK);
     settleFrontend();
+}
+
+void testCandidateDigitKeyActionWiring() {
+    struct Scenario {
+        std::optional<bool> moveCursor;
+        int pageSize;
+        std::vector<std::pair<std::string, std::string>> candidates;
+        bool unspecified = false;
+    };
+    struct Driver {
+        hazkey::frontend::SerialTaskExecutor& executor;
+        std::shared_ptr<HazkeyState> state;
+        std::function<gboolean(guint, guint)> press;
+
+        void type(guint keyval) const {
+            typeKey(executor, state, keyval);
+        }
+    };
+    const auto makeCandidates = [](int count) {
+        std::vector<std::pair<std::string, std::string>> candidates;
+        for (int index = 0; index < count; ++index) {
+            candidates.emplace_back("candidate" + std::to_string(index), "");
+        }
+        return candidates;
+    };
+
+    char rootTemplate[] = "/tmp/hazkey-ibus-candidate-digits-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." +
+        std::to_string(getuid()) + ".sock";
+
+    const auto run = [&](Scenario scenario, const auto& body) {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        if (scenario.unspecified) {
+            server.setCandidateDigitKeyActionUnspecified();
+        } else {
+            server.setCandidateDigitKeyAction(scenario.moveCursor);
+        }
+        server.setCandidatePageSize(scenario.pageSize);
+        server.setCandidates(std::move(scenario.candidates));
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT |
+                                   IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                   IBUS_CAP_PROPERTY |
+                                   IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+        });
+        const auto press = [&](guint keyval, guint modifiers) {
+            gboolean handled = FALSE;
+            runOnWorker(executor, [&] {
+                handled = state->processKeyEvent(keyval, 0, modifiers);
+                state->processKeyEvent(keyval, 0,
+                                       modifiers | IBUS_RELEASE_MASK);
+            });
+            return handled;
+        };
+        const Driver driver{executor, state, press};
+        body(server, driver);
+        executor.shutdown();
+    };
+
+    run(Scenario{false, 9, makeCandidates(10)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            const int inputCount = server.inputChars();
+            assert(server.suggestCandidateRequests() > 0);
+            assert(driver.press(IBUS_KEY_KP_End, 0) == FALSE);
+            assert(driver.press(IBUS_KEY_0, 0) == TRUE);
+            assert(driver.press(IBUS_KEY_KP_0, IBUS_MOD2_MASK) == TRUE);
+            assert(server.prefixCompletions() == 0);
+            assert(server.inputChars() == inputCount);
+        });
+
+    run(Scenario{false, 10, makeCandidates(10)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_0, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{9});
+        });
+
+    run(Scenario{false, 10, makeCandidates(10)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_KP_3, 0) == TRUE);
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_KP_0, IBUS_MOD2_MASK) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   (std::vector<int>{2, 9}));
+        });
+
+    run(Scenario{true, 9, makeCandidates(3)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            const int inputCount = server.inputChars();
+            assert(driver.press(IBUS_KEY_2, 0) == TRUE);
+            assert(server.prefixCompletions() == 0);
+            assert(server.inputChars() == inputCount);
+            assert(driver.press(IBUS_KEY_Return, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{1});
+        });
+
+    run(Scenario{false, 9,
+                 {{"candidate0", ""}, {"first-clause", "い"},
+                  {"next-clause", ""}, {"candidate3", ""}}},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_2, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{1});
+            assert(driver.press(IBUS_KEY_3, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   (std::vector<int>{1, 2}));
+        });
+
+    run(Scenario{false, 9, makeCandidates(12)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_Right, 0) == TRUE);
+            assert(driver.press(IBUS_KEY_1, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{9});
+        });
+
+    for (const bool moveCursor : {false, true}) {
+        run(Scenario{moveCursor, 9, makeCandidates(3)},
+            [&](SurroundingFakeServer& server, const Driver& driver) {
+                driver.type(IBUS_KEY_a);
+                driver.type(IBUS_KEY_Tab);
+                assert(driver.press(IBUS_KEY_2, IBUS_MOD1_MASK) == TRUE);
+                assert(server.completedCandidateIndices() ==
+                       std::vector<int>{1});
+            });
+    }
+
+    for (const guint modifier : {IBUS_SHIFT_MASK, IBUS_MOD5_MASK}) {
+        run(Scenario{true, 9, makeCandidates(3)},
+            [&](SurroundingFakeServer& server, const Driver& driver) {
+                driver.type(IBUS_KEY_a);
+                driver.type(IBUS_KEY_Tab);
+                const int inputCount = server.inputChars();
+                assert(driver.press(IBUS_KEY_2, modifier) == TRUE);
+                assert(server.completedCandidateIndices() ==
+                       std::vector<int>{1});
+                assert(server.inputChars() == inputCount);
+            });
+    }
+
+    run(Scenario{std::nullopt, 9, makeCandidates(3)},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_2, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{1});
+        });
+
+    run(Scenario{false, 9, makeCandidates(3), true},
+        [&](SurroundingFakeServer& server, const Driver& driver) {
+            driver.type(IBUS_KEY_a);
+            driver.type(IBUS_KEY_Tab);
+            assert(driver.press(IBUS_KEY_2, 0) == TRUE);
+            assert(server.completedCandidateIndices() ==
+                   std::vector<int>{1});
+        });
+
+    rmdir(root);
+    std::cout << "candidate digit action wiring: OK\n";
+}
+
+void testCandidateDigitMoveCursorUiWiring() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-candidate-digit-ui-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." +
+        std::to_string(getuid()) + ".sock";
+
+    ibus_init();
+    int fds[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    GDBusConnection* connections[2] = {nullptr, nullptr};
+    for (int index = 0; index < 2; ++index) {
+        GError* error = nullptr;
+        GSocket* socket = g_socket_new_from_fd(fds[index], &error);
+        assert(socket != nullptr);
+        GSocketConnection* stream =
+            g_socket_connection_factory_create_connection(socket);
+        g_object_unref(socket);
+        gchar* guid = index == 0 ? g_dbus_generate_guid() : nullptr;
+        g_dbus_connection_new(
+            G_IO_STREAM(stream), guid,
+            index == 0 ? G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_SERVER
+                       : G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT,
+            nullptr, nullptr,
+            [](GObject*, GAsyncResult* result, gpointer data) {
+                *static_cast<GDBusConnection**>(data) =
+                    g_dbus_connection_new_finish(result, nullptr);
+            },
+            &connections[index]);
+        g_free(guid);
+        g_object_unref(stream);
+    }
+    assert(pumpMainLoopUntil(
+        [&] { return connections[0] != nullptr && connections[1] != nullptr; },
+        std::chrono::milliseconds(5000)));
+
+    EngineSignalRecorder recorder;
+    const guint filterId = g_dbus_connection_add_filter(
+        connections[1], &EngineSignalRecorder::filter, &recorder, nullptr);
+    IBusEngine* engine = ibus_engine_new(
+        "hazkey-test", "/org/freedesktop/IBus/Engine/1", connections[0]);
+    assert(engine != nullptr);
+    hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
+        auto* heapTask = new std::function<void()>(std::move(task));
+        g_idle_add_full(
+            G_PRIORITY_DEFAULT,
+            [](gpointer data) -> gboolean {
+                (*static_cast<std::function<void()>*>(data))();
+                return G_SOURCE_REMOVE;
+            },
+            heapTask, [](gpointer data) {
+                delete static_cast<std::function<void()>*>(data);
+            });
+    });
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        server.setCandidateDigitKeyAction(true);
+        server.setCandidatePageSize(9);
+        std::vector<std::pair<std::string, std::string>> candidates;
+        for (int index = 0; index < 10; ++index) {
+            candidates.emplace_back("candidate" + std::to_string(index), "");
+        }
+        server.setCandidates(std::move(candidates));
+        auto frontend = std::make_shared<HazkeyFrontend>(engine);
+        frontend->setCapabilities(IBUS_CAP_PREEDIT_TEXT |
+                                  IBUS_CAP_AUXILIARY_TEXT |
+                                  IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS |
+                                  IBUS_CAP_PROPERTY);
+        frontend->focusIn();
+        settleFrontend();
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_Tab, 23);
+        const int inputCount = server.inputChars();
+        assert(server.suggestCandidateRequests() > 0);
+        assert(frontend->processKeyEvent(IBUS_KEY_0, 0, 0) == TRUE);
+        settleFrontend();
+        frontend->processKeyEvent(IBUS_KEY_0, 0, IBUS_RELEASE_MASK);
+        settleFrontend();
+        assert(server.prefixCompletions() == 0);
+        assert(server.inputChars() == inputCount);
+        assert(recorder.commitTextCount() == 0);
+        const int preeditUpdates = recorder.preeditUpdateCount();
+        const int lookupUpdates = recorder.lookupTableUpdateCount();
+        const int hiddenLookups = recorder.hideLookupTableCount();
+        sendKey(*frontend, IBUS_KEY_2, 11);
+        assert(server.prefixCompletions() == 0);
+        assert(recorder.commitTextCount() == 0);
+        assert(recorder.preeditUpdateCount() == preeditUpdates + 1);
+        assert(recorder.lookupTableUpdateCount() == lookupUpdates + 1);
+        assert(recorder.hideLookupTableCount() == hiddenLookups);
+        sendKey(*frontend, IBUS_KEY_Return, 36);
+        assert(server.completedCandidateIndices() == std::vector<int>{1});
+        assert(recorder.commitTextCount() == 1);
+        frontend->focusOut();
+        settleFrontend();
+        frontend->retire();
+        settleFrontend();
+    }
+    hazkey::frontend::setMainLoopPoster(nullptr);
+    g_dbus_connection_remove_filter(connections[1], filterId);
+    g_object_unref(engine);
+    for (GDBusConnection* connection : connections) {
+        g_dbus_connection_close_sync(connection, nullptr, nullptr);
+        g_object_unref(connection);
+    }
+    rmdir(root);
+    std::cout << "candidate digit cursor UI wiring: OK\n";
 }
 
 /**
@@ -1924,9 +2375,9 @@ void testFrontendForwardsReleaseOfFrameworkForwardedPress() {
     assert(pumpMainLoopUntil([&] { return connections[0] != nullptr && connections[1] != nullptr; },
                              std::chrono::milliseconds(5000)));
 
-    ForwardedKeyRecorder recorder;
+    EngineSignalRecorder recorder;
     const guint filterId =
-        g_dbus_connection_add_filter(connections[1], &ForwardedKeyRecorder::filter, &recorder, nullptr);
+        g_dbus_connection_add_filter(connections[1], &EngineSignalRecorder::filter, &recorder, nullptr);
     IBusEngine* engine =
         ibus_engine_new("hazkey-test", "/org/freedesktop/IBus/Engine/1", connections[0]);
     assert(engine != nullptr);
@@ -2113,6 +2564,7 @@ int main() {
     testLiveConvertModeTransition();
     testHotkeyParsingAndMatching();
     testAltDigitKeyPredicate();
+    testCandidateDigitIndex();
     testDirectConversionShortcut();
     testAuxiliaryTextJoin();
     testZenzaiHintOverlay();
@@ -2137,6 +2589,8 @@ int main() {
     testGatedFirstInputDiscardedAfterSecureRequest();
     testCompleteCandidateDoesNotCompleteAfterSecureRequest();
     testKanaCycleWiring();
+    testCandidateDigitKeyActionWiring();
+    testCandidateDigitMoveCursorUiWiring();
     testQueuedKeyAfterSecureRequestIsDiscarded();
     testFrontendForwardsReleaseOfFrameworkForwardedPress();
     testFrontendWorkerExceptionRecoversGate();

@@ -1,4 +1,5 @@
 #include <cassert>
+#include <array>
 #include <limits>
 #include <string>
 #include "hazkey_candidate.h"
@@ -157,6 +158,69 @@ void testPageLocalIndexInRangeInvalidInput() {
     assert(!HazkeyCandidateList::pageLocalIndexInRange(10, 13, hugePage, 0));
 }
 
+void testCandidateDigitPageLocalIndexMapsMainAndKeypadDigits() {
+    const std::array mainDigits{FcitxKey_1, FcitxKey_2, FcitxKey_3,
+                                FcitxKey_4, FcitxKey_5, FcitxKey_6,
+                                FcitxKey_7, FcitxKey_8, FcitxKey_9,
+                                FcitxKey_0};
+    const std::array keypadDigits{FcitxKey_KP_1, FcitxKey_KP_2,
+                                  FcitxKey_KP_3, FcitxKey_KP_4,
+                                  FcitxKey_KP_5, FcitxKey_KP_6,
+                                  FcitxKey_KP_7, FcitxKey_KP_8,
+                                  FcitxKey_KP_9, FcitxKey_KP_0};
+
+    // XIM は X のキー状態 (XKB グループのビットを含む) をそのまま渡す
+    const fcitx::KeyStates xkbGroup(1U << 13);
+    const std::array nonModifierStates{
+        fcitx::KeyStates(fcitx::KeyState::NumLock),
+        fcitx::KeyStates(fcitx::KeyState::CapsLock),
+        fcitx::KeyStates(fcitx::KeyState::Repeat),
+        xkbGroup,
+        xkbGroup | fcitx::KeyState::NumLock,
+    };
+
+    int expectedIndex = 0;
+    for (const auto keySym : mainDigits) {
+        assert(fcitx::candidateDigitPageLocalIndex(fcitx::Key{keySym}) ==
+               expectedIndex);
+        for (const auto states : nonModifierStates) {
+            assert(fcitx::candidateDigitPageLocalIndex(
+                       fcitx::Key{keySym, states}) == expectedIndex);
+        }
+        ++expectedIndex;
+    }
+
+    expectedIndex = 0;
+    for (const auto keySym : keypadDigits) {
+        assert(fcitx::candidateDigitPageLocalIndex(fcitx::Key{keySym}) ==
+               expectedIndex);
+        for (const auto states : nonModifierStates) {
+            assert(fcitx::candidateDigitPageLocalIndex(
+                       fcitx::Key{keySym, states}) == expectedIndex);
+        }
+        ++expectedIndex;
+    }
+}
+
+void testCandidateDigitPageLocalIndexExcludesModifiersAndNavigation() {
+    using fcitx::Key;
+    using fcitx::KeyState;
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Alt}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Shift}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Ctrl}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Mod5}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Super}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_1, KeyState::Meta}));
+    assert(!fcitx::candidateDigitPageLocalIndex(
+        Key{FcitxKey_KP_1, KeyState::Ctrl}));
+    assert(!fcitx::candidateDigitPageLocalIndex(
+        Key{FcitxKey_1, fcitx::KeyStates(1U << 13) | KeyState::Alt}));
+    assert(!fcitx::candidateDigitPageLocalIndex(
+        Key{FcitxKey_exclam, KeyState::Shift}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_KP_End}));
+    assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_KP_Insert}));
+}
+
 /** 末尾ページの空き位置では選択せず、実在位置は選択する */
 void testFinalPageEmptySlotIsNoOp() {
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
@@ -217,6 +281,8 @@ int main() {
     testPageLocalIndexInRangeMultiPage();
     testPageLocalIndexInRangeServerShapes();
     testPageLocalIndexInRangeInvalidInput();
+    testCandidateDigitPageLocalIndexMapsMainAndKeypadDigits();
+    testCandidateDigitPageLocalIndexExcludesModifiersAndNavigation();
     testFinalPageEmptySlotIsNoOp();
     testFocusedListStaysSelectableAfterPaging();
     testUnfocusedListHasNoCursorAcrossPaging();

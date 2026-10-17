@@ -588,7 +588,7 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
             return HazkeyState::isDirectConversionShortcut(keyval, state) ? TRUE
                                                                           : FALSE;
         }
-        if (keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) {
+        if (HazkeyState::candidateDigitIndex(keyval, state).has_value()) {
             return TRUE;
         }
         return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;

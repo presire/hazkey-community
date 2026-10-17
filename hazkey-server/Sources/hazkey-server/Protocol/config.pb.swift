@@ -610,6 +610,18 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `kanaCycleHotkey`. Subsequent reads from it will return its default value.
   mutating func clearKanaCycleHotkey() {_uniqueStorage()._kanaCycleHotkey = nil}
 
+  /// 候補にフォーカスがあるときの数字キー ([1]〜[9]・[0]、テンキーを含む) の動作
+  ///
+  /// - Note: フィールドが無い場合とUNSPECIFIEDは、選択して確定する (CANDIDATE_DIGIT_SELECT_AND_COMMIT) 扱い
+  var candidateDigitKeyAction: Hazkey_Config_Profile.CandidateDigitKeyAction {
+    get {_storage._candidateDigitKeyAction ?? .unspecified}
+    set {_uniqueStorage()._candidateDigitKeyAction = newValue}
+  }
+  /// Returns true if `candidateDigitKeyAction` has been explicitly set.
+  var hasCandidateDigitKeyAction: Bool {_storage._candidateDigitKeyAction != nil}
+  /// Clears the value of `candidateDigitKeyAction`. Subsequent reads from it will return its default value.
+  mutating func clearCandidateDigitKeyAction() {_uniqueStorage()._candidateDigitKeyAction = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   /// ライブ変換 (入力中に変換結果を表示する機能) の動作
@@ -761,6 +773,53 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
       .suggestionListDisabled,
       .suggestionListShowNormalResults,
       .suggestionListShowPredictiveResults,
+    ]
+
+  }
+
+  /// 候補にフォーカスがあるときの数字キー ([1]〜[9]・[0]、テンキーを含む) の動作
+  ///
+  /// - Note: [Alt] + 数字キーは、この設定に関係なく常に選択して確定する
+  nonisolated enum CandidateDigitKeyAction: SwiftProtobuf.Enum, Swift.CaseIterable {
+    typealias RawValue = Int
+
+    /// 未設定 (選択して確定する扱い)
+    case unspecified // = 0
+
+    /// 選択して確定する (既定)
+    case candidateDigitSelectAndCommit // = 1
+
+    /// カーソルを移すだけ。確定は[Enter]キー
+    case candidateDigitMoveCursor // = 2
+    case UNRECOGNIZED(Int)
+
+    init() {
+      self = .unspecified
+    }
+
+    init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .candidateDigitSelectAndCommit
+      case 2: self = .candidateDigitMoveCursor
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .candidateDigitSelectAndCommit: return 1
+      case .candidateDigitMoveCursor: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    static let allCases: [Hazkey_Config_Profile.CandidateDigitKeyAction] = [
+      .unspecified,
+      .candidateDigitSelectAndCommit,
+      .candidateDigitMoveCursor,
     ]
 
   }
@@ -1392,7 +1451,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0\u{3}candidate_digit_key_action\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1441,6 +1500,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _zenzaiRightContext: Bool? = nil
     var _zenzaiAlignmentSeparator: Bool? = nil
     var _kanaCycleHotkey: String? = nil
+    var _candidateDigitKeyAction: Hazkey_Config_Profile.CandidateDigitKeyAction? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1497,6 +1557,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _zenzaiRightContext = source._zenzaiRightContext
       _zenzaiAlignmentSeparator = source._zenzaiAlignmentSeparator
       _kanaCycleHotkey = source._kanaCycleHotkey
+      _candidateDigitKeyAction = source._candidateDigitKeyAction
     }
   }
 
@@ -1561,6 +1622,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 130: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiRightContext) }()
         case 131: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiAlignmentSeparator) }()
         case 132: try { try decoder.decodeSingularStringField(value: &_storage._kanaCycleHotkey) }()
+        case 133: try { try decoder.decodeSingularEnumField(value: &_storage._candidateDigitKeyAction) }()
         default: break
         }
       }
@@ -1711,6 +1773,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._kanaCycleHotkey {
         try visitor.visitSingularStringField(value: v, fieldNumber: 132)
       } }()
+      try { if let v = _storage._candidateDigitKeyAction {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 133)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1766,6 +1831,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._zenzaiRightContext != rhs_storage._zenzaiRightContext {return false}
         if _storage._zenzaiAlignmentSeparator != rhs_storage._zenzaiAlignmentSeparator {return false}
         if _storage._kanaCycleHotkey != rhs_storage._kanaCycleHotkey {return false}
+        if _storage._candidateDigitKeyAction != rhs_storage._candidateDigitKeyAction {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -1785,6 +1851,10 @@ nonisolated extension Hazkey_Config_Profile.AuxTextMode: SwiftProtobuf._ProtoNam
 
 nonisolated extension Hazkey_Config_Profile.SuggestionListMode: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SUGGESTION_LIST_MODE_UNSPECIFIED\0\u{1}SUGGESTION_LIST_DISABLED\0\u{1}SUGGESTION_LIST_SHOW_NORMAL_RESULTS\0\u{1}SUGGESTION_LIST_SHOW_PREDICTIVE_RESULTS\0")
+}
+
+nonisolated extension Hazkey_Config_Profile.CandidateDigitKeyAction: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CANDIDATE_DIGIT_KEY_ACTION_UNSPECIFIED\0\u{1}CANDIDATE_DIGIT_SELECT_AND_COMMIT\0\u{1}CANDIDATE_DIGIT_MOVE_CURSOR\0")
 }
 
 nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

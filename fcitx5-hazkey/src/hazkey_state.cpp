@@ -458,14 +458,28 @@ void HazkeyState::candidateKeyEvent(
                 if (!ctrlShortcutHandler(event)) {
                     return event.filter();
                 }
-            } else if (isAltDigitKeyEvent(event) ||
-                       key.checkKeyList(defaultSelectionKeys)) {
-                const int localIndex =
-                    isAltDigitKeyEvent(event)
-                        ? static_cast<int>(keysym - FcitxKey_1)
-                        : key.keyListIndex(defaultSelectionKeys);
-                // [Alt] + [数字]と数字キーのどちらも、現在のページに存在する候補だけを選択する
-                // 最終ページの空き枠を選択して誤った候補を確定しない
+            } else if (isAltDigitKeyEvent(event)) {
+                const int localIndex = static_cast<int>(keysym - FcitxKey_1);
+                if (HazkeyCandidateList::pageLocalIndexInRange(
+                        candidateList->pageSize(), candidateList->totalSize(),
+                        candidateList->currentPage(), localIndex)) {
+                    candidateList->setCursorIndex(localIndex);
+                    candidateCompleteHandler(candidateList);
+                }
+            } else if (const auto localIndex =
+                           candidateDigitPageLocalIndex(event.rawKey())) {
+                if (HazkeyCandidateList::pageLocalIndexInRange(
+                        candidateList->pageSize(), candidateList->totalSize(),
+                        candidateList->currentPage(), *localIndex)) {
+                    candidateList->setCursorIndex(*localIndex);
+                    if (candidateDigitSelectAndCommit_) {
+                        candidateCompleteHandler(candidateList);
+                    } else {
+                        updateCandidateCursor(candidateList);
+                    }
+                }
+            } else if (key.checkKeyList(defaultSelectionKeys)) {
+                const int localIndex = key.keyListIndex(defaultSelectionKeys);
                 if (HazkeyCandidateList::pageLocalIndexInRange(
                         candidateList->pageSize(), candidateList->totalSize(),
                         candidateList->currentPage(), localIndex)) {
@@ -547,6 +561,19 @@ void HazkeyState::loadServerProfile() {
     kanaCycleHotkey_ = profile.has_kana_cycle_hotkey()
                            ? Key(profile.kana_cycle_hotkey())
                            : Key("Muhenkan");
+    candidateDigitSelectAndCommit_ = true;
+    if (profile.has_candidate_digit_key_action()) {
+        switch (profile.candidate_digit_key_action()) {
+            case hazkey::config::Profile::CANDIDATE_DIGIT_KEY_ACTION_UNSPECIFIED:
+            case hazkey::config::Profile::CANDIDATE_DIGIT_SELECT_AND_COMMIT:
+                break;
+            case hazkey::config::Profile::CANDIDATE_DIGIT_MOVE_CURSOR:
+                candidateDigitSelectAndCommit_ = false;
+                break;
+            default:
+                break;
+        }
+    }
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     using M = hazkey::config::Profile_AutoConvertMode;

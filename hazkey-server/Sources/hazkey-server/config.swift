@@ -490,6 +490,7 @@ class HazkeyServerConfig {
         newConf.numSuggestions = 3
         newConf.useRichSuggestion = false
         newConf.numCandidatesPerPage = 9
+        newConf.candidateDigitKeyAction = .candidateDigitSelectAndCommit
         newConf.useRichCandidates = false
         newConf.useInputHistory = true
         newConf.useAddressDictionary = false
@@ -882,6 +883,10 @@ class HazkeyServerConfig {
         if !normalized.hasNumCandidatesPerPage {
             normalized.numCandidatesPerPage = defaults.numCandidatesPerPage
         }
+        // 未設定[UNSPECIFIED]は従来どおり選択して確定する扱いのため、欠落と同じく既定値で補う
+        if !normalized.hasCandidateDigitKeyAction || normalized.candidateDigitKeyAction == .unspecified {
+            normalized.candidateDigitKeyAction = defaults.candidateDigitKeyAction
+        }
         if !normalized.hasZenzaiInferLimit {
             normalized.zenzaiInferLimit = defaults.zenzaiInferLimit
         }
@@ -937,6 +942,9 @@ class HazkeyServerConfig {
         }
         if case .UNRECOGNIZED(let rawValue) = profile.suggestionListMode {
             throw ConfigError.unrecognizedEnum(field: "suggestionListMode", rawValue: rawValue)
+        }
+        if case .UNRECOGNIZED(let rawValue) = profile.candidateDigitKeyAction {
+            throw ConfigError.unrecognizedEnum(field: "candidateDigitKeyAction", rawValue: rawValue)
         }
     }
 

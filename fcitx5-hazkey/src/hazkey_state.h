@@ -256,6 +256,7 @@ class HazkeyState : public InputContextProperty {
     fcitx::Key acceptPredictionHotkey_{"F5"};          ///< [F5]予測候補受入ホットキー
     fcitx::Key deleteLearningHotkey_{"Control+D"};     ///< [Ctrl] + [D]学習データ削除ホットキー
     fcitx::Key kanaCycleHotkey_{"Muhenkan"};           ///< [無変換]カナ種切替ホットキー (無効なキーは無効化を表す)
+    bool candidateDigitSelectAndCommit_ = true;        ///< 候補選択中の数字キーで確定するか (falseはカーソル移動のみ)
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;  ///< キャッシュした自動変換モード
     hazkey::config::Profile_AuxTextMode cachedAuxTextMode_ =

@@ -315,6 +315,23 @@ bool HazkeyState::isAltDigitKey(guint keyval, guint state) {
     return keyval >= IBUS_KEY_1 && keyval <= IBUS_KEY_9;
 }
 
+std::optional<int> HazkeyState::candidateDigitIndex(guint keyval,
+                                                     guint state) {
+    if (hasAltGrLikeModifier(state) || normalizeHotkeyModifiers(state) != 0) {
+        return std::nullopt;
+    }
+    if (keyval == IBUS_KEY_0 || keyval == IBUS_KEY_KP_0) {
+        return 9;
+    }
+    if (keyval >= IBUS_KEY_1 && keyval <= IBUS_KEY_9) {
+        return static_cast<int>(keyval - IBUS_KEY_1);
+    }
+    if (keyval >= IBUS_KEY_KP_1 && keyval <= IBUS_KEY_KP_9) {
+        return static_cast<int>(keyval - IBUS_KEY_KP_1);
+    }
+    return std::nullopt;
+}
+
 bool HazkeyState::isDirectConversionShortcut(guint keyval, guint state) {
     // FcitxのctrlShortcutHandler()には、厳密にKeyState::Ctrlの場合のみ到達する
     // [AltGr]系モディファイア付きはアプリケーション側に残す
@@ -866,7 +883,32 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         }
         return FALSE;
     }
-    if (selectDigit(keyval)) {
+    if (const auto localIndex = candidateDigitIndex(keyval, state)) {
+        const int globalIndex = pageLocalToGlobalIndex(
+            pageSize_, static_cast<int>(candidates_.size()), cursorIndex_,
+            *localIndex);
+        if (globalIndex >= 0) {
+            cursorIndex_ = globalIndex;
+            if (candidateDigitKeyMovesCursor_) {
+                updateCandidateCursor();
+            } else {
+                completeCandidate(globalIndex);
+            }
+        }
+        return TRUE;
+    }
+    if (keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) {
+        // [Shift] / [AltGr]系モディファイア付きで数字が届く配列 (AZERTY等) は従来どおり選択して確定する
+        // Fcitx 5の正規化後のdefaultSelectionKeys一致と同じ扱い
+        const int localIndex =
+            keyval == IBUS_KEY_0 ? 9 : static_cast<int>(keyval - IBUS_KEY_1);
+        const int globalIndex = pageLocalToGlobalIndex(
+            pageSize_, static_cast<int>(candidates_.size()), cursorIndex_,
+            localIndex);
+        if (globalIndex >= 0) {
+            cursorIndex_ = globalIndex;
+            completeCandidate(globalIndex);
+        }
         return TRUE;
     }
     if (isInputableKey(keyval)) {
@@ -899,11 +941,16 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
 
 void HazkeyState::loadServerProfile() {
     cachedRightContext_ = false;
+    candidateDigitKeyMovesCursor_ = false;
     const auto configOpt = server_.getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
         return;  // サーバ未準備、既定値を維持
     }
     const auto& profile = configOpt->profiles(0);
+    candidateDigitKeyMovesCursor_ =
+        profile.has_candidate_digit_key_action() &&
+        profile.candidate_digit_key_action() ==
+            hazkey::config::Profile::CANDIDATE_DIGIT_MOVE_CURSOR;
     liveConvertHotkey_ =
         parseHotkey(profile.auto_convert_hotkey(), "Control+Shift+L");
     acceptPredictionHotkey_ =
@@ -1722,28 +1769,6 @@ int HazkeyState::pageLocalToGlobalIndex(int pageSize, int totalSize,
         return -1;
     }
     return pageStart + localIndex;
-}
-
-bool HazkeyState::selectDigit(guint keyval) {
-    int local = -1;
-    if (keyval == IBUS_KEY_0) {
-        local = 9;
-    } else if (keyval >= IBUS_KEY_1 && keyval <= IBUS_KEY_9) {
-        local = static_cast<int>(keyval - IBUS_KEY_1);
-    } else {
-        return false;
-    }
-    if (cursorIndex_ < 0) {
-        return false;
-    }
-    const int global = pageLocalToGlobalIndex(
-        pageSize_, static_cast<int>(candidates_.size()), cursorIndex_, local);
-    if (global < 0) {
-        return false;
-    }
-    cursorIndex_ = global;
-    completeCandidate(global);
-    return true;
 }
 
 void HazkeyState::selectPageLocalAltDigit(guint keyval, bool flushFirst) {

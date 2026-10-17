@@ -236,6 +236,59 @@ struct SuggestionListMode {
 };
 
 /**
+ * @brief 候補選択中の数字キーの動作とUIのコンボボックスを対応付ける
+ * @note EnumTypeは、hazkey::config::Profile_CandidateDigitKeyActionであり、
+ *       未設定 (UNSPECIFIED) や未知の値、未対応のインデックスは、
+ *       DEFAULT_INDEXまたはDEFAULT_ENUM (選択して確定) にフォールバックする
+ */
+struct CandidateDigitKeyAction {
+    /** @brief 未知のprotobuf値または未対応のUI値に使うインデックス */
+    static constexpr int DEFAULT_INDEX = 0;  // CANDIDATE_DIGIT_SELECT_AND_COMMIT
+    /** @brief この設定が扱うprotobuf列挙型 */
+    using EnumType = hazkey::config::Profile_CandidateDigitKeyAction;
+    /** @brief 未対応のコンボボックス値に返すprotobuf列挙値 */
+    static constexpr EnumType DEFAULT_ENUM = hazkey::config::
+        Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_SELECT_AND_COMMIT;
+
+    /**
+     * @brief protobufのenum値をコンボボックスへ設定する
+     * @param combo 対象のQComboBox
+     * @param enumValue 設定するprotobuf enum値
+     * @note UNSPECIFIEDを含む対応表にないenumValueでは、DEFAULT_INDEXを選択する
+     */
+    static void setFromEnum(QComboBox* combo, int enumValue) {
+        SET_COMBO(
+            combo, enumValue, DEFAULT_INDEX,
+            ENUM_CASE(
+                hazkey::config::
+                    Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_SELECT_AND_COMMIT,
+                0)
+                ENUM_CASE(
+                    hazkey::config::
+                        Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_MOVE_CURSOR,
+                    1));
+    }
+
+    /**
+     * @brief コンボボックスの選択をprotobufのenum値へ変換する
+     * @param combo 対象のQComboBox
+     * @return 対応するprotobuf enum値、未知のインデックスではDEFAULT_ENUM
+     */
+    static EnumType getEnum(QComboBox* combo) {
+        return GET_COMBO_ENUM(
+            combo, EnumType, DEFAULT_ENUM,
+            INDEX_CASE(
+                0,
+                hazkey::config::
+                    Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_SELECT_AND_COMMIT)
+                INDEX_CASE(
+                    1,
+                    hazkey::config::
+                        Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_MOVE_CURSOR));
+    }
+};
+
+/**
  * @brief チェックボックス設定のフォールバック値をまとめる
  * @note protobufのフィールドが未設定の場合にUIへ反映する値を表す
  */

@@ -257,6 +257,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("autoConvertMode", ui_->autoConvertion->currentIndex());
     state.insert("auxiliaryText", ui_->auxiliaryText->currentIndex());
     state.insert("suggestionList", ui_->suggestionList->currentIndex());
+    state.insert("candidateDigitKeyAction", ui_->candidateDigitKeyAction->currentIndex());
     state.insert("numSuggestion", ui_->numSuggestion->value());
     state.insert("autoConvertMinChars", ui_->autoConvertMinChars->value());
     state.insert("numCandidatesPerPage", ui_->numCandidatesPerPage->value());
@@ -413,6 +414,9 @@ void MainWindow::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) { recomputeDirtyState(); });
     connect(ui_->suggestionList,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    connect(ui_->candidateDigitKeyAction,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) { recomputeDirtyState(); });
     connect(ui_->zenzaiBackendDevice,
@@ -838,6 +842,7 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_COMBO_FROM_CONFIG(ConfigDefs::AutoConvertMode, ui_->autoConvertion, currentProfile_->auto_convert_mode());
     SET_COMBO_FROM_CONFIG(ConfigDefs::AuxTextMode, ui_->auxiliaryText, currentProfile_->aux_text_mode());
     SET_COMBO_FROM_CONFIG(ConfigDefs::SuggestionListMode, ui_->suggestionList, currentProfile_->suggestion_list_mode());
+    SET_COMBO_FROM_CONFIG(ConfigDefs::CandidateDigitKeyAction, ui_->candidateDigitKeyAction, currentProfile_->candidate_digit_key_action());
 
     SET_SPINBOX(ui_->numSuggestion, currentProfile_->num_suggestions(), ConfigDefs::SpinboxDefaults::NUM_SUGGESTIONS);
     const int autoConvertMinChars = currentProfile_->auto_convert_min_chars();
@@ -1047,6 +1052,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_COMBO_TO_CONFIG(ConfigDefs::AuxTextMode, ui_->auxiliaryText));
     currentProfile_->set_suggestion_list_mode(GET_COMBO_TO_CONFIG(
         ConfigDefs::SuggestionListMode, ui_->suggestionList));
+    currentProfile_->set_candidate_digit_key_action(GET_COMBO_TO_CONFIG(
+        ConfigDefs::CandidateDigitKeyAction, ui_->candidateDigitKeyAction));
 
     currentProfile_->set_num_suggestions(GET_SPINBOX_INT(ui_->numSuggestion));
     currentProfile_->set_auto_convert_min_chars(

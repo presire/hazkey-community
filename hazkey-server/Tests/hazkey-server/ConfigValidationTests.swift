@@ -753,4 +753,113 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertFalse(profile.zenzaiAlignmentSeparator)
         XCTAssertFalse(profile.zenzaiAlignmentSeparatorEffective)
     }
+
+    func testNormalizeProfileDefaultsMissingAndUnspecifiedCandidateDigitKeyActionAndPreservesMoveCursor() throws {
+        // 前提: 数字キー動作が欠落・未設定[UNSPECIFIED]・カーソル移動のプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearCandidateDigitKeyAction()
+        XCTAssertFalse(missing.hasCandidateDigitKeyAction)
+
+        var unspecified = HazkeyServerConfig.genDefaultConfig()
+        unspecified.candidateDigitKeyAction = .unspecified
+
+        var moveCursor = HazkeyServerConfig.genDefaultConfig()
+        moveCursor.candidateDigitKeyAction = .candidateDigitMoveCursor
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedUnspecified = try HazkeyServerConfig.normalizeProfile(unspecified)
+        let normalizedMoveCursor = try HazkeyServerConfig.normalizeProfile(moveCursor)
+
+        // 検証: 欠落と未設定は選択して確定する既定値になり、明示値は保持される
+        XCTAssertTrue(normalizedMissing.hasCandidateDigitKeyAction)
+        XCTAssertEqual(normalizedMissing.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
+        XCTAssertEqual(normalizedUnspecified.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
+        XCTAssertEqual(normalizedMoveCursor.candidateDigitKeyAction, .candidateDigitMoveCursor)
+    }
+
+    func testNormalizeProfileRejectsUnrecognizedCandidateDigitKeyAction() {
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.candidateDigitKeyAction = .UNRECOGNIZED(99)
+
+        XCTAssertThrowsError(try HazkeyServerConfig.normalizeProfile(profile)) { error in
+            guard case ConfigError.unrecognizedEnum(let field, let rawValue) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(field, "candidateDigitKeyAction")
+            XCTAssertEqual(rawValue, 99)
+        }
+    }
+
+    func testSavedCandidateDigitMoveCursorSurvivesReload() throws {
+        // 前提: 分離したXDG_CONFIG_HOME配下へ保存する設定
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.candidateDigitKeyAction = .candidateDigitMoveCursor
+
+        // 実行: 保存してconfig.jsonから読み直す
+        let config = HazkeyServerConfig()
+        try config.saveConfig([profile])
+        let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 明示したカーソル移動が往復後も保持される
+        XCTAssertTrue(reloaded.hasCandidateDigitKeyAction)
+        XCTAssertEqual(reloaded.candidateDigitKeyAction, .candidateDigitMoveCursor)
+    }
+
+    func testDecodingLegacyConfigWithoutCandidateDigitKeyActionSelectsAndCommits() throws {
+        // 前提: 数字キー動作のフィールドを持たない旧config.json (未知フィールドを含む)
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+        let configDirectory = HazkeyServerConfig.getConfigDirectory()
+        try FileManager.default.createDirectory(
+            at: configDirectory, withIntermediateDirectories: true)
+        let configURL = configDirectory.appendingPathComponent("config.json")
+        try Data("""
+            [{"profileName": "Legacy", "unknownFutureField": 42}]
+            """.utf8).write(to: configURL)
+
+        // 実行: 保存済みconfig.jsonを復号する
+        let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+        // 検証: 例外なく旧設定を読み込み、数字キー動作は選択して確定する既定値になる
+        XCTAssertEqual(profile.profileName, "Legacy")
+        XCTAssertTrue(profile.hasCandidateDigitKeyAction)
+        XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
+    }
 }

@@ -72,4 +72,12 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertFalse(profile.zenzaiAlignmentSeparator)
         XCTAssertFalse(profile.zenzaiAlignmentSeparatorEffective)
     }
+
+    func testDefaultProfileSelectsAndCommitsWithCandidateDigitKeys() throws {
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        XCTAssertTrue(profile.hasCandidateDigitKeyAction)
+        XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
+    }
 }

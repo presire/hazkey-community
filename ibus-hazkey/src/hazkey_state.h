@@ -291,6 +291,19 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     static bool isAltDigitKey(guint keyval, guint state);
 
     /**
+     * @brief 無修飾の数字キーをページ内候補位置へ写像する
+     *
+     * NumLock (Mod2) とCapsLockは無視し、[Shift] / [Ctrl] / [Alt] / [Super]系と[AltGr]系 (Mod3 / Mod5) の修飾を含むキーは対象外とする
+     * トップ行とテンキーの1〜9は0〜8、0は9へ写像する
+     *
+     * @param keyval IBusキーシンボル
+     * @param state IBusモディファイア状態
+     * @return ページ内候補位置で数字キーでなければnullopt
+     * @note 状態機械とフロントエンドの同期的消費判定で共有する
+     */
+    static std::optional<int> candidateDigitIndex(guint keyval, guint state);
+
+    /**
      * @brief [Ctrl]と[U] / [I] / [O] / [P] / [T]のいずれかの厳密な組み合わせかを判定する
      *
      * FcitxのctrlShortcutHandlerの直接変換ショートカットに対応する
@@ -777,13 +790,6 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     /** @brief 前ページ開始位置へ移動する */
     void prevPage();
     /**
-     * @brief 数字キーによるページ内候補選択を処理する
-     *
-     * @param keyval IBusキーシンボル
-     * @return 数字選択として消費した場合はtrue
-     */
-    bool selectDigit(guint keyval);
-    /**
      * @brief 現在の候補スナップショットを世代付きでメインループへ送る
      *
      * テーブルは素朴なスナップショットからメインループ上でのみ構築するため、ワーカーはIBusLookupTableを所有しない
@@ -923,6 +929,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     HotkeySpec acceptPredictionHotkey_{};       ///< 予測受入ホットキー
     HotkeySpec deleteLearningHotkey_{};         ///< 学習削除ホットキー
     HotkeySpec kanaCycleHotkey_{};              ///< カナ種切替ホットキー (無効時は照合しない)
+    bool candidateDigitKeyMovesCursor_ = false; ///< 候補選択中の数字キーはカーソル移動のみか (falseは選択して確定)
     bool serverProfileLoaded_ = false;          ///< サーバプロファイルを読込済みか
 
     // --- キャッシュ ---

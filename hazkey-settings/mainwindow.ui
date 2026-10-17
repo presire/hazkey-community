@@ -425,6 +425,39 @@
                </property>
               </widget>
              </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="candidateDigitKeyActionLabel">
+               <property name="minimumSize">
+                <size>
+                 <width>200</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Alt + number always selects and commits the candidate, regardless of this setting. Number keys on the numeric keypad are included.</string>
+               </property>
+               <property name="text">
+                <string>Number keys in candidate list</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QComboBox" name="candidateDigitKeyAction">
+               <property name="toolTip">
+                <string>Alt + number always selects and commits the candidate, regardless of this setting. Number keys on the numeric keypad are included.</string>
+               </property>
+               <item>
+                <property name="text">
+                 <string>Select and commit</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Move cursor only (commit with Enter)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
             </layout>
            </item>
            <item>

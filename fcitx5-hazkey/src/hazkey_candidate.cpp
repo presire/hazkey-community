@@ -8,6 +8,30 @@ namespace fcitx {
 
 /// 候補の表示・選択処理
 
+std::optional<int> candidateDigitPageLocalIndex(const Key& key) {
+    // 実際の修飾キーだけを拒否する (Shift・AltGr付きの数字は呼び出し側で従来どおり扱う)。
+    // NumLock・CapsLock・キーリピート・XKBグループ等の状態ビットは数字の意味を変えない。
+    // 拒否するビットはFcitx 5.0.4に存在するものに限る
+    const KeyStates modifierStates{KeyState::Shift, KeyState::Ctrl,   KeyState::Alt,
+                                   KeyState::Hyper, KeyState::Super,  KeyState::Mod5,
+                                   KeyState::Super2, KeyState::Hyper2, KeyState::Meta};
+    if (key.states() & modifierStates) {
+        return std::nullopt;
+    }
+
+    // Key::digit() はFcitx 5.0.20以降のAPIのため、keysymの範囲で判定する
+    const KeySym sym = key.sym();
+    int digit = -1;
+    if (sym >= FcitxKey_0 && sym <= FcitxKey_9) {
+        digit = static_cast<int>(sym - FcitxKey_0);
+    } else if (sym >= FcitxKey_KP_0 && sym <= FcitxKey_KP_9) {
+        digit = static_cast<int>(sym - FcitxKey_KP_0);
+    } else {
+        return std::nullopt;
+    }
+    return (digit + 9) % 10;
+}
+
 std::vector<std::string> HazkeyCandidateWord::getPreedit() const {
     if (hiragana_.empty()) return {candidate_};
     return {candidate_, hiragana_};

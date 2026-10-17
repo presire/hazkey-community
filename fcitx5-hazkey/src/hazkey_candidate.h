@@ -4,8 +4,10 @@
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/text.h>
+#include <fcitx-utils/key.h>
 #include <fcitx-utils/i18n.h>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 #include "candidate_annotation.h"
@@ -21,6 +23,9 @@ const KeyList defaultSelectionKeys = {
     Key{FcitxKey_5}, Key{FcitxKey_6}, Key{FcitxKey_7}, Key{FcitxKey_8},
     Key{FcitxKey_9}, Key{FcitxKey_0},
 };
+
+/// 数字キーを現在ページ内の候補位置へ対応付ける (対象外のキーはnullopt)
+std::optional<int> candidateDigitPageLocalIndex(const Key& key);
 
 /// サーバ候補をFcitx 5の候補項目として保持する
 class HazkeyCandidateWord : public CandidateWord {
