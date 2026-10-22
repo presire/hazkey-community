@@ -71,7 +71,7 @@ void HazkeyEngine::activate([[maybe_unused]] const InputMethodEntry &entry,
     inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 
-/// 無効化時に表示中のpreeditを確定して状態を消去する
+/// 無効化時に必要なpreeditの確定を行い、状態を消去する
 void HazkeyEngine::deactivate([[maybe_unused]] const InputMethodEntry &entry,
                               InputContextEvent &event) {
     FCITX_DEBUG() << "HazkeyEngine deactivate";
@@ -82,7 +82,14 @@ void HazkeyEngine::deactivate([[maybe_unused]] const InputMethodEntry &entry,
     if (isSecureInput(inputContext)) {
         state->discardForSecureInput();
     } else {
-        if (hadVisiblePreedit) {
+        // フォーカス解除時のクライアント側preeditの確定は、deactivate()より前に
+        // Fcitx 5本体 (ClientUnfocusCommitを持つクライアントではクライアント自身) が行う
+        // ここでも確定すると2重確定になるため、KeyboardEngine::deactivate()と同様に確定しない
+        // サーバ側の入力パネルに表示したpreeditと、フォーカス解除以外の無効化は従来どおり確定する
+        const bool focusOutCommitHandledExternally =
+            event.type() == EventType::InputContextFocusOut &&
+            inputContext->capabilityFlags().test(CapabilityFlag::Preedit);
+        if (hadVisiblePreedit && !focusOutCommitHandledExternally) {
             state->commitPreedit();
         }
         state->reset();
