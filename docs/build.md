@@ -23,12 +23,12 @@ Swiftのインストールから依存パッケージの導入までを個別に
 Hazkey Communityのビルドには、Swift 6.1以上が必要です。  
 公式ツールの[swiftly](https://www.swift.org/install/linux/swiftly)を使用してインストールします。  
 
-> **2026年9月時点の注意**:  
-> Fedora 44 / openSUSE Leap 16 / Debian 13 (Trixie) / Ubuntu 26.04 は、  
-> いずれも [swift.orgの公式リリース ツールチェーン](https://www.swift.org/platform-support/) が未公開、  
-> または、swiftly (現行配布版 v1.1.3) の自動検出リストに未登録のため、`swiftly init` は「非公式プラットフォーム」と判定します。  
-> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのツールチェーンを明示指定してください。  
-> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform`指定は不要になります)  
+> **2026年10月時点の注意**:  
+> Debian 13 (Trixie) / Ubuntu 26.04 は、[swift.orgの公式リリース ツールチェーン](https://www.swift.org/platform-support/) が公開されています (`debian13` / `ubuntu26.04`)。  
+> Fedora 44 / openSUSE Leap 16 / openSUSE Tumbleweed 向けのツールチェーンは無いため、  
+> それぞれFedora Linux 41 (`fedora41`) / RHEL 9 (`ubi9`) のツールチェーンを使います。  
+> 以下の手順では、どのディストリビューションでも`--platform`オプションでツールチェーンを明示指定します。  
+> (CIの`.github/workflows/build.yml`も、同じ対応でSwift 6.4.1のツールチェーンを使います)  
 
 ### Fedora 44
 
@@ -38,16 +38,16 @@ sudo dnf install git curl
 curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
 tar zxf swiftly-$(uname -m).tar.gz
 
-./swiftly init --quiet-shell-followup --platform fedora39
+./swiftly init --quiet-shell-followup --platform fedora41
 . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" && hash -r
 
 swiftly install latest
 swift --version
 ```
 
-> Fedora 44は`fedora44`として自動検出されないため、公式リリースツールチェーンが存在する`fedora39`を明示指定します。  
-> `fedora39`ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
-> (`fedora41`ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
+> Fedora 44向けのツールチェーンは無いため、公式リリースツールチェーンが存在する最新のFedora (`fedora41`) を明示指定します。  
+> `swiftly init`の対話メニューでは「Fedora Linux 41」に当たります。  
+> `fedora41`ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも動作します。  
 
 ### openSUSE Leap 16
 
@@ -103,11 +103,11 @@ tar zxf swiftly-$(uname -m).tar.gz
 ```
 
 ```sh
-# Debian 13 (Trixie): Debian 13向けの公式ツールチェーンは未公開のため、Debian 12を指定
-./swiftly init --quiet-shell-followup --platform debian12
+# Debian 13 (Trixie): Debian 13向けの公式ツールチェーンを指定
+./swiftly init --quiet-shell-followup --platform debian13
 
-# Ubuntu 26.04: Ubuntu 26.04向けの公式ツールチェーンは未公開のため、Ubuntu 24.04を指定
-./swiftly init --quiet-shell-followup --platform ubuntu24.04
+# Ubuntu 26.04: Ubuntu 26.04向けの公式ツールチェーンを指定
+./swiftly init --quiet-shell-followup --platform ubuntu26.04
 ```
 
 ```sh
@@ -117,19 +117,9 @@ swiftly install latest
 swift --version
 ```
 
-> **Ubuntu 26.04のみ追加対応が必要**:  
-> `ubuntu24.04`向けツールチェーンは`libxml2.so.2`を要求しますが、  
-> Ubuntu 26.04は、sonameが上がった`libxml2.so.16`のみを同梱しているため、シンボリックリンクを作成してください。  
-
-> ```sh
-> sudo apt install libxml2-16
-> sudo ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
->             /usr/lib/x86_64-linux-gnu/libxml2.so.2
-> ```
-
-> この対応が必要なのは、**ソースからビルドする環境のSwiftツールチェーンを動かす場合だけ**です。  
-> hazkey-community-serverはSwiftランタイムを静的にリンクしており、`libxml2.so.2`に依存しません。  
-> GitHub Releasesの`.deb` / `.rpm`パッケージの導入・実行には、`libxml2.so.2`もシンボリックリンクも不要です。  
+> `ubuntu26.04`向けツールチェーンはUbuntu 26.04の`libxml2.so.16`をそのまま使うため、  
+> 以前の`ubuntu24.04`向けツールチェーンで必要だった`libxml2.so.2`のシンボリックリンクは不要です。  
+> `libxml2.so.16`が見つからないエラーが出た場合は、`sudo apt install libxml2-16`を実行してください。  
 
 ## 依存パッケージのインストール
 

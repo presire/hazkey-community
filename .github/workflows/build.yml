@@ -24,7 +24,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz
           - name: Debian 13 Trixie (ARM64)
             distro: debian
             image: debian:trixie
@@ -34,7 +34,7 @@ jobs:
             runner: ubuntu-24.04-arm
             expected_machine: aarch64
             swift_target: aarch64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404-aarch64/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04-aarch64.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/debian13-aarch64/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13-aarch64.tar.gz
           - name: Ubuntu 26.04
             distro: debian
             image: ubuntu:26.04
@@ -44,7 +44,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/ubuntu2604/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu26.04.tar.gz
           - name: Fedora 44
             distro: fedora
             image: fedora:44
@@ -54,7 +54,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/fedora41/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-fedora41.tar.gz
           - name: openSUSE Leap 16
             distro: opensuse
             image: opensuse/leap:16
@@ -64,7 +64,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
           - name: openSUSE Tumbleweed
             distro: opensuse
             image: opensuse/tumbleweed:latest
@@ -74,7 +74,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -163,7 +163,7 @@ jobs:
                 qt6-base-devel qt6-tools-devel qt6-linguist-devel vulkan-headers \
                 shaderc glslang-devel spirv-headers
 
-              # Swift（Ubuntu 24.04 build）は libxml2.so.2 を必要とする。Tumbleweed は 2.14 の SONAME 更新後、
+              # Swift（RHEL 9 (UBI 9) build）は libxml2.so.2 を必要とする。Tumbleweed は 2.14 の SONAME 更新後、
               # libxml2-16（libxml2.so.16）のみを提供するため、シンボリックリンクを作成する。
               if ! zypper --non-interactive install --no-recommends libxml2-2; then
                 zypper --non-interactive install --no-recommends libxml2-16
@@ -172,10 +172,9 @@ jobs:
               ;;
           esac
 
+          # Swift（Ubuntu 26.04 build）は libxml2.so.16 を必要とする
           if [ "$IMAGE" = "ubuntu:26.04" ]; then
             apt-get install -y libxml2-16
-            ln -sf /usr/lib/x86_64-linux-gnu/libxml2.so.16 \
-              /usr/lib/x86_64-linux-gnu/libxml2.so.2
           fi
 
            # コンテナーのアーキテクチャが、このマトリクス行で選択されたランナーと一致することをアサートする
