@@ -55,6 +55,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 | 機能 | 操作 (既定値) | 初期状態 | 概要 |
 |:---|:---|:---:|:---|
 | **文節境界調整** | `[Shift] + [Left]` / `[Shift] + [Right]` | - | 変換中に文節の境界を調整 |
+| **入力中のカーソル移動** | `[Left]` / `[Right]` | - | ライブ変換中は変換表示を一時停止して、読み (ひらがな) の任意の位置で挿入・削除<br>末尾へ戻ると、変換表示に復帰 |
 | **ライブ変換トグル** | `[Ctrl] + [Shift] + [L]` | - | ライブ変換のON / OFFを即座に切替 |
 | **予測候補の先頭表記固定** | `[F5]` | - | サジェスト候補で押下すると、その表記を固定して続きを入力 |
 | **カナ種切替** | `[無変換]` | - | 入力中の文字列全体を、全角カタカナ → 半角カタカナ → ひらがなの順に切替 |
@@ -98,6 +99,14 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 ## クイックスタート (GitHub Releasesからインストール)
 
 サポート対象環境では、ソースビルド不要でGitHub Releasesのパッケージをインストールできます。  
+
+> GitHub Releasesのパッケージは、Swift標準ライブラリを静的リンクしてビルドされているため、  
+> Swift (ツールチェーン・ランタイム) のインストールは不要です。  
+> 
+> 同様に、`libxml2.so.2`のインストールやシンボリックリンクの作成 (openSUSE / Ubuntu 26.04でSwiftツールチェーンを動かすための作業) も不要です。  
+> 
+> これらが必要になるのは、ソースコードからビルドする場合のみです。  
+> (下記「ソースコードからのビルド」を参照すること)  
 
 1. [Releases ページ](https://github.com/presire/hazkey-community/releases)から最新版 (**v0.2.20-community**以降) を開きます。  
 2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
@@ -315,47 +324,12 @@ Zenzai / jinen-v2のモデル選択・有効化手順・Vulkanドライバの導
 
 ## SELinuxポリシー (任意)
 
-SELinuxが有効な環境で、Hazkey Communityを`/usr`以外 (`/usr/local`、`/opt`、ホームディレクトリ) にインストールすると、  
-ファイルに既定のラベルが付くため、SELinuxの拒否 (AVC) が記録されたり、変換サーバが起動できなかったりする場合があります。  
+SELinuxが有効な環境で、Hazkey Communityを`/usr`以外 (`/usr/local`、`/opt`、ホームディレクトリ等) にインストールする場合は、　　
+同梱のSELinuxポリシーモジュールを利用できます。  
 
-この問題を避けるために、Hazkey Community専用のSELinuxポリシーモジュールを同梱しています。  
+RPMパッケージまたはDEBパッケージで`/usr`にインストールした場合は、通常は不要です。  
 
-- 全てのインストール先に対する、一貫したファイルラベルを提供します。  
-- 変換サーバ (hazkey-community-server) を専用のドメインで動作させます。  
-  変換サーバは全てのキー入力を受け取るため、TCP通信とポートでの待ち受けは許可しません。  
-- GPU (Vulkan) の使用、ホームディレクトリ配下のモデルの読み取り、GPUドライバのキャッシュへの書き込みは、Booleanで個別に無効にできます。  
-
-ポリシーモジュールは、既定ではビルドされません。  
-CMakeで`-DENABLE_SELINUX=ON`オプションを指定すると、ビルドとインストールの時に、モジュールの読み込みとラベルの付け直しまで行います。  
-
-```sh
-cd hazkey-community
-cmake -S . -B build -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local \
-      -DENABLE_SELINUX=ON
-cmake --build build
-sudo cmake --install build
-
-# 読み込み前から動作している変換サーバを終了する (次のキー入力で、新しいドメインで自動的に再起動される)
-pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
-```
-
-事前に、`selinux-policy-devel`、`checkpolicy`、`policycoreutils`、`policycoreutils-python-utils`が必要です。  
-Debian 13 / Ubuntu 26.04では、`selinux-policy-default`、`checkpolicy`、`policycoreutils`、`semodule-utils`、`selinux-utils`、`make`が必要です。  
-(基本ポリシーの型名がFedora / openSUSEと異なるため、ビルド時に自動で型名を置き換えます)  
-`/usr`にRPM / DEBパッケージでインストールした場合は、`/usr`の標準のラベルで動作するため、通常は不要です。  
-
-| 項目 | 内容 |
-|---|---|
-| 動作確認 | openSUSE Leap 16 (targetedポリシー、MLS有効) の実機<br>Fedora 44、Debian 13、Ubuntu 26.04、openSUSE Tumbleweedのコンテナ (ビルド・読み込み・ラベルの確認) |
-| 対象のドメイン | 変換サーバだけ<br>Fcitx 5のアドオン、IBusのエンジン、設定GUIは、起動元のドメインのまま動作する |
-| 許可の範囲 | unconfined_t / user_t / staff_tからの起動とソケット接続 |
-
-インストール手順、Booleanの設定、トラブルシューティング、管理者向けの詳細は、次の文書を参照してください。  
-
-- [selinux/README.md](./selinux/README.md)  
-- [selinux/ADMIN.md](./selinux/ADMIN.md)  
+概要・必要なパッケージ・ビルド手順は、[docs/selinux.md](./docs/selinux.md)を参照してください。  
 
 <br>
 

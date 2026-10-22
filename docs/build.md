@@ -1,32 +1,34 @@
-# ソースからのビルド
+# ソースコードからのビルド
 
 ## 依存関係
 
 - Swift >= 6.1  
-- Fcitx 5 >= 5.0.4 (開発ヘッダ含む。`ENABLE_FCITX5=ON` 時に必要)  
-- IBus (開発ヘッダ `libibus-1.0-dev` / `ibus-devel`。`ENABLE_IBUS=ON` 時に必要)  
-- Qt >= 6.7 (6.2 以降でもビルド可能ですが表示が崩れる場合があります)  
+- Fcitx 5 >= 5.0.4 (開発ヘッダ含む)  
+  `ENABLE_FCITX5=ON`オプション指定時に必要  
+- IBus (開発ヘッダ: `libibus-1.0-dev` / `ibus-devel`)  
+  `ENABLE_IBUS=ON`オプション指定時に必要  
+- Qt >= 6.7 (6.2以降でもビルド可能ですが表示が崩れる場合があります)  
 - CMake >= 3.21 (4.x以降推奨)  
 - Protobuf >= 3.12  
 - Ninja  
 - Gettext  
 - Vulkan SDKヘッダ (`libvulkan-dev` / `vulkan-headers`)  
-  `GGML_VULKAN=ON` (デフォルト) のビルドで必要  
+  `GGML_VULKAN=ON`オプション指定時に必要 (デフォルト)  
 
 以下では、CI (`.github/workflows/build.yml`) で実際にビルド確認済みの4ディストリビューション向けに、  
 Swiftのインストールから依存パッケージの導入までを個別に示します。  
 
 ## Swiftのインストール
 
-Hazkey Communityのビルドには Swift 6.1 以上が必要です。  
-公式ツールの [swiftly](https://www.swift.org/install/linux/swiftly) を使用してインストールします。  
+Hazkey Communityのビルドには、Swift 6.1以上が必要です。  
+公式ツールの[swiftly](https://www.swift.org/install/linux/swiftly)を使用してインストールします。  
 
 > **2026年9月時点の注意**:  
 > Fedora 44 / openSUSE Leap 16 / Debian 13 (Trixie) / Ubuntu 26.04 は、  
-> いずれも [swift.orgの公式リリースtoolchain](https://www.swift.org/platform-support/) が未公開、  
+> いずれも [swift.orgの公式リリース ツールチェーン](https://www.swift.org/platform-support/) が未公開、  
 > または、swiftly (現行配布版 v1.1.3) の自動検出リストに未登録のため、`swiftly init` は「非公式プラットフォーム」と判定します。  
-> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのtoolchainを明示指定してください。  
-> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform` 指定は不要になります)  
+> `--platform` オプションで、実際に動作確認が取れている近いプラットフォームのツールチェーンを明示指定してください。  
+> (将来のswiftly/Swiftリリースで自動検出に対応した場合、`--platform`指定は不要になります)  
 
 ### Fedora 44
 
@@ -43,7 +45,7 @@ swiftly install latest
 swift --version
 ```
 
-> Fedora 44は`fedora44`として自動検出されないため、公式リリースtoolchainが存在する`fedora39`を明示指定します。  
+> Fedora 44は`fedora44`として自動検出されないため、公式リリースツールチェーンが存在する`fedora39`を明示指定します。  
 > `fedora39`ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも問題なく動作します。  
 > (`fedora41`ツールチェーンも公開されていますが、現行のswiftlyの`--platform`からは選択できません)  
 
@@ -58,7 +60,7 @@ curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
 tar xf swiftly-$(uname -m).tar.gz
 ```
 
-`./swiftly init` 実行時に以下のエラーが表示される場合、  
+`./swiftly init`コマンドの実行時に以下のエラーが表示される場合、  
 openSUSEは証明書パスがDebian系と異なるため、シンボリックリンクの作成が必要です。  
 
 ```sh
@@ -76,10 +78,10 @@ swift --version
 ```
 
 > openSUSE / SLE系は、swift.orgで公式サポートされたことが1度もないため、  
-> **RHEL 9 (`ubi9`) のtoolchainを選択してください**。  
+> **RHEL 9 (`ubi9`) のツールチェーンを選択してください**。  
 > 
-> openSUSE Leap 16でのRHEL 9 toolchain選択は動作確認済みです。  
-> `swiftly`/`swift`実行時に `libxml2.so.2` が見つからないエラーが出た場合は、以下を試してください。  
+> openSUSE Leap 16でのRHEL 9ツールチェーン選択は動作確認済みです。  
+> `swiftly`/`swift`コマンド実行時において、`libxml2.so.2`が見つからないエラーが出た場合は、以下を試してください。  
 
 > ```sh
 > sudo zypper install libxml2-16
@@ -101,10 +103,10 @@ tar zxf swiftly-$(uname -m).tar.gz
 ```
 
 ```sh
-# Debian 13 (Trixie): Debian 13向けの公式toolchainは未公開のため、Debian 12を指定
+# Debian 13 (Trixie): Debian 13向けの公式ツールチェーンは未公開のため、Debian 12を指定
 ./swiftly init --quiet-shell-followup --platform debian12
 
-# Ubuntu 26.04: Ubuntu 26.04向けの公式toolchainは未公開のため、Ubuntu 24.04を指定
+# Ubuntu 26.04: Ubuntu 26.04向けの公式ツールチェーンは未公開のため、Ubuntu 24.04を指定
 ./swiftly init --quiet-shell-followup --platform ubuntu24.04
 ```
 
@@ -116,8 +118,8 @@ swift --version
 ```
 
 > **Ubuntu 26.04のみ追加対応が必要**:  
-> `ubuntu24.04`向けtoolchainは`libxml2.so.2`を要求しますが、  
-> Ubuntu 26.04は soname が上がった `libxml2.so.16` のみを同梱しているため、シンボリックリンクを作成してください。  
+> `ubuntu24.04`向けツールチェーンは`libxml2.so.2`を要求しますが、  
+> Ubuntu 26.04は、sonameが上がった`libxml2.so.16`のみを同梱しているため、シンボリックリンクを作成してください。  
 
 > ```sh
 > sudo apt install libxml2-16
@@ -132,7 +134,8 @@ swift --version
 ## 依存パッケージのインストール
 
 各ディストリビューションでの依存パッケージの導入コマンドは以下の通りです。  
-`-DGGML_VULKAN=OFF` のCPU専用ビルドでは、  
+
+`-DGGML_VULKAN=OFF`オプションのCPU専用ビルドでは、  
 Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` 等) のインストールを省略できます。  
 
 ### Fedora 44
@@ -148,7 +151,8 @@ sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
                  spirv-headers-devel
 ```
 
-> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
+> `libibus-1.0-dev`パッケージは、IBusフロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。  
+> Fcitx 5版のみビルドする場合は省略可能です。
 
 ### openSUSE Leap 16
 
@@ -160,7 +164,8 @@ sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \
                     vulkan-headers shaderc glslang-devel spirv-headers
 ```
 
-> `ibus-devel` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
+> `libibus-1.0-dev`パッケージは、IBusフロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。  
+> Fcitx 5版のみビルドする場合は省略可能です。
 
 ### Debian 13 (Trixie) / Ubuntu 26.04
 
@@ -174,10 +179,10 @@ sudo apt install cmake ninja-build pkg-config gettext \
                  spirv-headers
 ```
 
-> `libibus-1.0-dev` は IBus フロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。Fcitx 5 版のみ建てる場合は省略できます。
+> `libibus-1.0-dev`パッケージは、IBusフロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。  
+> Fcitx 5版のみビルドする場合は省略可能です。
 
-`spirv-headers` 系パッケージは、  
-内蔵のllama.cppがVulkanバックエンドのCMake configure時に `find_package(SPIRV-Headers)` を要求するため、  
+`spirv-headers`系パッケージは、内蔵のllama.cppがVulkanバックエンドのCMakeコマンド実行時に`find_package(SPIRV-Headers)`を要求するため、  
 Vulkanビルドでは必須です。  
 
 パッケージ名の最新の定義は、CIの定義 (`.github/workflows/build.yml`) も参照してください。  
@@ -197,19 +202,21 @@ ninja -j $(nproc)
 sudo ninja install
 ```
 
-インストール後は、使用中のフレームワークを再起動して入力メソッドに登録してください。(Fcitx 5・IBus とも[初回の有効化](../README.md#初回の有効化) 参照)  
-既定のビルドは Fcitx 5 版のみで、IBus 版が必要な場合は `-DENABLE_IBUS=ON` を付けてください。  
+インストール後は、使用中のフレームワークを再起動して入力メソッドに登録してください。(Fcitx 5・IBusとも[初回の有効化](../README.md#初回の有効化)を参照)  
+既定のビルドはFcitx 5版のみであり、IBus版が必要な場合は`-DENABLE_IBUS=ON`オプションを指定してください。  
 
 ## ビルドオプション
 
 | オプション | デフォルト | 説明 |
 |:---|:---:|:---|
-| **`ENABLE_FCITX5`** | `ON` | Fcitx 5 フロントエンド (`fcitx5-hazkey`) をビルド |
-| **`ENABLE_IBUS`** | `OFF` | IBus フロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0` が必要) |
-| **`ENABLE_SELINUX`** | `OFF` | SELinuxポリシーモジュール (hazkey_community) をビルド<br>`/usr`以外へのインストール時の拒否を避けるために使う<br>(`checkmodule`、`semodule_package`、`semodule`、`restorecon`が必要。詳細は[SELinuxポリシー](../selinux/README.md)を参照) |
-| **`GGML_VULKAN`** | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は `-DGGML_VULKAN=OFF` |
+| **`ENABLE_FCITX5`** | `ON` | Fcitx 5フロントエンド (`fcitx5-hazkey`) をビルド |
+| **`ENABLE_IBUS`** | `OFF` | IBusフロントエンド (`ibus-hazkey`) をビルド (`pkg-config ibus-1.0`が必要) |
+| **`ENABLE_SELINUX`** | `OFF` | SELinuxポリシーモジュール (hazkey_community) をビルド<br>`/usr`以外へのインストール時の拒否を避けるために使用する<br>(`checkmodule`、`semodule_package`、`semodule`、`restorecon`が必要<br><br>詳細は、[SELinuxポリシー](../selinux/README.md)を参照) |
+| **`GGML_VULKAN`** | `ON` | ZenzaiのVulkan (GPU) バックエンド<br>CPU専用ビルドにする場合は、`-DGGML_VULKAN=OFF`オプションを指定する |
 | **`HAZKEY_SERVER_ENABLE_ZENZAI`** | `ON` | Zenzaiニューラル変換機能の有効化 |
-| **`SWIFT_LINK_PATH`** | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux` を明示する |
+| **`HAZKEY_SERVER_STATIC_SWIFT_STDLIB`** | `ON` | Swift標準ライブラリをhazkey-community-serverに静的リンク<br>`OFF`にすると動的リンクになり、実行環境にもSwiftランタイムが必要になる |
+| **`SWIFT_DYNAMIC_LIB_PATH`** | (自動検出) | 静的リンク時に追加するSwiftライブラリのリンクパス ([swiftlang/swift#78003](https://github.com/swiftlang/swift/issues/78003) の回避用)<br>未指定時は、`swift -print-target-info`から自動検出する |
+| **`SWIFT_LINK_PATH`** | (未指定) | Swiftランタイムライブラリのリンクパス<br>swiftly等でインストールしたツールチェーンをCMakeが見つけない場合に、`<ツールチェーン>/usr/lib/swift/linux`を明示する |
 
 CPU専用ビルドの例:  
 
@@ -223,5 +230,36 @@ cmake -G Ninja \
 
 > **注意**:  
 > ソースの配置パスに角括弧 (`[` `]`) を含めないでください。  
-> パスに角括弧が含まれていると、CMakeの `file(GLOB)` が誤解釈し、llama.cppのVulkanビルドが失敗することがあります。  
+> パスに角括弧が含まれていると、CMakeの`file(GLOB)`が誤解釈し、llama.cppのVulkanビルドが失敗することがあります。  
 > 角括弧を含まないパスにクローンするか、角括弧を含まないシンボリックリンク経由でcmakeコマンドを実行してください。  
+
+### Swift標準ライブラリの静的リンク
+
+GitHub Releasesのパッケージと同様に、Swift標準ライブラリを静的リンクしてビルドすると、  
+ビルドしたバイナリを実行する環境にSwift (ツールチェーン・ランタイム) をインストールする必要がなくなります。  
+(ビルドする環境には、上記「Swiftのインストール」の手順でSwiftが必要です)  
+
+静的リンクは既定で有効 (`HAZKEY_SERVER_STATIC_SWIFT_STDLIB=ON`) のため、上記「ビルド手順」のとおりにビルドすれば静的リンクされます。  
+明示する場合は、次のように指定します。  
+
+```sh
+cmake -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DHAZKEY_SERVER_STATIC_SWIFT_STDLIB=ON \
+      ..
+ninja -j $(nproc)
+sudo ninja install
+```
+
+ビルド時において、`Detected Swift dynamic library path: ...`メッセージが表示されれば、リンクパスは自動検出されています。  
+
+もし、`Failed to detect Swift dynamic library path`の警告が表示されてビルドが失敗する場合は、  
+`-DSWIFT_DYNAMIC_LIB_PATH=<ツールチェーン>/usr/lib/swift/linux`オプションを指定してください。  
+
+インストール後、Swiftのランタイムライブラリ (`libswiftCore.so`等) に依存していないことは、次のコマンドで確認できます。  
+(何も表示されなければ静的リンクされています)  
+
+```sh
+ldd /usr/lib*/hazkey-community/hazkey-community-server | grep -i swift
+```
