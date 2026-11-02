@@ -20,7 +20,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 > IBus版をソースコードからビルドする場合は、CMakeで`-DENABLE_IBUS=ON`オプションが必要です。(デフォルトはOFF)  
 > バイナリパッケージは両フロントエンド分を頒布します。  
 
-本リポジトリは [7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey) をベースにしたコミュニティ版で、現在のバージョンは **v0.2.43** です。  
+本リポジトリは、[7ka-Hiira/hazkey](https://github.com/7ka-Hiira/hazkey)をベースにしたものであり、現在のバージョンは **v0.2.43** です。  
 
 > **上流版 (hazkey公式) の情報**  
 > - ホームページ: [https://hazkey.hiira.dev](https://hazkey.hiira.dev)  
@@ -45,9 +45,10 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 
 <br>
 
-## コミュニティ版の主な機能 (v0.2.2-community以降)
+## Hazkey Community 独自の機能
 
-上流に対するコミュニティ版独自の追加機能・改善の概要です。  
+Hazkey Communityで追加された独自の機能・改善の概要です。  
+
 各機能の詳細は、[docs/features.md](./docs/features.md)を参照してください。  
 
 ### 入力・変換
@@ -66,7 +67,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 
 | 機能 | 初期状態 | 概要 |
 |:---|:---:|:---|
-| **ユーザ辞書 (品詞・動詞活用対応)** | - | TSV形式で単語を登録できる。<br>品詞 (固有名詞・人名・地名・動詞) 指定に対応し、設定UIから編集・インポート・エクスポートが可能 |
+| **ユーザ辞書 (品詞・動詞活用対応)** | - | TSV形式で単語を登録<br>品詞 (固有名詞・人名・地名・動詞) 指定に対応し、設定UIから編集・インポート・エクスポートが可能 |
 | **動詞活用エンジン** | - | ユーザ辞書の動詞から、五段活用・一段活用・サ行変格の全活用形を自動生成 |
 | **Emoji 17直接変換** | `ON` | Emoji 17.0辞書による絵文字の直接変換候補 |
 | **日本全国の地名辞書** | `OFF` | 難読地名47,934件を組み込み辞書として収録 |
@@ -98,106 +99,159 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 
 ## クイックスタート (GitHub Releasesからインストール)
 
-サポート対象環境では、ソースビルド不要でGitHub Releasesのパッケージをインストールできます。  
+[対応環境](#対応環境)では、GitHub Releasesで頒布しているパッケージをインストールするだけで使用できます。  
+ソースコードのビルドは不要です。  
 
-> GitHub Releasesのパッケージは、Swift標準ライブラリを静的リンクしてビルドされているため、  
-> Swift (ツールチェーン・ランタイム) のインストールは不要です。  
+> [!NOTE]  
+> パッケージはSwift標準ライブラリを静的リンクしているため、Swift (ツールチェーン・ランタイム) のインストールは不要です。  
+> openSUSEで必要とされる`libxml2.so.2`の導入やシンボリックリンクの作成も不要です。  
+> これらは[ソースコードからビルド](#ソースコードからのビルド)する場合にのみ必要です。  
+
+> [!IMPORTANT]  
+> v0.2.30-communityより前のバージョンを使用している場合は、  
+> 先に「[以前のバージョンからのアップグレード](#以前のバージョンからのアップグレード)」を確認してください。  
+
+### 手順1. パッケージを選ぶ
+
+パッケージは「使用するフレームワーク」と「ディストリビューション」の組み合わせで選びます。  
+
+| フレームワーク | パッケージ名 | 備考 |
+|:---|:---|:---|
+| **Fcitx 5** | `fcitx5-hazkey-community` | 通常はこちら |
+| **IBus** | `ibus-hazkey-community` | 実験的 |
+
+| ディストリビューション | パッケージ形式 |
+|:---|:---:|
+| Fedora 44 / openSUSE Leap 16 / openSUSE Tumbleweed | `.rpm` |
+| Debian 13 / Ubuntu 26.04 | `.deb` |
+
+> [!TIP]  
+> Fcitx 5用とIBus用は、両方をインストールして同時に使用することもできます。  
+> その場合は、「[Fcitx 5とIBusを両方インストールする場合](#fcitx-5とibusを両方インストールする場合)」の注意点を確認してください。  
+
+### 手順2. ダウンロードする
+
+[Releasesページ](https://github.com/presire/hazkey-community/releases)から、最新版のパッケージをダウンロードします。  
+
+ダウンロードしたファイルの破損・改竄を確認する場合は、「[ダウンロードの検証](#ダウンロードの検証-sha-256gpg署名)」を参照してください。(任意)  
+
+### 手順3. インストールする
+
+ダウンロードしたディレクトリで、使用するディストリビューション・フレームワークに該当するコマンドを1つ実行します。  
+
+**Fedora**  
+
+```sh
+sudo dnf install ./fcitx5-hazkey-community-*.rpm     # Fcitx 5用
+sudo dnf install ./ibus-hazkey-community-*.rpm       # IBus用
+```
+
+**openSUSE**  
+
+```sh
+sudo zypper install ./fcitx5-hazkey-community-*.rpm  # Fcitx 5用
+sudo zypper install ./ibus-hazkey-community-*.rpm    # IBus用
+```
+
+**Debian / Ubuntu**  
+
+```sh
+sudo apt install ./fcitx5-hazkey-community_*.deb     # Fcitx 5用
+sudo apt install ./ibus-hazkey-community_*.deb       # IBus用
+```
+
+### 手順4. 入力メソッドを登録する
+
+インストール後、「[初回の有効化](#初回の有効化)」の手順に従ってフレームワークを再起動し、入力メソッド**Hazkey Community**を登録します。  
+
+> [!NOTE]  
+> 設定UI (hazkey-community-settings) とサーバ (hazkey-community-server) は同じパッケージに含まれるため、常に同じバージョンになります。  
+> アップデート後にクライアントとサーバのバージョンが一致しない場合は、hazkey-community-serverが自動的に再起動されます。  
+
+### Fcitx 5とIBusを両方インストールする場合
+
+Fcitx 5とIBusは同時に有効化して使用できます。  
+(詳細は[docs/ibus-frontend.md](./docs/ibus-frontend.md)を参照)  
+
+両方のパッケージをインストールする場合は、次の点に注意してください。  
+
+- **バージョンを揃える**  
+  異なるバージョンの混在はサポート対象外です。  
+- **Fedora / openSUSE (`.rpm`)**  
+  そのまま共存できます。片方を削除しても、もう片方が必要とする共有ファイルは残ります。  
+- **Debian / Ubuntu (`.deb`)**  
+  両パッケージは`/usr/bin/hazkey-community-server`等の共有ファイルを含みますが、どちらの順にインストールしても共存できます。  
+
+> [!WARNING]  
+> **`.deb`で片方だけを削除する場合**  
+> dpkgは共有ファイルを「最後にインストールしたパッケージ」の所有として扱います。  
 > 
-> 同様に、`libxml2.so.2`のインストールやシンボリックリンクの作成 (openSUSEでSwiftツールチェーンを動かすための作業) も不要です。  
-> 
-> これらが必要になるのは、ソースコードからビルドする場合のみです。  
-> (下記「ソースコードからのビルド」を参照すること)  
-
-1. [Releases ページ](https://github.com/presire/hazkey-community/releases)から最新版 (**v0.2.20-community**以降) を開きます。  
-2. お使いのディストリビューション向けのアーカイブ (`.deb` または `.rpm`) をダウンロードします。  
-   パッケージは、Debian 13 / Ubuntu 26.04向けに `.deb`、Fedora 44 / openSUSE Leap 16 / Tumbleweed 向けに `.rpm` が頒布されます。  
-   
-   フロントエンドごとにパッケージが分かれています。(fcitx5-hazkey-community: Fcitx 5用、ibus-hazkey-community: IBus用)  
-   
-   使用するフレームワークのパッケージを選んでください。  
-   両方入れておくこともできます。(Fcitx 5とIBusを同時に有効化して使用できます。詳細は[docs/ibus-frontend.md](./docs/ibus-frontend.md)参照)  
-   
-   - Debian / Ubuntu (`.deb`):  
-     両パッケージは共有ファイル (hazkey-community-server / hazkey-community-settings / 辞書等) を相互に上書きできるよう `Replaces` を宣言しており、  
-     どちらの順に入れても共存できます。  
-   - RPM (`.rpm`):  
-     追加の宣言なしに共存できます。  
-   
-   両フロントエンドのパッケージは同じバージョンで揃えて使用してください。(異なるバージョンの混在は非サポートです)  
-   
-   > **共有ファイルの扱い (Debian / Ubuntu)**:  
-   > 両パッケージは `/usr/bin/hazkey-community-server` 等の共有ファイルを同じパスに含みます。  
-   > dpkgは共有ファイルを「最後にインストールした側」の所有として扱うため、  
-   > 後から入れた側を `apt remove` / `dpkg -r` コマンドを実行すると、残した側の共有ファイルも一緒に削除されます。  
-   > 残す側のパッケージを再インストール (例: `sudo apt install --reinstall ./fcitx5-hazkey-community_*_amd64.deb`) すると復旧します。  
-   > RPM (`.rpm`) では、片方を削除してももう片方が残っていれば共有ファイルは削除されません。  
-3. ダウンロードしたパッケージをインストールします。(パスはダウンロード先に合わせてください)  
-   
-   ```sh
-   # Fedora (使用するフレームワークのパッケージを指定)
-   sudo dnf install ./fcitx5-hazkey-community-*.rpm
-   sudo dnf install ./ibus-hazkey-community-*.rpm
-   
-   # openSUSE (使用するフレームワークのパッケージを指定)
-   sudo zypper install ./fcitx5-hazkey-community-*.rpm
-   sudo zypper install ./ibus-hazkey-community-*.rpm
-   
-   # Debian / Ubuntu系 (使用するフレームワークのパッケージを指定)
-   sudo apt install ./fcitx5-hazkey-community_*_amd64.deb
-   sudo apt install ./ibus-hazkey-community_*_amd64.deb
-   ```
-   
-4. 使用しているフレームワークを再起動します。  
-   (Fcitx 5はログアウト / ログイン、または下記の「初回の有効化」の手順。IBusは、`ibus restart`コマンド等)  
-
-> インストール後、設定UI (hazkey-community-settings) と サーバ (hazkey-community-server) は同じバージョンで揃います。  
-> クライアントとサーバのバージョンが不一致になった場合は、hazkey-community-serverが自動的に再起動されます。  
+> そのため、後からインストールした側を`apt remove` / `dpkg -r`で削除すると、残した側が使う共有ファイルも削除されます。  
+> この場合は、残す側のパッケージを再インストールすると復旧します。  
+>
+> ```sh
+> # 例: IBus用を削除してFcitx 5用を残した場合
+> sudo apt install --reinstall ./fcitx5-hazkey-community_*.deb
+> ```
 
 ### ダウンロードの検証 (SHA-256・GPG署名)
 
-Releasesページにはパッケージと合わせて、`SHA256SUMS`が配置されています。  
-ダウンロード後は、次の手順で破損・改竄の有無を確認できます。  
+ダウンロードしたパッケージが破損・改竄されていないかを確認する手順です。(任意)  
+必要なファイルは、全て[Releasesページ](https://github.com/presire/hazkey-community/releases)から取得できます。  
+
+| ファイル | 内容 |
+|:---|:---|
+| `SHA256SUMS` | 全パッケージのSHA-256チェックサム一覧 |
+| `SHA256SUMS.asc` | `SHA256SUMS`のGPG署名 |
+| `RPM-GPG-KEY-hazkey` | 署名検証用の公開鍵 (RPM署名と共通) |
+
+#### `.deb`の場合
+
+`.deb`パッケージ自体には署名がないため、署名付きの`SHA256SUMS`を使って検証します。  
 
 ```sh
-# .deb / .rpmと同じディレクトリにSHA256SUMSを配置して実行
-sha256sum -c SHA256SUMS
-```
-
-`SHA256SUMS`には、RPMと同じ鍵によるGPG署名 (`SHA256SUMS.asc`) が付いています。  
-DEBパッケージ自体には署名が無いため、DEBの改竄の有無は、`SHA256SUMS`の署名を検証してから`sha256sum -c`を実行して確認します。  
-
-```sh
-# 公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を取り込み、SHA256SUMSの署名を検証
+# 1. 公開鍵を取り込み、SHA256SUMSが正規のものであることを確認
 gpg --import RPM-GPG-KEY-hazkey
 gpg --verify SHA256SUMS.asc SHA256SUMS
+
+# 2. パッケージのチェックサムを照合 (パッケージと同じディレクトリで実行)
+sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-RPMパッケージはGPG署名付きで頒布されています。  
+#### `.rpm`の場合
 
-初回に1回だけ公開鍵 (RPM-GPG-KEY-hazkeyファイル: Releasesページから取得) を登録すると、  
-以降のdnf / zypperコマンドでのインストール時に署名警告が表示されなくなります。  
+`.rpm`パッケージ自体にGPG署名が付いています。  
+公開鍵を一度登録すれば、以降はdnf / zypperがインストール時に署名を自動で検証します。(署名警告も表示されなくなります)  
 
 ```sh
 # 公開鍵の登録 (初回のみ)
 sudo rpm --import RPM-GPG-KEY-hazkey
 
 # 署名の確認 (任意)
-rpm -K ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm
+rpm -K ./*-hazkey-community-*.rpm
 ```
 
-ビルドの来歴証明 (Artifact Attestation) も付与されています。  
-ghコマンドがある環境では、次のコマンドで「このCIでビルドされた」ことを検証 (任意) できます。  
+`SHA256SUMS`によるチェックサムの照合 (`sha256sum -c --ignore-missing SHA256SUMS`) も利用できます。  
+
+#### ビルドの来歴証明 (Artifact Attestation)
+
+パッケージには、本リポジトリのCIでビルドされたことを示す来歴証明 (Artifact Attestation) が付与されています。  
+[GitHub CLI](https://cli.github.com/) (`gh`コマンド) が実行可能な環境では、次のコマンドで検証できます。(任意)  
 
 ```sh
-gh attestation verify ./fcitx5-hazkey-community-*.rpm ./ibus-hazkey-community-*.rpm --owner presire
+gh attestation verify ./fcitx5-hazkey-community-*.rpm --owner presire
 ```
+
+(ファイル名は、ダウンロードしたパッケージに合わせてください)  
 
 <br>
 
 ## 以前のバージョンからのアップグレード
 
-v0.2.30-community以降で、インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
+v0.2.30-community以降において、  
+インストール先・実行ファイル名・ユーザデータの保存先・サーバソケット名が上流版Hazkeyから分離され、  
 名称が**Hazkey Community**に統一されました。  
+
 v0.2.30-communityより前のバージョンからアップグレードする場合は、パッケージの入れ替えとデータの移行が必要です。  
 
 - パッケージ名が変更されたため、旧パッケージからの上書き更新はできません。  
@@ -205,12 +259,15 @@ v0.2.30-communityより前のバージョンからアップグレードする場
 - 既存の設定・ユーザ辞書・ニューラル変換モデル・学習データは自動では引き継がれません。  
   引き継ぐ場合は、下記「既存データの移行 (手動)」の手順で1回だけ手動移行してください。  
 - 入力メソッドの登録名も変更されるため、インストール後にFcitx 5 / IBusを再起動して、  
-  改めて、**Hazkey Community**を追加し直してください。(下記「初回の有効化」参照)  
+  改めて、**Hazkey Community**を追加し直してください。  
+  (下記、「初回の有効化」参照)  
 
 ### 既存データの移行 (手動)
 
-名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定・ユーザ辞書・Zenzaiモデル・学習データは、自動では引き継がれません。  
-引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。(旧ディレクトリはコピーするだけで、変更しません)  
+名称変更前のHazkey Community、または上流版Hazkeyで使用していた設定、ユーザ辞書、Zenzaiモデル、学習データは、自動では引き継がれません。  
+引き継ぐ場合は、同梱の移行スクリプトを手動で1回実行します。  
+
+(旧ディレクトリはコピーするだけで、変更しません)  
 
 ```sh
 # 実行内容の確認のみ (何も変更しない)
@@ -221,7 +278,7 @@ v0.2.30-communityより前のバージョンからアップグレードする場
 ```
 
 移行対象・スクリプトの動作・オプション (`--force`等) の詳細は、[docs/migration.md](./docs/migration.md)を参照してください。  
-移行後は、Fcitx 5 / IBusを再起動し、入力メソッド**Hazkey Community**を追加してください。  
+移行後は、Fcitx 5 / IBusを再起動して、入力メソッド**Hazkey Community**を追加してください。  
 
 <br>
 
@@ -260,8 +317,9 @@ v0.2.30-communityより前のバージョンからアップグレードする場
    ```
    
 3. デスクトップ環境の入力ソース設定 (GNOME の[設定]→[キーボード]→[入力ソース]等) または `ibus-setup` から**Hazkey Community**を追加します。  
-4. 入力メソッドの切替 (デフォルトでは `Super+Space` 等、環境の設定に依存) でHazkey Communityに切り替え、ローマ字入力してかなが変換できることを確認します。  
-5. 設定を変更する場合は、アプリケーションメニューまたはターミナルから **hazkey-community-settings** を起動します。  
+4. 入力メソッドの切替 (デフォルトでは、`[Super] + [Space]` 等、環境の設定に依存) でHazkey Communityに切り替え、  
+   ローマ字入力して、かなが変換できることを確認します。  
+5. 設定を変更する場合は、アプリケーションメニューまたはターミナルから**hazkey-community-settings**を起動します。  
    
    ```sh
    hazkey-community-settings
@@ -271,8 +329,9 @@ v0.2.30-communityより前のバージョンからアップグレードする場
 
 ## 上流版Hazkeyとの併存
 
-Hazkey Communityは、インストール先・実行ファイル名・ユーザデータのディレクトリ・ソケット名を上流版Hazkeyと分けているため、  
+Hazkey Communityは、インストール先、実行ファイル名、ユーザデータのディレクトリ、ソケット名を上流版Hazkeyと分けているため、  
 上流版Hazkey (fcitx5-hazkey) と同時にインストールできます。  
+
 入力メソッド名も別 (Fcitx 5 / IBus: **Hazkey Community**) で、互いのサーバや設定には干渉しません。  
 
 | 用途 | 上流版Hazkey | Hazkey Community |
@@ -291,7 +350,7 @@ Hazkey Communityは、インストール先・実行ファイル名・ユーザ�
 > pkill -u $USER -f '^([^ ]*/)?hazkey-community-server( |$)'
 > ```
 
-上流版Hazkeyで使用していた設定・ユーザ辞書・ニューラル変換モデル・学習データをHazkey Communityへ引き継ぐ場合は、  
+上流版Hazkeyまたは旧バージョンで使用していた設定、ユーザ辞書、ニューラル変換モデル、学習データをHazkey Communityへ引き継ぐ場合は、  
 上記「以前のバージョンからのアップグレード」内の「既存データの移行 (手動)」を参照してください。  
 
 <br>
@@ -300,9 +359,11 @@ Hazkey Communityは、インストール先・実行ファイル名・ユーザ�
 
 Fcitx 5と同じhazkey-community-serverを利用する、実験的なIBusフロントエンド (ibus-hazkey-community) です。  
 GitHub Releasesのibus-hazkey-communityパッケージ (DEB / RPM) で導入できます。(上記「クイックスタート」参照)  
+
 Fcitx 5とIBusは同時に有効化して使用できます。  
 
-ソースコードからビルドする場合は、CMakeで `-DENABLE_IBUS=ON` を指定します。(既定は**OFF**。詳細は[docs/build.md](./docs/build.md)を参照)  
+ソースコードからビルドする場合は、CMakeで`-DENABLE_IBUS=ON`オプションを指定します。  
+(既定は**OFF**。詳細は[docs/build.md](./docs/build.md)を参照)  
 
 アーキテクチャ・同時接続の扱い・Fcitx 5版との差異・既知の制約は、[docs/ibus-frontend.md](./docs/ibus-frontend.md)を参照してください。  
 
