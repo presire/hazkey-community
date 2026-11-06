@@ -60,6 +60,7 @@ Fcitx 5のアドオン、IBusのエンジン、設定GUI、ラッパースクリ
 | openSUSE Leap 16 | targeted | redhat | 実機 (targeted、MLS有効時) とコンテナで、ビルド・読み込み・ラベルを確認 |
 | openSUSE Tumbleweed | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
 | Fedora 44 | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
+| Fedora 45 | targeted | redhat | コンテナで、ビルド・読み込み・ラベルを確認 |
 | RHEL 9とRHEL 10系 | targeted | redhat | Fedoraと同じ系統 (未確認) |
 | Debian 13 | default (`selinux-policy-default`) | refpolicy | コンテナで、ビルド・読み込み・ラベルを確認 (ドメイン遷移は未確認) |
 | Ubuntu 26.04 | default (`selinux-policy-default`) | refpolicy | コンテナで、ビルド・読み込み・ラベルを確認 (ドメイン遷移は未確認) |
@@ -123,6 +124,7 @@ GitHubのリリースには、ディストリビューションごとにビル�
 | `selinux-hazkey-community-trixie.pp` | Debian 13 |
 | `selinux-hazkey-community-ubuntu2604.pp` | Ubuntu 26.04 |
 | `selinux-hazkey-community-fc44.pp` | Fedora 44 |
+| `selinux-hazkey-community-fc45.pp` | Fedora 45 |
 | `selinux-hazkey-community-leap16.pp` | openSUSE Leap 16 |
 | `selinux-hazkey-community-tumbleweed.pp` | openSUSE Tumbleweed (リリース時点のスナップショットでビルド) |
 
@@ -141,7 +143,7 @@ sudo restorecon -R -v /usr/lib64/hazkey-community /usr/share/hazkey-community
 これ以外のインストール先 (例: `/opt/hazkey`) には対応していません。  
 その場合は、後述のCMakeでのビルドで、インストール先を指定して作成し直してください。  
 
-ビルドのたびに、CIでも、5種類のディストリビューションのコンテナ内で、ビルド・読み込み・ファイルのラベル・許可規則を検証しています。(`selinux/ci-verify.sh`)  
+ビルドのたびに、CIでも、6種類のディストリビューションのコンテナ内で、ビルド・読み込み・ファイルのラベル・許可規則を検証しています。(`selinux/ci-verify.sh`)  
 
 <br>
 

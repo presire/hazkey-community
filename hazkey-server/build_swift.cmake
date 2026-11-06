@@ -4,6 +4,13 @@ set(SWIFT_COMMAND
     "--scratch-path=${CMAKE_CURRENT_BINARY_DIR}/swift-build"
 )
 
+# ビルドシステムの明示指定がある場合のみ追加する (空ならSwiftの既定のまま)
+# Fedora45のbinutilsはハイフン以降を持たない版数を報告するため、Swift 6.4.1の既定ビルドシステムが失敗する
+# (swiftlang/swift-build#1871)
+if(SWIFT_BUILD_SYSTEM)
+    list(APPEND SWIFT_COMMAND "--build-system" "${SWIFT_BUILD_SYSTEM}")
+endif()
+
 if(HAZKEY_SERVER_ZENZAI_TRAIT)
     list(APPEND SWIFT_COMMAND "--traits" "ZenzaiSupport")
     list(APPEND SWIFT_COMMAND "-Xlinker" "-L${LIBLLAMA_DIR}")

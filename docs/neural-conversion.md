@@ -123,7 +123,7 @@ sudo zypper --gpg-auto-import-keys refresh
 sudo zypper install nvidia-open-driver-G06-signed-kmp-default nvidia-video-G06 nvidia-gl-G06 vulkan-tools
 ```
 
-**Fedora 44**  
+**Fedora 44 / Fedora 45**  
 
 ```sh
 # Intel GPU/iGPU / AMD GPU/iGPU (Mesa ANV / RADV)

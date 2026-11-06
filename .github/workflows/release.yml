@@ -57,7 +57,9 @@ jobs:
           test -n "$KEYID"
           {
             printf '%%_gpg_name %s\n' "$KEYID"
+            # RPM 4.18 (Ubuntu 24.04) のrpmsignは%__gpgを参照するため、%_gpgbinと併せて設定する
             printf '%%_gpgbin %s\n' /usr/bin/gpg
+            printf '%%__gpg %s\n' /usr/bin/gpg
             printf '%%__gpg_sign_cmd %s\n' '%{__gpg} gpg --force-mdc --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-fd 3 --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}'
           } > ~/.rpmmacros
           rpmsign --addsign packages/*.rpm 3<<< "${RPM_GPG_PASSPHRASE:-}"

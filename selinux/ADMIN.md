@@ -329,7 +329,7 @@ sesearch -T -s unconfined_t -t hazkey_community_exec_t
   
   付け直さない場合、その変換サーバはunconfined_tで動作し、動作中は隔離された変換サーバが起動できません  
 - 動作確認は、openSUSE Leap 16.0 (targeted、MLSの有効時) の実機と、各ディストリビューションのコンテナで行っています   
-  Fedora 44、Debian 13、Ubuntu 26.04では、コンテナでビルド・`semodule -i`・`matchpathcon`によるラベルを確認しています  
+  Fedora 44、Fedora 45、Debian 13、Ubuntu 26.04では、コンテナでビルド・`semodule -i`・`matchpathcon`によるラベルを確認しています  
   Debian 13とUbuntu 26.04で、実際に変換サーバをドメイン遷移させる動作は未確認です  
 - 系統が違う環境で作った`.pp`ファイルは読み込めません  
   導入先のディストリビューションで、ビルドし直してください  

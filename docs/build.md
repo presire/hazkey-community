@@ -15,8 +15,9 @@
 - Vulkan SDKヘッダ (`libvulkan-dev` / `vulkan-headers`)  
   `GGML_VULKAN=ON`オプション指定時に必要 (デフォルト)  
 
-以下では、CI (`.github/workflows/build.yml`) で実際にビルド確認済みの4ディストリビューション向けに、  
+以下では、CI (`.github/workflows/build.yml`) のビルド対象となる5ディストリビューション向けに、  
 Swiftのインストールから依存パッケージの導入までを個別に示します。  
+Fedora 45のRPMビルドはCIの対象に追加されたもので、ビルド成否は未確認です (SELinuxポリシーのみコンテナで検証済み)。  
 
 ## Swiftのインストール
 
@@ -25,12 +26,12 @@ Hazkey Communityのビルドには、Swift 6.1以上が必要です。
 
 > **2026年10月時点の注意**:  
 > Debian 13 (Trixie) / Ubuntu 26.04 は、[swift.orgの公式リリース ツールチェーン](https://www.swift.org/platform-support/) が公開されています (`debian13` / `ubuntu26.04`)。  
-> Fedora 44 / openSUSE Leap 16 / openSUSE Tumbleweed 向けのツールチェーンは無いため、  
+> Fedora 44 / Fedora 45 / openSUSE Leap 16 / openSUSE Tumbleweed 向けのツールチェーンは無いため、  
 > それぞれFedora Linux 41 (`fedora41`) / RHEL 9 (`ubi9`) のツールチェーンを使います。  
 > 以下の手順では、どのディストリビューションでも`--platform`オプションでツールチェーンを明示指定します。  
 > (CIの`.github/workflows/build.yml`も、同じ対応でSwift 6.4.1のツールチェーンを使います)  
 
-### Fedora 44
+### Fedora 44 / Fedora 45
 
 ```sh
 sudo dnf install git curl
@@ -45,9 +46,9 @@ swiftly install latest
 swift --version
 ```
 
-> Fedora 44向けのツールチェーンは無いため、公式リリースツールチェーンが存在する最新のFedora (`fedora41`) を明示指定します。  
+> Fedora 44 / Fedora 45向けのツールチェーンは無いため、公式リリースツールチェーンが存在する最新のFedora (`fedora41`) を明示指定します。  
 > `swiftly init`の対話メニューでは「Fedora Linux 41」に当たります。  
-> `fedora41`ツールチェーンは古いglibc上でビルドされているため、新しいFedora上でも動作します。  
+> `fedora41`ツールチェーンは古いglibc上でビルドされていますが、Fedora 45でのビルドは未確認です。  
 
 ### openSUSE Leap 16
 
@@ -128,7 +129,7 @@ swift --version
 `-DGGML_VULKAN=OFF`オプションのCPU専用ビルドでは、  
 Vulkan関連パッケージ (`vulkan-headers` / `vulkan-loader-devel` / `glslc` / `spirv-headers` 等) のインストールを省略できます。  
 
-### Fedora 44
+### Fedora 44 / Fedora 45
 
 ```sh
 sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \

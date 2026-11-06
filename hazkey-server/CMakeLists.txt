@@ -40,6 +40,12 @@ else()
 endif()
 set(SWIFT_BUILD_TYPE "${_DEFAULT_SWIFT_TYPE}" CACHE STRING "Swift build type (debug/release)")
 
+# Fedora45のbinutilsは、"GNU ld version 2.47.20260726"のようにハイフン以降を持たない版数を報告するため、
+# その版数を解釈するSwift 6.4.1の既定ビルドシステムが失敗する (swiftlang/swift-build#1871)
+# これを回避するため、SwiftPMのネイティブ実装 ("--build-system native") を指定できるようにする
+# 空 (既定) の場合はSwiftの既定のまま、Fedora45のCIのみ"native"を指定する
+set(SWIFT_BUILD_SYSTEM "" CACHE STRING "SwiftPM build system (empty=Swift default, native=SwiftPM native)")
+
 message(STATUS "Configuring constants.swift")
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/Sources/hazkey-server/constants.swift.in
@@ -81,6 +87,7 @@ endif()
 add_custom_target(build_hazkey_server ALL
     COMMAND ${CMAKE_COMMAND}
         "-DSWIFT_BUILD_TYPE=${SWIFT_BUILD_TYPE}"
+        "-DSWIFT_BUILD_SYSTEM=${SWIFT_BUILD_SYSTEM}"
         "-DSWIFT_EXECUTABLE=${SWIFT_EXECUTABLE}"
         "-DSWIFT_STATIC_STDLIB=${HAZKEY_SERVER_STATIC_SWIFT_STDLIB}"
         "-DSWIFT_DISABLE_DEPENDENCY_CACHE=${SWIFT_DISABLE_DEPENDENCY_CACHE}"

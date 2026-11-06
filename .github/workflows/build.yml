@@ -55,6 +55,16 @@ jobs:
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.4.1-release/fedora41/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-fedora41.tar.gz
+          - name: Fedora 45
+            distro: fedora
+            image: fedora:45
+            package_type: rpm
+            package_suffix: fc45
+            package_arch: x86_64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.4.1-release/fedora41/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-fedora41.tar.gz
           - name: openSUSE Leap 16
             distro: opensuse
             image: opensuse/leap:16
@@ -138,9 +148,16 @@ jobs:
                 vulkan-headers vulkan-loader-devel mesa-vulkan-drivers \
                 libglvnd-devel mesa-libGL-devel libxkbcommon-devel glslc glslang-devel \
                 spirv-headers-devel
+              # Swift（Fedora 41 build）は、libxml2.so.2を必要とする
+              # Fedora 45は、libxml2.so.16のみを提供するため、互換パッケージであるlibxml2_2.13を追加する
+              # (repoqueryとコンテナへのインストールで、libxml2_2.13がlibxml2.so.2を提供し、libxml2.so.16も引き続き利用できることを確認済み)
+              if [ "$IMAGE" = "fedora:45" ]; then
+                dnf install -y libxml2_2.13
+              fi
               ;;
             opensuse)
-              # リポジトリの署名鍵は公式イメージで信頼済みのため、未知の鍵を自動で信頼する --gpg-auto-import-keys は付けない
+              # リポジトリの署名鍵は公式イメージで信頼済みのため、未知の鍵を自動で信頼する
+              # --gpg-auto-import-keysオプションは付けない
               # (鍵が変わった場合は、取り込まずに失敗させる)
               zypper --non-interactive refresh
               # コンテナーイメージとミラーのリポジトリの同期時期がずれると、
@@ -224,12 +241,21 @@ jobs:
           # リポジトリルートから1度だけ設定する
           # 実験的なIBusフロントエンドを有効にし、これらのpackageジョブで下記の個別のibus-hazkey-community .deb/.rpmも生成する
           # IBusファイルは、fcitx5-hazkey-communityに決して同梱しない (ステージングツリーのinstallアサーション後の分割手順を参照)
+          # Fedora45のbinutilsは、"GNU ld version 2.47.20260726"のようにハイフン以降を持たない版数を報告するため、
+          # その版数を解釈するSwift 6.4.1の既定ビルドシステムが失敗する (swiftlang/swift-build#1871)
+          # Fedora45のみSwiftPMのネイティブ実装を指定し、それ以外はSwiftの既定のままとする
+          SWIFT_BUILD_SYSTEM=""
+          if [ "$IMAGE" = "fedora:45" ]; then
+            SWIFT_BUILD_SYSTEM="native"
+          fi
+
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DProtobuf_USE_STATIC_LIBS=OFF \
-            -DENABLE_IBUS=ON
+            -DENABLE_IBUS=ON \
+            -DSWIFT_BUILD_SYSTEM="$SWIFT_BUILD_SYSTEM"
 
           # vulkan-shaders-genは、最大16個のglslcサブプロセスを並列にフォークするため、
           # 制約のあるCIコンテナではプロセステーブル上限を超え、shader symbolを暗黙に欠落させることがある
@@ -748,6 +774,9 @@ jobs:
                 || { echo "unexpected Obsoletes in $_p2_rpm" >&2; exit 1; }
             done
 
+            # ビルド直後の未署名RPMをインストール検証するため、署名検証のみを無効化する
+            # Fedora 45 (RPM 6) は、%_pkgverify_level allがデフォルトであり、--nosignatureオプションが無い場合は、
+            # "does not verify: no signature"で失敗する
             rpm_probe_cleanup() {
               # "rpm -e A B"はいずれかが存在しないと中断するため、それぞれを個別に削除する
               rpm -e --nodeps --noscripts ibus-hazkey-community 2>/dev/null || true
@@ -756,8 +785,8 @@ jobs:
 
             echo "### P2 RPM: install fcitx5-hazkey-community then ibus-hazkey-community"
             rpm_probe_cleanup
-            rpm -i --nodeps --noscripts "$rpm_target"
-            rpm -i --nodeps --noscripts "$ibus_rpm_target"
+            rpm -i --nodeps --noscripts --nosignature "$rpm_target"
+            rpm -i --nodeps --noscripts --nosignature "$ibus_rpm_target"
             rpm -q fcitx5-hazkey-community ibus-hazkey-community >/dev/null \
               || { echo "RPM co-install failed" >&2; exit 1; }
             test -e /usr/bin/hazkey-community-server \
@@ -776,8 +805,8 @@ jobs:
 
             echo "### P2 RPM: reverse install order"
             rpm_probe_cleanup
-            rpm -i --nodeps --noscripts "$ibus_rpm_target"
-            rpm -i --nodeps --noscripts "$rpm_target"
+            rpm -i --nodeps --noscripts --nosignature "$ibus_rpm_target"
+            rpm -i --nodeps --noscripts --nosignature "$rpm_target"
             rpm -q fcitx5-hazkey-community ibus-hazkey-community >/dev/null \
               || { echo "RPM reverse co-install failed" >&2; exit 1; }
             rpm_probe_cleanup
@@ -824,6 +853,9 @@ jobs:
           - name: Fedora 44
             image: fedora:44
             package_suffix: fc44
+          - name: Fedora 45
+            image: fedora:45
+            package_suffix: fc45
           - name: openSUSE Leap 16
             image: opensuse/leap:16
             package_suffix: leap16
