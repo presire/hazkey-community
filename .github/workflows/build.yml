@@ -75,6 +75,16 @@ jobs:
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
+          - name: openSUSE Leap 16.1
+            distro: opensuse
+            image: opensuse/leap:16.1
+            package_type: rpm
+            package_suffix: leap161
+            package_arch: x86_64
+            runner: ubuntu-24.04
+            expected_machine: x86_64
+            swift_target: x86_64-unknown-linux-gnu
+            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
           - name: openSUSE Tumbleweed
             distro: opensuse
             image: opensuse/tumbleweed:latest
@@ -859,6 +869,9 @@ jobs:
           - name: openSUSE Leap 16
             image: opensuse/leap:16
             package_suffix: leap16
+          - name: openSUSE Leap 16.1
+            image: opensuse/leap:16.1
+            package_suffix: leap161
           - name: openSUSE Tumbleweed
             image: opensuse/tumbleweed:latest
             package_suffix: tumbleweed
