@@ -48,7 +48,9 @@ case "$ID" in
         ;;
     debian|ubuntu)
         apt-get update
-        apt-get install -y selinux-policy-default checkpolicy policycoreutils semodule-utils \
+        # CMakeはGCCを推奨パッケージに挙げているが、ポリシーの検証にC/C++コンパイラの要件はない。
+        # 推奨パッケージの取得がCIの所要時間を押し上げるため、--no-install-recommendsオプションを付ける
+        apt-get install -y --no-install-recommends selinux-policy-default checkpolicy policycoreutils semodule-utils \
             selinux-utils make setools cmake ninja-build
         STORE=default
         EXPECTED_FLAVOR=refpolicy
