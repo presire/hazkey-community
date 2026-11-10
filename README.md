@@ -35,6 +35,7 @@ Fcitx 5フロントエンド (fcitx5-hazkey-community) に加えて、実験的�
 | **Fedora 44** | **対象** | **対象** |
 | **Fedora 45** | 対象外 (検証未実施) | **対象** |
 | **openSUSE Leap 16** | **対象** | **対象** |
+| **openSUSE Leap 16.1** | 対象外 (検証未実施) | **対象** |
 | **Debian 13 (Trixie) x64** | **対象** | **対象** |
 | **Debian 13 (Trixie) AArch64** | 対象外 | **対象** |
 | **Ubuntu 26.04** | 対象外 | **対象** |
@@ -123,7 +124,7 @@ Hazkey Communityで追加された独自の機能・改善の概要です。
 
 | ディストリビューション | パッケージ形式 |
 |:---|:---:|
-| Fedora 44 / Fedora 45 / openSUSE Leap 16 / openSUSE Tumbleweed | `.rpm` |
+| Fedora 44 / Fedora 45 / openSUSE Leap 16 / openSUSE Leap 16.1 / openSUSE Tumbleweed | `.rpm` |
 | Debian 13 / Ubuntu 26.04 | `.deb` |
 
 > [!TIP]  

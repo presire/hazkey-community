@@ -26,10 +26,10 @@ Hazkey Communityのビルドには、Swift 6.1以上が必要です。
 
 > **2026年10月時点の注意**:  
 > Debian 13 (Trixie) / Ubuntu 26.04 は、[swift.orgの公式リリース ツールチェーン](https://www.swift.org/platform-support/) が公開されています (`debian13` / `ubuntu26.04`)。  
-> Fedora 44 / Fedora 45 / openSUSE Leap 16 / openSUSE Tumbleweed 向けのツールチェーンは無いため、  
+> Fedora 44 / Fedora 45 / openSUSE Leap 16 / openSUSE Leap 16.1 / openSUSE Tumbleweed 向けのツールチェーンは無いため、  
 > それぞれFedora Linux 41 (`fedora41`) / RHEL 9 (`ubi9`) のツールチェーンを使います。  
 > 以下の手順では、どのディストリビューションでも`--platform`オプションでツールチェーンを明示指定します。  
-> (CIの`.github/workflows/build.yml`も、同じ対応でSwift 6.4.1のツールチェーンを使います)  
+> (CIの`.github/workflows/build.yml`も、同じ対応でSwift 6.4.2のツールチェーンを使います)  
 
 ### Fedora 44 / Fedora 45
 
@@ -50,7 +50,7 @@ swift --version
 > `swiftly init`の対話メニューでは「Fedora Linux 41」に当たります。  
 > `fedora41`ツールチェーンは古いglibc上でビルドされていますが、Fedora 45でのビルドは未確認です。  
 
-### openSUSE Leap 16
+### openSUSE Leap 16 / Leap 16.1
 
 ```sh
 sudo zypper install pkg-config binutils gcc gcc-c++ git gzip glibc-static \
@@ -145,7 +145,7 @@ sudo dnf install cmake ninja-build gettext pkgconf-pkg-config \
 > `libibus-1.0-dev`パッケージは、IBusフロントエンド (`-DENABLE_IBUS=ON`) のビルド時に必要です。  
 > Fcitx 5版のみビルドする場合は省略可能です。
 
-### openSUSE Leap 16
+### openSUSE Leap 16 / Leap 16.1
 
 ```sh
 sudo zypper install cmake ninja gettext-tools protobuf-devel fcitx5-devel \

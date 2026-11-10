@@ -24,7 +24,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/debian13/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-debian13.tar.gz
           - name: Debian 13 Trixie (ARM64)
             distro: debian
             image: debian:trixie
@@ -34,7 +34,7 @@ jobs:
             runner: ubuntu-24.04-arm
             expected_machine: aarch64
             swift_target: aarch64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/debian13-aarch64/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13-aarch64.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/debian13-aarch64/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-debian13-aarch64.tar.gz
           - name: Ubuntu 26.04
             distro: debian
             image: ubuntu:26.04
@@ -44,7 +44,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/ubuntu2604/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu26.04.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/ubuntu2604/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubuntu26.04.tar.gz
           - name: Fedora 44
             distro: fedora
             image: fedora:44
@@ -54,7 +54,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/fedora41/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-fedora41.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/fedora41/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-fedora41.tar.gz
           - name: Fedora 45
             distro: fedora
             image: fedora:45
@@ -64,7 +64,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/fedora41/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-fedora41.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/fedora41/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-fedora41.tar.gz
           - name: openSUSE Leap 16
             distro: opensuse
             image: opensuse/leap:16
@@ -74,7 +74,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/ubi9/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubi9.tar.gz
           - name: openSUSE Leap 16.1
             distro: opensuse
             image: opensuse/leap:16.1
@@ -84,7 +84,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/ubi9/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubi9.tar.gz
           - name: openSUSE Tumbleweed
             distro: opensuse
             image: opensuse/tumbleweed:latest
@@ -94,7 +94,7 @@ jobs:
             runner: ubuntu-24.04
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
-            swift_url: https://download.swift.org/swift-6.4.1-release/ubi9/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubi9.tar.gz
+            swift_url: https://download.swift.org/swift-6.4.2-release/ubi9/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubi9.tar.gz
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -252,7 +252,7 @@ jobs:
           # 実験的なIBusフロントエンドを有効にし、これらのpackageジョブで下記の個別のibus-hazkey-community .deb/.rpmも生成する
           # IBusファイルは、fcitx5-hazkey-communityに決して同梱しない (ステージングツリーのinstallアサーション後の分割手順を参照)
           # Fedora45のbinutilsは、"GNU ld version 2.47.20260726"のようにハイフン以降を持たない版数を報告するため、
-          # その版数を解釈するSwift 6.4.1の既定ビルドシステムが失敗する (swiftlang/swift-build#1871)
+          # その版数を解釈するSwift 6.4.2の既定ビルドシステムが失敗する (swiftlang/swift-build#1871)
           # Fedora45のみSwiftPMのネイティブ実装を指定し、それ以外はSwiftの既定のままとする
           SWIFT_BUILD_SYSTEM=""
           if [ "$IMAGE" = "fedora:45" ]; then
