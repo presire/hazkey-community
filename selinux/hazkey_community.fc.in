@@ -20,7 +20,7 @@
 # lib/hazkey-community        : 変換サーバと設定GUIの実体、llama.cppとGGMLのバックエンド (libllama)
 # lib/fcitx5                  : Fcitx 5のアドオン
 # libexec/ibus-hazkey-community : IBusのエンジン
-# share/hazkey-community      : 変換辞書、絵文字辞書、住所辞書、工学用語辞書、システムのZenzaiモデル
+# share/hazkey-community      : 変換辞書、絵文字辞書、住所辞書、工学用語辞書、郵便番号辞書、システムのZenzaiモデル
 # bin配下のラッパースクリプトとシンボリックリンクは、既定のラベル (bin_t、home_bin_t) のままで実行できる
 # 上記以外のインストール先のbin配下は、CMakeが追加する規則でbin_tを付ける
 ########################################
