@@ -45,6 +45,24 @@ enum DisplayedCandidate {
     ///
     /// 学習は行わず、学習削除では削除件数0として扱う
     case fromEmoji(word: String, composingCount: ComposingCount)
+    /// PostalCodeProviderが注入する郵便番号の住所候補 (住所・番号付きの住所・〒付きの住所)
+    ///
+    /// 確定時はカーソルまでの読み (composingCount) のみを消費して、右側の読みは組成に残す
+    ///
+    /// 学習は行わず、共有の学習dirtyフラグも変更しない
+    case fromPostalCode(word: String, composingCount: ComposingCount)
+}
+
+/// 郵便番号辞書の読み込み状態
+///
+/// 読み込みはプロセスで1度だけ試み、失敗した場合も結果を保持して読み込み直さない
+enum PostalCodeProviderLoadState {
+    /// まだ読み込みを試みていない (郵便番号変換が一度も有効になっていない)
+    case notAttempted
+    /// 読み込みを試みたが、ファイルが無いか有効な行が無かった
+    case failed
+    /// 読み込みに成功した
+    case loaded(PostalCodeProvider)
 }
 
 /// 学習履歴の列挙・削除で発生するエラー
@@ -236,6 +254,8 @@ class HazkeySharedResources {
     let emojiProvider: EmojiCandidateProvider?
     /// 住所辞書の補助辞書ソースID
     static let addressDictionarySourceID = "address"
+    /// 郵便番号辞書の読み込み状態 (郵便番号変換を有効にした時点で1度だけ読み込む)
+    private(set) var postalCodeProviderLoadState: PostalCodeProviderLoadState = .notAttempted
     /// 工学辞書の補助辞書ソースID
     static let engineeringDictionarySourceID = "engineering"
 
@@ -380,6 +400,7 @@ class HazkeySharedResources {
         // 基本変換オプションを初期化
         self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
         syncConverterAddressDictionary()
+        loadPostalCodeProviderIfNeeded()
         var learningInitializationOptions = baseConvertRequestOptions
         learningInitializationOptions.zenzaiMode = .off
         _ = converter.requestCandidates(
@@ -445,6 +466,7 @@ extension HazkeySharedResources {
         }
         syncConverterLearningConfig()
         syncConverterAddressDictionary()
+        loadPostalCodeProviderIfNeeded()
         // ホットパス側のユーザ辞書の再読み込みはスロットルされるため、設定適用時はスロットルを迂回して強制再読み込みして、辞書編集を取りこぼさない
         // userDictInjectedを倒して次回の候補生成で (変更後の) エントリを再注入させる
         userDictionary.reloadIfNeeded(force: true)
@@ -462,6 +484,33 @@ extension HazkeySharedResources {
             profile.useAddressDictionaryEffective, for: Self.addressDictionarySourceID)
         converter.setSupplementalDictionaryEnabled(
             profile.useEngineeringDictionaryEffective, for: Self.engineeringDictionarySourceID)
+    }
+
+    /// 読み込み済みの郵便番号の候補プロバイダ
+    ///
+    /// 読み込みを試みていない場合と読み込みに失敗した場合はnilを返す
+    var postalCodeProvider: PostalCodeProvider? {
+        switch postalCodeProviderLoadState {
+        case .notAttempted, .failed: nil
+        case .loaded(let provider): provider
+        }
+    }
+
+    /// 郵便番号変換が有効な場合に、郵便番号辞書を1度だけ読み込む
+    ///
+    /// 最初の打鍵で読み込みの費用がかからないよう、サーバの起動時と設定の適用時に呼ぶ
+    ///
+    /// - Note: 1度試みた後は、失敗した場合も含めて読み込み直さない (有効→無効→有効の切り替えでも再読み込みしない)
+    func loadPostalCodeProviderIfNeeded() {
+        guard serverConfig.currentProfile.usePostalCodeConversionEffective,
+            case .notAttempted = postalCodeProviderLoadState
+        else { return }
+        if let provider = PostalCodeProvider(tsvURL: serverConfig.postalCodeDictionaryPath) {
+            postalCodeProviderLoadState = .loaded(provider)
+            hazkeyLog("[hazkey] Loaded \(provider.entryCount) postal code entries")
+        } else {
+            postalCodeProviderLoadState = .failed
+        }
     }
 
     /// 学習設定 (学習の種類・保存件数の上限・保存先ディレクトリ) を変換エンジンへ即時に反映する
@@ -1582,6 +1631,10 @@ class HazkeyServerState {
             // 絵文字直接変換候補は一致した正規化クエリのprefixだけを消費し、後続suffixは保持する
             // 変換エンジンの確定 / 学習APIには触れないため、共有dirtyフラグは変更しない (他の接続に永続化待ちの学習がある可能性がある)
             if let failure = completeComposingPrefix(composingCount) { return failure }
+        case .fromPostalCode(_, let composingCount):
+            // 郵便番号の住所候補はカーソルまでの郵便番号の読みだけを消費し、右側の読みを保持する
+            // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
+            if let failure = completeComposingPrefix(composingCount) { return failure }
         }
         currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
@@ -2489,6 +2542,44 @@ class HazkeyServerState {
                     if Int32(insertAt) <= candidatesResult.liveTextIndex {
                         candidatesResult.liveTextIndex += Int32(generatedTexts.count)
                     }
+                }
+            }
+        }
+
+        // === 郵便番号の住所候補を注入 (後処理) ===
+        // 郵便番号変換が有効な通常変換 (is_suggest == false) で、カーソルまでの読み全体が郵便番号の形の場合のみ
+        // 先頭候補の直後に、住所 (最大maxAddressCandidates件、データの出現順)・番号付きの先頭住所・〒付きの先頭住所の順で挿入する
+        // 学習の注釈は付け終えているため、注釈の読みのリストは伸ばさない
+        if !is_suggest, serverConfig.currentProfile.usePostalCodeConversionEffective,
+            let postalCodeProvider = shared.postalCodeProvider,
+            let postalKey = PostalCodeProvider.normalize(hiraganaPreedit)
+        {
+            let addresses = Array(
+                postalCodeProvider.addresses(forKey: postalKey)
+                    .prefix(PostalCodeProvider.maxAddressCandidates))
+            if let firstAddress = addresses.first {
+                let formattedCode = "\(postalKey.prefix(3))-\(postalKey.dropFirst(3))"
+                let postalTexts =
+                    addresses + [
+                        "\(formattedCode)\u{3000}\(firstAddress)",
+                        "\u{3012}\(formattedCode)\u{3000}\(firstAddress)",
+                    ]
+                let insertAt = min(1, clientCandidates.count)
+                var adoptedCount = 0
+                for text in postalTexts where !appendedTexts.contains(text) {
+                    appendedTexts.insert(text)
+                    var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
+                    clientCandidate.text = text
+                    clientCandidate.subHiragana = String(
+                        fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
+                    serverCandidates.insert(
+                        .fromPostalCode(word: text, composingCount: .surfaceCount(hiraganaPreeditLen)),
+                        at: insertAt + adoptedCount)
+                    clientCandidates.insert(clientCandidate, at: insertAt + adoptedCount)
+                    adoptedCount += 1
+                }
+                if adoptedCount > 0 && Int32(insertAt) <= candidatesResult.liveTextIndex {
+                    candidatesResult.liveTextIndex += Int32(adoptedCount)
                 }
             }
         }

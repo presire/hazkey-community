@@ -277,6 +277,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("extendedEmojiConversion", ui_->extendedEmojiConversion->isChecked());
     state.insert("useAddressDict", ui_->useAddressDict->isChecked());
     state.insert("useEngineeringDict", ui_->useEngineeringDict->isChecked());
+    state.insert("usePostalCodeConversion", ui_->usePostalCodeConversion->isChecked());
     state.insert("useTypoCorrection", ui_->useTypoCorrection->isChecked());
     state.insert("commaSeparatedNumCoversion", ui_->commaSeparatedNumCoversion->isChecked());
     state.insert("calendarConversion", ui_->calendarConversion->isChecked());
@@ -462,6 +463,8 @@ void MainWindow::connectSignals() {
     connect(ui_->useAddressDict, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->useEngineeringDict, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->usePostalCodeConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->useTypoCorrection, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
@@ -935,6 +938,13 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_CHECKBOX(ui_->useEngineeringDict, useEngineeringDict,
                  ConfigDefs::CheckboxDefaults::ENGINEERING_DICTIONARY);
 
+    const bool usePostalCodeConversion =
+        currentProfile_->has_use_postal_code_conversion()
+            ? currentProfile_->use_postal_code_conversion()
+            : ConfigDefs::CheckboxDefaults::POSTAL_CODE_CONVERSION;
+    SET_CHECKBOX(ui_->usePostalCodeConversion, usePostalCodeConversion,
+                 ConfigDefs::CheckboxDefaults::POSTAL_CODE_CONVERSION);
+
     // 誤字の訂正候補 (既定OFF) も[全て選択]/[全て解除]の対象に含まれる
     // (onCheckAllConversion() / onUncheckAllConversion() を参照)
     const bool useTypoCorrection =
@@ -1108,6 +1118,8 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->useAddressDict));
     currentProfile_->set_use_engineering_dictionary(
         GET_CHECKBOX_BOOL(ui_->useEngineeringDict));
+    currentProfile_->set_use_postal_code_conversion(
+        GET_CHECKBOX_BOOL(ui_->usePostalCodeConversion));
     currentProfile_->set_use_typo_correction(
         GET_CHECKBOX_BOOL(ui_->useTypoCorrection));
 
@@ -1980,6 +1992,7 @@ void MainWindow::onCheckAllConversion() {
     ui_->relativeDateConversion->setChecked(true);
     ui_->useAddressDict->setChecked(true);
     ui_->useEngineeringDict->setChecked(true);
+    ui_->usePostalCodeConversion->setChecked(true);
     ui_->useTypoCorrection->setChecked(true);
 }
 
@@ -1996,6 +2009,7 @@ void MainWindow::onUncheckAllConversion() {
     ui_->relativeDateConversion->setChecked(false);
     ui_->useAddressDict->setChecked(false);
     ui_->useEngineeringDict->setChecked(false);
+    ui_->usePostalCodeConversion->setChecked(false);
     ui_->useTypoCorrection->setChecked(false);
 }
 

@@ -222,6 +222,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
             case .fromEmoji(let word, _):
                 XCTAssertEqual(wire.text, word, file: file, line: line)
                 XCTAssertFalse(wire.hasLearningEntry_p, file: file, line: line)
+            case .fromPostalCode(let word, _):
+                XCTAssertEqual(wire.text, word, file: file, line: line)
+                XCTAssertFalse(wire.hasLearningEntry_p, file: file, line: line)
             }
         }
     }

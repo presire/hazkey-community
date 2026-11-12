@@ -862,4 +862,83 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertTrue(profile.hasCandidateDigitKeyAction)
         XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
     }
+
+    /// XDG_CONFIG_HOMEを一時ディレクトリへ切り替えて本体を実行する
+    ///
+    /// - Parameter body: 切り替え中に実行する処理
+    private func withSandboxedConfigHome(_ body: () throws -> Void) throws {
+        let directory = try XCTUnwrap(FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: URL(fileURLWithPath: NSTemporaryDirectory()),
+            create: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let savedConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        guard setenv("XDG_CONFIG_HOME", directory.path, 1) == 0 else {
+            XCTFail("Failed to sandbox XDG_CONFIG_HOME")
+            return
+        }
+        defer {
+            if let savedConfigHome {
+                setenv("XDG_CONFIG_HOME", savedConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+        try body()
+    }
+
+    func testNormalizeProfileDefaultsMissingPostalCodeConversionAndPreservesExplicitTrue() throws {
+        // 前提: 郵便番号変換フィールドがない旧プロファイルと、明示的に有効化するプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearUsePostalCodeConversion()
+        XCTAssertFalse(missing.hasUsePostalCodeConversion)
+        XCTAssertFalse(missing.usePostalCodeConversionEffective)
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.usePostalCodeConversion = true
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        // 検証: 欠落フィールドは無効が既定となり、明示的な有効化は保持される
+        XCTAssertTrue(normalizedMissing.hasUsePostalCodeConversion)
+        XCTAssertFalse(normalizedMissing.usePostalCodeConversion)
+        XCTAssertTrue(normalizedEnabled.usePostalCodeConversion)
+        XCTAssertTrue(normalizedEnabled.usePostalCodeConversionEffective)
+    }
+
+    func testSavedPostalCodeConversionSurvivesReload() throws {
+        try withSandboxedConfigHome {
+            var profile = HazkeyServerConfig.genDefaultConfig()
+            profile.usePostalCodeConversion = true
+
+            // 実行: 保存してconfig.jsonから読み直す
+            let config = HazkeyServerConfig()
+            try config.saveConfig([profile])
+            let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+            // 検証: 明示的な有効化が往復後も保持される
+            XCTAssertTrue(reloaded.hasUsePostalCodeConversion)
+            XCTAssertTrue(reloaded.usePostalCodeConversionEffective)
+        }
+    }
+
+    func testDecodingLegacyConfigWithoutPostalCodeConversionYieldsFalse() throws {
+        try withSandboxedConfigHome {
+            let configDirectory = HazkeyServerConfig.getConfigDirectory()
+            try FileManager.default.createDirectory(
+                at: configDirectory, withIntermediateDirectories: true)
+            try Data("""
+                [{"profileName": "Legacy", "unknownFutureField": 42}]
+                """.utf8).write(to: configDirectory.appendingPathComponent("config.json"))
+
+            // 実行: 郵便番号変換フィールドを持たない旧config.jsonを復号する
+            let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+            // 検証: 例外なく読み込み、郵便番号変換は既定の無効へ縮退する
+            XCTAssertEqual(profile.profileName, "Legacy")
+            XCTAssertFalse(profile.usePostalCodeConversionEffective)
+        }
+    }
 }

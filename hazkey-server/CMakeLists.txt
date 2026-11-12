@@ -258,3 +258,16 @@ else()
         "the engineering terms dictionary will not be installed. "
         "Run: git submodule update --init hazkey-engineering-dictionary")
 endif()
+
+# 郵便番号辞書をインストールする（住所辞書submoduleのTSV、コミュニティ拡張）
+set(HAZKEY_POSTAL_CODE_DICTIONARY_FILE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../hazkey-address-dictionary/PostalCode/postal_codes.tsv)
+if(EXISTS ${HAZKEY_POSTAL_CODE_DICTIONARY_FILE})
+    install(FILES ${HAZKEY_POSTAL_CODE_DICTIONARY_FILE}
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community/PostalCode)
+else()
+    message(WARNING
+        "hazkey-address-dictionary/PostalCode/postal_codes.tsv is missing; "
+        "postal code conversion will not be installed. "
+        "Run: git submodule update --init hazkey-address-dictionary")
+endif()

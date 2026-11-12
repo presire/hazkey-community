@@ -225,6 +225,11 @@ message Profile {
     //
     // - Note: フィールドが無い場合とUNSPECIFIEDは、選択して確定する (CANDIDATE_DIGIT_SELECT_AND_COMMIT) 扱い
     optional CandidateDigitKeyAction candidate_digit_key_action = 133;
+
+    // 郵便番号変換 (7桁の郵便番号を住所の候補へ変換する) を使用する
+    //
+    // - Note: 既定はOFF。通常変換のみで、サジェスト (ライブ変換) には適用しない
+    optional bool use_postal_code_conversion = 134;
 }
 
 // リクエスト用メッセージ

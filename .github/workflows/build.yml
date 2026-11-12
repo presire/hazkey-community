@@ -306,6 +306,10 @@ jobs:
           test ! -e /work/workdir/usr/share/hazkey-community/EngineeringDictionary/data
           test -z "$(find /work/workdir/usr/share/hazkey-community -name 'engineering_entries.tsv' -print -quit)"
 
+          # 郵便番号辞書ステージングinstallアサーション: 生成済みTSVがステージングツリーに存在し、生成スクリプトは含まれないこと
+          test -f /work/workdir/usr/share/hazkey-community/PostalCode/postal_codes.tsv
+          test -z "$(find /work/workdir/usr/share/hazkey-community -name 'build_postal_codes.py' -print -quit)"
+
           # アイコンステージングinstallアサーション: コミュニティ版のテーマ名 (hazkey-community) のSVGアイコンがステージングツリーに存在すること
           test -f /work/workdir/usr/share/icons/hicolor/scalable/apps/hazkey-community.svg
 
@@ -421,6 +425,8 @@ jobs:
             || { echo "ibus staging tree bundles engineering TSV source" >&2; exit 1; }
           test -z "$(cd workdir-ibus && find usr/share/hazkey-community -name 'engineering_entries.tsv' -print -quit)" \
             || { echo "ibus staging tree bundles engineering_entries.tsv" >&2; exit 1; }
+          test -f workdir-ibus/usr/share/hazkey-community/PostalCode/postal_codes.tsv \
+            || { echo "missing staged ibus postal code dict" >&2; exit 1; }
           test -n "$(find workdir-ibus/usr/share/icons -type f -print -quit)" \
             || { echo "missing staged ibus icons" >&2; exit 1; }
           test -f workdir-ibus/usr/share/hazkey-community/LICENSE \
@@ -481,6 +487,7 @@ jobs:
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'hazkey-community/libllama/libllama.so'
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
             dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid'
+            dpkg-deb --contents "$fcitx_deb" | grep -Fq 'share/hazkey-community/PostalCode/postal_codes.tsv'
             # Debian 13 / Ubuntu 26.04は、protobuf liteランタイムをこのパッケージ名で提供する
             # コンパイラとヘッダはビルド依存関係のみであり、ランタイム依存関係にしてはならない
             dpkg-deb --field "$fcitx_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
@@ -528,6 +535,7 @@ jobs:
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/emoji_all_E17.0.txt'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/AddressDictionary/louds/charID.chid'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid'
+            dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/hazkey-community/PostalCode/postal_codes.tsv'
             dpkg-deb --contents "$ibus_deb" | grep -Fq 'share/icons/hicolor'
             dpkg-deb --field "$ibus_deb" Depends | grep -Fq 'libprotobuf-lite32t64'
             # fcitx5アドオンペイロードがibus-hazkey-communityパッケージに混入してはならない
@@ -635,6 +643,9 @@ jobs:
             # 工学用語辞書LOUDSは、fcitx5-hazkey-communityパッケージ内に存在しなければならない
             rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey-community/EngineeringDictionary/louds/charID.chid' \
               || { echo "fcitx5-hazkey-community RPM misses engineering dict" >&2; exit 1; }
+            # 郵便番号辞書TSVは、fcitx5-hazkey-communityパッケージ内に存在しなければならない
+            rpm -qp --filesbypkg "$rpm_target" | grep -Fq 'share/hazkey-community/PostalCode/postal_codes.tsv' \
+              || { echo "fcitx5-hazkey-community RPM misses postal code dict" >&2; exit 1; }
             # IBus component XMLとengineバイナリは、ibus-hazkey-communityパッケージ内に存在しなければならない
             # そうでなければ、IBusはengineを登録できない
             rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq 'ibus/component/ibus-hazkey-community.xml' \
@@ -649,7 +660,8 @@ jobs:
             for _ibus_shared in /usr/bin/hazkey-community-server /usr/bin/hazkey-community-settings \
                 share/applications/hazkey-community-settings.desktop \
                 share/hazkey-community/emoji_all_E17.0.txt share/hazkey-community/AddressDictionary/louds/charID.chid \
-                share/hazkey-community/EngineeringDictionary/louds/charID.chid share/icons \
+                share/hazkey-community/EngineeringDictionary/louds/charID.chid \
+                share/hazkey-community/PostalCode/postal_codes.tsv share/icons \
                 hazkey-community/hazkey-community-server hazkey-community/hazkey-community-settings \
                 hazkey-community/libllama/libllama.so; do
               rpm -qp --filesbypkg "$ibus_rpm_target" | grep -Fq "$_ibus_shared" \

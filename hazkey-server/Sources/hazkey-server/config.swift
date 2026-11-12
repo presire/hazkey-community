@@ -173,6 +173,12 @@ class HazkeyServerConfig {
     ///
     /// 未配備の場合はnilになる
     let engineeringDictionaryPath: URL?
+    /// 郵便番号辞書 (postal_codes.tsv) のファイルパスである
+    ///
+    /// 環境変数[HAZKEY_POSTAL_CODE_DICTIONARY]が設定されていればその値だけを使い、未設定ならシステム配備のPostalCode/postal_codes.tsvを使う
+    ///
+    /// - Note: 実在の確認は読み込み時 (PostalCodeProvider.init?(tsvURL:)) に行い、環境変数のパスが無くてもシステム配備へはフォールバックしない
+    let postalCodeDictionaryPath: URL
     /// ニューラル変換が利用可能かどうかを示す
     ///
     /// バックエンドデバイスとモデルパスの両方が揃った場合に真になる
@@ -244,6 +250,17 @@ class HazkeyServerConfig {
                 }
             return Self.existingDirectoryURL(candidate, fileManager: fileManager)
         }()
+
+        // 郵便番号辞書はディレクトリではなくファイルなので、存在確認は読み込み時に任せる
+        // 環境変数HAZKEY_POSTAL_CODE_DICTIONARYが設定されていればその値だけを根拠にする
+        postalCodeDictionaryPath =
+            if let envPath = ProcessInfo.processInfo.environment["HAZKEY_POSTAL_CODE_DICTIONARY"] {
+                URL(filePath: envPath)
+            } else {
+                URL(fileURLWithPath: systemResourcePath)
+                    .appendingPathComponent("PostalCode", isDirectory: true)
+                    .appendingPathComponent("postal_codes.tsv", isDirectory: false)
+            }
 
         self.zenzaiModelPath = nil
         self.zenzaiAvailable = false
@@ -495,6 +512,7 @@ class HazkeyServerConfig {
         newConf.useInputHistory = true
         newConf.useAddressDictionary = false
         newConf.useEngineeringDictionary = false
+        newConf.usePostalCodeConversion = false
         newConf.useTypoCorrection = false
         newConf.zenzaiRightContext = false
         newConf.zenzaiAlignmentSeparator = false
@@ -910,6 +928,9 @@ class HazkeyServerConfig {
         }
         if !normalized.hasUseEngineeringDictionary {
             normalized.useEngineeringDictionary = defaults.useEngineeringDictionary
+        }
+        if !normalized.hasUsePostalCodeConversion {
+            normalized.usePostalCodeConversion = defaults.usePostalCodeConversion
         }
         if !normalized.hasUseTypoCorrection {
             normalized.useTypoCorrection = defaults.useTypoCorrection
@@ -1611,6 +1632,13 @@ extension Hazkey_Config_Profile {
     /// 旧設定または項目欠落時は既定の無効として扱う
     var useEngineeringDictionaryEffective: Bool {
         hasUseEngineeringDictionary ? useEngineeringDictionary : false
+    }
+
+    /// 郵便番号変換設定[use_postal_code_conversion]の実効値である
+    ///
+    /// 旧設定または項目欠落時は既定の無効として扱う
+    var usePostalCodeConversionEffective: Bool {
+        hasUsePostalCodeConversion ? usePostalCodeConversion : false
     }
 
     var useTypoCorrectionEffective: Bool {

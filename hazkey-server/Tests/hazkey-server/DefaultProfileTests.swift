@@ -73,6 +73,17 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertFalse(profile.zenzaiAlignmentSeparatorEffective)
     }
 
+    func testDefaultProfileDisablesPostalCodeConversion() throws {
+        // 前提: サーバの既定プロファイル応答ファクトリ
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        // 期待: 郵便番号変換は既定で明示的に無効化されている
+        XCTAssertTrue(profile.hasUsePostalCodeConversion)
+        XCTAssertFalse(profile.usePostalCodeConversion)
+        XCTAssertFalse(profile.usePostalCodeConversionEffective)
+    }
+
     func testDefaultProfileSelectsAndCommitsWithCandidateDigitKeys() throws {
         let response = HazkeyServerConfig.getDefaultProfile()
         let profile = try XCTUnwrap(response.currentConfig.profiles.first)

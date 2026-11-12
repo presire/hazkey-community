@@ -43,6 +43,7 @@ hazkey-community-serverの起動時、ラッパースクリプトがこのファ
 | **`HAZKEY_DICTIONARY`** | 辞書ディレクトリの明示指定 (上級者向け) | 実在するディレクトリのパス |
 | **`HAZKEY_ADDRESS_DICTIONARY`** | 住所辞書 (`AddressDictionary`) ディレクトリの明示指定 (上級者向け)<br>設定するとその値のみを用いて、実在するディレクトリでなければ住所辞書を無効にする (システム配備へは切り替えない)<br>未設定時は、`/usr/share/hazkey-community/AddressDictionary`を使用 | ディレクトリのパス |
 | **`HAZKEY_ENGINEERING_DICTIONARY`** | 工学用語辞書 (`EngineeringDictionary`) ディレクトリの明示指定 (上級者向け)<br>`HAZKEY_ADDRESS_DICTIONARY`と同じ規則<br>未設定時は、`/usr/share/hazkey-community/EngineeringDictionary`を使用 | ディレクトリのパス |
+| **`HAZKEY_POSTAL_CODE_DICTIONARY`** | 郵便番号辞書 (`postal_codes.tsv`) ファイルの明示指定 (上級者向け)<br>設定するとその値のみを用いて、読み込めなければ郵便番号変換は住所を表示しない<br>(システム配備へは切り替えない)<br><br>未設定時は、`/usr/share/hazkey-community/PostalCode/postal_codes.tsv`を使用 | ファイルのパス |
 | **`GGML_BACKEND_DIR`** | llama.cppバックエンド (`.so`) の探索ディレクトリ (上級者向け) | ディレクトリのパス (末尾`/`は自動補完) |
 
 **設定例**:  

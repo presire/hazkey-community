@@ -870,6 +870,16 @@
                </property>
               </widget>
              </item>
+             <item row="1" column="0">
+              <widget class="QCheckBox" name="usePostalCodeConversion">
+               <property name="toolTip">
+                <string>Converts a 7-digit postal code (with or without a hyphen) into address candidates in normal conversion ([Space]) only. Not shown in suggestions or live conversion, and not learned.</string>
+               </property>
+               <property name="text">
+                <string>Postal Code Conversion</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </item>
            <item>

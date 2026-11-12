@@ -622,6 +622,18 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `candidateDigitKeyAction`. Subsequent reads from it will return its default value.
   mutating func clearCandidateDigitKeyAction() {_uniqueStorage()._candidateDigitKeyAction = nil}
 
+  /// 郵便番号変換 (7桁の郵便番号を住所の候補へ変換する) を使用する
+  ///
+  /// - Note: 既定はOFF。通常変換のみで、サジェスト (ライブ変換) には適用しない
+  var usePostalCodeConversion: Bool {
+    get {_storage._usePostalCodeConversion ?? false}
+    set {_uniqueStorage()._usePostalCodeConversion = newValue}
+  }
+  /// Returns true if `usePostalCodeConversion` has been explicitly set.
+  var hasUsePostalCodeConversion: Bool {_storage._usePostalCodeConversion != nil}
+  /// Clears the value of `usePostalCodeConversion`. Subsequent reads from it will return its default value.
+  mutating func clearUsePostalCodeConversion() {_uniqueStorage()._usePostalCodeConversion = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   /// ライブ変換 (入力中に変換結果を表示する機能) の動作
@@ -1451,7 +1463,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0\u{3}candidate_digit_key_action\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0\u{3}candidate_digit_key_action\0\u{3}use_postal_code_conversion\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1501,6 +1513,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _zenzaiAlignmentSeparator: Bool? = nil
     var _kanaCycleHotkey: String? = nil
     var _candidateDigitKeyAction: Hazkey_Config_Profile.CandidateDigitKeyAction? = nil
+    var _usePostalCodeConversion: Bool? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1558,6 +1571,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _zenzaiAlignmentSeparator = source._zenzaiAlignmentSeparator
       _kanaCycleHotkey = source._kanaCycleHotkey
       _candidateDigitKeyAction = source._candidateDigitKeyAction
+      _usePostalCodeConversion = source._usePostalCodeConversion
     }
   }
 
@@ -1623,6 +1637,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 131: try { try decoder.decodeSingularBoolField(value: &_storage._zenzaiAlignmentSeparator) }()
         case 132: try { try decoder.decodeSingularStringField(value: &_storage._kanaCycleHotkey) }()
         case 133: try { try decoder.decodeSingularEnumField(value: &_storage._candidateDigitKeyAction) }()
+        case 134: try { try decoder.decodeSingularBoolField(value: &_storage._usePostalCodeConversion) }()
         default: break
         }
       }
@@ -1776,6 +1791,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._candidateDigitKeyAction {
         try visitor.visitSingularEnumField(value: v, fieldNumber: 133)
       } }()
+      try { if let v = _storage._usePostalCodeConversion {
+        try visitor.visitSingularBoolField(value: v, fieldNumber: 134)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1832,6 +1850,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._zenzaiAlignmentSeparator != rhs_storage._zenzaiAlignmentSeparator {return false}
         if _storage._kanaCycleHotkey != rhs_storage._kanaCycleHotkey {return false}
         if _storage._candidateDigitKeyAction != rhs_storage._candidateDigitKeyAction {return false}
+        if _storage._usePostalCodeConversion != rhs_storage._usePostalCodeConversion {return false}
         return true
       }
       if !storagesAreEqual {return false}
