@@ -125,7 +125,8 @@ GitHubのリリースには、ディストリビューションごとにビル�
 | `selinux-hazkey-community-ubuntu2604.pp` | Ubuntu 26.04 |
 | `selinux-hazkey-community-fc44.pp` | Fedora 44 |
 | `selinux-hazkey-community-fc45.pp` | Fedora 45 |
-| `selinux-hazkey-community-leap16.pp` | openSUSE Leap 16 |
+| `selinux-hazkey-community-leap16.0.pp` | openSUSE Leap 16.0 |
+| `selinux-hazkey-community-leap16.1.pp` | openSUSE Leap 16.1 |
 | `selinux-hazkey-community-tumbleweed.pp` | openSUSE Tumbleweed (リリース時点のスナップショットでビルド) |
 
 `.pp`ファイルは、基本ポリシーの型名とバージョンに依存するため、他のディストリビューションでは読み込めない場合があります。  

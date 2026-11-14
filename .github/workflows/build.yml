@@ -65,11 +65,11 @@ jobs:
             expected_machine: x86_64
             swift_target: x86_64-unknown-linux-gnu
             swift_url: https://download.swift.org/swift-6.4.2-release/fedora41/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-fedora41.tar.gz
-          - name: openSUSE Leap 16
+          - name: openSUSE Leap 16.0
             distro: opensuse
-            image: opensuse/leap:16
+            image: opensuse/leap:16.0
             package_type: rpm
-            package_suffix: leap16
+            package_suffix: leap16.0
             package_arch: x86_64
             runner: ubuntu-24.04
             expected_machine: x86_64
@@ -79,7 +79,7 @@ jobs:
             distro: opensuse
             image: opensuse/leap:16.1
             package_type: rpm
-            package_suffix: leap161
+            package_suffix: leap16.1
             package_arch: x86_64
             runner: ubuntu-24.04
             expected_machine: x86_64
@@ -878,12 +878,12 @@ jobs:
           - name: Fedora 45
             image: fedora:45
             package_suffix: fc45
-          - name: openSUSE Leap 16
-            image: opensuse/leap:16
-            package_suffix: leap16
+          - name: openSUSE Leap 16.0
+            image: opensuse/leap:16.0
+            package_suffix: leap16.0
           - name: openSUSE Leap 16.1
             image: opensuse/leap:16.1
-            package_suffix: leap161
+            package_suffix: leap16.1
           - name: openSUSE Tumbleweed
             image: opensuse/tumbleweed:latest
             package_suffix: tumbleweed

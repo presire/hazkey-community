@@ -283,8 +283,8 @@ jobs:
             image: fedora:44
           - name: Fedora 45
             image: fedora:45
-          - name: openSUSE Leap 16
-            image: opensuse/leap:16
+          - name: openSUSE Leap 16.0
+            image: opensuse/leap:16.0
           - name: openSUSE Leap 16.1
             image: opensuse/leap:16.1
           - name: openSUSE Tumbleweed
