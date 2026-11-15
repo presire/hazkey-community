@@ -1,0 +1,19 @@
+-------------------------------------------------------------------
+Sun Nov 15 07:12:30 UTC 2026 - Tomoki Fujikawa <presire2@gmail.com>
+
+- Fix Leap 16.0 spec parsing by using the shared selinux_requires macro.
+- Drop unused qt6-tools-devel to avoid qdoc's exact-version LLVM
+  dependency conflict on Tumbleweed.
+
+-------------------------------------------------------------------
+Sun Nov 15 04:30:00 UTC 2026 - presire <presire@users.noreply.github.com>
+
+- Initial package of hazkey-community 0.2.46 (git ae10749a)
+  * Swift server built offline from the SwiftPM vendor tarball
+    with swift-lang 6.4.1 from devel:tools:compiler
+  * Swift runtime bundled privately (swift-lang has no static stdlib)
+  * Subpackages: fcitx5-hazkey-community, ibus-hazkey-community,
+    hazkey-community-selinux (SUSE %selinux_* scriptlets, .pp.bz2)
+  * Ship license/notice files of the bundled Swift runtime
+  * Include the complete ICU 76.1 license and third-party notices for
+    double-conversion and dictionary data embedded in lib_FoundationICU

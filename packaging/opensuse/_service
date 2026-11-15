@@ -1,0 +1,17 @@
+<services>
+  <!-- OBS workers have no network: both services run manually ("osc service manualrun")
+       and their output is committed. Git submodules (llama.cpp fork, dictionaries) are
+       fetched recursively at the pinned gitlinks. -->
+  <service name="tar_scm" mode="manual">
+    <param name="url">https://github.com/presire/hazkey-community.git</param>
+    <param name="scm">git</param>
+    <param name="revision">ae10749a5d45e15c5c92ef95a60c80766eede17f</param>
+    <param name="version">0.2.46</param>
+    <param name="submodules">enable</param>
+    <param name="filename">hazkey-community</param>
+  </service>
+  <service name="recompress" mode="manual">
+    <param name="file">*.tar</param>
+    <param name="compression">zst</param>
+  </service>
+</services>
