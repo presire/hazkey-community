@@ -6,11 +6,12 @@ import XCTest
 
 @testable import hazkey_server
 
-/// 「削除可能」候補注釈 (GitHub Issue #1) を支える読みキー単位のポイント照会と、同時に修正した隣接する学習メモリの正しさに関する2件のバグ
+/// 削除可能候補の注釈を支える読みキー単位のポイント照会と、保存前の学習と学習種別を含む学習メモリの削除の回帰テスト
 final class LearningAnnotationLookupTests: XCTestCase {
     /// 一時ディレクトリをXDGの設定・状態ディレクトリとして差し替えてテスト本体を実行する
     ///
     /// [XDG_CONFIG_HOME] と [XDG_STATE_HOME] を一時領域へ向ける
+    ///
     /// 実行後は元の値を復元し、一時ディレクトリを削除する
     ///
     /// - Parameter body: 一時ルートURLを受け取り、テスト本体を実行するクロージャ
@@ -168,18 +169,29 @@ final class LearningAnnotationLookupTests: XCTestCase {
         return response.getLearningHistoryResult.totalCount
     }
 
-    /// emoji_all_E*.txtのTSV形式: 絵文字 TAB カンマ区切りのひらがな読み
-    /// TABバリエーション
+    /// 絵文字辞書のTSVフィクスチャを一時領域へ書き出す
+    ///
+    /// 各行は絵文字 TAB カンマ区切りのひらがな読み TAB カンマ区切りのバリエーションの3列で構成する
+    ///
+    /// - Parameters:
+    ///   - contents: 書き出すTSVの全文
+    ///   - name: 一時領域に作るファイル名
+    ///   - root: ファイルを作る一時領域のルート
+    /// - Returns: 書き出したファイルのURL
+    /// - Throws: 書き込みに失敗した場合のエラー
     private func writeEmojiFixture(_ contents: String, named name: String, in root: URL) throws -> URL {
         let url = root.appendingPathComponent(name, isDirectory: false)
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
-    /// - Parameter emojiFixtureURL:
-    ///   常にfixtureを渡す
-    ///   nilは本番のE17アセットへフォールバックするが、ここには存在せず、このテストが依存する絵文字注入が無効になる
-    private func annotationState(emojiFixtureURL: URL?) -> HazkeyServerState {
+    /// 絵文字辞書を注入したテスト用の接続セッションを作る
+    ///
+    /// Zenzaiを無効にして、絵文字の注入と学習の注釈だけを比較できるようにする
+    ///
+    /// - Parameter emojiFixtureURL: 注入する絵文字辞書のURL
+    /// - Returns: 生成した接続セッション
+    private func annotationState(emojiFixtureURL: URL) -> HazkeyServerState {
         let state = HazkeyServerState(emojiDictionaryURL: emojiFixtureURL)
         state.serverConfig.currentProfile.zenzaiEnable = false
         return state
@@ -242,7 +254,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         (state.currentCandidateList ?? []).count(where: predicate)
     }
 
-    // MARK: - R1: 学習済み予測候補
+    // MARK: - 学習済み予測候補の注釈
 
     /// 予測候補の永続エントリは予測部分まで含む完全rubyの下に保存されるため、
     /// 入力prefixに切り詰めた読みでは注釈も削除も当たらない
@@ -305,8 +317,9 @@ final class LearningAnnotationLookupTests: XCTestCase {
     }
 
     /// 注釈は、列挙API (全走査) ではなくポイント照会で解決される
-    /// 列挙はmemory.memorymetadataを必ず読むが、ポイント照会はLOUDSと該当シャードしか読まないため、
-    /// metadataを消すと履歴は空になり注釈だけが残る
+    ///
+    /// 列挙はmemory.memorymetadataを必ず読むが、ポイント照会はLOUDSと該当シャードしか読まないため、metadataを消すと履歴は空になり注釈だけが残る
+    ///
     /// 全走査方式へ戻すと最後のアサートが落ちる
     func testPointLookupDoesNotDependOnEnumerationMetadata() throws {
         try withTemporaryXDG { _ in
@@ -329,6 +342,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
     // MARK: - 注入候補との整列
 
     /// 注釈は絵文字・相対日付・かな数字の注入より前に確定する
+    ///
     /// 相対日付は候補列の中間にinsertするため、注入が先に走ると以降の候補が別の読みで判定される
     func testInjectedCandidatesDoNotDisturbAnnotationAlignment() throws {
         try withTemporaryXDG { root in
@@ -377,6 +391,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
     // MARK: - 削除の往復確認
 
     /// [削除可]と表示された候補は実際に削除でき、削除後に取り直した候補では注釈が消える
+    ///
     /// 既存の削除テストは応答に載る再構築済みペイロードまでしか見ないので、再照会の経路はここでしか固定されない
     func testAnnotatedCandidateDeleteRoundTripRemovesAnnotationOnRequery() throws {
         try withTemporaryXDG { _ in
@@ -400,6 +415,155 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
+    // MARK: - 保存前の学習の注釈と削除
+
+    /// 指定した表記の変換候補を、学習データを保存せずに確定する
+    ///
+    /// 組成を作り直して候補を取得し、表記が一致する候補を確定する
+    ///
+    /// - Parameters:
+    ///   - word: 確定する候補の表記
+    ///   - hiragana: 入力するひらがな読み
+    ///   - state: 入力と確定を行う接続セッション
+    /// - Throws: 候補が見つからない場合や送信に失敗した場合のエラー
+    private func confirmWithoutSaving(_ word: String, reading hiragana: String, in state: HazkeyServerState) throws {
+        let result = try candidates(for: hiragana, in: state)
+        let index = try XCTUnwrap(result.candidates.firstIndex { $0.text == word })
+        XCTAssertEqual(state.completePrefix(candidateIndex: index).status, .success)
+        XCTAssertTrue(state.learningDataNeedsCommit)
+    }
+
+    /// 学習メモリを中断中の状態にする
+    ///
+    /// 変換エンジンのLongTermLearningMemoryは、メモリディレクトリ直下の.pauseファイルを中断標識として扱う
+    ///
+    /// - Parameter state: 対象の接続セッション
+    /// - Returns: 作成した中断標識のURL (後始末で削除する)
+    /// - Note: 中断標識の名前は変換エンジンのpauseFileURLと一致させる
+    private func markLearningPaused(in state: HazkeyServerState) -> URL {
+        let pauseURL = state.serverConfig.memoryDirectory()
+            .appendingPathComponent(".pause", isDirectory: false)
+        XCTAssertTrue(FileManager.default.createFile(atPath: pauseURL.path, contents: Data()))
+        return pauseURL
+    }
+
+    /// 確定した直後の語は、学習データを保存する前でも削除可能と注釈され、削除できることを検証する
+    ///
+    /// 確定した語の学習は保存 (save_learning_data要求・切断・設定の保存) までメモリ上にだけあり、以前は保存済みの学習だけを照会していたため、注釈も削除もできなかった
+    ///
+    /// 削除した後は、取り直した候補の注釈が消え、学習データを保存しても学習が復活しない
+    func testJustConfirmedCandidateIsAnnotatedAndDeletableBeforeSave() throws {
+        try withTemporaryXDG { _ in
+            let state = HazkeyServerState()
+            try confirmWithoutSaving("今日", reading: "きょう", in: state)
+            XCTAssertEqual(try historyCount(in: state), 0)
+
+            let result = try candidates(for: "きょう", in: state)
+            let index = try XCTUnwrap(result.candidates.firstIndex { $0.text == "今日" })
+            XCTAssertTrue(result.candidates[index].hasLearningEntry_p)
+
+            let response = try send(
+                .with {
+                    $0.deleteCandidateLearningData = Hazkey_Commands_DeleteCandidateLearningData
+                        .with { $0.index = Int32(index) }
+                }, to: state)
+            XCTAssertEqual(response.status, .success)
+            XCTAssertGreaterThan(response.deleteCandidateLearningDataResult.deletedCount, 0)
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), false)
+
+            XCTAssertEqual(try send(.with { $0.saveLearningData = Hazkey_Commands_SaveLearningData() }, to: state).status, .success)
+            XCTAssertEqual(try historyCount(in: state), 0)
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), false)
+        }
+    }
+
+    /// 保存済みの語を再び確定して、保存済みと保存前の両方に同じ語がある場合も、両方を削除できることを検証する
+    ///
+    /// 同じキーは1件にまとめて削除し、存在確認で失敗しない
+    func testPersistedAndPendingCopiesOfTheSameWordAreBothDeleted() throws {
+        try withTemporaryXDG { _ in
+            let state = HazkeyServerState()
+            try confirmWithoutSaving("今日", reading: "きょう", in: state)
+            XCTAssertEqual(try send(.with { $0.saveLearningData = Hazkey_Commands_SaveLearningData() }, to: state).status, .success)
+            XCTAssertGreaterThan(try historyCount(in: state), 0)
+            try confirmWithoutSaving("今日", reading: "きょう", in: state)
+            XCTAssertFalse(state.converter.pendingLearningMemoryKeys(exactReadings: ["キョウ"]).isEmpty)
+
+            let result = try candidates(for: "きょう", in: state)
+            let index = try XCTUnwrap(result.candidates.firstIndex { $0.text == "今日" })
+            XCTAssertTrue(result.candidates[index].hasLearningEntry_p)
+            let response = try send(
+                .with {
+                    $0.deleteCandidateLearningData = Hazkey_Commands_DeleteCandidateLearningData
+                        .with { $0.index = Int32(index) }
+                }, to: state)
+            XCTAssertEqual(response.status, .success)
+            XCTAssertGreaterThan(response.deleteCandidateLearningDataResult.deletedCount, 0)
+
+            XCTAssertEqual(state.converter.pendingLearningMemoryKeys(exactReadings: ["キョウ"]), [])
+            XCTAssertEqual(try historyCount(in: state), 0)
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), false)
+        }
+    }
+
+    // MARK: - 学習種別ごとの削除
+
+    /// 学習を更新しないプロファイルでも、保存済みの学習を候補から削除できることを検証する
+    ///
+    /// 入力履歴を使用して新しい履歴を保存しない設定は、変換エンジンではonlyOutputとして扱われる
+    ///
+    /// onlyOutputは学習を更新しないが、永続化済みの学習は変換に使われるため、明示的な削除は永続側へ届かなければならない
+    ///
+    /// - Throws: 設定の適用・候補取得・削除要求に失敗した場合のエラー
+    func testOnlyOutputProfileStillDeletesPersistedLearning() throws {
+        try withTemporaryXDG { _ in
+            let state = HazkeyServerState()
+            seed([.init(word: "今日", ruby: "キョウ", lcid: 10, rcid: 11, mid: 1, value: -5)], in: state)
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), true)
+
+            var onlyOutput = HazkeyServerConfig.genDefaultConfig()
+            onlyOutput.profileName = "onlyOutput"
+            onlyOutput.profileID = "onlyOutput"
+            onlyOutput.useInputHistory = true
+            onlyOutput.stopStoreNewHistory = true
+            try switchProfiles([onlyOutput], in: state)
+
+            let result = try candidates(for: "きょう", in: state)
+            let index = try XCTUnwrap(result.candidates.firstIndex { $0.text == "今日" })
+            XCTAssertTrue(result.candidates[index].hasLearningEntry_p)
+
+            let response = try send(
+                .with {
+                    $0.deleteCandidateLearningData = Hazkey_Commands_DeleteCandidateLearningData
+                        .with { $0.index = Int32(index) }
+                }, to: state)
+            XCTAssertEqual(response.status, .success)
+            XCTAssertGreaterThan(response.deleteCandidateLearningDataResult.deletedCount, 0)
+            XCTAssertEqual(
+                try state.converter.persistedLearningMemoryKeys(exactReadings: ["キョウ"]),
+                [])
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), false)
+        }
+    }
+
+    /// 保存済みの学習の照会に失敗した場合は、保存前の学習があっても注釈を付けずに縮退することを検証する
+    ///
+    /// .pauseがある間は保存済みの学習が不整合なため、保存前の学習だけで注釈を付けない
+    func testPausedSnapshotLeavesJustConfirmedCandidateUnannotated() throws {
+        try withTemporaryXDG { _ in
+            let state = HazkeyServerState()
+            try confirmWithoutSaving("今日", reading: "きょう", in: state)
+            XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), true)
+
+            let pauseURL = markLearningPaused(in: state)
+            defer { try? FileManager.default.removeItem(at: pauseURL) }
+
+            let result = try candidates(for: "きょう", in: state)
+            XCTAssertFalse(result.candidates.isEmpty)
+            XCTAssertTrue(result.candidates.allSatisfy { !$0.hasLearningEntry_p })
+        }
+    }
+
     /// 学習していない読みの候補には注釈が付かないことを検証する
     ///
     /// 履歴が空の状態で取得した候補は、いずれも未注釈である
@@ -420,9 +584,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
             seed([.init(word: "今日", ruby: "キョウ", lcid: 10, rcid: 11, mid: 1, value: -5)], in: state)
             XCTAssertEqual(annotated("今日", in: try candidates(for: "きょう", in: state)), true)
 
-            let pauseURL = state.serverConfig.memoryDirectory()
-                .appendingPathComponent(".pause", isDirectory: false)
-            XCTAssertTrue(FileManager.default.createFile(atPath: pauseURL.path, contents: Data()))
+            let pauseURL = markLearningPaused(in: state)
             defer { try? FileManager.default.removeItem(at: pauseURL) }
 
             let result = try candidates(for: "きょう", in: state)
@@ -432,6 +594,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
     }
 
     /// .pause以外の照会失敗 (破損シャード) でも、候補取得そのものは成功し、全候補が未注釈へ縮退する
+    ///
     /// 実シャードをゴミで壊すと、変換経路が境界検証のないparseへ到達し得るため、照会シームにmalformedShardを注入する
     func testCorruptedShardLeavesCandidatesUnannotated() throws {
         try withTemporaryXDG { _ in
@@ -469,10 +632,11 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - バグD: プロファイル切替時のmemory LOUDSキャッシュ無効化
+    // MARK: - プロファイル切替時にmemory LOUDSのキャッシュを無効化すること
 
     /// プロファイル切替直後の注釈は、切替後プロファイルのmemoryディレクトリを反映する
-    /// バグD未修正だと旧プロファイルのキャッシュ済みtrieで解決してしまう
+    ///
+    /// 修正前は旧プロファイルのキャッシュ済みtrieで解決してしまい、切替後のmemoryディレクトリが反映されなかった
     func testAnnotationFollowsProfileMemoryDirectoryAfterSwitch() throws {
         try withTemporaryXDG { _ in
             let state = HazkeyServerState()
@@ -496,7 +660,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - バグB: 履歴を消去した後に復活するものがあってはならない
+    // MARK: - 履歴を消去した後に学習や注釈が復活しないこと
 
     /// プロファイル独立履歴を消去した後に候補が復活しないことを検証する
     ///
@@ -521,7 +685,7 @@ final class LearningAnnotationLookupTests: XCTestCase {
         }
     }
 
-    // MARK: - バグC: 保留中の学習がプロファイル切替をまたいで漏れてはならない
+    // MARK: - 保留中の学習がプロファイル切替をまたいで漏れないこと
 
     /// 保留中の学習が別プロファイルのディレクトリへ漏れないことを検証する
     ///

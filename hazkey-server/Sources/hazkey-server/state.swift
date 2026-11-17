@@ -294,7 +294,9 @@ class HazkeySharedResources {
     static let resolvedLearningDeletionLimit = 4096
     /// 削除可能の注釈と学習削除で使う、読みによるポイント照会の差し替え口 (テスト専用)
     ///
-    /// nilの場合は、本番経路 (converter.persistedLearningMemoryKeys(exactReadings:)) を使用する
+    /// nilの場合は、本番経路 (保存済みの学習と保存前の学習の両方を照会する) を使用する
+    ///
+    /// 設定した場合は本番経路を丸ごと置き換え、保存前の学習も照会しない
     ///
     /// テストでは失敗するクロージャに差し替え、実際のシャードを破損させずに照会失敗時の縮退動作を検証する
     var learningSurfaceKeyLookup: (([String]) throws -> [PersistedLearningMemoryKey])?
@@ -787,8 +789,9 @@ extension HazkeySharedResources {
         }
 
         // エントリは自身のreadingにのみ保存されるため、要求されたreadingだけをポイント照会すれば全件走査と同等
+        // 保存前の学習も照会に含めるため、確定した直後の語も削除できる
         let existingKeys = Set(
-            try persistedLearningMemoryKeys(
+            try learningMemoryKeys(
                 exactReadings: Array(Set(uniqueKeys.map(\.reading)))
             ).map {
                 LearningHistoryKey(
@@ -872,23 +875,33 @@ extension HazkeySharedResources {
         try converter.allLearningMemoryEntries(limit: Self.learningEnumerationLimit).entries
     }
 
-    /// 指定した読みに保存された学習エントリのキーを、読みのポイント照会で取得する
+    /// 指定した読みの学習エントリのキーを、保存済みの学習と保存前の学習の両方から、読みのポイント照会で取得する
+    ///
+    /// 確定した語の学習は、学習データの保存 (save_learning_data要求・切断・設定の保存・学習の削除) まで変換エンジンのメモリ上にだけある
+    ///
+    /// 保存済みの学習だけを照会すると、確定した直後の語に削除可能の注釈が付かず、削除もできないため、保存前の学習も合わせて返す
     ///
     /// テスト用の差し替え口 (learningSurfaceKeyLookup) が設定されていればそちらを使う
     ///
     /// - Parameter readings: 照会する読み (カタカナに正規化済みであること)
-    /// - Returns: 一致したエントリの読み・表記・左右の品詞ID
+    /// - Returns: 一致したエントリの読み・表記・左右の品詞ID (保存済みと保存前の両方にあるエントリは1件にまとめる)
     /// - Throws: 学習メモリのシャードが破損・欠落している場合や、学習が一時停止中の場合は変換エンジンのエラー
-    private func persistedLearningMemoryKeys(
+    /// - Important: 保存済みの学習の照会に失敗した場合は、保存前の学習だけを返さずにエラーを投げる (照会失敗時の縮退動作を保つため)
+    private func learningMemoryKeys(
         exactReadings readings: [String]
     ) throws -> [PersistedLearningMemoryKey] {
         if let learningSurfaceKeyLookup {
             return try learningSurfaceKeyLookup(readings)
         }
-        return try converter.persistedLearningMemoryKeys(exactReadings: readings)
+        let persistedKeys = try converter.persistedLearningMemoryKeys(exactReadings: readings)
+        let pendingKeys = converter.pendingLearningMemoryKeys(exactReadings: readings)
+        guard !pendingKeys.isEmpty else { return persistedKeys }
+        // 保存済みと保存前で同じキーが重なる場合 (保存後に同じ語を再び確定した場合など) は1件にまとめる
+        var seenKeys: Set<PersistedLearningMemoryKey> = []
+        return (persistedKeys + pendingKeys).filter { seenKeys.insert($0).inserted }
     }
 
-    /// 指定した読みに保存された学習エントリを、読みと表記の組のキーで返す
+    /// 指定した読みの学習エントリ (保存前の学習を含む) を、読みと表記の組のキーで返す
     ///
     /// 変換候補に削除可能の注釈 (has_learning_entry) を付けるために使う
     ///
@@ -898,12 +911,12 @@ extension HazkeySharedResources {
     /// - Precondition: 読みはトライの完全一致で引くため、事前にカタカナに正規化しておくこと
     func learningSurfaceKeys(forReadings readings: [String]) throws -> Set<LearningSurfaceKey> {
         Set(
-            try persistedLearningMemoryKeys(exactReadings: readings).map {
+            try learningMemoryKeys(exactReadings: readings).map {
                 LearningSurfaceKey(reading: $0.reading, word: $0.word)
             })
     }
 
-    /// 読みと表記が一致する保存済みの学習エントリを、品詞ID (CID) にかかわらず全て返す
+    /// 読みと表記が一致する学習エントリ (保存前の学習を含む) を、品詞ID (CID) にかかわらず全て返す
     ///
     /// 注釈と同じポイント照会から導くため、削除可能と表示された候補は必ず削除できる
     ///
@@ -919,7 +932,7 @@ extension HazkeySharedResources {
         try matchingLearningEntryKeys(readings: [reading], word: word)
     }
 
-    /// 複数の読みのいずれかと表記が一致する保存済みの学習エントリを、品詞ID (CID) にかかわらず全て返す
+    /// 複数の読みのいずれかと表記が一致する学習エントリ (保存前の学習を含む) を、品詞ID (CID) にかかわらず全て返す
     ///
     /// 通常変換の候補は切り詰めた入力読み、予測候補は候補全体の読みで保存されるため、両方の読みで照合する
     ///
@@ -943,7 +956,7 @@ extension HazkeySharedResources {
 
         var seenKeys: Set<LearningHistoryKey> = []
         var matches: [(reading: String, word: String, lcid: UInt32, rcid: UInt32)] = []
-        for key in try persistedLearningMemoryKeys(exactReadings: targets.map(\.reading))
+        for key in try learningMemoryKeys(exactReadings: targets.map(\.reading))
         where targets.contains(LearningSurfaceKey(reading: key.reading, word: key.word)) {
             let historyKey = LearningHistoryKey(
                 reading: key.reading, word: key.word,
@@ -2767,7 +2780,7 @@ class HazkeyServerState {
 
         // appendCandidateと同じ式で候補の読みを算出する
         let readings = candidateReadings
-        // 保存前の学習は削除の対象にならないが、利用者が削除を求めた語は同じ文脈でも保護しない
+        // 利用者が削除を求めた語は、学習の有無にかかわらず、同じ文脈でも保護しない
         shared.protectedLearnedWords.remove(
             [readings.prefixReading, readings.fullRuby].map { (reading: $0, word: candidate.text) }
                 + candidate.data.map { (reading: $0.ruby, word: $0.word) })
