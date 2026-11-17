@@ -51,6 +51,12 @@ enum DisplayedCandidate {
     ///
     /// 学習は行わず、共有の学習dirtyフラグも変更しない
     case fromPostalCode(word: String, composingCount: ComposingCount)
+    /// 補助記号辞書 (SymbolDictionaryProvider) の記号候補
+    ///
+    /// 確定時はカーソルまでの読み (composingCount) のみを消費して、右側の読みは組成に残す
+    ///
+    /// 学習は行わず、共有の学習dirtyフラグも変更しない
+    case fromSymbol(word: String, composingCount: ComposingCount)
 }
 
 /// 郵便番号辞書の読み込み状態
@@ -63,6 +69,18 @@ enum PostalCodeProviderLoadState {
     case failed
     /// 読み込みに成功した
     case loaded(PostalCodeProvider)
+}
+
+/// 補助記号辞書の読み込み状態
+///
+/// 読み込みはプロセスで1度だけ試み、失敗した場合も結果を保持して読み込み直さない
+enum SymbolDictionaryLoadState {
+    /// まだ読み込みを試みていない (記号変換が一度も有効になっていない)
+    case notAttempted
+    /// 読み込みを試みたが、ファイルが無いか有効な行が無かった
+    case failed
+    /// 読み込みに成功した
+    case loaded(SymbolDictionaryProvider)
 }
 
 /// 学習履歴の列挙・削除で発生するエラー
@@ -256,6 +274,8 @@ class HazkeySharedResources {
     static let addressDictionarySourceID = "address"
     /// 郵便番号辞書の読み込み状態 (郵便番号変換を有効にした時点で1度だけ読み込む)
     private(set) var postalCodeProviderLoadState: PostalCodeProviderLoadState = .notAttempted
+    /// 補助記号辞書の読み込み状態 (記号変換を有効にした時点で1度だけ読み込む)
+    private(set) var symbolDictionaryLoadState: SymbolDictionaryLoadState = .notAttempted
     /// 工学辞書の補助辞書ソースID
     static let engineeringDictionarySourceID = "engineering"
 
@@ -401,6 +421,7 @@ class HazkeySharedResources {
         self.baseConvertRequestOptions = serverConfig.genBaseConvertRequestOptions()
         syncConverterAddressDictionary()
         loadPostalCodeProviderIfNeeded()
+        loadSymbolDictionaryIfNeeded()
         var learningInitializationOptions = baseConvertRequestOptions
         learningInitializationOptions.zenzaiMode = .off
         _ = converter.requestCandidates(
@@ -467,6 +488,7 @@ extension HazkeySharedResources {
         syncConverterLearningConfig()
         syncConverterAddressDictionary()
         loadPostalCodeProviderIfNeeded()
+        loadSymbolDictionaryIfNeeded()
         // ホットパス側のユーザ辞書の再読み込みはスロットルされるため、設定適用時はスロットルを迂回して強制再読み込みして、辞書編集を取りこぼさない
         // userDictInjectedを倒して次回の候補生成で (変更後の) エントリを再注入させる
         userDictionary.reloadIfNeeded(force: true)
@@ -510,6 +532,33 @@ extension HazkeySharedResources {
             hazkeyLog("[hazkey] Loaded \(provider.entryCount) postal code entries")
         } else {
             postalCodeProviderLoadState = .failed
+        }
+    }
+
+    /// 読み込み済みの補助記号辞書
+    ///
+    /// 読み込みを試みていない場合と読み込みに失敗した場合はnilを返す
+    var symbolDictionary: SymbolDictionaryProvider? {
+        switch symbolDictionaryLoadState {
+        case .notAttempted, .failed: nil
+        case .loaded(let provider): provider
+        }
+    }
+
+    /// 記号変換が有効な場合に、補助記号辞書を1度だけ読み込む
+    ///
+    /// 最初の変換で読み込みの費用がかからないよう、サーバの起動時と設定の適用時に呼ぶ
+    ///
+    /// - Note: 1度試みた後は、失敗した場合も含めて読み込み直さない。読み込めない場合も、記号候補の繰り上げはBティアとしてコンバータの順で動く
+    func loadSymbolDictionaryIfNeeded() {
+        guard serverConfig.currentProfile.symbolConversionEffective,
+            case .notAttempted = symbolDictionaryLoadState
+        else { return }
+        if let provider = SymbolDictionaryProvider(tsvURL: serverConfig.symbolDictionaryPath) {
+            symbolDictionaryLoadState = .loaded(provider)
+            hazkeyLog("[hazkey] Loaded \(provider.readingCount) symbol dictionary readings")
+        } else {
+            symbolDictionaryLoadState = .failed
         }
     }
 
@@ -1635,6 +1684,10 @@ class HazkeyServerState {
             // 郵便番号の住所候補はカーソルまでの郵便番号の読みだけを消費し、右側の読みを保持する
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
             if let failure = completeComposingPrefix(composingCount) { return failure }
+        case .fromSymbol(_, let composingCount):
+            // 補助記号辞書の記号候補はカーソルまでの読みだけを消費し、右側の読みを保持する
+            // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
+            if let failure = completeComposingPrefix(composingCount) { return failure }
         }
         currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
@@ -2582,6 +2635,32 @@ class HazkeyServerState {
                     candidatesResult.liveTextIndex += Int32(adoptedCount)
                 }
             }
+        }
+
+        // === 記号候補の繰り上げと補助記号辞書の候補 (後処理) ===
+        // 記号変換が有効な通常変換 (is_suggest == false) で、カーソルまでの読みが2文字以上かつ直接入力を含まない場合のみ
+        // 全ての注入を終えた最終候補列を1回だけ並べ替えるため、誤字訂正の基準値・liveText・相対日付のアンカー探索は従来の候補列のまま動く
+        // 先頭3件・liveTextIndexの候補・先頭の誤字訂正候補群は動かさない
+        // 直接入力の判定はカーソルまでのコピーではなく組成全体で行う
+        // (カーソルより後ろに直接入力がある場合、コピーだけでは見落とすため)
+        if !is_suggest, serverConfig.currentProfile.symbolConversionEffective,
+            hiraganaPreeditLen >= 2,
+            !composingText.value.input.contains(where: { $0.inputStyle == .direct })
+        {
+            // 補助記号辞書が無い場合と読みが辞書に無い場合は、Bティアとしてコンバータ由来の記号だけを繰り上げる
+            let entry = shared.symbolDictionary?.entry(forReading: hiraganaPreedit)
+            let promoted = SymbolCandidatePromotion.apply(
+                clientCandidates: clientCandidates,
+                serverCandidates: serverCandidates,
+                liveTextIndex: candidatesResult.liveTextIndex,
+                readingLength: hiraganaPreeditLen,
+                remainingReading: String(fullHiraganaPreedit.dropFirst(hiraganaPreeditLen)),
+                pageSize: Int(serverConfig.currentProfile.numCandidatesPerPage),
+                tier: entry?.tier ?? .b,
+                dictionarySymbols: entry?.symbols ?? [])
+            clientCandidates = promoted.clientCandidates
+            serverCandidates = promoted.serverCandidates
+            candidatesResult.liveTextIndex = promoted.liveTextIndex
         }
 
         candidatesResult.candidates = clientCandidates

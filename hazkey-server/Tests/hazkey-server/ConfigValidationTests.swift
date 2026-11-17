@@ -941,4 +941,85 @@ final class ConfigValidationTests: XCTestCase {
             XCTAssertFalse(profile.usePostalCodeConversionEffective)
         }
     }
+
+    // MARK: - 記号変換
+
+    func testNormalizeProfileDefaultsMissingSymbolAndPreservesExplicitTrue() throws {
+        // 前提: symbolフィールドがない旧プロファイルと、明示的に有効化するプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.specialConversionMode.clearSymbol()
+        XCTAssertFalse(missing.specialConversionMode.hasSymbol)
+        XCTAssertFalse(missing.symbolConversionEffective)
+        var enabled = HazkeyServerConfig.genDefaultConfig()
+        enabled.specialConversionMode.symbol = true
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedEnabled = try HazkeyServerConfig.normalizeProfile(enabled)
+
+        // 検証: 欠落フィールドは無効が既定となり、明示的な有効化は保持される
+        XCTAssertTrue(normalizedMissing.specialConversionMode.hasSymbol)
+        XCTAssertFalse(normalizedMissing.specialConversionMode.symbol)
+        XCTAssertFalse(normalizedMissing.symbolConversionEffective)
+        XCTAssertTrue(normalizedEnabled.specialConversionMode.hasSymbol)
+        XCTAssertTrue(normalizedEnabled.specialConversionMode.symbol)
+        XCTAssertTrue(normalizedEnabled.symbolConversionEffective)
+    }
+
+    func testNormalizeProfileDefaultsMissingSpecialConversionModeToDisabledSymbol() throws {
+        // 前提: specialConversionMode自体がない旧プロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearSpecialConversionMode()
+        XCTAssertFalse(missing.hasSpecialConversionMode)
+
+        // 実行: 設定境界へ通す
+        let normalized = try HazkeyServerConfig.normalizeProfile(missing)
+
+        // 検証: 記号変換は欠落時から無効で補完される
+        XCTAssertTrue(normalized.hasSpecialConversionMode)
+        XCTAssertTrue(normalized.specialConversionMode.hasSymbol)
+        XCTAssertFalse(normalized.specialConversionMode.symbol)
+        XCTAssertFalse(normalized.symbolConversionEffective)
+    }
+
+    func testSavedSymbolConversionSurvivesReload() throws {
+        try withSandboxedConfigHome {
+            for value in [true, false] {
+                var profile = HazkeyServerConfig.genDefaultConfig()
+                profile.specialConversionMode.symbol = value
+
+                // 実行: 保存してconfig.jsonから読み直す
+                let config = HazkeyServerConfig()
+                try config.saveConfig([profile])
+                let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+                // 検証: 明示した値が往復後も保持される
+                XCTAssertTrue(reloaded.specialConversionMode.hasSymbol)
+                XCTAssertEqual(reloaded.specialConversionMode.symbol, value)
+                XCTAssertEqual(reloaded.symbolConversionEffective, value)
+            }
+        }
+    }
+
+    func testDecodingLegacyConfigWithoutSymbolConversionYieldsFalse() throws {
+        try withSandboxedConfigHome {
+            let configDirectory = HazkeyServerConfig.getConfigDirectory()
+            try FileManager.default.createDirectory(
+                at: configDirectory, withIntermediateDirectories: true)
+            try Data("""
+                [{
+                  "profileName": "Legacy",
+                  "specialConversionMode": {"extendedEmoji": true},
+                  "unknownFutureField": 42
+                }]
+                """.utf8).write(to: configDirectory.appendingPathComponent("config.json"))
+
+            // 実行: 記号変換フィールドを持たない旧config.jsonを復号する
+            let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+            // 検証: 例外なく読み込み、記号変換は既定の無効へ縮退する
+            XCTAssertEqual(profile.profileName, "Legacy")
+            XCTAssertFalse(profile.symbolConversionEffective)
+        }
+    }
 }

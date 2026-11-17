@@ -65,6 +65,8 @@ let package = Package(
                 "autoConversion.swift",
                 // 実行時フィクスチャ (PerfProbeTestsが#filePath相対で読むためリソース宣言不要)
                 "rpc_baseline.json",
+                // 記号変換の評価コーパス (scripts/test_symbol_corpus.pyが絶対パスで読むためリソース宣言不要)
+                "Fixtures/symbol-corpus.json",
             ],
             swiftSettings: [.interoperabilityMode(.Cxx)],
         ),

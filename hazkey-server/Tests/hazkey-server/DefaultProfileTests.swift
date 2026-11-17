@@ -91,4 +91,15 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertTrue(profile.hasCandidateDigitKeyAction)
         XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
     }
+
+    func testDefaultProfileDisablesSymbolConversion() throws {
+        // 前提: サーバの既定プロファイル応答ファクトリ
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        // 期待: 記号変換は既定で明示的に無効化されている
+        XCTAssertTrue(profile.specialConversionMode.hasSymbol)
+        XCTAssertFalse(profile.specialConversionMode.symbol)
+        XCTAssertFalse(profile.symbolConversionEffective)
+    }
 }

@@ -948,6 +948,20 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     /// Clears the value of `extendedEmoji`. Subsequent reads from it will return its default value.
     mutating func clearExtendedEmoji() {self._extendedEmoji = nil}
 
+    /// 記号変換を有効にする
+    ///
+    /// 有効時は、通常の変換 (予測候補を除く) で、記号の候補を候補一覧の4番目以降の前方へ繰り上げ、補助記号辞書の記号 (やじるし → → 等) を加える
+    ///
+    /// - Note: 欠落時は無効として扱う
+    var symbol: Bool {
+      get {_symbol ?? false}
+      set {_symbol = newValue}
+    }
+    /// Returns true if `symbol` has been explicitly set.
+    var hasSymbol: Bool {self._symbol != nil}
+    /// Clears the value of `symbol`. Subsequent reads from it will return its default value.
+    mutating func clearSymbol() {self._symbol = nil}
+
     var unknownFields = SwiftProtobuf.UnknownStorage()
 
     init() {}
@@ -962,6 +976,7 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
     fileprivate var _relativeDate: Bool? = nil
     fileprivate var _halfwidthKatakana: Bool? = nil
     fileprivate var _extendedEmoji: Bool? = nil
+    fileprivate var _symbol: Bool? = nil
   }
 
   /// プロファイルで有効にしたキーマップ
@@ -1878,7 +1893,7 @@ nonisolated extension Hazkey_Config_Profile.CandidateDigitKeyAction: SwiftProtob
 
 nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = Hazkey_Config_Profile.protoMessageName + ".SpecialConversionMode"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}comma_separated_number\0\u{3}mail_domain\0\u{1}calendar\0\u{1}time\0\u{3}roman_typography\0\u{3}unicode_codepoint\0\u{3}hazkey_version\0\u{3}relative_date\0\u{4}*halfwidth_katakana\0\u{3}extended_emoji\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}comma_separated_number\0\u{3}mail_domain\0\u{1}calendar\0\u{1}time\0\u{3}roman_typography\0\u{3}unicode_codepoint\0\u{3}hazkey_version\0\u{3}relative_date\0\u{4}*halfwidth_katakana\0\u{3}extended_emoji\0\u{1}symbol\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1896,6 +1911,7 @@ nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf
       case 8: try { try decoder.decodeSingularBoolField(value: &self._relativeDate) }()
       case 50: try { try decoder.decodeSingularBoolField(value: &self._halfwidthKatakana) }()
       case 51: try { try decoder.decodeSingularBoolField(value: &self._extendedEmoji) }()
+      case 52: try { try decoder.decodeSingularBoolField(value: &self._symbol) }()
       default: break
       }
     }
@@ -1936,6 +1952,9 @@ nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf
     try { if let v = self._extendedEmoji {
       try visitor.visitSingularBoolField(value: v, fieldNumber: 51)
     } }()
+    try { if let v = self._symbol {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 52)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1950,6 +1969,7 @@ nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf
     if lhs._relativeDate != rhs._relativeDate {return false}
     if lhs._halfwidthKatakana != rhs._halfwidthKatakana {return false}
     if lhs._extendedEmoji != rhs._extendedEmoji {return false}
+    if lhs._symbol != rhs._symbol {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

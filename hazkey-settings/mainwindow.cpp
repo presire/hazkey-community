@@ -275,6 +275,7 @@ QString MainWindow::uiStateKey() const {
     state.insert("useUserDict", ui_->useUserDict->isChecked());
     state.insert("halfwidthKatakanaConversion", ui_->halfwidthKatakanaConversion->isChecked());
     state.insert("extendedEmojiConversion", ui_->extendedEmojiConversion->isChecked());
+    state.insert("symbolConversion", ui_->symbolConversion->isChecked());
     state.insert("useAddressDict", ui_->useAddressDict->isChecked());
     state.insert("useEngineeringDict", ui_->useEngineeringDict->isChecked());
     state.insert("usePostalCodeConversion", ui_->usePostalCodeConversion->isChecked());
@@ -459,6 +460,8 @@ void MainWindow::connectSignals() {
     connect(ui_->halfwidthKatakanaConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->extendedEmojiConversion, &QCheckBox::toggled, this,
+            [this](bool) { recomputeDirtyState(); });
+    connect(ui_->symbolConversion, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
     connect(ui_->useAddressDict, &QCheckBox::toggled, this,
             [this](bool) { recomputeDirtyState(); });
@@ -903,6 +906,11 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
                                    : ConfigDefs::CheckboxDefaults::EXTENDED_EMOJI;
     SET_CHECKBOX(ui_->extendedEmojiConversion, extendedEmoji,
                  ConfigDefs::CheckboxDefaults::EXTENDED_EMOJI);
+    const bool symbolConversion = specialConversions->has_symbol()
+                                      ? specialConversions->symbol()
+                                      : ConfigDefs::CheckboxDefaults::SYMBOL;
+    SET_CHECKBOX(ui_->symbolConversion, symbolConversion,
+                 ConfigDefs::CheckboxDefaults::SYMBOL);
     SET_CHECKBOX(ui_->commaSeparatedNumCoversion,
                  specialConversions->comma_separated_number(),
                  ConfigDefs::CheckboxDefaults::COMMA_SEPARATED_NUMBER);
@@ -1099,6 +1107,7 @@ bool MainWindow::saveCurrentConfig() {
         GET_CHECKBOX_BOOL(ui_->halfwidthKatakanaConversion));
     specialConversions->set_extended_emoji(
         GET_CHECKBOX_BOOL(ui_->extendedEmojiConversion));
+    specialConversions->set_symbol(GET_CHECKBOX_BOOL(ui_->symbolConversion));
     specialConversions->set_comma_separated_number(
         GET_CHECKBOX_BOOL(ui_->commaSeparatedNumCoversion));
     specialConversions->set_calendar(
@@ -1982,6 +1991,7 @@ QVector<BasicProfileEntry> MainWindow::enabledTableEntries() const {
 void MainWindow::onCheckAllConversion() {
     ui_->halfwidthKatakanaConversion->setChecked(true);
     ui_->extendedEmojiConversion->setChecked(true);
+    ui_->symbolConversion->setChecked(true);
     ui_->commaSeparatedNumCoversion->setChecked(true);
     ui_->calendarConversion->setChecked(true);
     ui_->timeConversion->setChecked(true);
@@ -1999,6 +2009,7 @@ void MainWindow::onCheckAllConversion() {
 void MainWindow::onUncheckAllConversion() {
     ui_->halfwidthKatakanaConversion->setChecked(false);
     ui_->extendedEmojiConversion->setChecked(false);
+    ui_->symbolConversion->setChecked(false);
     ui_->commaSeparatedNumCoversion->setChecked(false);
     ui_->calendarConversion->setChecked(false);
     ui_->timeConversion->setChecked(false);

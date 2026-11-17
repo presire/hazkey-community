@@ -1,0 +1,2170 @@
+{
+  "version": 1,
+  "description": "記号変換の評価コーパス。tier Aは記号名を明示した読み、tier Bは普通の語とも曖昧な読み。各ケースは読み・左文脈・期待する記号と語を持ち、splitは読み単位で分ける。",
+  "cases": [
+    {
+      "id": "yajirushi-1",
+      "reading": "やじるし",
+      "context": "次の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "→",
+        "↑"
+      ],
+      "expectedWords": [
+        "矢印"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "yajirushi-2",
+      "reading": "やじるし",
+      "context": "右向きの",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "→",
+        "⇒"
+      ],
+      "expectedWords": [
+        "矢印"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kigou-1",
+      "reading": "きごう",
+      "context": "この",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "※",
+        "→"
+      ],
+      "expectedWords": [
+        "記号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kigou-2",
+      "reading": "きごう",
+      "context": "地図の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〒",
+        "☆"
+      ],
+      "expectedWords": [
+        "記号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakko-1",
+      "reading": "かっこ",
+      "context": "この",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "「」",
+        "（）"
+      ],
+      "expectedWords": [
+        "括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakko-2",
+      "reading": "かっこ",
+      "context": "閉じ",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "【】",
+        "『』"
+      ],
+      "expectedWords": [
+        "括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kagikakko-1",
+      "reading": "かぎかっこ",
+      "context": "会話の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "「」",
+        "『』"
+      ],
+      "expectedWords": [
+        "カギカッコ",
+        "鍵括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kagikakko-2",
+      "reading": "かぎかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "「」"
+      ],
+      "expectedWords": [
+        "カギカッコ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nijuukakko-1",
+      "reading": "にじゅうかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "『』"
+      ],
+      "expectedWords": [
+        "二重括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nijuukakko-2",
+      "reading": "にじゅうかっこ",
+      "context": "強調の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "『』"
+      ],
+      "expectedWords": [
+        "二重括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nijuukagikakko-1",
+      "reading": "にじゅうかぎかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "『』"
+      ],
+      "expectedWords": [
+        "二重鍵括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sumitsukikakko-1",
+      "reading": "すみつきかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "【】"
+      ],
+      "expectedWords": [
+        "隅付き括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sumitsukikakko-2",
+      "reading": "すみつきかっこ",
+      "context": "見出しの",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "【】"
+      ],
+      "expectedWords": [
+        "隅付き括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "santen-1",
+      "reading": "さんてん",
+      "context": "省略の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "…",
+        "‥"
+      ],
+      "expectedWords": [
+        "三点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "santen-2",
+      "reading": "さんてん",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "…"
+      ],
+      "expectedWords": [
+        "三点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "riidaa-1",
+      "reading": "りーだー",
+      "context": "目次の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "…",
+        "‥"
+      ],
+      "expectedWords": [
+        "リーダー"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "riidaa-2",
+      "reading": "りーだー",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "…"
+      ],
+      "expectedWords": [
+        "リーダー"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "komejirushi-1",
+      "reading": "こめじるし",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "※"
+      ],
+      "expectedWords": [
+        "米印"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "komejirushi-2",
+      "reading": "こめじるし",
+      "context": "注記の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "※"
+      ],
+      "expectedWords": [
+        "米印"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "yuubinkigou-1",
+      "reading": "ゆうびんきごう",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〒"
+      ],
+      "expectedWords": [
+        "郵便記号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "yuubinkigou-2",
+      "reading": "ゆうびんきごう",
+      "context": "住所の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〒"
+      ],
+      "expectedWords": [
+        "郵便記号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiromaru-1",
+      "reading": "しろまる",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "○",
+        "◯"
+      ],
+      "expectedWords": [
+        "白丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiromaru-2",
+      "reading": "しろまる",
+      "context": "採点の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "○"
+      ],
+      "expectedWords": [
+        "白丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuromaru-1",
+      "reading": "くろまる",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "●"
+      ],
+      "expectedWords": [
+        "黒丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuromaru-2",
+      "reading": "くろまる",
+      "context": "箇条書きの",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "●"
+      ],
+      "expectedWords": [
+        "黒丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nijuumaru-1",
+      "reading": "にじゅうまる",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "◎"
+      ],
+      "expectedWords": [
+        "二重丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nijuumaru-2",
+      "reading": "にじゅうまる",
+      "context": "正解の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "◎"
+      ],
+      "expectedWords": [
+        "二重丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiroboshi-1",
+      "reading": "しろぼし",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "☆"
+      ],
+      "expectedWords": [
+        "白星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiroboshi-2",
+      "reading": "しろぼし",
+      "context": "評価の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "☆"
+      ],
+      "expectedWords": [
+        "白星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuroboshi-1",
+      "reading": "くろぼし",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "★"
+      ],
+      "expectedWords": [
+        "黒星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuroboshi-2",
+      "reading": "くろぼし",
+      "context": "評価の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "★"
+      ],
+      "expectedWords": [
+        "黒星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiroshikaku-1",
+      "reading": "しろしかく",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "□"
+      ],
+      "expectedWords": [
+        "白四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shiroshikaku-2",
+      "reading": "しろしかく",
+      "context": "図の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "□"
+      ],
+      "expectedWords": [
+        "白四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuroshikaku-1",
+      "reading": "くろしかく",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "■"
+      ],
+      "expectedWords": [
+        "黒四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuroshikaku-2",
+      "reading": "くろしかく",
+      "context": "図の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "■"
+      ],
+      "expectedWords": [
+        "黒四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shirosankaku-1",
+      "reading": "しろさんかく",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "△"
+      ],
+      "expectedWords": [
+        "白三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shirosankaku-2",
+      "reading": "しろさんかく",
+      "context": "図の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "△"
+      ],
+      "expectedWords": [
+        "白三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kurosankaku-1",
+      "reading": "くろさんかく",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "▲"
+      ],
+      "expectedWords": [
+        "黒三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kurosankaku-2",
+      "reading": "くろさんかく",
+      "context": "図の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "▲"
+      ],
+      "expectedWords": [
+        "黒三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "onpu-1",
+      "reading": "おんぷ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "♪",
+        "♫"
+      ],
+      "expectedWords": [
+        "音符"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "onpu-2",
+      "reading": "おんぷ",
+      "context": "音楽の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "♪"
+      ],
+      "expectedWords": [
+        "音符"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nakaguro-1",
+      "reading": "なかぐろ",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "・"
+      ],
+      "expectedWords": [
+        "中黒"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nakaguro-2",
+      "reading": "なかぐろ",
+      "context": "並列の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "・"
+      ],
+      "expectedWords": [
+        "中黒"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dosuu-1",
+      "reading": "どすう",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "°",
+        "℃"
+      ],
+      "expectedWords": [
+        "度数"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dosuu-2",
+      "reading": "どすう",
+      "context": "角度の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "°"
+      ],
+      "expectedWords": [
+        "度数"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sesshi-1",
+      "reading": "せっし",
+      "context": "温度の",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "℃",
+        "°C"
+      ],
+      "expectedWords": [
+        "摂氏"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sesshi-2",
+      "reading": "せっし",
+      "context": "",
+      "tier": "A",
+      "split": "holdout",
+      "expectedSymbols": [
+        "℃"
+      ],
+      "expectedWords": [
+        "摂氏"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "futougou-1",
+      "reading": "ふとうごう",
+      "context": "数学の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "≠",
+        "≦"
+      ],
+      "expectedWords": [
+        "不等号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "futougou-2",
+      "reading": "ふとうごう",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "≠"
+      ],
+      "expectedWords": [
+        "不等号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dainari-1",
+      "reading": "だいなり",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＞",
+        "≫"
+      ],
+      "expectedWords": [
+        "大なり"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dainari-2",
+      "reading": "だいなり",
+      "context": "比較の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＞"
+      ],
+      "expectedWords": [
+        "大なり"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shounari-1",
+      "reading": "しょうなり",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＜",
+        "≪"
+      ],
+      "expectedWords": [
+        "小なり"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shounari-2",
+      "reading": "しょうなり",
+      "context": "比較の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＜"
+      ],
+      "expectedWords": [
+        "小なり"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ikooru-1",
+      "reading": "いこーる",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＝",
+        "≒"
+      ],
+      "expectedWords": [
+        "イコール",
+        "等号"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ikooru-2",
+      "reading": "いこーる",
+      "context": "計算の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "≒"
+      ],
+      "expectedWords": [
+        "イコール"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nottoikooru-1",
+      "reading": "のっといこーる",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "≠"
+      ],
+      "expectedWords": [
+        "ノットイコール"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nottoikooru-2",
+      "reading": "のっといこーる",
+      "context": "数学の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "≠"
+      ],
+      "expectedWords": [
+        "ノットイコール"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "asutarisuku-1",
+      "reading": "あすたりすく",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＊"
+      ],
+      "expectedWords": [
+        "アスタリスク"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "asutarisuku-2",
+      "reading": "あすたりすく",
+      "context": "注釈の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＊"
+      ],
+      "expectedWords": [
+        "アスタリスク"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "surasshu-1",
+      "reading": "すらっしゅ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "／"
+      ],
+      "expectedWords": [
+        "スラッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "surasshu-2",
+      "reading": "すらっしゅ",
+      "context": "区切りの",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "／"
+      ],
+      "expectedWords": [
+        "スラッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "bakkusurasshu-1",
+      "reading": "ばっくすらっしゅ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＼"
+      ],
+      "expectedWords": [
+        "バックスラッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "bakkusurasshu-2",
+      "reading": "ばっくすらっしゅ",
+      "context": "パスの",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＼"
+      ],
+      "expectedWords": [
+        "バックスラッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "semikoron-1",
+      "reading": "せみころん",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "；"
+      ],
+      "expectedWords": [
+        "セミコロン"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "semikoron-2",
+      "reading": "せみころん",
+      "context": "区切りの",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "；"
+      ],
+      "expectedWords": [
+        "セミコロン"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "koron-1",
+      "reading": "ころん",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "："
+      ],
+      "expectedWords": [
+        "コロン"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "koron-2",
+      "reading": "ころん",
+      "context": "時刻の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "："
+      ],
+      "expectedWords": [
+        "コロン"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dasshu-1",
+      "reading": "だっしゅ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "―",
+        "—"
+      ],
+      "expectedWords": [
+        "ダッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dasshu-2",
+      "reading": "だっしゅ",
+      "context": "文章の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "—"
+      ],
+      "expectedWords": [
+        "ダッシュ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "chiruda-1",
+      "reading": "ちるだ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [
+        "チルダ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "chiruda-2",
+      "reading": "ちるだ",
+      "context": "範囲の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [
+        "チルダ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nyoro-1",
+      "reading": "にょろ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nyoro-2",
+      "reading": "にょろ",
+      "context": "範囲の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dagaa-1",
+      "reading": "だがー",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "†",
+        "‡"
+      ],
+      "expectedWords": [
+        "ダガー"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "dagaa-2",
+      "reading": "だがー",
+      "context": "脚注の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "†"
+      ],
+      "expectedWords": [
+        "ダガー"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sekushon-1",
+      "reading": "せくしょん",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "§"
+      ],
+      "expectedWords": [
+        "セクション"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sekushon-2",
+      "reading": "せくしょん",
+      "context": "法律の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "§"
+      ],
+      "expectedWords": [
+        "セクション"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "onajiku-1",
+      "reading": "おなじく",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〃"
+      ],
+      "expectedWords": [
+        "同じく"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "onajiku-2",
+      "reading": "おなじく",
+      "context": "表の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〃"
+      ],
+      "expectedWords": [
+        "同じく"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "tenten-1",
+      "reading": "てんてん",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "…",
+        "‥"
+      ],
+      "expectedWords": [
+        "点々"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "tenten-2",
+      "reading": "てんてん",
+      "context": "省略の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "…"
+      ],
+      "expectedWords": [
+        "点々"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "marukakko-1",
+      "reading": "まるかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "（）"
+      ],
+      "expectedWords": [
+        "丸括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "marukakko-2",
+      "reading": "まるかっこ",
+      "context": "補足の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "（）"
+      ],
+      "expectedWords": [
+        "丸括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakukakko-1",
+      "reading": "かくかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "［］"
+      ],
+      "expectedWords": [
+        "角括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakukakko-2",
+      "reading": "かくかっこ",
+      "context": "配列の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "［］"
+      ],
+      "expectedWords": [
+        "角括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "namikakko-1",
+      "reading": "なみかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "｛｝"
+      ],
+      "expectedWords": [
+        "波括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "namikakko-2",
+      "reading": "なみかっこ",
+      "context": "集合の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "｛｝"
+      ],
+      "expectedWords": [
+        "波括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "yamakakko-1",
+      "reading": "やまかっこ",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〈〉",
+        "《》"
+      ],
+      "expectedWords": [
+        "山括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "yamakakko-2",
+      "reading": "やまかっこ",
+      "context": "引用の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "《》"
+      ],
+      "expectedWords": [
+        "山括弧"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "chuuten-1",
+      "reading": "ちゅうてん",
+      "context": "",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "・"
+      ],
+      "expectedWords": [
+        "中点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "chuuten-2",
+      "reading": "ちゅうてん",
+      "context": "並列の",
+      "tier": "A",
+      "split": "tuning",
+      "expectedSymbols": [
+        "・"
+      ],
+      "expectedWords": [
+        "中点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shita-1",
+      "reading": "した",
+      "context": "机の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "下"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shita-2",
+      "reading": "した",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "↓"
+      ],
+      "expectedWords": [
+        "下",
+        "舌"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shita-3",
+      "reading": "した",
+      "context": "答えの",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "↓"
+      ],
+      "expectedWords": [
+        "下"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ue-1",
+      "reading": "うえ",
+      "context": "机の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "上"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ue-2",
+      "reading": "うえ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "↑"
+      ],
+      "expectedWords": [
+        "上"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ue-3",
+      "reading": "うえ",
+      "context": "ページの",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "↑"
+      ],
+      "expectedWords": [
+        "上"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "migi-1",
+      "reading": "みぎ",
+      "context": "曲がり角の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "右"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "migi-2",
+      "reading": "みぎ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "→"
+      ],
+      "expectedWords": [
+        "右"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "migi-3",
+      "reading": "みぎ",
+      "context": "机の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "→"
+      ],
+      "expectedWords": [
+        "右"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hidari-1",
+      "reading": "ひだり",
+      "context": "曲がり角の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "左"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hidari-2",
+      "reading": "ひだり",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "←"
+      ],
+      "expectedWords": [
+        "左"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hidari-3",
+      "reading": "ひだり",
+      "context": "机の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "←"
+      ],
+      "expectedWords": [
+        "左"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hoshi-1",
+      "reading": "ほし",
+      "context": "夜空の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "☆",
+        "★"
+      ],
+      "expectedWords": [
+        "星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hoshi-2",
+      "reading": "ほし",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "☆",
+        "★"
+      ],
+      "expectedWords": [
+        "星",
+        "干し"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hoshi-3",
+      "reading": "ほし",
+      "context": "願いの",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "☆"
+      ],
+      "expectedWords": [
+        "星"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "maru-1",
+      "reading": "まる",
+      "context": "採点の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "○",
+        "◎"
+      ],
+      "expectedWords": [
+        "丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "maru-2",
+      "reading": "まる",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "○"
+      ],
+      "expectedWords": [
+        "丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "maru-3",
+      "reading": "まる",
+      "context": "赤の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "○"
+      ],
+      "expectedWords": [
+        "丸"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "batsu-1",
+      "reading": "ばつ",
+      "context": "採点の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "×",
+        "✕"
+      ],
+      "expectedWords": [
+        "バツ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "batsu-2",
+      "reading": "ばつ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "×"
+      ],
+      "expectedWords": [
+        "バツ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "batsu-3",
+      "reading": "ばつ",
+      "context": "間違いの",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "×"
+      ],
+      "expectedWords": [
+        "バツ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shikaku-1",
+      "reading": "しかく",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "□",
+        "■"
+      ],
+      "expectedWords": [
+        "四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "shikaku-2",
+      "reading": "しかく",
+      "context": "図の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "□"
+      ],
+      "expectedWords": [
+        "四角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sankaku-1",
+      "reading": "さんかく",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "△",
+        "▲"
+      ],
+      "expectedWords": [
+        "三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "sankaku-2",
+      "reading": "さんかく",
+      "context": "図の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "△"
+      ],
+      "expectedWords": [
+        "三角"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "haato-1",
+      "reading": "はーと",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "♡",
+        "♥"
+      ],
+      "expectedWords": [
+        "ハート"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "haato-2",
+      "reading": "はーと",
+      "context": "好きの",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "♡"
+      ],
+      "expectedWords": [
+        "ハート"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kome-1",
+      "reading": "こめ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "※"
+      ],
+      "expectedWords": [
+        "米"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kome-2",
+      "reading": "こめ",
+      "context": "注記の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "※"
+      ],
+      "expectedWords": [
+        "米"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakkoii-1",
+      "reading": "かっこいい",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "かっこいい",
+        "格好いい"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の かっこ が記号の読みと重なる"
+    },
+    {
+      "id": "kakkoii-2",
+      "reading": "かっこいい",
+      "context": "見た目が",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "かっこいい"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の かっこ が記号の読みと重なる"
+    },
+    {
+      "id": "marui-1",
+      "reading": "まるい",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "丸い"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の まる が記号の読みと重なる"
+    },
+    {
+      "id": "marui-2",
+      "reading": "まるい",
+      "context": "顔が",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "丸い",
+        "円い"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の まる が記号の読みと重なる"
+    },
+    {
+      "id": "shitaku-1",
+      "reading": "したく",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "支度",
+        "仕度"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の した が記号の読みと重なる"
+    },
+    {
+      "id": "shitaku-2",
+      "reading": "したく",
+      "context": "旅行の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "支度"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の した が記号の読みと重なる"
+    },
+    {
+      "id": "onaji-1",
+      "reading": "おなじ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〃"
+      ],
+      "expectedWords": [
+        "同じ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "onaji-2",
+      "reading": "おなじ",
+      "context": "前の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〃"
+      ],
+      "expectedWords": [
+        "同じ"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nami-1",
+      "reading": "なみ",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [
+        "波"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "nami-2",
+      "reading": "なみ",
+      "context": "海岸の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [
+        "波"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ten-1",
+      "reading": "てん",
+      "context": "",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "、",
+        "・"
+      ],
+      "expectedWords": [
+        "点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "ten-2",
+      "reading": "てん",
+      "context": "句読点の",
+      "tier": "B",
+      "split": "holdout",
+      "expectedSymbols": [
+        "、"
+      ],
+      "expectedWords": [
+        "点"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kara-1",
+      "reading": "から",
+      "context": "東京",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "から"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kara-2",
+      "reading": "から",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "〜"
+      ],
+      "expectedWords": [
+        "から"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kara-3",
+      "reading": "から",
+      "context": "大阪",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "から"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakeru-1",
+      "reading": "かける",
+      "context": "計算の",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "×"
+      ],
+      "expectedWords": [
+        "掛ける"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakeru-2",
+      "reading": "かける",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "×"
+      ],
+      "expectedWords": [
+        "掛ける"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kakeru-3",
+      "reading": "かける",
+      "context": "電話を",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "掛ける"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "waru-1",
+      "reading": "わる",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "÷"
+      ],
+      "expectedWords": [
+        "割る"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "waru-2",
+      "reading": "わる",
+      "context": "計算の",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "÷"
+      ],
+      "expectedWords": [
+        "割る"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hiku-1",
+      "reading": "ひく",
+      "context": "計算の",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "−"
+      ],
+      "expectedWords": [
+        "引く"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "hiku-2",
+      "reading": "ひく",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "−"
+      ],
+      "expectedWords": [
+        "引く"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "tasu-1",
+      "reading": "たす",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＋"
+      ],
+      "expectedWords": [
+        "足す"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "tasu-2",
+      "reading": "たす",
+      "context": "計算の",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [
+        "＋"
+      ],
+      "expectedWords": [
+        "足す"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "karai-1",
+      "reading": "からい",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "辛い"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の から が記号の読みと重なる"
+    },
+    {
+      "id": "karai-2",
+      "reading": "からい",
+      "context": "味が",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "辛い"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の から が記号の読みと重なる"
+    },
+    {
+      "id": "ueki-1",
+      "reading": "うえき",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "植木"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の うえ が記号の読みと重なる"
+    },
+    {
+      "id": "ueki-2",
+      "reading": "うえき",
+      "context": "庭の",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "植木"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の うえ が記号の読みと重なる"
+    },
+    {
+      "id": "hidarikiki-1",
+      "reading": "ひだりきき",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "左利き"
+      ],
+      "partialReadingConflict": true,
+      "notes": "前方の ひだり が記号の読みと重なる"
+    },
+    {
+      "id": "kagi-1",
+      "reading": "かぎ",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "鍵",
+        "鈎"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kagi-2",
+      "reading": "かぎ",
+      "context": "ドアの",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "鍵"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "kuro-1",
+      "reading": "くろ",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "黒"
+      ],
+      "partialReadingConflict": false
+    },
+    {
+      "id": "naka-1",
+      "reading": "なか",
+      "context": "",
+      "tier": "B",
+      "split": "tuning",
+      "expectedSymbols": [],
+      "expectedWords": [
+        "中"
+      ],
+      "partialReadingConflict": false
+    }
+  ],
+  "excluded": [
+    {
+      "reading": "ー",
+      "reason": "single-character-reading",
+      "notes": "長音符1文字の読みは辞書の対象外"
+    },
+    {
+      "reading": "ほ",
+      "reason": "single-character-reading",
+      "notes": "1文字の読みは普通の語と衝突しやすい"
+    },
+    {
+      "reading": "->",
+      "reason": "direct-input",
+      "notes": "ASCII の直接入力は変換を経由しない"
+    },
+    {
+      "reading": "「",
+      "reason": "direct-input",
+      "notes": "記号そのものの直接入力は評価対象外"
+    }
+  ]
+}

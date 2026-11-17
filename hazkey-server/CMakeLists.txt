@@ -271,3 +271,16 @@ else()
         "postal code conversion will not be installed. "
         "Run: git submodule update --init hazkey-address-dictionary")
 endif()
+
+# 補助記号辞書をインストールする（記号変換、コミュニティ拡張）
+# サーバの読み込み上限 (SymbolDictionaryProvider.maxFileSize) を超える生成物は読み込めないため、構成時に失敗させる
+set(HAZKEY_SYMBOL_DICTIONARY_FILE
+    ${CMAKE_CURRENT_SOURCE_DIR}/SymbolDictionary/symbol_dictionary.tsv)
+file(SIZE ${HAZKEY_SYMBOL_DICTIONARY_FILE} HAZKEY_SYMBOL_DICTIONARY_SIZE)
+if(HAZKEY_SYMBOL_DICTIONARY_SIZE GREATER 1048576)
+    message(FATAL_ERROR
+        "SymbolDictionary/symbol_dictionary.tsv is ${HAZKEY_SYMBOL_DICTIONARY_SIZE} bytes; "
+        "the server reads at most 1048576 bytes")
+endif()
+install(FILES ${HAZKEY_SYMBOL_DICTIONARY_FILE}
+    DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/hazkey-community/SymbolDictionary)

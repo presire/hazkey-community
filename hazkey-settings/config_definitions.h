@@ -317,6 +317,8 @@ struct CheckboxDefaults {
     static constexpr bool HALFWIDTH_KATAKANA = false;
     /** @brief 拡張絵文字変換を使用する既定値 */
     static constexpr bool EXTENDED_EMOJI = true;
+    /** @brief 記号変換を使用しない既定値 */
+    static constexpr bool SYMBOL = false;
     /** @brief 住所辞書を使用しない既定値 */
     static constexpr bool ADDRESS_DICTIONARY = false;
     /** @brief 工学用語辞書を使用しない既定値 */

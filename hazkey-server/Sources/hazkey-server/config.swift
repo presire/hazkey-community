@@ -175,10 +175,16 @@ class HazkeyServerConfig {
     let engineeringDictionaryPath: URL?
     /// 郵便番号辞書 (postal_codes.tsv) のファイルパスである
     ///
-    /// 環境変数[HAZKEY_POSTAL_CODE_DICTIONARY]が設定されていればその値だけを使い、未設定ならシステム配備のPostalCode/postal_codes.tsvを使う
+    /// 環境変数HAZKEY_POSTAL_CODE_DICTIONARYが設定されていればその値だけを使い、未設定ならシステム配備のPostalCode/postal_codes.tsvを使う
     ///
     /// - Note: 実在の確認は読み込み時 (PostalCodeProvider.init?(tsvURL:)) に行い、環境変数のパスが無くてもシステム配備へはフォールバックしない
     let postalCodeDictionaryPath: URL
+    /// 補助記号辞書 (symbol_dictionary.tsv) のファイルパスである
+    ///
+    /// 環境変数HAZKEY_SYMBOL_DICTIONARYが設定されていればその値だけを使い、未設定ならシステム配備のSymbolDictionary/symbol_dictionary.tsvを使う
+    ///
+    /// - Note: 実在の確認は読み込み時 (SymbolDictionaryProvider.init?(tsvURL:)) に行い、環境変数のパスが無くてもシステム配備へはフォールバックしない
+    let symbolDictionaryPath: URL
     /// ニューラル変換が利用可能かどうかを示す
     ///
     /// バックエンドデバイスとモデルパスの両方が揃った場合に真になる
@@ -260,6 +266,16 @@ class HazkeyServerConfig {
                 URL(fileURLWithPath: systemResourcePath)
                     .appendingPathComponent("PostalCode", isDirectory: true)
                     .appendingPathComponent("postal_codes.tsv", isDirectory: false)
+            }
+
+        // 補助記号辞書も郵便番号辞書と同じ規則で、環境変数HAZKEY_SYMBOL_DICTIONARYが設定されていればその値だけを根拠にする
+        symbolDictionaryPath =
+            if let envPath = ProcessInfo.processInfo.environment["HAZKEY_SYMBOL_DICTIONARY"] {
+                URL(filePath: envPath)
+            } else {
+                URL(fileURLWithPath: systemResourcePath)
+                    .appendingPathComponent("SymbolDictionary", isDirectory: true)
+                    .appendingPathComponent("symbol_dictionary.tsv", isDirectory: false)
             }
 
         self.zenzaiModelPath = nil
@@ -527,6 +543,8 @@ class HazkeyServerConfig {
             $0.relativeDate = true
             $0.halfwidthKatakana = true
             $0.extendedEmoji = true
+            // 記号候補の繰り上げと補助記号辞書は、評価の事前決定ゲートを満たすまで既定で無効とする
+            $0.symbol = false
         }
         newConf.stopStoreNewHistory = false
         // 有効キーマップは前方ほど優先される
@@ -922,6 +940,9 @@ class HazkeyServerConfig {
         if !normalized.specialConversionMode.hasExtendedEmoji {
             normalized.specialConversionMode.extendedEmoji =
                 defaults.specialConversionMode.extendedEmoji
+        }
+        if !normalized.specialConversionMode.hasSymbol {
+            normalized.specialConversionMode.symbol = defaults.specialConversionMode.symbol
         }
         if !normalized.hasUseAddressDictionary {
             normalized.useAddressDictionary = defaults.useAddressDictionary
@@ -1618,6 +1639,16 @@ extension Hazkey_Config_Profile {
     var extendedEmojiEffective: Bool {
         let mode = specialConversionMode
         return mode.hasExtendedEmoji ? mode.extendedEmoji : true
+    }
+
+    /// 記号変換設定[special_conversion_mode.symbol]の実効値である
+    ///
+    /// 記号候補の繰り上げと補助記号辞書の候補の両方を切り替える
+    ///
+    /// 旧設定または項目欠落時 (特殊変換の設定全体が無い場合を含む) は既定の無効として扱う
+    var symbolConversionEffective: Bool {
+        let mode = specialConversionMode
+        return mode.hasSymbol ? mode.symbol : false
     }
 
     /// 住所辞書設定[use_address_dictionary]の実効値である

@@ -103,6 +103,13 @@ message Profile {
 
         optional bool halfwidth_katakana = 50;      // 半角カタカナの候補
         optional bool extended_emoji = 51;          // Emoji 17の絵文字を通常の変換候補に加える (予測候補には加えない)
+
+        // 記号変換を有効にする
+        //
+        // 有効時は、通常の変換 (予測候補を除く) で、記号の候補を候補一覧の4番目以降の前方へ繰り上げ、補助記号辞書の記号 (やじるし → → 等) を加える
+        //
+        // - Note: 欠落時は無効として扱う
+        optional bool symbol = 52;
     }
 
     // プロファイルで有効にしたキーマップ
