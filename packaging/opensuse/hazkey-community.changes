@@ -1,5 +1,16 @@
 -------------------------------------------------------------------
-Sun Nov 15 07:12:30 UTC 2026 - Tomoki Fujikawa <presire2@gmail.com>
+Tue Nov 17 09:00:16 UTC 2026 - presire <presire@users.noreply.github.com>
+
+- Update to version 0.2.47 (git f9c8a112)
+  * Add symbol conversion (disabled by default) with a Mozc-derived
+    supplemental symbol dictionary; promote symbol candidates in
+    normal conversion while preserving leading candidates, live
+    conversion and typo corrections.
+  * Include pending learning entries in annotation and deletion, and
+    pin the converter fork with pending-key support.
+
+-------------------------------------------------------------------
+Sun Nov 15 07:12:30 UTC 2026 - presire <presire@users.noreply.github.com>
 
 - Fix Leap 16.0 spec parsing by using the shared selinux_requires macro.
 - Drop unused qt6-tools-devel to avoid qdoc's exact-version LLVM

@@ -23,7 +23,7 @@
 %global __provides_exclude_from ^%{_libdir}/hazkey-community/.*$
 %global __requires_exclude ^lib(swift|_swift|Foundation|_Foundation|dispatch|BlocksRuntime|llama|ggml).*\\.so.*$
 Name:           hazkey-community
-Version:        0.2.46
+Version:        0.2.47
 Release:        0
 Summary:        Japanese input method with neural kana-kanji conversion
 # hazkey: MIT; AzooKeyKanaKanjiConverter, Jinja, llama.cpp: MIT;

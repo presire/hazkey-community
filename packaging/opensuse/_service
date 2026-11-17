@@ -5,8 +5,8 @@
   <service name="tar_scm" mode="manual">
     <param name="url">https://github.com/presire/hazkey-community.git</param>
     <param name="scm">git</param>
-    <param name="revision">ae10749a5d45e15c5c92ef95a60c80766eede17f</param>
-    <param name="version">0.2.46</param>
+    <param name="revision">f9c8a112841062a3ace689952bf4137bc5775ff0</param>
+    <param name="version">0.2.47</param>
     <param name="submodules">enable</param>
     <param name="filename">hazkey-community</param>
   </service>
