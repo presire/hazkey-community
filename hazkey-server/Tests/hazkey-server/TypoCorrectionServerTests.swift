@@ -204,7 +204,7 @@ final class TypoCorrectionServerTests: XCTestCase {
     ///
     /// 最高スコアの1件だけでなく、意図になり得る読みが全てフラグ付き訂正として並ぶこと
     func testLeadingRomajiOffersEveryPassingVowelInsertion() throws {
-        let cases = [("mchigai", "間違い"), ("mchigaeru", "見違える"), ("mchigaeru", "間違える")]
+        let cases = [("tkubetsu", "特別"), ("mchigaeru", "見違える"), ("mchigaeru", "間違える")]
         for (romaji, expected) in cases {
             // Given: 先頭の子音の後の母音が抜けている
             let state = try state(reading: romaji)

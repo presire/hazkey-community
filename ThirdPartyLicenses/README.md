@@ -19,7 +19,7 @@
 
 | コンポーネント | 版 / コミット | ライセンス | ファイル |
 |---|---|---|---|
-| [AzooKeyKanaKanjiConverter](https://github.com/presire/AzooKeyKanaKanjiConverter) (フォーク, hazkeyブランチ) | `102357e` | MIT | [AzooKeyKanaKanjiConverter-LICENSE.txt](./AzooKeyKanaKanjiConverter-LICENSE.txt) |
+| [AzooKeyKanaKanjiConverter](https://github.com/presire/AzooKeyKanaKanjiConverter) (フォーク, hazkeyブランチ) | `43620bd` | MIT | [AzooKeyKanaKanjiConverter-LICENSE.txt](./AzooKeyKanaKanjiConverter-LICENSE.txt) |
 | [swift-protobuf](https://github.com/apple/swift-protobuf) | 1.38.1 (`55d7a1c`) | Apache-2.0 (Swift Runtime Library Exception付き) | [swift-protobuf-LICENSE.txt](./swift-protobuf-LICENSE.txt) |
 | [swift-algorithms](https://github.com/apple/swift-algorithms) | 1.2.1 (`87e50f4`) | Apache-2.0 (Swift Runtime Library Exception付き) | [swift-algorithms-LICENSE.txt](./swift-algorithms-LICENSE.txt) |
 | [swift-collections](https://github.com/apple/swift-collections) | 1.6.0 (`a0cb095`) | Apache-2.0 (Swift Runtime Library Exception付き) | [swift-collections-LICENSE.txt](./swift-collections-LICENSE.txt) |
@@ -39,11 +39,11 @@
 
 | コンポーネント | 版 / コミット | ライセンス | ファイル |
 |---|---|---|---|
-| [azooKey_dictionary_storage](https://github.com/azooKey/azooKey_dictionary_storage) (Dictionary/) | `4d41852` | Apache-2.0 | [azooKey_dictionary_storage-LICENSE.txt](./azooKey_dictionary_storage-LICENSE.txt) |
+| [azooKey_dictionary_storage](https://github.com/azooKey/azooKey_dictionary_storage) (Dictionary/) | `b96b783` | Apache-2.0 | [azooKey_dictionary_storage-LICENSE.txt](./azooKey_dictionary_storage-LICENSE.txt) |
 | [azooKey_emoji_dictionary_storage](https://github.com/azooKey/azooKey_emoji_dictionary_storage) (emoji_all_E17.0.txt) | `eb15a8d` | Unicode License V3 + BSD-3-Clause | [azooKey_emoji_dictionary_storage-NOTICE.txt](./azooKey_emoji_dictionary_storage-NOTICE.txt) |
-| [hazkey-address-dictionary](https://github.com/presire/hazkey-address-dictionary) (AddressDictionary/) | `3876dae` | 日本郵便データ (著作権主張なし) / charIDはApache-2.0 | [hazkey-address-dictionary-NOTICE.txt](./hazkey-address-dictionary-NOTICE.txt) |
-| [hazkey-engineering-dictionary](https://github.com/presire/hazkey-engineering-dictionary) (EngineeringDictionary/) | `e50f5a8` | Apache-2.0 + BSD-3-Clause + CC0-1.0 | [hazkey-engineering-dictionary-NOTICE.txt](./hazkey-engineering-dictionary-NOTICE.txt) |
-| 補助記号辞書 (SymbolDictionary/symbol_dictionary.tsv。[Mozc](https://github.com/google/mozc) の `src/data/symbol/symbol.tsv` と手作りの優先表から `hazkey-server/scripts/build_symbol_dictionary.py` で生成) | Mozc `a4541df29db443b49f81cf54665873b68fde9efa` (symbol.tsv の SHA-256 `bc68b032a195f203dccba6f95667424199ba9b185fee2be64eeaa959253c097a`) | BSD-3-Clause | [Mozc-LICENSE.txt](./Mozc-LICENSE.txt) |
+| [hazkey-address-dictionary](https://github.com/presire/hazkey-address-dictionary) (AddressDictionary/) | `19f0eda` | 日本郵便データ (著作権主張なし) / charIDはApache-2.0 | [hazkey-address-dictionary-NOTICE.txt](./hazkey-address-dictionary-NOTICE.txt) |
+| [hazkey-engineering-dictionary](https://github.com/presire/hazkey-engineering-dictionary) (EngineeringDictionary/) | `0ca5e2c` | Apache-2.0 + BSD-3-Clause + CC0-1.0 | [hazkey-engineering-dictionary-NOTICE.txt](./hazkey-engineering-dictionary-NOTICE.txt) |
+| 補助記号辞書 (SymbolDictionary/symbol_dictionary.tsv<br>[Mozc](https://github.com/google/mozc) の`src/data/symbol/symbol.tsv`と優先表から`hazkey-server/scripts/build_symbol_dictionary.py`で生成) | Mozc `a4541df29db443b49f81cf54665873b68fde9efa` (symbol.tsv の SHA-256 `bc68b032a195f203dccba6f95667424199ba9b185fee2be64eeaa959253c097a`) | BSD-3-Clause | [Mozc-LICENSE.txt](./Mozc-LICENSE.txt) |
 
 ### ライセンス本文
 
