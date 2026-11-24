@@ -127,6 +127,17 @@ final class TypoCorrectorTests: XCTestCase {
         XCTAssertTrue(TypoCorrector.triggers(in: "mch").isEmpty)
     }
 
+    /// 末尾ローマ字を許可した場合に、かな直後の末尾英字だけがトリガーになることを検証する
+    func testTrailingRomajiTriggersWhenAllowedAfterKanaAndIgnoresPureAscii() {
+        XCTAssertEqual(TypoCorrector.triggers(in: "ありがtp", allowsTrailingRomaji: true).map(\.range), [3..<5])
+        XCTAssertEqual(TypoCorrector.triggers(in: "にほんg", allowsTrailingRomaji: true).map(\.range), [3..<4])
+        XCTAssertEqual(TypoCorrector.triggers(in: "まt", allowsTrailingRomaji: true).map(\.range), [1..<2])
+        XCTAssertEqual(TypoCorrector.triggers(in: "おはyp", allowsTrailingRomaji: true).map(\.range), [2..<4])
+        XCTAssertTrue(TypoCorrector.triggers(in: "hello", allowsTrailingRomaji: true).isEmpty)
+        XCTAssertTrue(TypoCorrector.triggers(in: "mch", allowsTrailingRomaji: true).isEmpty)
+        XCTAssertTrue(TypoCorrector.triggers(in: "123abc", allowsTrailingRomaji: true).isEmpty)
+    }
+
     /// 読みの先頭に残ったローマ字が直後のかなと組でトリガーになることを検証する
     ///
     /// mちがい と gあいう のいずれも位置 0..<1 にトリガーが立つ
@@ -500,6 +511,70 @@ final class TypoCorrectorTests: XCTestCase {
         }
     }
 
+    /// 凍結された残留 ASCII 英字が、ローマ字スタイル指定時だけ E4/E5 で復元されることを検証する
+    func testFrozenAsciiRunPromotesInMissingVowelAndAdjacentKeyWhenStyleProvided() {
+        func frozenText(_ reading: String) -> ComposingText {
+            var text = ComposingText()
+            text.insertAtCursorPosition(
+                reading.map { .init(piece: .character($0), inputStyle: .mapped(id: .empty)) })
+            return text
+        }
+
+        let adjacentText = frozenText("ありがtp")
+        let adjacentTriggers = TypoCorrector.triggers(in: adjacentText.convertTarget, allowsTrailingRomaji: true)
+        let adjacentWithStyle = TypoCorrector.variants(
+            of: adjacentText, triggers: adjacentTriggers,
+            allowsTrailingRomaji: true, frozenAsciiInputStyle: Self.mappedStyle)
+        XCTAssertTrue(adjacentWithStyle.contains { $0.reading == "ありがと" && $0.edit.kind == .adjacentKey })
+        let adjacentWithoutStyle = TypoCorrector.variants(
+            of: adjacentText, triggers: adjacentTriggers,
+            allowsTrailingRomaji: true, frozenAsciiInputStyle: nil)
+        XCTAssertFalse(adjacentWithoutStyle.contains { $0.reading == "ありがと" })
+
+        let missingVowelText = frozenText("ありがt")
+        let missingTriggers = TypoCorrector.triggers(in: missingVowelText.convertTarget, allowsTrailingRomaji: true)
+        let missingWithStyle = TypoCorrector.variants(
+            of: missingVowelText, triggers: missingTriggers,
+            allowsTrailingRomaji: true, frozenAsciiInputStyle: Self.mappedStyle)
+        let missingReadings = missingWithStyle.map(\.reading)
+        for expected in ["ありがた", "ありがち", "ありがつ", "ありがて", "ありがと"] {
+            XCTAssertTrue(missingReadings.contains(expected), "\(expected): \(missingReadings)")
+        }
+        let missingWithoutStyle = TypoCorrector.variants(
+            of: missingVowelText, triggers: missingTriggers,
+            allowsTrailingRomaji: true, frozenAsciiInputStyle: nil)
+        XCTAssertFalse(missingWithoutStyle.contains { $0.reading == "ありがと" })
+    }
+
+    /// 凍結された [に][ゃ/ゅ/ょ] でも E6 の撥音補完が働くことを検証する
+    func testFrozenMissingNReplacesFrozenNiAndSmallKana() {
+        for (reading, expected) in [("きにょうび", "きんようび"), ("こにゃく", "こんやく"), ("はにゅう", "はんゆう")] {
+            var frozen = ComposingText()
+            frozen.insertAtCursorPosition(
+                reading.map { .init(piece: .character($0), inputStyle: .mapped(id: .empty)) })
+            let triggers = TypoCorrector.triggers(in: frozen.convertTarget)
+            let variants = TypoCorrector.variants(of: frozen, triggers: triggers)
+            XCTAssertTrue(
+                variants.contains { $0.reading == expected && $0.edit.kind == .missingN },
+                "\(reading): \(variants.map(\.reading))")
+        }
+
+        var direct = ComposingText()
+        direct.insertAtCursorPosition("きにょうび", inputStyle: .direct)
+        let directVariants = TypoCorrector.variants(
+            of: direct, triggers: TypoCorrector.triggers(in: direct.convertTarget))
+        XCTAssertTrue(directVariants.isEmpty)
+    }
+
+    /// 末尾の残留ローマ字を文節区切り付きで削除すると直前の n が ん へ確定されることを検証する
+    func testTrailingStrayRomajiWithCompositionSeparatorProducesCleanN() {
+        let withSeparator = compose("nihons", separator: true)
+        let triggers = TypoCorrector.triggers(in: withSeparator.convertTarget, allowsTrailingRomaji: true)
+        let variants = TypoCorrector.variants(
+            of: withSeparator, triggers: triggers, allowsTrailingRomaji: true)
+        XCTAssertTrue(variants.contains { $0.reading == "にほん" && $0.edit.kind == .strayRomaji })
+    }
+
     // MARK: - 表示条件
 
     /// 表示条件が編集数に応じたペナルティを減算して判定されることを検証する
@@ -522,6 +597,9 @@ final class TypoCorrectorTests: XCTestCase {
         XCTAssertEqual(withComplete, ["ちゃっと"])
         XCTAssertEqual(TypoCorrector.preferringComplete(partials, reading: { $0 }), partials)
         XCTAssertTrue(TypoCorrector.preferringComplete([String](), reading: { $0 }).isEmpty)
+        XCTAssertEqual(
+            TypoCorrector.preferringComplete(["ありがt", "ありがと"], allowsTrailingRomaji: true, reading: { $0 }),
+            ["ありがと"])
     }
 
     /// 読み全体を覆わない候補を除外して完全一致する候補を選ぶことを検証する

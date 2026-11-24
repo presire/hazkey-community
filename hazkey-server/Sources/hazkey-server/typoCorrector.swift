@@ -121,21 +121,24 @@ enum TypoCorrector {
     static let typoEditPenalty: PValue = 12
     /// 2編集目以降の1編集あたりのペナルティ
     ///
-    /// 複数箇所の連打縮約 ([すーーぱーーー→すーぱー]、実測 raw margin +23.48) を 12×2=24 では落としてしまうため、2編集目を軽くする (合計 20)
+    /// 複数箇所の連打縮約 ([すーーぱーーー→すーぱー]、実測 raw margin +23.48) を12×2=24では落としてしまうため、2編集目を軽くする (合計 20)
     static let additionalEditPenalty: PValue = 8
 
     /// 読みから訂正の手がかり (トリガー) を検出する
     ///
-    /// [repeatableKana] の同一文字が連続する各ペアと、母音か [ん] か [ー] の直前に置かれた [っ] を、その範囲とともに返す
+    /// [repeatableKana] の同一文字が連続する各ペアと、母音か[ん]か[ー]の直前に置かれた[っ]を、その範囲とともに返す
     ///
-    /// 読みの先頭、または直前がかなである位置から始まり、直後がかなである ASCII 英字の連続も、打ち残したローマ字として検出する
+    /// 読みの先頭、または直前がかなである位置から始まり、直後がかなであるASCII英字の連続も、打ち残したローマ字として検出する
+    ///
+    /// [allowsTrailingRomaji]が真の時は、かなの直後で読みの末尾に達するASCII英字の連続もトリガーとする (読み全体が英字のみの場合は対象外)
     ///
     /// かなの直後に現れた [にゃ] [にゅ] [にょ] も、直前に [ん] が無い場合は撥音の打ち忘れとして検出する (E6)
     ///
-    /// - Parameter reading: 検査するひらがな読み
+    /// - Parameters:
+    ///   - reading: 検査するひらがな読み
+    ///   - allowsTrailingRomaji: 読み末尾の残留ローマ字もトリガーにするか (既定はfalseで、打鍵中の未入力ローマ字を対象外にする)
     /// - Returns: 見つかったトリガーの一覧 (読みの位置順)
-    /// - Note: 読みの末尾に残った英字は入力途中とみなし、トリガーにしない
-    static func triggers(in reading: String) -> [Trigger] {
+    static func triggers(in reading: String, allowsTrailingRomaji: Bool = false) -> [Trigger] {
         let chars = Array(reading)
         guard !chars.isEmpty else { return [] }
         var found: [Trigger] = []
@@ -154,8 +157,11 @@ enum TypoCorrector {
             guard chars[index].isASCII, chars[index].isLetter else { index += 1; continue }
             let start = index
             while index < chars.count, chars[index].isASCII, chars[index].isLetter { index += 1 }
-            // 読みの先頭に残ったローマ字 ([mちがい]) も対象にする (末尾の英字は入力途中のため対象外)
-            if index < chars.count, isKana(chars[index]), start == 0 || isKana(chars[start - 1]) {
+            // 読みの先頭に残ったローマ字 ([mちがい]) も対象にする
+            // 末尾の英字は、通常変換や文節境界調整など入力確定時 (allowsTrailingRomaji == true) かつ直前がかなの場合だけ対象にする
+            let followedByKana = index < chars.count && isKana(chars[index]) && (start == 0 || isKana(chars[start - 1]))
+            let trailingAfterKana = allowsTrailingRomaji && index == chars.count && start > 0 && isKana(chars[start - 1])
+            if followedByKana || trailingAfterKana {
                 found.append(Trigger(range: start..<index))
             }
         }
@@ -196,13 +202,26 @@ enum TypoCorrector {
     ///
     /// - Parameters:
     ///   - text: 訂正の対象となる組成テキスト
-    ///   - triggers: [triggers(in:)] で検出したトリガー
+    ///   - triggers: [triggers(in:allowsTrailingRomaji:)] で検出したトリガー
+    ///   - allowsTrailingRomaji: 読み末尾の残留ローマ字もトリガーとみなすか (既定はfalse)
+    ///   - frozenAsciiInputStyle: 文節境界の分割で凍結 ([InputTableID.empty]) された残留 ASCII 英字をローマ字変換へ昇格させる入力スタイル (かな入力モード等ではnil)
     /// - Returns: 生成した訂正案の一覧 (編集の種類と位置の順)
     /// - Note: 読みの長さが [maxReadingLength] を超える場合やトリガーが無い場合は空を返す
-    static func variants(of text: ComposingText, triggers: [Trigger]) -> [Variant] {
+    static func variants(
+        of text: ComposingText,
+        triggers: [Trigger],
+        allowsTrailingRomaji: Bool = false,
+        frozenAsciiInputStyle: InputStyle? = nil
+    ) -> [Variant] {
         guard !triggers.isEmpty, text.convertTarget.count <= maxReadingLength else { return [] }
         let original = text.input
         let originalTriggers = triggers
+        let resolvedFrozenAsciiStyle: InputStyle? = {
+            guard let style = frozenAsciiInputStyle,
+                style != .direct, style != .mapped(id: .empty)
+            else { return nil }
+            return style
+        }()
         var proposals: [(Edit, [ComposingText.InputElement])] = []
 
         // E1: 同一で編集可能なキーの連続から、末尾側を削除して短くする
@@ -236,10 +255,13 @@ enum TypoCorrector {
             edited.remove(at: i)
             proposals.append((Edit(position: i, kind: .strayRomaji), edited))
         }
-        // E3: 編集可能な文字入力の隣接2要素だけを入れ替える
+        // E3: 編集可能な文字入力の隣接2要素だけを入れ替える (凍結要素はローマ字打鍵ではないため対象外)
         // 残留英字を直前のキーの前へ移すと、既に確定したかなを壊してしまうため
         if original.count > 1 {
-            for i in 0..<(original.count - 1) where editable(original[i]) && editable(original[i + 1]) {
+            for i in 0..<(original.count - 1) where editable(original[i]) && editable(original[i + 1])
+                && original[i].inputStyle != .mapped(id: .empty)
+                && original[i + 1].inputStyle != .mapped(id: .empty)
+            {
                 guard !strayIndices.contains(i + 1),
                       original[i].piece != original[i + 1].piece,
                       effectiveInputCharacter(original[i]) != nil,
@@ -253,7 +275,16 @@ enum TypoCorrector {
         for i in strayIndices where !strayIndices.contains(i + 1) {
             for vowel in "aiueo" {
                 var edited = original
-                edited.insert(.init(piece: .character(vowel), inputStyle: original[i].inputStyle), at: i + 1)
+                let insertStyle: InputStyle
+                if let romajiStyle = resolvedFrozenAsciiStyle,
+                    edited[i].inputStyle == .mapped(id: .empty)
+                {
+                    promoteFrozenAsciiRun(in: &edited, around: i, style: romajiStyle)
+                    insertStyle = romajiStyle
+                } else {
+                    insertStyle = original[i].inputStyle
+                }
+                edited.insert(.init(piece: .character(vowel), inputStyle: insertStyle), at: i + 1)
                 proposals.append((Edit(position: i + 1, kind: .missingVowel), edited))
             }
         }
@@ -285,12 +316,27 @@ enum TypoCorrector {
                 let vowels = adjacentVowelKeys[character] else { continue }
             for vowel in vowels {
                 var edited = original
-                edited[site] = .init(piece: .character(vowel), inputStyle: original[site].inputStyle)
+                let replaceStyle: InputStyle
+                if let romajiStyle = resolvedFrozenAsciiStyle,
+                    edited[site].inputStyle == .mapped(id: .empty)
+                {
+                    promoteFrozenAsciiRun(in: &edited, around: site, style: romajiStyle)
+                    replaceStyle = romajiStyle
+                } else {
+                    if let romajiStyle = resolvedFrozenAsciiStyle, site > 0 {
+                        promoteFrozenAsciiRun(in: &edited, around: site - 1, style: romajiStyle)
+                    }
+                    replaceStyle = original[site].inputStyle
+                }
+                edited[site] = .init(piece: .character(vowel), inputStyle: replaceStyle)
                 proposals.append((Edit(position: site, kind: .adjacentKey), edited))
             }
         }
+        let mapping = text.inputIndexToSurfaceIndexMap()
+        let boundaries = mapping.keys.sorted()
         // E6: 撥音 [ん] を伴わない [にゃ] [にゅ] [にょ] の直前へ [ん] を挿入する
         // 入力側で [n][y][a/u/o] の並びを探し、[ん] を挿入した読みが期待値と完全に一致する場合だけ採用する
+        // 文節境界の分割で [に][ゃ/ゅ/ょ] が凍結された場合も、対応する凍結要素2つを [ん][や/ゆ/よ] へ置き換える
         for trigger in triggers where trigger.range.count == 2
             && trigger.range.lowerBound >= 1 && trigger.range.upperBound <= readingChars.count
             && readingChars[trigger.range.lowerBound] == "に"
@@ -316,6 +362,29 @@ enum TypoCorrector {
                 guard candidate.convertTarget == String(expected) else { continue }
                 proposals.append((Edit(position: i + 1, kind: .missingN), edited))
                 inserted = true
+            }
+            if !inserted,
+                let inputIndex = boundaries.last(where: { mapping[$0] == trigger.range.lowerBound }),
+                inputIndex + 1 < original.count,
+                mapping[inputIndex + 1] == trigger.range.lowerBound + 1,
+                mapping[inputIndex + 2] == trigger.range.lowerBound + 2,
+                original[inputIndex].inputStyle == .mapped(id: .empty),
+                original[inputIndex + 1].inputStyle == .mapped(id: .empty),
+                effectiveInputCharacter(original[inputIndex]) == "に",
+                effectiveInputCharacter(original[inputIndex + 1]) == smallKana
+            {
+                var edited = original
+                edited.replaceSubrange(
+                    inputIndex..<(inputIndex + 2),
+                    with: [
+                        .init(piece: .character("ん"), inputStyle: .mapped(id: .empty)),
+                        .init(piece: .character(fullKana), inputStyle: .mapped(id: .empty)),
+                    ])
+                var candidate = ComposingText()
+                candidate.insertAtCursorPosition(edited)
+                if candidate.convertTarget == String(expected) {
+                    proposals.append((Edit(position: inputIndex + 1, kind: .missingN), edited))
+                }
             }
         }
 
@@ -355,7 +424,9 @@ enum TypoCorrector {
             if edit.kind == .repeatedKey, collapsedRunEnds.contains(edit.position + edit.count) { continue }
             var candidate = ComposingText()
             candidate.insertAtCursorPosition(elements)
-            guard removesOverlappingTrigger(original: text, edited: candidate, triggers: originalTriggers, edit: edit) else { continue }
+            guard removesOverlappingTrigger(
+                original: text, edited: candidate, triggers: originalTriggers, edit: edit,
+                allowsTrailingRomaji: allowsTrailingRomaji) else { continue }
             if edit.kind == .repeatedKey { collapsedRunEnds.insert(edit.position + edit.count) }
             guard !results.contains(where: { $0.reading == candidate.convertTarget }) else { continue }
             results.append(Variant(composingText: candidate, reading: candidate.convertTarget, edit: edit))
@@ -371,8 +442,6 @@ enum TypoCorrector {
         guard slotCount < maxVariants else { return results }
 
         // 小書きかなと促音は ([xya] や [xtu] のように) 別々のローマ字キーへまたがることがあるため、対応する入力範囲を特定する
-        let mapping = text.inputIndexToSurfaceIndexMap()
-        let boundaries = mapping.keys.sorted()
         var smallKanaVariants: [Variant] = []
         for trigger in triggers where trigger.range.upperBound <= readingChars.count
             && trigger.range.count == 2
@@ -407,7 +476,8 @@ enum TypoCorrector {
                 }
                 var candidate = ComposingText()
                 candidate.insertAtCursorPosition(elements)
-                guard Self.triggers(in: candidate.convertTarget).isEmpty,
+                guard Self.triggers(
+                    in: candidate.convertTarget, allowsTrailingRomaji: allowsTrailingRomaji).isEmpty,
                       !results.contains(where: { $0.reading == candidate.convertTarget }) else { continue }
                 results.append(Variant(
                     composingText: candidate, reading: candidate.convertTarget, edit: left.edit, editCount: 2))
@@ -500,11 +570,18 @@ enum TypoCorrector {
     ///
     /// - Parameters:
     ///   - items: 選別する要素の配列
+    ///   - allowsTrailingRomaji: 読み末尾の残留ローマ字もトリガーとみなすか (既定はfalse)
     ///   - reading: 各要素の訂正後の読みを取り出す関数
     /// - Returns: 完全な訂正が無ければ全件、あればトリガーが残らない要素だけの配列
-    static func preferringComplete<T>(_ items: [T], reading: (T) -> String) -> [T] {
-        guard items.contains(where: { triggers(in: reading($0)).isEmpty }) else { return items }
-        return items.filter { triggers(in: reading($0)).isEmpty }
+    static func preferringComplete<T>(
+        _ items: [T], allowsTrailingRomaji: Bool = false, reading: (T) -> String
+    ) -> [T] {
+        guard items.contains(where: {
+            triggers(in: reading($0), allowsTrailingRomaji: allowsTrailingRomaji).isEmpty
+        }) else { return items }
+        return items.filter {
+            triggers(in: reading($0), allowsTrailingRomaji: allowsTrailingRomaji).isEmpty
+        }
     }
 
     /// 最良の訂正から、ペナルティ適用後の値がこの幅以上低い訂正は提示しない
@@ -639,9 +716,11 @@ enum TypoCorrector {
     ///   - edited: 編集後の組成テキスト
     ///   - triggers: 元の読みのトリガー
     ///   - edit: 加えた編集
+    ///   - allowsTrailingRomaji: 読み末尾の残留ローマ字もトリガーとみなすか
     /// - Returns: 編集前の範囲にトリガーがあり、編集後の同じ範囲に ASCII 英字もトリガーも残らない場合にtrue
     private static func removesOverlappingTrigger(
-        original: ComposingText, edited: ComposingText, triggers: [Trigger], edit: Edit
+        original: ComposingText, edited: ComposingText, triggers: [Trigger], edit: Edit,
+        allowsTrailingRomaji: Bool
     ) -> Bool {
         let inputRange = edit.inputRange
         guard inputRange.upperBound <= original.input.count,
@@ -691,7 +770,47 @@ enum TypoCorrector {
               !editedChars[localSpan].contains(where: { $0.isASCII && $0.isLetter }) else {
             return false
         }
-        return !Self.triggers(in: edited.convertTarget).contains { $0.range.overlaps(localSpan) }
+        return !Self.triggers(
+            in: edited.convertTarget, allowsTrailingRomaji: allowsTrailingRomaji
+        ).contains { $0.range.overlaps(localSpan) }
+    }
+
+    /// 凍結 ([InputTableID.empty]) された ASCII 英字の連続を、指定したローマ字入力スタイルへ昇格する
+    ///
+    /// - Parameters:
+    ///   - elements: 昇格対象を含む入力要素配列
+    ///   - index: 昇格する連続範囲の起点位置
+    ///   - style: 昇格先となるローマ字入力スタイル
+    private static func promoteFrozenAsciiRun(
+        in elements: inout [ComposingText.InputElement],
+        around index: Int,
+        style: InputStyle
+    ) {
+        guard elements.indices.contains(index),
+            elements[index].inputStyle == .mapped(id: .empty),
+            let character = effectiveInputCharacter(elements[index]),
+            character.isASCII, character.isLetter
+        else { return }
+        var left = index
+        while left > 0,
+            elements[left - 1].inputStyle == .mapped(id: .empty),
+            let previous = effectiveInputCharacter(elements[left - 1]),
+            previous.isASCII, previous.isLetter
+        {
+            left -= 1
+        }
+        var right = index
+        while right + 1 < elements.count,
+            elements[right + 1].inputStyle == .mapped(id: .empty),
+            let next = effectiveInputCharacter(elements[right + 1]),
+            next.isASCII, next.isLetter
+        {
+            right += 1
+        }
+        for position in left...right {
+            elements[position] = ComposingText.InputElement(
+                piece: elements[position].piece, inputStyle: style)
+        }
     }
 
     /// 入力要素が表す実効的な文字を返す

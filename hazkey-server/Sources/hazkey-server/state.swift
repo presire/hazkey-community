@@ -1444,13 +1444,17 @@ class HazkeyServerState {
         // 新しい組成の開始時にこの接続の変換セッションを破棄して、同じ入力でも前の組成のラティスを再利用して新たに学習した候補が隠れないようにする
         // 1つの組成内での逐次変換ではセッションを引き続き再利用する
         _ = withConversionSession { converter.stopComposition() }
-        // 誤字の訂正案を評価する補助セッションも、同じ理由で破棄する
+        resetTypoCorrectionSessions()
+        return Hazkey_ResponseEnvelope.with {
+            $0.status = .success
+        }
+    }
+
+    /// 誤字の訂正案と基準値を評価する補助セッションの組成状態を破棄する
+    private func resetTypoCorrectionSessions() {
         for id in typoCorrectionSessionIDs + [typoBaselineSessionID].compactMap({ $0 }) {
             do { try converter.withSession(id) { converter.stopComposition() } }
             catch { hazkeyLog("[hazkey] Failed to reset typo correction session \(id): \(error)") }
-        }
-        return Hazkey_ResponseEnvelope.with {
-            $0.status = .success
         }
     }
 
@@ -1702,6 +1706,7 @@ class HazkeyServerState {
             // 変換エンジンの確定 / 学習APIには触れず、共有dirtyフラグも変更しない
             if let failure = completeComposingPrefix(composingCount) { return failure }
         }
+        resetTypoCorrectionSessions()
         currentCandidateList = nil
         return Hazkey_ResponseEnvelope.with {
             $0.status = .success
@@ -1815,6 +1820,7 @@ class HazkeyServerState {
                 $0.clauseBoundaryResult = Hazkey_Commands_ClauseBoundaryResult()
             }
         }
+        if let failure = ensureCompositionSeparatorForConversion() { return failure }
 
         let minCursorPosition = 1
         let maxBackwardOffset =
@@ -1825,6 +1831,7 @@ class HazkeyServerState {
         let clampedOffset = max(min(offset, maxForwardOffset), maxBackwardOffset)
         _ = composingText.value.moveCursorFromCursorPosition(count: clampedOffset)
 
+        resetTypoCorrectionSessions()
         // 文節境界の移動は打鍵ごとの処理ではなく、新しい読みでニューラル変換が走り時間予算を超えやすいため、時間予算を適用しない
         let (candidatesResult, serverCandidates) = makeCandidatesResult(
             is_suggest: false, appliesTypoTimeBudget: false)
@@ -2097,6 +2104,8 @@ class HazkeyServerState {
         // (ユーザ辞書の単語が自身の最良ノードの予測としても現れる等)
         // そのため連結後のリストでは後続の重複を除外する
         var appendedTexts: Set<String> = []
+        // カーソルまでの読み全体を覆う候補の表記だけを記録する (誤字訂正の重複判定で部分読み候補と衝突させないため)
+        var fullReadingAppendedTexts: Set<String> = []
 
         // 以下で出力する全変換候補のカタカナ正規化済み読み
         // clientCandidatesと位置を対応させる
@@ -2121,6 +2130,9 @@ class HazkeyServerState {
             clientCandidates: inout [Hazkey_Commands_CandidatesResult.Candidate]
         ) {
             appendedTexts.insert(candidate.text)
+            if candidate.rubyCount == requestHiraganaPreeditLen {
+                fullReadingAppendedTexts.insert(candidate.text)
+            }
 
             var clientCandidate = Hazkey_Commands_CandidatesResult.Candidate()
             clientCandidate.text = candidate.text
@@ -2331,14 +2343,39 @@ class HazkeyServerState {
 
         let profile = serverConfig.currentProfile
         let inputReading = copiedComposingText.toHiragana()
+        let allowsTrailingRomaji = !is_suggest
         let typoEligible = profile.useTypoCorrectionEffective
             && !(is_suggest && profile.suggestionListMode == .suggestionListDisabled)
             && inputReading.count <= TypoCorrector.maxReadingLength
             && !copiedComposingText.input.contains(where: { $0.inputStyle == .direct })
             && (!appliesTypoTimeBudget || mainRequestDurationMs <= typoTimeBudget)
         if typoEligible {
-            let triggers = TypoCorrector.triggers(in: inputReading)
-            let variants = TypoCorrector.variants(of: copiedComposingText, triggers: triggers)
+            let triggers = TypoCorrector.triggers(
+                in: inputReading, allowsTrailingRomaji: allowsTrailingRomaji)
+            let typoInput: ComposingText
+            if !is_suggest, copiedComposingText.input.last?.piece != .compositionSeparator {
+                var withSeparator = copiedComposingText
+                withSeparator.insertAtCursorPosition([
+                    ComposingText.InputElement(
+                        piece: .compositionSeparator,
+                        inputStyle: .mapped(id: .tableName(currentTableName)))
+                ])
+                typoInput =
+                    withSeparator.convertTarget == copiedComposingText.convertTarget
+                    ? withSeparator : copiedComposingText
+            } else {
+                typoInput = copiedComposingText
+            }
+            let usesRomajiInputTable =
+                !profile.enabledKeymaps.contains { $0.isBuiltIn && $0.filename == "JIS Kana" }
+                && profile.enabledTables.contains { !$0.isBuiltIn || $0.filename != "Kana" }
+            let frozenAsciiInputStyle: InputStyle? =
+                usesRomajiInputTable ? .mapped(id: .tableName(currentTableName)) : nil
+            let variants = TypoCorrector.variants(
+                of: typoInput,
+                triggers: triggers,
+                allowsTrailingRomaji: allowsTrailingRomaji,
+                frozenAsciiInputStyle: frozenAsciiInputStyle)
             if !variants.isEmpty {
                 var correctionOptions = TypoCorrector.correctionOptions(from: options)
                 correctionOptions.N_best = 1
@@ -2403,10 +2440,13 @@ class HazkeyServerState {
                 // 完全な訂正 (読みにトリガーが残らないもの) が1つでも提示されるなら、まだトリガーが残る部分的な訂正は落とす
                 // 例: ちゃゃゃっっっと では ちゃっと が完全な訂正であり、ゃゃ が残る部分的な縮約は劣る
                 let preferred = TypoCorrector.competitive(
-                    TypoCorrector.preferringComplete(Array(offered), reading: { $0.reading }),
+                    TypoCorrector.preferringComplete(
+                        Array(offered),
+                        allowsTrailingRomaji: allowsTrailingRomaji,
+                        reading: { $0.reading }),
                     adjustedValue: { $0.adjustedValue })
                 var insertionIndex = min(1, clientCandidates.count)
-                for correction in preferred where !appendedTexts.contains(correction.candidate.text) {
+                for correction in preferred where !fullReadingAppendedTexts.contains(correction.candidate.text) {
                     let needsPushout = is_suggest && clientCandidates.count >= N_best
                     let hasPushable = !needsPushout
                         || clientCandidates.indices.contains {
@@ -2414,6 +2454,7 @@ class HazkeyServerState {
                         }
                     guard hasPushable else { break }
                     appendedTexts.insert(correction.candidate.text)
+                    fullReadingAppendedTexts.insert(correction.candidate.text)
                     var client = Hazkey_Commands_CandidatesResult.Candidate()
                     client.text = correction.candidate.text
                     client.subHiragana = String(fullHiraganaPreedit.dropFirst(hiraganaPreeditLen))
@@ -2722,7 +2763,8 @@ class HazkeyServerState {
         if !is_suggest {
             if let failure = ensureCompositionSeparatorForConversion() { return failure }
         }
-        let (candidatesResult, serverCandidates) = makeCandidatesResult(is_suggest: is_suggest)
+        let (candidatesResult, serverCandidates) = makeCandidatesResult(
+            is_suggest: is_suggest, appliesTypoTimeBudget: is_suggest)
         self.currentCandidateList = serverCandidates
 
         return Hazkey_ResponseEnvelope.with {
@@ -2820,7 +2862,8 @@ class HazkeyServerState {
 
         // 削除前と同じモードで候補リストを再構築する
         let (candidatesResult, serverCandidates) = makeCandidatesResult(
-            is_suggest: currentCandidateListIsSuggest)
+            is_suggest: currentCandidateListIsSuggest,
+            appliesTypoTimeBudget: currentCandidateListIsSuggest)
         currentCandidateList = serverCandidates
 
         return Hazkey_ResponseEnvelope.with {

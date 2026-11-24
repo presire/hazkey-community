@@ -180,7 +180,24 @@ class FakeServer {
             }
             hazkey::ResponseEnvelope response;
             response.set_status(hazkey::SUCCESS);
-            response.mutable_text_with_cursor();
+            if (request.payload_case() ==
+                hazkey::RequestEnvelope::kAdjustClauseBoundary) {
+                // 文節境界調整の応答は候補ごとの残り読みと誤字訂正の印を持つ
+                // 通信路で失われないことの検証用に、常に同じ2候補を返す
+                auto* boundary = response.mutable_clause_boundary_result();
+                boundary->set_hiragana("しっっっぱいねこ");
+                auto* candidates = boundary->mutable_candidates();
+                auto* unchanged = candidates->add_candidates();
+                unchanged->set_text("しっっっぱい");
+                unchanged->set_sub_hiragana("ねこ");
+                unchanged->set_is_typo_correction(false);
+                auto* corrected = candidates->add_candidates();
+                corrected->set_text("失敗");
+                corrected->set_sub_hiragana("ねこ");
+                corrected->set_is_typo_correction(true);
+            } else {
+                response.mutable_text_with_cursor();
+            }
             std::string responseWire;
             assert(response.SerializeToString(&responseWire));
             const uint32_t responseLength = htonl(responseWire.size());
@@ -330,6 +347,30 @@ void testUnsafePerfEvidenceTargets(const std::string& root) {
     assert(std::filesystem::is_fifo(fifoPath));
 }
 
+/**
+ * @brief 文節境界調整の結果が候補の注記を失わずに届くことを検証する
+ *
+ * 模擬サーバは残り読みと誤字訂正の印を持つ2候補を返し、接続器は候補の全フィールドを保持する
+ * 誤字訂正の印が通信路で落ちると、候補一覧に訂正注記を表示できない
+ * @param connector 検証対象のサーバ接続器
+ */
+void testClauseBoundaryPreservesCandidateMetadata(HazkeyServerConnector& connector) {
+    const auto result = connector.adjustClauseBoundary(-2);
+    assert(result.has_value());
+    assert(result->hiragana == "しっっっぱいねこ");
+    assert(result->candidates.candidates_size() == 2);
+
+    const auto& unchanged = result->candidates.candidates(0);
+    assert(unchanged.text() == "しっっっぱい");
+    assert(unchanged.sub_hiragana() == "ねこ");
+    assert(!unchanged.is_typo_correction());
+
+    const auto& corrected = result->candidates.candidates(1);
+    assert(corrected.text() == "失敗");
+    assert(corrected.sub_hiragana() == "ねこ");
+    assert(corrected.is_typo_correction());
+}
+
 }  // namespace
 
 /**
@@ -386,6 +427,12 @@ int main() {
     assert(observed.at("get_candidates") < baseline.at("get_candidates"));
     assert(observed.at("get_hiragana_with_cursor") <=
            baseline.at("get_hiragana_with_cursor"));
+    // 基準ファイル (rpc_after_cache.json) の集計とは独立に、文節境界調整の候補注記が通信路で保持されることを検証する
+    {
+        FakeServer server(socketPath);
+        HazkeyServerConnector connector;
+        testClauseBoundaryPreservesCandidateMetadata(connector);
+    }
     testUnsafePerfEvidenceTargets(root);
     std::cout << "[PASS] RPC counts (after=baseline): ";
     for (const auto& [type, count] : observed) {

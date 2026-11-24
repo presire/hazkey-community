@@ -252,16 +252,17 @@ final class TypoCorrectionServerTests: XCTestCase {
         XCTAssertTrue(movedRight.candidates.contains(where: \.isTypoCorrection))
     }
 
-    /// 文節境界調整が打鍵時の時間予算を無視することを検証する
+    /// 通常変換と文節境界調整が打鍵時の時間予算を無視することを検証する
     ///
-    /// 予算超過で主変換から訂正が消えていても、境界を動かした接頭辞では訂正が提示されること
+    /// 予算超過でサジェストから訂正が消えていても、通常変換と境界を動かした接頭辞では訂正が提示されること
     func testClauseBoundaryAdjustmentIgnoresTheTypingTimeBudget() throws {
-        // Given: 新しい接頭辞をニューラル変換する場合のように、全ての主変換が時間予算を超え、訂正案の評価に使える時間も無い
+        // Given: 打鍵時の主変換と訂正案評価の時間予算を0にする
         let state = try state(reading: "mchigaeruneko")
         defer { state.close() }
         state.typoTimeBudget = .zero
         state.typoEvaluationBudget = .zero
-        XCTAssertFalse(try candidates(state, suggest: false).candidates.contains(where: \.isTypoCorrection))
+        XCTAssertFalse(try candidates(state, suggest: true).candidates.contains(where: \.isTypoCorrection))
+        XCTAssertTrue(try candidates(state, suggest: false).candidates.contains(where: \.isTypoCorrection))
 
         // When: Shift+Leftで境界をタイポ接頭辞の末尾まで動かす
         let moved = state.adjustClauseBoundary(offset: -2)
@@ -594,9 +595,9 @@ final class TypoCorrectionServerTests: XCTestCase {
         XCTAssertEqual(cleared.candidates[clearedIndex].text, "失敗した")
     }
 
-    /// 打鍵時の訂正案の評価が時間予算で打ち切られることを検証する
+    /// 打鍵時サジェストの訂正案の評価が時間予算で打ち切られ、通常変換では予算を無視することを検証する
     ///
-    /// 評価に使える時間が無ければ訂正案の変換も訂正用セッションの確保も行わず、時間があれば同じ入力で訂正が提示されること
+    /// サジェストでは評価時間が無ければ訂正用セッションも確保せず、通常変換または予算回復後のサジェストでは訂正が提示されること
     func testTypingTimeCorrectionStopsEvaluatingWhenTheEvaluationBudgetIsExhausted() throws {
         // Given: 主変換は時間予算に収まるが、訂正案の評価に使える時間が残っていない
         let state = try state(reading: "shipppaishita", enabled: false)
@@ -605,22 +606,28 @@ final class TypoCorrectionServerTests: XCTestCase {
         state.typoTimeBudget = .seconds(10)
         state.typoEvaluationBudget = .zero
 
-        // When: 打鍵時の候補を生成する
-        let exhausted = try candidates(state, suggest: false)
+        // When: 打鍵時サジェストの候補を生成する
+        let exhausted = try candidates(state, suggest: true)
 
         // Then: 訂正案は1件も評価されず、訂正用セッションも確保されない
         XCTAssertFalse(exhausted.candidates.contains(where: \.isTypoCorrection))
         XCTAssertEqual(state.typoCorrectionSessionCount, 0)
 
-        // When: 評価に使える時間を戻して候補を再生成する
+        // When: 同じ予算0のまま通常変換 (Space) を要求する
+        let explicitConversion = try candidates(state, suggest: false)
+
+        // Then: 通常変換は打鍵時の時間予算を無視して訂正を提示する
+        XCTAssertNotNil(correctionIndex(explicitConversion))
+
+        // When: 評価に使える時間を戻してサジェストを再生成する
         state.typoEvaluationBudget = .seconds(10)
-        let restored = try candidates(state, suggest: false)
+        let restored = try candidates(state, suggest: true)
 
         // Then: 同じ入力で訂正が提示される
         XCTAssertNotNil(correctionIndex(restored))
     }
 
-    /// 打鍵時の訂正案の評価が、1件目を評価した後で時間予算に達した時点で打ち切られることを検証する
+    /// 打鍵時サジェストの訂正案の評価が、1件目を評価した後で時間予算に達した時点で打ち切られることを検証する
     ///
     /// 予算の判定は訂正案ごとに行うため、1件目の開始時に予算内なら1件目だけを評価し、評価した範囲の訂正を提示すること
     func testTypingTimeCorrectionEvaluatesUntilTheBudgetRunsOutMidway() throws {
@@ -639,8 +646,8 @@ final class TypoCorrectionServerTests: XCTestCase {
         var elapsed: [Duration] = [.zero, .zero, .seconds(1)]
         state.typoClock = { origin + (elapsed.count > 1 ? elapsed.removeFirst() : elapsed[0]) }
 
-        // When: 打鍵時の候補を生成する
-        let result = try candidates(state, suggest: false)
+        // When: 打鍵時サジェストの候補を生成する
+        let result = try candidates(state, suggest: true)
 
         // Then: 訂正用セッションは1件目の分だけ確保され、1件目の訂正案から訂正が提示される
         XCTAssertEqual(state.typoCorrectionSessionCount, 1)
@@ -796,6 +803,167 @@ final class TypoCorrectionServerTests: XCTestCase {
         let correction = try XCTUnwrap(
             result.candidates.first { $0.isTypoCorrection && $0.text == "金曜日" },
             "\(result.candidates.map(\.text))")
+        XCTAssertEqual(correction.subHiragana, "です")
+    }
+
+    /// 文節境界調整で接頭辞の末尾にローマ字が露出する場合でも訂正候補が提示されることを検証する
+    func testClauseBoundaryTrailingRomajiOffersCorrectionsAndPreservesSuffix() throws {
+        let cases: [(romaji: String, offset: Int, expected: String, suffix: String)] = [
+            ("arigatpdesu", -2, "ありがと", "です"),
+            ("ohaypgozaimasu", -5, "おはよ", "ございます"),
+            ("nihongha", -1, "日本", "は"),
+            ("nihonsdesu", -2, "日本", "です"),
+            ("arigatgozaimasu", -5, "ありがと", "ございます"),
+        ]
+        for (romaji, offset, expected, suffix) in cases {
+            // Given: 文節境界で切ると接頭辞の末尾に残留ローマ字が来る入力
+            let state = try state(reading: romaji)
+            defer { state.close() }
+
+            // When: Shift+Left で接頭辞の末尾まで境界を動かす
+            let moved = state.adjustClauseBoundary(offset: offset)
+            XCTAssertEqual(moved.status, .success, romaji)
+            let result = moved.clauseBoundaryResult.candidates
+
+            // Then: 接頭辞の訂正候補が提示され、接尾辞がそのまま残る
+            let correction = try XCTUnwrap(
+                result.candidates.first { $0.isTypoCorrection && $0.text == expected },
+                "\(romaji): \(result.candidates.map { "\($0.text)(typo=\($0.isTypoCorrection),sub=\($0.subHiragana))" })")
+            XCTAssertEqual(correction.subHiragana, suffix, romaji)
+        }
+    }
+
+    /// 部分読みの通常候補と同じ表記であっても、読み全体を覆う訂正候補が重複排除で消えないことを検証する
+    func testPartialReadingCandidateDoesNotSuppressFullReadingTypoCorrection() throws {
+        let cases: [(romaji: String, offset: Int, expected: String, suffix: String)] = [
+            ("shitsumonnnnndesu", -2, "質問", "です"),
+            ("ko-hi--wo", -1, "コーヒー", "を"),
+            ("nihonsdesu", -2, "日本", "です"),
+        ]
+        for (romaji, offset, expected, suffix) in cases {
+            // Given: 末尾に余分な文字を含む接頭辞と接尾辞 (変換エンジンが同じ表記の部分読み候補を返す)
+            let state = try state(reading: romaji)
+            defer { state.close() }
+
+            // When: Shift+Left で接頭辞の末尾まで境界を動かす
+            let moved = state.adjustClauseBoundary(offset: offset)
+            XCTAssertEqual(moved.status, .success, romaji)
+            let result = moved.clauseBoundaryResult.candidates
+
+            // Then: 同じ表記の部分読み通常候補が存在していても、接頭辞全体を覆う訂正候補が接尾辞だけを残して提示される
+            XCTAssertTrue(
+                result.candidates.contains { !$0.isTypoCorrection && $0.text == expected && $0.subHiragana != suffix },
+                "\(romaji): expected a partial-reading non-typo candidate for \(expected)")
+            let correction = try XCTUnwrap(
+                result.candidates.first { $0.isTypoCorrection && $0.text == expected },
+                "\(romaji): \(result.candidates.map { "\($0.text)(typo=\($0.isTypoCorrection),sub=\($0.subHiragana))" })")
+            XCTAssertEqual(correction.subHiragana, suffix, romaji)
+        }
+    }
+
+    /// 事前の通常変換なしに直接 adjustClauseBoundary を呼んでも末尾の n が ん へ確定され訂正されることを検証する
+    func testDirectClauseBoundaryAdjustmentFinalizesTrailingNWithoutPriorConversion() throws {
+        // Given: getCandidates(false) を呼ばずに末尾が未確定の n のまま入力を終える
+        let state = HazkeyServerState(emojiDictionaryURL: nil)
+        defer { state.close() }
+        state.serverConfig.currentProfile.zenzaiEnable = false
+        state.serverConfig.currentProfile.useTypoCorrection = true
+        XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+        for character in "shitsumkn" {
+            XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+        }
+        XCTAssertEqual(state.composingText.value.toHiragana(), "しつmkn")
+
+        // When: 直接 adjustClauseBoundary を呼ぶ (末尾で +1、さらに -1 -> +1)
+        let atEnd = state.adjustClauseBoundary(offset: 1)
+        XCTAssertEqual(atEnd.status, .success)
+        XCTAssertEqual(atEnd.clauseBoundaryResult.hiragana, "しつmkん")
+        XCTAssertTrue(
+            atEnd.clauseBoundaryResult.candidates.candidates.contains { $0.isTypoCorrection && $0.text == "質問" },
+            "\(atEnd.clauseBoundaryResult.candidates.candidates.map(\.text))")
+
+        XCTAssertEqual(state.adjustClauseBoundary(offset: -1).status, .success)
+        let backToEnd = state.adjustClauseBoundary(offset: 1)
+        XCTAssertEqual(backToEnd.status, .success)
+        XCTAssertTrue(
+            backToEnd.clauseBoundaryResult.candidates.candidates.contains { $0.isTypoCorrection && $0.text == "質問" },
+            "\(backToEnd.clauseBoundaryResult.candidates.candidates.map(\.text))")
+    }
+
+    /// 文節境界調整で先頭文節を確定した後、残り文節の通常変換が打鍵時間予算0でも訂正を提示することを検証する
+    func testRemainingClauseAfterPrefixCommitOffersCorrectionEvenWithZeroTypingBudget() throws {
+        // Given: 先頭文節とタイポを含む後続文節を入力し、境界を先頭文節の末尾へ合わせる
+        let state = try state(reading: "kyouhashipppai")
+        defer { state.close() }
+        let moved = state.adjustClauseBoundary(offset: -5)
+        XCTAssertEqual(moved.status, .success)
+        let firstClauseIndex = try XCTUnwrap(
+            moved.clauseBoundaryResult.candidates.candidates.firstIndex { $0.text == "今日は" },
+            "\(moved.clauseBoundaryResult.candidates.candidates.map(\.text))")
+
+        // When: 先頭文節を確定し、打鍵時の時間予算を0にした状態で残り文節を通常変換する
+        XCTAssertEqual(state.completePrefix(candidateIndex: firstClauseIndex).status, .success)
+        XCTAssertEqual(state.composingText.value.toHiragana(), "しっっぱい")
+        state.typoTimeBudget = .zero
+        state.typoEvaluationBudget = .zero
+        let remaining = try candidates(state, suggest: false)
+
+        // Then: 残り文節の訂正候補が提示される
+        let correction = try XCTUnwrap(
+            remaining.candidates.first { $0.isTypoCorrection && $0.text == "失敗" },
+            "\(remaining.candidates.map(\.text))")
+        XCTAssertEqual(correction.subHiragana, "")
+    }
+
+    /// 末尾に残留ローマ字がある入力で、サジェストは訂正せず通常変換だけ訂正を提示することを検証する
+    func testExplicitConversionOffersTrailingRomajiCorrectionWhileSuggestDoesNot() throws {
+        let cases: [(romaji: String, expected: String)] = [
+            ("shippaishit", "失敗した"),
+            ("arigatp", "ありがと"),
+            ("nihong", "日本"),
+        ]
+        for (romaji, expected) in cases {
+            // Given: 末尾に未確定のローマ字が残っている組成 (通常の打鍵中と同じ状態)
+            let state = HazkeyServerState(emojiDictionaryURL: nil)
+            defer { state.close() }
+            state.serverConfig.currentProfile.zenzaiEnable = false
+            state.serverConfig.currentProfile.useTypoCorrection = true
+            XCTAssertEqual(state.createComposingTextInstanse().status, .success)
+            for character in romaji {
+                XCTAssertEqual(state.inputChar(inputString: String(character)).status, .success)
+            }
+
+            // When: サジェストと通常変換を順に要求する
+            let suggestResult = try candidates(state, suggest: true)
+            let normalResult = try candidates(state, suggest: false)
+
+            // Then: 打鍵中サジェストでは訂正が出ず、明示的な通常変換では訂正が提示される
+            XCTAssertFalse(
+                suggestResult.candidates.contains(where: \.isTypoCorrection),
+                "\(romaji) suggest: \(suggestResult.candidates.map(\.text))")
+            XCTAssertTrue(
+                normalResult.candidates.contains { $0.isTypoCorrection && $0.text == expected },
+                "\(romaji) normal: \(normalResult.candidates.map(\.text))")
+        }
+    }
+
+    /// 複数回の Shift+Left / Shift+Right 移動後も補助セッションが汚染されず正確な訂正が返ることを検証する
+    func testMultiStepClauseBoundaryMovementResetsTypoSessionsAndKeepsAccurateCorrections() throws {
+        // Given: タイポを含む接頭辞の後に接尾辞が続く組成
+        let state = try state(reading: "shitsumonnnnndesu")
+        defer { state.close() }
+
+        // When: 境界を -1, -1, -1, +1 の順に動かしてタイポ接頭辞の末尾へ合わせる
+        XCTAssertEqual(state.adjustClauseBoundary(offset: -1).status, .success)
+        XCTAssertEqual(state.adjustClauseBoundary(offset: -1).status, .success)
+        XCTAssertEqual(state.adjustClauseBoundary(offset: -1).status, .success)
+        let landed = state.adjustClauseBoundary(offset: 1)
+        XCTAssertEqual(landed.status, .success)
+
+        // Then: 正確な訂正候補と接尾辞が返る
+        let correction = try XCTUnwrap(
+            landed.clauseBoundaryResult.candidates.candidates.first { $0.isTypoCorrection && $0.text == "質問" },
+            "\(landed.clauseBoundaryResult.candidates.candidates.map(\.text))")
         XCTAssertEqual(correction.subHiragana, "です")
     }
 }
