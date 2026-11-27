@@ -108,7 +108,7 @@ Vulkanを使用したGPU変換には、各ディストリビューションのVu
 使用するGPUとディストリビューションに応じて、以下を参考にインストールしてください。  
 vulkan-toolsパッケージは、デバイスの確認に使用する`vulkaninfo`コマンドを含みます。  
 
-**openSUSE Leap 16**  
+**openSUSE Leap 16.0**  
 
 ```sh
 # Intel GPU/iGPU
