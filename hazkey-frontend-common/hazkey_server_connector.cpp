@@ -751,13 +751,18 @@ HazkeyServerConnector::getComposingHiraganaWithCursor() {
 /**
  * @brief 文字列を入力として送信する
  * @param text 入力する文字列
+ * @param bypassKeymap trueならキーマップを適用せず、入力テーブルへそのまま渡す
  */
-void HazkeyServerConnector::inputChar(std::string text) {
+void HazkeyServerConnector::inputChar(std::string text, bool bypassKeymap) {
     // 状態を変更するRPCなので既存の読み取りキャッシュは無効になる
     invalidateCache();
     hazkey::RequestEnvelope request;
     auto props = request.mutable_input_char();
     props->set_text(text);
+    // 既定値 (false) では送らず、旧サーバとの互換と要求の内容を従来どおりに保つ
+    if (bypassKeymap) {
+        props->set_bypass_keymap(true);
+    }
     auto response = transact(request);
     if (response == std::nullopt) {
         HAZKEY_LOG_ERROR() << "Error while transacting inputChar().";

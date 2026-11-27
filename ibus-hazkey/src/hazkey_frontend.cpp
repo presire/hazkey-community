@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 #include "hazkey_frontend_hooks.h"
+#include "keypad_input.h"
 
 /** @brief IBusフロントエンドの名前空間 */
 namespace hazkey::ibus {
@@ -501,7 +502,19 @@ void HazkeyFrontend::SurroundingGateMachine::clear() {
 bool HazkeyFrontend::isSurroundingGateCandidate(guint keyval, guint state,
                                                 bool composing, bool listFocused,
                                                 bool profileLoaded,
-                                                bool gateHint) {
+                                                bool gateHint,
+                                                hazkey::config::Profile::KeypadInputMode keypadInputMode) {
+    // 修飾キー付きのテンキーは全モードでアプリケーションへ渡すため待たない
+    if (HazkeyState::isModifiedKeypadCharKey(keyval, state)) {
+        return false;
+    }
+    // 読込済みで素通しのテンキーの文字キーは、組成を開始せずアプリケーションへ渡すため待たない
+    // 未読込の間は入力方法が不明なため依頼し、ワーカーのshouldGateFirstInput()が読込後の設定で決める
+    if (profileLoaded && HazkeyState::isUnmodifiedKeypadCharKey(keyval, state) &&
+        !hazkey::frontend::keypadCharForMode(keyval, keypadInputMode)
+             .has_value()) {
+        return false;
+    }
     return (state & IBUS_RELEASE_MASK) == 0 && keyval != IBUS_KEY_Shift_L &&
            keyval != IBUS_KEY_Shift_R && keyval != IBUS_KEY_space &&
            (state & kModifierPassthroughMask) == 0 &&
@@ -523,6 +536,7 @@ void HazkeyFrontend::applyIngress(
     acceptPrediction_ = snapshot.acceptPrediction;
     deleteLearning_ = snapshot.deleteLearning;
     kanaCycle_ = snapshot.kanaCycle;
+    keypadInputMode_ = snapshot.keypadInputMode;
 }
 
 void HazkeyFrontend::clearIngressAfterWorkerFailure() {
@@ -535,6 +549,7 @@ void HazkeyFrontend::clearIngressAfterWorkerFailure() {
     acceptPrediction_ = HazkeyState::parseHotkey("", "F5");
     deleteLearning_ = HazkeyState::parseHotkey("", "Control+D");
     kanaCycle_ = HazkeyState::parseHotkey("", "Muhenkan");
+    keypadInputMode_ = hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;
 }
 
 gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
@@ -591,6 +606,16 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
         if (HazkeyState::candidateDigitIndex(keyval, state).has_value()) {
             return TRUE;
         }
+        // 非数字のテンキーの文字キーは全ての設定で消費する
+        // ワーカーが候補を確定してから、素通しなら半角の文字を確定し、半角・全角なら新しい組成を始める
+        // アプリケーションへ先に渡すと、候補の確定より先に文字が入る
+        if (HazkeyState::isUnmodifiedKeypadCharKey(keyval, state)) {
+            return TRUE;
+        }
+        // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す ([Shift]付きも印字可能キーとして取り込まない)
+        if (HazkeyState::isModifiedKeypadCharKey(keyval, state)) {
+            return FALSE;
+        }
         return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;
     }
 
@@ -606,6 +631,15 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
         if (isPreeditHandledKey(keyval)) {
             return TRUE;
         }
+        // テンキーの文字キーは全ての設定で消費する
+        // 素通しでもワーカーが組成を確定してから半角の文字を確定し、文字が組成より先に入らないようにする
+        if (HazkeyState::isUnmodifiedKeypadCharKey(keyval, state)) {
+            return TRUE;
+        }
+        // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す ([Shift]付きも印字可能キーとして取り込まない)
+        if (HazkeyState::isModifiedKeypadCharKey(keyval, state)) {
+            return FALSE;
+        }
         return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;
     }
 
@@ -615,6 +649,20 @@ gboolean HazkeyFrontend::decideConsumeKey(guint keyval, guint state,
     }
     if (keyval == IBUS_KEY_space) {
         return TRUE;
+    }
+    // 素通しのテンキーの文字キーはアプリケーションへそのまま渡す
+    // プロファイル未読込の間も素通し (既定) とみなす
+    // processKeyEvent()は未読込の間を全キー消費のバリアで扱い、ワーカーの結果に従って転送するため、この分岐には届かない
+    if (HazkeyState::isUnmodifiedKeypadCharKey(keyval, state)) {
+        return in.profileLoaded && hazkey::frontend::keypadCharForMode(
+                                       keyval, in.keypadInputMode)
+                                       .has_value()
+                   ? TRUE
+                   : FALSE;
+    }
+    // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す ([Shift]付きも印字可能キーとして取り込まない)
+    if (HazkeyState::isModifiedKeypadCharKey(keyval, state)) {
+        return FALSE;
     }
     return HazkeyState::isInputableKey(keyval) ? TRUE : FALSE;
 }
@@ -656,7 +704,7 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     const bool shiftKey = keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R;
     const bool gateCandidate = isSurroundingGateCandidate(
         keyval, state, specComposing_, specListFocused_, profileLoaded_,
-        surroundingGateHint_);
+        surroundingGateHint_, keypadInputMode_);
 
     // 未処理操作の残存中やサーバプロファイル (ひいては設定済みホットキー) 未読込中は、
     // 同期判定がワーカーの処理集合の上位集合である保証がないため (未修飾の独自ホットキーや、待機中キーがこれから焦点を当てる候補等)、
@@ -684,7 +732,13 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     // 入力可能キーは組成を開くと楽観的にみなす
     // 直後の[Return] / [Esc] / [矢印]キーもIME所有として認識し続ける
     // applyIngress()と転送フォールバックで修正される
-    if (HazkeyState::isInputableKey(keyval)) {
+    // ただし修飾キー付きのテンキーと素通しのテンキーの文字キーは組成を開かず、組成中でも確定して終えるため、組成中とみなさない
+    const bool keypadNoCompose =
+        HazkeyState::isModifiedKeypadCharKey(keyval, state) ||
+        (HazkeyState::isUnmodifiedKeypadCharKey(keyval, state) &&
+         !hazkey::frontend::keypadCharForMode(keyval, keypadInputMode_)
+              .has_value());
+    if (HazkeyState::isInputableKey(keyval) && !keypadNoCompose) {
         specComposing_ = true;
     }
 
@@ -697,6 +751,7 @@ gboolean HazkeyFrontend::processKeyEvent(guint keyval, guint keycode,
     in.acceptPrediction = acceptPrediction_;
     in.deleteLearning = deleteLearning_;
     in.kanaCycle = kanaCycle_;
+    in.keypadInputMode = keypadInputMode_;
     const gboolean consume = decideConsumeKey(keyval, state, in);
     if (!consume) {
         // 押下の処理が終わる前に解放が来るとバリアに入るため、フレームワーク転送した押下も記録する

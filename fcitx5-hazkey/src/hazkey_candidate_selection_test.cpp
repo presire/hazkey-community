@@ -221,6 +221,132 @@ void testCandidateDigitPageLocalIndexExcludesModifiersAndNavigation() {
     assert(!fcitx::candidateDigitPageLocalIndex(Key{FcitxKey_KP_Insert}));
 }
 
+/** 候補フォーカス中のテンキーの数字は、テンキーの入力方法に依らず候補番号として選択できる */
+void testKeypadDigitsKeepCandidateSelectionContract() {
+    const std::array keypadDigits{FcitxKey_KP_1, FcitxKey_KP_2,
+                                  FcitxKey_KP_3, FcitxKey_KP_4,
+                                  FcitxKey_KP_5, FcitxKey_KP_6,
+                                  FcitxKey_KP_7, FcitxKey_KP_8,
+                                  FcitxKey_KP_9, FcitxKey_KP_0};
+    const std::array lockedStates{
+        fcitx::KeyStates(fcitx::KeyState::NumLock),
+        fcitx::KeyStates(fcitx::KeyState::CapsLock),
+        fcitx::KeyStates(fcitx::KeyState::NumLock) | fcitx::KeyState::CapsLock,
+    };
+
+    int expectedIndex = 0;
+    for (const auto keySym : keypadDigits) {
+        /** テンキーの文字キーでもあるため、候補番号の判定をテンキー入力より先に行う必要がある */
+        assert(fcitx::isUnmodifiedKeypadCharKey(fcitx::Key{keySym}));
+        assert(fcitx::candidateDigitPageLocalIndex(fcitx::Key{keySym}) ==
+               expectedIndex);
+        for (const auto states : lockedStates) {
+            assert(fcitx::isUnmodifiedKeypadCharKey(fcitx::Key{keySym, states}));
+            assert(fcitx::candidateDigitPageLocalIndex(
+                       fcitx::Key{keySym, states}) == expectedIndex);
+        }
+        ++expectedIndex;
+    }
+}
+
+/** テンキーの文字キー17個を、ロック状態とキーリピートに依らず受け付ける */
+void testUnmodifiedKeypadCharKeyAcceptsEveryKeypadCharacter() {
+    const std::array keypadChars{
+        FcitxKey_KP_0,        FcitxKey_KP_1,        FcitxKey_KP_2,
+        FcitxKey_KP_3,        FcitxKey_KP_4,        FcitxKey_KP_5,
+        FcitxKey_KP_6,        FcitxKey_KP_7,        FcitxKey_KP_8,
+        FcitxKey_KP_9,        FcitxKey_KP_Decimal,  FcitxKey_KP_Add,
+        FcitxKey_KP_Subtract, FcitxKey_KP_Multiply, FcitxKey_KP_Divide,
+        FcitxKey_KP_Equal,    FcitxKey_KP_Separator,
+    };
+    const std::array allowedStates{
+        fcitx::KeyStates(),
+        fcitx::KeyStates(fcitx::KeyState::NumLock),
+        fcitx::KeyStates(fcitx::KeyState::CapsLock),
+        fcitx::KeyStates(fcitx::KeyState::NumLock) | fcitx::KeyState::CapsLock,
+        fcitx::KeyStates(fcitx::KeyState::Repeat),
+        fcitx::KeyStates(1U << 13),
+        fcitx::KeyStates(1U << 13) | fcitx::KeyState::NumLock,
+    };
+
+    for (const auto keySym : keypadChars) {
+        for (const auto states : allowedStates) {
+            assert(fcitx::isUnmodifiedKeypadCharKey(fcitx::Key{keySym, states}));
+        }
+    }
+}
+
+/** 修飾キー付きのテンキーは、テンキーの入力方法に依らずアプリケーションへ渡すため受け付けない */
+void testUnmodifiedKeypadCharKeyRejectsRealModifiers() {
+    using fcitx::KeyState;
+    using fcitx::KeyStates;
+    const std::array keypadChars{FcitxKey_KP_0, FcitxKey_KP_9, FcitxKey_KP_Decimal,
+                                 FcitxKey_KP_Add, FcitxKey_KP_Subtract,
+                                 FcitxKey_KP_Multiply, FcitxKey_KP_Divide,
+                                 FcitxKey_KP_Equal, FcitxKey_KP_Separator};
+    const std::array modifierStates{
+        KeyStates(KeyState::Shift),
+        KeyStates(KeyState::Ctrl),
+        KeyStates(KeyState::Alt),
+        KeyStates(KeyState::Super),
+        KeyStates(KeyState::Hyper),
+        KeyStates(KeyState::Meta),
+        KeyStates(KeyState::Mod5),
+        KeyStates(KeyState::Super2),
+        KeyStates(KeyState::Hyper2),
+        KeyStates(KeyState::Ctrl) | KeyState::Alt | KeyState::Shift,
+        KeyStates(1U << 13) | KeyState::Alt,
+        KeyStates(KeyState::Shift) | KeyState::NumLock | KeyState::CapsLock,
+    };
+
+    for (const auto keySym : keypadChars) {
+        for (const auto states : modifierStates) {
+            assert(!fcitx::isUnmodifiedKeypadCharKey(fcitx::Key{keySym, states}));
+        }
+    }
+}
+
+/** テンキーの文字キー以外 (Enter・ナビゲーション・ファンクション・メインキー) を受け付けない */
+void testUnmodifiedKeypadCharKeyExcludesNonCharacterKeys() {
+    const std::array excludedKeys{
+        FcitxKey_KP_Space,
+        FcitxKey_KP_Tab,
+        FcitxKey_KP_Enter,
+        FcitxKey_KP_F1,
+        FcitxKey_KP_F2,
+        FcitxKey_KP_F3,
+        FcitxKey_KP_F4,
+        FcitxKey_KP_Home,
+        FcitxKey_KP_Left,
+        FcitxKey_KP_Up,
+        FcitxKey_KP_Right,
+        FcitxKey_KP_Down,
+        FcitxKey_KP_Prior,
+        FcitxKey_KP_Next,
+        FcitxKey_KP_End,
+        FcitxKey_KP_Begin,
+        FcitxKey_KP_Insert,
+        FcitxKey_KP_Delete,
+        FcitxKey_0,
+        FcitxKey_9,
+        FcitxKey_period,
+        FcitxKey_plus,
+        FcitxKey_minus,
+        FcitxKey_asterisk,
+        FcitxKey_slash,
+        FcitxKey_equal,
+        FcitxKey_comma,
+        FcitxKey_Return,
+        FcitxKey_space,
+        FcitxKey_Home,
+        FcitxKey_End,
+    };
+
+    for (const auto keySym : excludedKeys) {
+        assert(!fcitx::isUnmodifiedKeypadCharKey(fcitx::Key{keySym}));
+    }
+}
+
 /** 末尾ページの空き位置では選択せず、実在位置は選択する */
 void testFinalPageEmptySlotIsNoOp() {
     fcitx::HazkeyCandidateList candidates(makeCandidates(13));
@@ -283,6 +409,10 @@ int main() {
     testPageLocalIndexInRangeInvalidInput();
     testCandidateDigitPageLocalIndexMapsMainAndKeypadDigits();
     testCandidateDigitPageLocalIndexExcludesModifiersAndNavigation();
+    testKeypadDigitsKeepCandidateSelectionContract();
+    testUnmodifiedKeypadCharKeyAcceptsEveryKeypadCharacter();
+    testUnmodifiedKeypadCharKeyRejectsRealModifiers();
+    testUnmodifiedKeypadCharKeyExcludesNonCharacterKeys();
     testFinalPageEmptySlotIsNoOp();
     testFocusedListStaysSelectableAfterPaging();
     testUnfocusedListHasNoCursorAcrossPaging();

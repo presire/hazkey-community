@@ -13,6 +13,7 @@
 #include "hazkey_frontend_hooks.h"
 #include "hazkey_candidate_selection.h"
 #include "hazkey_utf8.h"
+#include "keypad_input.h"
 #include "live_convert_mode.h"
 #include "surrounding_text_snapshot.h"
 
@@ -198,10 +199,11 @@ HazkeyState::HazkeyState(std::shared_ptr<HazkeyUi> ui,
 }
 
 HazkeyState::~HazkeyState() {
-    // 保留中の遅延リフレッシュは、state破棄後に実行してはならない
-    // デストラクタは、ワーカータスクがこのオブジェクトを参照しなくなった後に1度だけ走る (タスクはshared_ptrを保持する) ため、ここでトークンを取り消せば十分
-    cancelPendingRefresh();
-    cancelPendingHint();
+    // 予約済みの遅延リフレッシュと一時ヒントはいずれもこのオブジェクトをshared_ptrで保持するため、
+    // 破棄中には実行待ちで残らない
+    // 実行器の破棄中にcancel()を呼ぶとキューの破棄と競合するため、ここでは実行器へ触れずにトークンだけ無効化する
+    refreshToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
+    hintToken_ = hazkey::frontend::SerialTaskExecutor::kInvalidToken;
     // IBus/GObjectはここでは所有しない
     // 共有HazkeyUiがメインループ上で所有し、破棄も行う
 }
@@ -234,6 +236,7 @@ HazkeyState::IngressSnapshot HazkeyState::ingressSnapshot() const {
     snapshot.acceptPrediction = acceptPredictionHotkey_;
     snapshot.deleteLearning = deleteLearningHotkey_;
     snapshot.kanaCycle = kanaCycleHotkey_;
+    snapshot.keypadInputMode = keypadInputMode_;
     return snapshot;
 }
 
@@ -330,6 +333,21 @@ std::optional<int> HazkeyState::candidateDigitIndex(guint keyval,
         return static_cast<int>(keyval - IBUS_KEY_KP_1);
     }
     return std::nullopt;
+}
+
+bool HazkeyState::isUnmodifiedKeypadCharKey(guint keyval, guint state) {
+    // 修飾の規則はcandidateDigitIndex()と同じ (NumLock / CapsLockは無視し、それ以外の修飾付きは対象外)
+    if (hasAltGrLikeModifier(state) || normalizeHotkeyModifiers(state) != 0) {
+        return false;
+    }
+    return hazkey::frontend::isKeypadCharKeySym(keyval);
+}
+
+bool HazkeyState::isModifiedKeypadCharKey(guint keyval, guint state) {
+    // 修飾の規則はcandidateDigitIndex()およびisUnmodifiedKeypadCharKey()と同じ
+    return hazkey::frontend::isKeypadCharKeySym(keyval) &&
+           (hasAltGrLikeModifier(state) ||
+            normalizeHotkeyModifiers(state) != 0);
 }
 
 bool HazkeyState::isDirectConversionShortcut(guint keyval, guint state) {
@@ -515,7 +533,8 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
                 keyval, cachedRightContext_,
                 capabilityIsAvailable(caps_, capsKnown_,
                                       IBUS_CAP_SURROUNDING_TEXT),
-                surroundingFreeze_.frozen(), hasSurroundingText_)) {
+                surroundingFreeze_.frozen(), hasSurroundingText_, state,
+                keypadInputMode_)) {
             *surroundingGate = true;
             return TRUE;
         }
@@ -528,9 +547,19 @@ gboolean HazkeyState::processKeyEvent(guint keyval, guint keycode,
     return handled;
 }
 
-bool HazkeyState::shouldGateFirstInput(guint keyval, bool rightContext,
-                                       bool surroundingCapable, bool frozen,
-                                       bool hasSurroundingText) {
+bool HazkeyState::shouldGateFirstInput(
+    guint keyval, bool rightContext, bool surroundingCapable, bool frozen,
+    bool hasSurroundingText, guint state,
+    hazkey::config::Profile::KeypadInputMode keypadInputMode) {
+    // 修飾キー付きのテンキーおよび素通しのテンキーの文字キーは組成を開始せずアプリケーションへ渡すため、周辺テキストを待たない
+    if (isModifiedKeypadCharKey(keyval, state)) {
+        return false;
+    }
+    if (isUnmodifiedKeypadCharKey(keyval, state) &&
+        !hazkey::frontend::keypadCharForMode(keyval, keypadInputMode)
+             .has_value()) {
+        return false;
+    }
     return keyval != IBUS_KEY_space && isInputableKey(keyval) && rightContext &&
            surroundingCapable && !frozen && !hasSurroundingText;
 }
@@ -581,6 +610,33 @@ gboolean HazkeyState::noPreeditKeyEvent(guint keyval, guint state) {
             resetState();
         }
         return TRUE;
+    }
+    if (isUnmodifiedKeypadCharKey(keyval, state)) {
+        // テンキーの文字キーは設定に従う
+        // 素通しはアプリケーションへ渡し、半角・全角はキーマップを通さずにその文字で組成を開始する
+        const auto keypadText =
+            hazkey::frontend::keypadCharForMode(keyval, keypadInputMode_);
+        if (!keypadText.has_value()) {
+            // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+            surroundingFreeze_.release();
+            return FALSE;
+        }
+        updateSurroundingText();
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
+        server_.inputChar(*keypadText, /*bypassKeymap=*/true);
+        if (discardIfSecureInput()) {
+            return FALSE;
+        }
+        scheduleCandidateRefresh(/*isSuggest=*/true);
+        return TRUE;
+    }
+    if (isModifiedKeypadCharKey(keyval, state)) {
+        // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す
+        // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+        surroundingFreeze_.release();
+        return FALSE;
     }
     if (isInputableKey(keyval)) {
         updateSurroundingText();
@@ -723,7 +779,38 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         default:
             break;
     }
-    if (isInputableKey(keyval)) {
+    // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す ([Shift]付きも印字可能キーとして取り込まない)
+    if (isModifiedKeypadCharKey(keyval, state)) {
+        return FALSE;
+    }
+    // テンキーの文字キーは設定に従う
+    std::optional<std::string> keypadText;
+    if (isUnmodifiedKeypadCharKey(keyval, state)) {
+        keypadText =
+            hazkey::frontend::keypadCharForMode(keyval, keypadInputMode_);
+        if (!keypadText.has_value()) {
+            // 素通しは[Enter]と同じく組成を確定してから、半角の文字を確定する
+            // メインループの同期判定がキーを消費済みのため、ここで確定することで順序を保つ
+            flushPendingRefresh();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
+            const std::string committed = preeditText_;
+            commitPreedit();
+            if (livePreeditIndex_ >= 0) {
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
+                server_.completePrefix(livePreeditIndex_);
+                if (discardIfSecureInput()) {
+                    return FALSE;
+                }
+            }
+            commitKeypadHalfwidthChar(keyval, committed);
+            return TRUE;
+        }
+    }
+    if (keypadText.has_value() || isInputableKey(keyval)) {
         std::string committed;
         if (isDirectConversionMode_) {
             // 直接変換の結果を確定してから続けて入力する
@@ -742,7 +829,12 @@ gboolean HazkeyState::preeditKeyEvent(guint keyval, guint state) {
         if (discardIfSecureInput()) {
             return FALSE;
         }
-        server_.inputChar(utf8FromKeyval(keyval));
+        if (keypadText.has_value()) {
+            // 半角・全角のテンキー入力は、メインキー向けのキーマップを通さずにその文字を入れる
+            server_.inputChar(*keypadText, /*bypassKeymap=*/true);
+        } else {
+            server_.inputChar(utf8FromKeyval(keyval));
+        }
         if (discardIfSecureInput()) {
             return FALSE;
         }
@@ -911,7 +1003,28 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         }
         return TRUE;
     }
-    if (isInputableKey(keyval)) {
+    // 修飾キー付きのテンキーは全モードでアプリケーションへ渡す ([Shift]付きも印字可能キーとして取り込まない)
+    if (isModifiedKeypadCharKey(keyval, state)) {
+        return FALSE;
+    }
+    // テンキーの文字キー (数字は上のcandidateDigitIndex()が全ての設定で候補選択として扱う) は設定に従う
+    std::optional<std::string> keypadText;
+    if (isUnmodifiedKeypadCharKey(keyval, state)) {
+        keypadText =
+            hazkey::frontend::keypadCharForMode(keyval, keypadInputMode_);
+        if (!keypadText.has_value()) {
+            // 素通しは、選択中の候補 (と残りの読み) を確定してから、半角の文字を確定する
+            flushPendingRefresh();
+            if (discardIfSecureInput()) {
+                return FALSE;
+            }
+            const std::string committed = preeditText_;
+            commitPreedit();
+            commitKeypadHalfwidthChar(keyval, committed);
+            return TRUE;
+        }
+    }
+    if (keypadText.has_value() || isInputableKey(keyval)) {
         // 保留リフレッシュは取り込みと確定の前に解決する
         // 解決しないと確定テキストと周囲テキストの更新が遅れる
         flushPendingRefresh();
@@ -929,7 +1042,11 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
         if (discardIfSecureInput()) {
             return FALSE;
         }
-        server_.inputChar(utf8FromKeyval(keyval));
+        if (keypadText.has_value()) {
+            server_.inputChar(*keypadText, /*bypassKeymap=*/true);
+        } else {
+            server_.inputChar(utf8FromKeyval(keyval));
+        }
         if (discardIfSecureInput()) {
             return FALSE;
         }
@@ -939,14 +1056,29 @@ gboolean HazkeyState::candidateKeyEvent(guint keyval, guint state) {
     return FALSE;
 }
 
+void HazkeyState::commitKeypadHalfwidthChar(guint keyval,
+                                            const std::string& committed) {
+    const std::string text =
+        hazkey::frontend::keypadHalfwidthChar(keyval).value_or("");
+    if (!text.empty()) {
+        commitText(text);
+    }
+    // 確定直後のアプリの周辺テキストは確定を反映していないため、次の組成の左文脈へ確定文字を残す
+    surroundingFreeze_.appendCommitted(committed);
+    surroundingFreeze_.appendCommitted(text);
+    resetState();
+}
+
 void HazkeyState::loadServerProfile() {
     cachedRightContext_ = false;
     candidateDigitKeyMovesCursor_ = false;
+    keypadInputMode_ = hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;
     const auto configOpt = server_.getServerConfig();
     if (!configOpt.has_value() || configOpt->profiles_size() == 0) {
         return;  // サーバ未準備、既定値を維持
     }
     const auto& profile = configOpt->profiles(0);
+    keypadInputMode_ = hazkey::frontend::normalizeKeypadInputMode(profile);
     candidateDigitKeyMovesCursor_ =
         profile.has_candidate_digit_key_action() &&
         profile.candidate_digit_key_action() ==

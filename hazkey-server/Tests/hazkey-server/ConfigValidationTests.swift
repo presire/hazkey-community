@@ -863,6 +863,93 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
     }
 
+    func testNormalizeProfileDefaultsMissingAndUnspecifiedKeypadInputModeAndPreservesExplicitValues() throws {
+        // 前提: テンキーの入力設定が欠落・未設定[UNSPECIFIED]・半角・全角のプロファイル
+        var missing = HazkeyServerConfig.genDefaultConfig()
+        missing.clearKeypadInputMode()
+        XCTAssertFalse(missing.hasKeypadInputMode)
+        XCTAssertEqual(missing.keypadInputModeEffective, .keypadInputPassthrough)
+
+        var unspecified = HazkeyServerConfig.genDefaultConfig()
+        unspecified.keypadInputMode = .unspecified
+        XCTAssertEqual(unspecified.keypadInputModeEffective, .keypadInputPassthrough)
+
+        var halfwidth = HazkeyServerConfig.genDefaultConfig()
+        halfwidth.keypadInputMode = .keypadInputHalfwidth
+
+        var fullwidth = HazkeyServerConfig.genDefaultConfig()
+        fullwidth.keypadInputMode = .keypadInputFullwidth
+
+        // 実行: それぞれを設定境界へ通す
+        let normalizedMissing = try HazkeyServerConfig.normalizeProfile(missing)
+        let normalizedUnspecified = try HazkeyServerConfig.normalizeProfile(unspecified)
+        let normalizedHalfwidth = try HazkeyServerConfig.normalizeProfile(halfwidth)
+        let normalizedFullwidth = try HazkeyServerConfig.normalizeProfile(fullwidth)
+
+        // 検証: 欠落と未設定はキーマップに従う既定値になり、明示値は保持される
+        XCTAssertTrue(normalizedMissing.hasKeypadInputMode)
+        XCTAssertEqual(normalizedMissing.keypadInputMode, .keypadInputPassthrough)
+        XCTAssertEqual(normalizedUnspecified.keypadInputMode, .keypadInputPassthrough)
+        XCTAssertEqual(normalizedHalfwidth.keypadInputMode, .keypadInputHalfwidth)
+        XCTAssertEqual(normalizedHalfwidth.keypadInputModeEffective, .keypadInputHalfwidth)
+        XCTAssertEqual(normalizedFullwidth.keypadInputMode, .keypadInputFullwidth)
+        XCTAssertEqual(normalizedFullwidth.keypadInputModeEffective, .keypadInputFullwidth)
+    }
+
+    func testNormalizeProfileRejectsUnrecognizedKeypadInputMode() {
+        var profile = HazkeyServerConfig.genDefaultConfig()
+        profile.keypadInputMode = .UNRECOGNIZED(99)
+
+        XCTAssertThrowsError(try HazkeyServerConfig.normalizeProfile(profile)) { error in
+            guard case ConfigError.unrecognizedEnum(let field, let rawValue) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(field, "keypadInputMode")
+            XCTAssertEqual(rawValue, 99)
+        }
+    }
+
+    func testSavedKeypadInputModesSurviveReload() throws {
+        for mode in [Hazkey_Config_Profile.KeypadInputMode.keypadInputHalfwidth, .keypadInputFullwidth] {
+            try withSandboxedConfigHome {
+                // 前提: 分離したXDG_CONFIG_HOME配下へ保存する設定
+                var profile = HazkeyServerConfig.genDefaultConfig()
+                profile.keypadInputMode = mode
+
+                // 実行: 保存してconfig.jsonから読み直す
+                let config = HazkeyServerConfig()
+                try config.saveConfig([profile])
+                let reloaded = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+                // 検証: 明示したテンキーの入力設定が往復後も保持される
+                XCTAssertTrue(reloaded.hasKeypadInputMode)
+                XCTAssertEqual(reloaded.keypadInputMode, mode)
+            }
+        }
+    }
+
+    func testDecodingLegacyConfigWithoutKeypadInputModePassesThroughKeymap() throws {
+        try withSandboxedConfigHome {
+            // 前提: テンキーの入力設定のフィールドを持たない旧config.json (未知フィールドを含む)
+            let configDirectory = HazkeyServerConfig.getConfigDirectory()
+            try FileManager.default.createDirectory(
+                at: configDirectory, withIntermediateDirectories: true)
+            let configURL = configDirectory.appendingPathComponent("config.json")
+            try Data("""
+                [{"profileName": "Legacy", "unknownFutureField": 42}]
+                """.utf8).write(to: configURL)
+
+            // 実行: 保存済みconfig.jsonを復号する
+            let profile = try XCTUnwrap(HazkeyServerConfig.loadConfig().first)
+
+            // 検証: 例外なく旧設定を読み込み、テンキーはキーマップに従う既定値になる
+            XCTAssertEqual(profile.profileName, "Legacy")
+            XCTAssertTrue(profile.hasKeypadInputMode)
+            XCTAssertEqual(profile.keypadInputMode, .keypadInputPassthrough)
+        }
+    }
+
     /// XDG_CONFIG_HOMEを一時ディレクトリへ切り替えて本体を実行する
     ///
     /// - Parameter body: 切り替え中に実行する処理

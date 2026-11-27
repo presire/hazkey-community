@@ -258,6 +258,10 @@ QString MainWindow::uiStateKey() const {
     state.insert("auxiliaryText", ui_->auxiliaryText->currentIndex());
     state.insert("suggestionList", ui_->suggestionList->currentIndex());
     state.insert("candidateDigitKeyAction", ui_->candidateDigitKeyAction->currentIndex());
+    // テンキーは2つのウィジェットの生の値ではなく実効値を記録する (素通り中のコンボ変更を未保存扱いにしない)
+    state.insert("keypadInputMode",
+                 static_cast<int>(ConfigDefs::KeypadInputMode::getFromUi(
+                     ui_->keypadPassthrough, ui_->keypadWidth)));
     state.insert("numSuggestion", ui_->numSuggestion->value());
     state.insert("autoConvertMinChars", ui_->autoConvertMinChars->value());
     state.insert("numCandidatesPerPage", ui_->numCandidatesPerPage->value());
@@ -338,6 +342,7 @@ void MainWindow::connectSignals() {
     }
 
     connect(ui_->useHistory, &QCheckBox::toggled, this, &MainWindow::onUseHistoryToggled);
+    connect(ui_->keypadPassthrough, &QCheckBox::toggled, this, &MainWindow::onKeypadPassthroughToggled);
     connect(ui_->useZenzaiCustomWeight, &QCheckBox::toggled, this, &MainWindow::onUseZenzaiCustomWeightToggled);
     connect(ui_->browseZenzaiWeightPath, &QPushButton::clicked, this, &MainWindow::onBrowseZenzaiWeightPath);
     connect(ui_->useUserDict, &QCheckBox::toggled, this, &MainWindow::onUseUserDictToggled);
@@ -419,6 +424,10 @@ void MainWindow::connectSignals() {
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) { recomputeDirtyState(); });
     connect(ui_->candidateDigitKeyAction,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { recomputeDirtyState(); });
+    // 素通りの間の選択変更は実効値を変えないため、uiStateKey()の比較で未保存扱いにならない
+    connect(ui_->keypadWidth,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) { recomputeDirtyState(); });
     connect(ui_->zenzaiBackendDevice,
@@ -540,6 +549,12 @@ void MainWindow::onButtonClicked(QAbstractButton* button) {
 
 void MainWindow::onUseHistoryToggled(bool enabled) {
     ui_->stopStoreNewHistory->setEnabled(enabled);
+    recomputeDirtyState();
+}
+
+void MainWindow::onKeypadPassthroughToggled(bool passthrough) {
+    ui_->keypadWidth->setEnabled(!passthrough);
+    ui_->keypadWidthLabel->setEnabled(!passthrough);
     recomputeDirtyState();
 }
 
@@ -773,7 +788,7 @@ void MainWindow::updateRightContextUi() {
         rightContextTip = tr("Requires contextual conversion.");
     } else {
         rightContextTip =
-            tr("Converts considering the text to the right of the cursor as well. "
+            tr("Converts considering the text to the right of the cursor as well.\n"
                "Requires a zenz-v3.2 or newer model, and only works while "
                "\"Use contextual conversion\" is enabled.");
     }
@@ -788,7 +803,9 @@ void MainWindow::updateRightContextUi() {
                                         ? zenzaiModelSupportsAlignmentSeparator(customPath)
                                         : zenzaiModelSupportsAlignmentSeparator(ZenzaiModelManager::getActiveModelKey());
     const QString separatorTip = separatorSupported
-        ? tr("When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right), tells the converter where the cursor is and what follows it. Requires a zenz-v3.2 or newer model.")
+        ? tr("When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right),\n"
+             "tells the converter where the cursor is and what follows it.\n"
+             "Requires a zenz-v3.2 or newer model.")
         : notSupportedReason;
     ui_->zenzaiAlignmentSeparator->setEnabled(separatorSupported);
     ui_->zenzaiAlignmentSeparatorLabel->setEnabled(separatorSupported);
@@ -849,6 +866,13 @@ bool MainWindow::loadCurrentConfig(bool fetchConfig) {
     SET_COMBO_FROM_CONFIG(ConfigDefs::AuxTextMode, ui_->auxiliaryText, currentProfile_->aux_text_mode());
     SET_COMBO_FROM_CONFIG(ConfigDefs::SuggestionListMode, ui_->suggestionList, currentProfile_->suggestion_list_mode());
     SET_COMBO_FROM_CONFIG(ConfigDefs::CandidateDigitKeyAction, ui_->candidateDigitKeyAction, currentProfile_->candidate_digit_key_action());
+    // フィールドが無い場合はUNSPECIFIEDとなり、素通りとして表示する
+    ConfigDefs::KeypadInputMode::setToUi(ui_->keypadPassthrough,
+                                         ui_->keypadWidth,
+                                         currentProfile_->keypad_input_mode());
+    // チェック状態が変わらない場合はtoggledが発火しないため、有効状態を明示的に揃える
+    ui_->keypadWidth->setEnabled(!ui_->keypadPassthrough->isChecked());
+    ui_->keypadWidthLabel->setEnabled(!ui_->keypadPassthrough->isChecked());
 
     SET_SPINBOX(ui_->numSuggestion, currentProfile_->num_suggestions(), ConfigDefs::SpinboxDefaults::NUM_SUGGESTIONS);
     const int autoConvertMinChars = currentProfile_->auto_convert_min_chars();
@@ -1072,6 +1096,8 @@ bool MainWindow::saveCurrentConfig() {
         ConfigDefs::SuggestionListMode, ui_->suggestionList));
     currentProfile_->set_candidate_digit_key_action(GET_COMBO_TO_CONFIG(
         ConfigDefs::CandidateDigitKeyAction, ui_->candidateDigitKeyAction));
+    currentProfile_->set_keypad_input_mode(ConfigDefs::KeypadInputMode::getFromUi(
+        ui_->keypadPassthrough, ui_->keypadWidth));
 
     currentProfile_->set_num_suggestions(GET_SPINBOX_INT(ui_->numSuggestion));
     currentProfile_->set_auto_convert_min_chars(

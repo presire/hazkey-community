@@ -86,6 +86,12 @@ class MainWindow : public QWidget {
      */
     void onUseHistoryToggled(bool enabled);
     /**
+     * @brief テンキーを素通りするかに従って[全角/半角]の選択を切り替える
+     * @param passthrough テンキーを素通りする場合はtrue
+     * @note 素通りの間はコンボボックスとそのラベルを無効化し、選択中のインデックスは保持する
+     */
+    void onKeypadPassthroughToggled(bool passthrough);
+    /**
      * @brief カスタムZenzai重みの利用状態に従ってパス入力を切り替える
      * @param enabled カスタム重みを利用する場合はtrue
      */

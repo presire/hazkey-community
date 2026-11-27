@@ -1464,9 +1464,18 @@ class HazkeyServerState {
     ///
     /// [Shift]キーを単独で押下した状態で直接入力の開始文字 (設定の大文字等) を入力すると、直接入力モードに入る
     ///
-    /// - Parameter inputString: 入力された文字 (先頭の1文字だけを使用する)
+    /// テンキーからの入力 ([bypassKeymap]が[true]) では、キーマップを参照せずに文字をそのまま入力テーブルへ渡す
+    ///
+    /// - Parameters:
+    ///   - inputString: 入力された文字 (先頭の1文字だけを使用する)
+    ///   - bypassKeymap: キーマップ (全角数字・和字記号・JISかな等) を適用しない場合は[true]
     /// - Returns: 成功時は[.success]、文字列が空の場合や入力・組成の保持上限に抵触する場合は[.failed]を含むレスポンス
-    func inputChar(inputString: String) -> Hazkey_ResponseEnvelope {
+    /// - Note: 直接入力モードでは[bypassKeymap]に依らず直接入力として挿入する (直接入力モードを優先する)
+    ///
+    ///   キーマップを適用しない場合も入力テーブルの要素 ([.mapped]) として挿入するため、未確定の「n」の直後の数字で「ん」が確定する
+    ///
+    ///   [.direct]で挿入すると、誤字訂正と記号変換が組成全体で無効になり、入力テーブルの規則も適用されないため使用しない
+    func inputChar(inputString: String, bypassKeymap: Bool = false) -> Hazkey_ResponseEnvelope {
         guard composingText.value.convertTarget.count < Self.maxComposingCharacters else {
             return Self.composingLimitFailure()
         }
@@ -1488,7 +1497,9 @@ class HazkeyServerState {
             nextComposingText.insertAtCursorPosition(String(inputChar), inputStyle: .direct)
         } else {
             let piece: InputPiece
-            if let (intentionChar, overrideInputChar) = keymap[inputChar] {
+            if bypassKeymap {
+                piece = .character(inputChar)
+            } else if let (intentionChar, overrideInputChar) = keymap[inputChar] {
                 piece = .key(
                     intention: intentionChar, input: overrideInputChar ?? inputChar, modifiers: [])
             } else {

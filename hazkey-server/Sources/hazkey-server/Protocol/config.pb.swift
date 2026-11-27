@@ -634,6 +634,18 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
   /// Clears the value of `usePostalCodeConversion`. Subsequent reads from it will return its default value.
   mutating func clearUsePostalCodeConversion() {_uniqueStorage()._usePostalCodeConversion = nil}
 
+  /// テンキーの文字キー (0〜9 . + - * / = ,) の入力方法
+  ///
+  /// - Note: フィールドが無い場合とUNSPECIFIEDは、IMEを素通りする (KEYPAD_INPUT_PASSTHROUGH) 扱い
+  var keypadInputMode: Hazkey_Config_Profile.KeypadInputMode {
+    get {_storage._keypadInputMode ?? .unspecified}
+    set {_uniqueStorage()._keypadInputMode = newValue}
+  }
+  /// Returns true if `keypadInputMode` has been explicitly set.
+  var hasKeypadInputMode: Bool {_storage._keypadInputMode != nil}
+  /// Clears the value of `keypadInputMode`. Subsequent reads from it will return its default value.
+  mutating func clearKeypadInputMode() {_uniqueStorage()._keypadInputMode = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   /// ライブ変換 (入力中に変換結果を表示する機能) の動作
@@ -832,6 +844,60 @@ nonisolated struct Hazkey_Config_Profile: @unchecked Sendable {
       .unspecified,
       .candidateDigitSelectAndCommit,
       .candidateDigitMoveCursor,
+    ]
+
+  }
+
+  /// テンキーの文字キー (0〜9 . + - * / = ,) の入力方法
+  ///
+  /// - Note: 修飾キー付きのテンキーと、テンキーの[Enter]キー・ナビゲーションキーは対象外
+  /// - Note: 候補にフォーカスがあるときのテンキーの0〜9は、candidate_digit_key_actionに従う
+  nonisolated enum KeypadInputMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+    typealias RawValue = Int
+
+    /// 未設定 (IMEを素通りする扱い)
+    case unspecified // = 0
+
+    /// IMEを素通りする (既定)。組成中・候補選択中は確定してから半角文字を入力する
+    case keypadInputPassthrough // = 1
+
+    /// IMEで捕捉し、半角文字を組成へ入力する
+    case keypadInputHalfwidth // = 2
+
+    /// IMEで捕捉し、全角文字を組成へ入力する
+    case keypadInputFullwidth // = 3
+    case UNRECOGNIZED(Int)
+
+    init() {
+      self = .unspecified
+    }
+
+    init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .keypadInputPassthrough
+      case 2: self = .keypadInputHalfwidth
+      case 3: self = .keypadInputFullwidth
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .keypadInputPassthrough: return 1
+      case .keypadInputHalfwidth: return 2
+      case .keypadInputFullwidth: return 3
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    static let allCases: [Hazkey_Config_Profile.KeypadInputMode] = [
+      .unspecified,
+      .keypadInputPassthrough,
+      .keypadInputHalfwidth,
+      .keypadInputFullwidth,
     ]
 
   }
@@ -1478,7 +1544,7 @@ nonisolated extension Hazkey_Config_BackendDevice: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Profile"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0\u{3}candidate_digit_key_action\0\u{3}use_postal_code_conversion\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{4}\u{4}server_version\0\u{3}profile_name\0\u{3}profile_id\0\u{4}\u{4}use_default_input_ui_settings\0\u{3}auto_convert_mode\0\u{3}aux_text_mode\0\u{3}suggestion_list_mode\0\u{3}use_rich_suggestion\0\u{3}num_suggestions\0\u{3}auto_convert_min_chars\0\u{4}\u{4}use_default_conversion_ui_settings\0\u{3}num_candidates_per_page\0\u{3}use_rich_candidates\0\u{3}stop_store_new_history\0\u{4}\u{7}use_default_history_settings\0\u{3}use_profile_independent_history\0\u{3}use_input_history\0\u{4}\u{8}use_default_special_conversion_settings\0\u{3}special_conversion_mode\0\u{4}\u{9}use_default_keymap_settings\0\u{3}enabled_keymaps\0\u{4}\u{4}use_default_table_settings\0\u{3}enabled_tables\0\u{4}\u{4}submode_entry_point_chars\0\u{3}auto_convert_hotkey\0\u{4}\u{9}use_user_dictionary\0\u{4}\u{1e}use_default_zenzai_settings\0\u{3}zenzai_enable\0\u{3}zenzai_infer_limit\0\u{3}zenzai_contextual_mode\0\u{4}\u{2}use_zenzai_custom_weight\0\u{3}zenzai_weight_path\0\u{3}zenzai_backend_device_name\0\u{4}\u{d}zenzai_profile\0\u{3}zenzai_topic\0\u{3}zenzai_style\0\u{3}zenzai_preference\0\u{3}delete_learning_hotkey\0\u{3}accept_prediction_hotkey\0\u{3}zenzai_toggle_hotkey\0\u{3}use_address_dictionary\0\u{3}use_engineering_dictionary\0\u{3}use_typo_correction\0\u{3}zenzai_right_context\0\u{3}zenzai_alignment_separator\0\u{3}kana_cycle_hotkey\0\u{3}candidate_digit_key_action\0\u{3}use_postal_code_conversion\0\u{3}keypad_input_mode\0")
 
   fileprivate class _StorageClass {
     var _serverVersion: String? = nil
@@ -1529,6 +1595,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
     var _kanaCycleHotkey: String? = nil
     var _candidateDigitKeyAction: Hazkey_Config_Profile.CandidateDigitKeyAction? = nil
     var _usePostalCodeConversion: Bool? = nil
+    var _keypadInputMode: Hazkey_Config_Profile.KeypadInputMode? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1587,6 +1654,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       _kanaCycleHotkey = source._kanaCycleHotkey
       _candidateDigitKeyAction = source._candidateDigitKeyAction
       _usePostalCodeConversion = source._usePostalCodeConversion
+      _keypadInputMode = source._keypadInputMode
     }
   }
 
@@ -1653,6 +1721,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         case 132: try { try decoder.decodeSingularStringField(value: &_storage._kanaCycleHotkey) }()
         case 133: try { try decoder.decodeSingularEnumField(value: &_storage._candidateDigitKeyAction) }()
         case 134: try { try decoder.decodeSingularBoolField(value: &_storage._usePostalCodeConversion) }()
+        case 135: try { try decoder.decodeSingularEnumField(value: &_storage._keypadInputMode) }()
         default: break
         }
       }
@@ -1809,6 +1878,9 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._usePostalCodeConversion {
         try visitor.visitSingularBoolField(value: v, fieldNumber: 134)
       } }()
+      try { if let v = _storage._keypadInputMode {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 135)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1866,6 +1938,7 @@ nonisolated extension Hazkey_Config_Profile: SwiftProtobuf.Message, SwiftProtobu
         if _storage._kanaCycleHotkey != rhs_storage._kanaCycleHotkey {return false}
         if _storage._candidateDigitKeyAction != rhs_storage._candidateDigitKeyAction {return false}
         if _storage._usePostalCodeConversion != rhs_storage._usePostalCodeConversion {return false}
+        if _storage._keypadInputMode != rhs_storage._keypadInputMode {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -1889,6 +1962,10 @@ nonisolated extension Hazkey_Config_Profile.SuggestionListMode: SwiftProtobuf._P
 
 nonisolated extension Hazkey_Config_Profile.CandidateDigitKeyAction: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CANDIDATE_DIGIT_KEY_ACTION_UNSPECIFIED\0\u{1}CANDIDATE_DIGIT_SELECT_AND_COMMIT\0\u{1}CANDIDATE_DIGIT_MOVE_CURSOR\0")
+}
+
+nonisolated extension Hazkey_Config_Profile.KeypadInputMode: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KEYPAD_INPUT_MODE_UNSPECIFIED\0\u{1}KEYPAD_INPUT_PASSTHROUGH\0\u{1}KEYPAD_INPUT_HALFWIDTH\0\u{1}KEYPAD_INPUT_FULLWIDTH\0")
 }
 
 nonisolated extension Hazkey_Config_Profile.SpecialConversionMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

@@ -65,9 +65,21 @@ nonisolated struct Hazkey_Commands_InputChar: Sendable {
   /// 入力する文字 (先頭の1文字だけを使う)
   var text: String = String()
 
+  /// キーマップを適用せず、入力テーブルへそのまま渡す (テンキーの入力用)
+  var bypassKeymap: Bool {
+    get {_bypassKeymap ?? false}
+    set {_bypassKeymap = newValue}
+  }
+  /// Returns true if `bypassKeymap` has been explicitly set.
+  var hasBypassKeymap: Bool {self._bypassKeymap != nil}
+  /// Clears the value of `bypassKeymap`. Subsequent reads from it will return its default value.
+  mutating func clearBypassKeymap() {self._bypassKeymap = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
+
+  fileprivate var _bypassKeymap: Bool? = nil
 }
 
 /// 修飾キーの押下・解放をサーバへ通知する
@@ -725,7 +737,7 @@ nonisolated extension Hazkey_Commands_SetContext: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Hazkey_Commands_InputChar: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".InputChar"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}text\0\u{3}bypass_keymap\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -734,20 +746,29 @@ nonisolated extension Hazkey_Commands_InputChar: SwiftProtobuf.Message, SwiftPro
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self._bypassKeymap) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.text.isEmpty {
       try visitor.visitSingularStringField(value: self.text, fieldNumber: 1)
     }
+    try { if let v = self._bypassKeymap {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 2)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: Hazkey_Commands_InputChar, rhs: Hazkey_Commands_InputChar) -> Bool {
     if lhs.text != rhs.text {return false}
+    if lhs._bypassKeymap != rhs._bypassKeymap {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

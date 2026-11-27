@@ -524,6 +524,7 @@ class HazkeyServerConfig {
         newConf.useRichSuggestion = false
         newConf.numCandidatesPerPage = 9
         newConf.candidateDigitKeyAction = .candidateDigitSelectAndCommit
+        newConf.keypadInputMode = .keypadInputPassthrough
         newConf.useRichCandidates = false
         newConf.useInputHistory = true
         newConf.useAddressDictionary = false
@@ -883,6 +884,7 @@ class HazkeyServerConfig {
     /// - [auto_convert_min_chars]
     /// - 候補表示件数
     /// - 切替ホットキー
+    /// - テンキーの入力設定 ([keypad_input_mode])
     /// - 半角カナ
     /// - 拡張絵文字
     /// - [use_address_dictionary]
@@ -922,6 +924,10 @@ class HazkeyServerConfig {
         // 未設定[UNSPECIFIED]は従来どおり選択して確定する扱いのため、欠落と同じく既定値で補う
         if !normalized.hasCandidateDigitKeyAction || normalized.candidateDigitKeyAction == .unspecified {
             normalized.candidateDigitKeyAction = defaults.candidateDigitKeyAction
+        }
+        // 未設定[UNSPECIFIED]は従来どおりテンキーもキーマップに従う扱いのため、欠落と同じく既定値で補う
+        if !normalized.hasKeypadInputMode || normalized.keypadInputMode == .unspecified {
+            normalized.keypadInputMode = defaults.keypadInputMode
         }
         if !normalized.hasZenzaiInferLimit {
             normalized.zenzaiInferLimit = defaults.zenzaiInferLimit
@@ -987,6 +993,9 @@ class HazkeyServerConfig {
         }
         if case .UNRECOGNIZED(let rawValue) = profile.candidateDigitKeyAction {
             throw ConfigError.unrecognizedEnum(field: "candidateDigitKeyAction", rawValue: rawValue)
+        }
+        if case .UNRECOGNIZED(let rawValue) = profile.keypadInputMode {
+            throw ConfigError.unrecognizedEnum(field: "keypadInputMode", rawValue: rawValue)
         }
     }
 
@@ -1682,6 +1691,18 @@ extension Hazkey_Config_Profile {
 
     var zenzaiAlignmentSeparatorEffective: Bool {
         hasZenzaiAlignmentSeparator ? zenzaiAlignmentSeparator : false
+    }
+
+    /// テンキーの入力設定[keypad_input_mode]の実効値である
+    ///
+    /// 旧設定または項目欠落時と未設定[UNSPECIFIED]は、従来動作を維持するため[.keypadInputPassthrough]とする
+    ///
+    /// - Note: サーバは変換にこの値を使わず、フロントエンドがテンキーの文字を決めるために使う
+    var keypadInputModeEffective: Hazkey_Config_Profile.KeypadInputMode {
+        guard hasKeypadInputMode, keypadInputMode != .unspecified else {
+            return .keypadInputPassthrough
+        }
+        return keypadInputMode
     }
 }
 

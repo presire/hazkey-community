@@ -154,10 +154,11 @@ class HazkeyServerConnector {
      * @brief 1文字を入力として送信する
      *
      * @param text 挿入する文字列
+     * @param bypassKeymap trueならキーマップを適用せず、入力テーブルへそのまま渡す (テンキーの入力用)
      * @details 送信前に読み取りキャッシュを無効化する
      *          応答失敗時は記録だけ残し、状態を変更しない
      */
-    void inputChar(std::string text);
+    void inputChar(std::string text, bool bypassKeymap = false);
 
     /**
      * @brief [Shift]キー押下と解放を報告する

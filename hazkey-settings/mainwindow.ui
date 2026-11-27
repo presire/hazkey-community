@@ -346,7 +346,8 @@
                <item row="8" column="1">
                 <widget class="QKeySequenceEdit" name="kanaCycleHotkey">
                  <property name="toolTip">
-                  <string>While composing, converts the whole text to full-width katakana, half-width katakana and hiragana in turn. Clear the field to disable it.</string>
+                  <string>While composing, converts the whole text to full-width katakana, half-width katakana and hiragana in turn.
+Clear the field to disable it.</string>
                  </property>
                  <property name="clearButtonEnabled">
                   <bool>true</bool>
@@ -434,7 +435,8 @@
                 </size>
                </property>
                <property name="toolTip">
-                <string>Alt + number always selects and commits the candidate, regardless of this setting. Number keys on the numeric keypad are included.</string>
+                <string>Alt + number always selects and commits the candidate, regardless of this setting.
+Number keys on the numeric keypad are included.</string>
                </property>
                <property name="text">
                 <string>Number keys in candidate list</string>
@@ -444,7 +446,8 @@
              <item row="1" column="1">
               <widget class="QComboBox" name="candidateDigitKeyAction">
                <property name="toolTip">
-                <string>Alt + number always selects and commits the candidate, regardless of this setting. Number keys on the numeric keypad are included.</string>
+                <string>Alt + number always selects and commits the candidate, regardless of this setting.
+Number keys on the numeric keypad are included.</string>
                </property>
                <item>
                 <property name="text">
@@ -454,6 +457,127 @@
                <item>
                 <property name="text">
                  <string>Move cursor only (commit with Enter)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="keypadHeader">
+             <property name="topMargin">
+              <number>10</number>
+             </property>
+             <property name="bottomMargin">
+              <number>10</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="keypadLabel">
+               <property name="text">
+                <string>Numeric keypad</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="Line" name="keypadLine">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QGridLayout" name="keypadGrid">
+             <property name="leftMargin">
+              <number>20</number>
+             </property>
+             <property name="topMargin">
+              <number>10</number>
+             </property>
+             <property name="rightMargin">
+              <number>20</number>
+             </property>
+             <property name="bottomMargin">
+              <number>20</number>
+             </property>
+             <property name="spacing">
+              <number>12</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QLabel" name="keypadPassthroughLabel">
+               <property name="minimumSize">
+                <size>
+                 <width>200</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>When checked, the input method does not handle the numeric keypad keys 0-9 . + - * / = , and passes them to the application.
+While composing or selecting a candidate, the current text is committed first.
+While selecting a candidate, keypad 0-9 follow the "Number keys in candidate list" setting.
+Keypad keys pressed with Ctrl, Alt, Shift or other modifiers are always passed to the application.</string>
+               </property>
+               <property name="text">
+                <string>Direct input</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QCheckBox" name="keypadPassthrough">
+               <property name="toolTip">
+                <string>When checked, the input method does not handle the numeric keypad keys 0-9 . + - * / = , and passes them to the application.
+While composing or selecting a candidate, the current text is committed first.
+While selecting a candidate, keypad 0-9 follow the "Number keys in candidate list" setting.
+Keypad keys pressed with Ctrl, Alt, Shift or other modifiers are always passed to the application.</string>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="keypadWidthLabel">
+               <property name="minimumSize">
+                <size>
+                 <width>200</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Width of the characters entered from the numeric keypad when "Direct input" is unchecked.
+The characters are added to the composing text like the number keys on the main keyboard.
+Unavailable while direct input is enabled.</string>
+               </property>
+               <property name="text">
+                <string>Numeric keypad input width</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QComboBox" name="keypadWidth">
+               <property name="toolTip">
+                <string>Width of the characters entered from the numeric keypad when "Direct input" is unchecked.
+The characters are added to the composing text like the number keys on the main keyboard.
+Unavailable while direct input is enabled.</string>
+               </property>
+               <item>
+                <property name="text">
+                 <string>Half-width</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Full-width</string>
                 </property>
                </item>
               </widget>
@@ -870,7 +994,8 @@
              <item row="0" column="1">
               <widget class="QCheckBox" name="useEngineeringDict">
                <property name="toolTip">
-                <string>Adds technical terms (mechanical, electrical, electronic, information engineering, IT services, programming languages, databases, architecture, civil engineering) that the standard dictionary cannot convert.</string>
+                <string>Adds technical terms (mechanical, electrical, electronic, information engineering, IT services,
+programming languages, databases, architecture, civil engineering) that the standard dictionary cannot convert.</string>
                </property>
                <property name="text">
                 <string>Engineering</string>
@@ -880,7 +1005,8 @@
              <item row="1" column="0">
               <widget class="QCheckBox" name="usePostalCodeConversion">
                <property name="toolTip">
-                <string>Converts a 7-digit postal code (with or without a hyphen) into address candidates in normal conversion ([Space]) only. Not shown in suggestions or live conversion, and not learned.</string>
+                <string>Converts a 7-digit postal code (with or without a hyphen) into address candidates in normal conversion ([Space]) only.
+Not shown in suggestions or live conversion, and not learned.</string>
                </property>
                <property name="text">
                 <string>Postal Code Conversion</string>
@@ -939,7 +1065,8 @@
              <item row="0" column="0">
               <widget class="QCheckBox" name="useTypoCorrection">
                <property name="toolTip">
-                <string>When the reading contains a typical typing mistake (e.g. a repeated key), shows the conversion of the corrected reading right after the first candidate, marked as a correction. The text being typed is not changed automatically.</string>
+                <string>When the reading contains a typical typing mistake (e.g. a repeated key), shows the conversion of the corrected reading right after the first candidate, marked as a correction.
+The text being typed is not changed automatically.</string>
                </property>
                <property name="text">
                 <string>Show typo correction candidates</string>
@@ -2033,14 +2160,16 @@
                  <string>Use right context</string>
                 </property>
                 <property name="toolTip">
-                 <string>Converts considering the text to the right of the cursor as well. Requires a zenz-v3.2 or newer model, and only works while &quot;Use contextual conversion&quot; is enabled.</string>
+                 <string>Converts considering the text to the right of the cursor as well.
+Requires a zenz-v3.2 or newer model, and only works while &quot;Use contextual conversion&quot; is enabled.</string>
                 </property>
                </widget>
               </item>
               <item row="2" column="1">
                <widget class="QCheckBox" name="zenzaiRightContext">
                 <property name="toolTip">
-                 <string>Converts considering the text to the right of the cursor as well. Requires a zenz-v3.2 or newer model, and only works while &quot;Use contextual conversion&quot; is enabled.</string>
+                 <string>Converts considering the text to the right of the cursor as well.
+Requires a zenz-v3.2 or newer model, and only works while &quot;Use contextual conversion&quot; is enabled.</string>
                 </property>
                </widget>
               </item>
@@ -2050,14 +2179,18 @@
                  <string>Use alignment separator</string>
                 </property>
                 <property name="toolTip">
-                 <string>When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right), tells the converter where the cursor is and what follows it. Requires a zenz-v3.2 or newer model.</string>
+                 <string>When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right),
+tells the converter where the cursor is and what follows it.
+Requires a zenz-v3.2 or newer model.</string>
                 </property>
                </widget>
               </item>
               <item row="3" column="1">
                <widget class="QCheckBox" name="zenzaiAlignmentSeparator">
                 <property name="toolTip">
-                 <string>When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right), tells the converter where the cursor is and what follows it. Requires a zenz-v3.2 or newer model.</string>
+                 <string>When only the part before the cursor is converted (for example after moving the clause boundary with Shift+Left/Right),
+tells the converter where the cursor is and what follows it.
+Requires a zenz-v3.2 or newer model.</string>
                 </property>
                </widget>
               </item>

@@ -304,6 +304,33 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     static std::optional<int> candidateDigitIndex(guint keyval, guint state);
 
     /**
+     * @brief テンキー入力の設定が扱う、修飾なしのテンキーの文字キーかを判定する
+     *
+     * 対象はKP_0〜KP_9、KP_Decimal、KP_Add、KP_Subtract、KP_Multiply、KP_Divide、KP_Equal、KP_Separator
+     * 修飾の規則はcandidateDigitIndex()と同じで、NumLock (Mod2) とCapsLockは無視し、
+     * [Shift] / [Ctrl] / [Alt] / [Super]系と[AltGr]系 (Mod3 / Mod5) の修飾を含むキーは対象外とする
+     *
+     * @param keyval IBusキーシンボル
+     * @param state IBusモディファイア状態
+     * @return 修飾なしのテンキーの文字キーならtrue
+     * @note 状態機械とフロントエンドの同期的消費判定で共有する
+     */
+    static bool isUnmodifiedKeypadCharKey(guint keyval, guint state);
+
+    /**
+     * @brief 実修飾キーを伴うテンキーの文字キーかを判定する
+     *
+     * NumLock (Mod2) とCapsLockは無視し、[Shift] / [Ctrl] / [Alt] / [Super] / [Hyper] / [Meta] / [AltGr]系 (Mod3 / Mod5) の
+     * いずれかが付いたテンキーの文字キーを検出する
+     * 実修飾キー付きのテンキーは全モードでアプリケーションへ素通りさせるために使用する
+     *
+     * @param keyval IBusキーシンボル
+     * @param state IBusモディファイア状態
+     * @return 実修飾キー付きのテンキーの文字キーならtrue
+     */
+    static bool isModifiedKeypadCharKey(guint keyval, guint state);
+
+    /**
      * @brief [Ctrl]と[U] / [I] / [O] / [P] / [T]のいずれかの厳密な組み合わせかを判定する
      *
      * FcitxのctrlShortcutHandlerの直接変換ショートカットに対応する
@@ -357,12 +384,16 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * @param surroundingCapable クライアントが周辺テキストに対応するならtrue
      * @param frozen 組成中の周辺テキストを既に固定済みならtrue
      * @param hasSurroundingText 周辺テキストを受信済みならtrue
+     * @param state IBusモディファイア状態
+     * @param keypadInputMode テンキーの入力方法
+     *                        素通しの場合、修飾なしのテンキーの文字キーは組成を開始しないため保留しない
      * @return 保留すべき場合はtrue
      * @note テスト用に公開する
      */
-    static bool shouldGateFirstInput(guint keyval, bool rightContext,
-                                     bool surroundingCapable, bool frozen,
-                                     bool hasSurroundingText);
+    static bool shouldGateFirstInput(
+        guint keyval, bool rightContext, bool surroundingCapable, bool frozen,
+        bool hasSurroundingText, guint state,
+        hazkey::config::Profile::KeypadInputMode keypadInputMode);
 
     /**
      * @brief FcitxのAuxUpとAuxDownの組をIBus単一補助テキスト枠へ結合する
@@ -444,6 +475,8 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
         HotkeySpec acceptPrediction{};  ///< 予測受入ホットキー
         HotkeySpec deleteLearning{};    ///< 学習削除ホットキー
         HotkeySpec kanaCycle{};         ///< カナ種切替ホットキー
+        hazkey::config::Profile::KeypadInputMode keypadInputMode =
+            hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;  ///< テンキーの入力方法
     };
     /**
      * @brief 現在のワーカ側組成状態の要約を返す
@@ -815,6 +848,16 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
      * @param text 確定するテキスト
      */
     void commitText(const std::string& text);
+    /**
+     * @brief 素通しのテンキーの文字キーで、半角の文字を確定して組成を終える
+     *
+     * 呼び出し側が組成または選択中の候補を確定した後に呼ぶ
+     * 確定した文字列と半角の文字を周辺テキストの固定内容へ積んでから、状態をリセットする
+     *
+     * @param keyval テンキーの文字キーのキーシンボル
+     * @param committed 直前に確定した組成の文字列 (無ければ空)
+     */
+    void commitKeypadHalfwidthChar(guint keyval, const std::string& committed);
     /** @brief preedit非表示をメインループへ送る */
     void hidePreedit();
     /**
@@ -930,6 +973,7 @@ class HazkeyState : public std::enable_shared_from_this<HazkeyState> {
     HotkeySpec deleteLearningHotkey_{};         ///< 学習削除ホットキー
     HotkeySpec kanaCycleHotkey_{};              ///< カナ種切替ホットキー (無効時は照合しない)
     bool candidateDigitKeyMovesCursor_ = false; ///< 候補選択中の数字キーはカーソル移動のみか (falseは選択して確定)
+    hazkey::config::Profile::KeypadInputMode keypadInputMode_ = hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;  ///< テンキーの入力方法 (素通し・半角・全角)
     bool serverProfileLoaded_ = false;          ///< サーバプロファイルを読込済みか
 
     // --- キャッシュ ---

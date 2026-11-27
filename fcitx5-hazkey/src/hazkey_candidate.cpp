@@ -1,21 +1,33 @@
 #include "hazkey_candidate.h"
 #include <fcitx-utils/i18n.h>
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 #include "commands.pb.h"
+#include "keypad_input.h"
 
 namespace fcitx {
 
 /// 候補の表示・選択処理
 
-std::optional<int> candidateDigitPageLocalIndex(const Key& key) {
-    // 実際の修飾キーだけを拒否する (Shift・AltGr付きの数字は呼び出し側で従来どおり扱う)。
-    // NumLock・CapsLock・キーリピート・XKBグループ等の状態ビットは数字の意味を変えない。
+bool hasRealKeyModifiers(const Key& key) {
+    // NumLock・CapsLock・キーリピート・XKBグループ等の状態ビットは数字や記号の意味を変えない
     // 拒否するビットはFcitx 5.0.4に存在するものに限る
     const KeyStates modifierStates{KeyState::Shift, KeyState::Ctrl,   KeyState::Alt,
                                    KeyState::Hyper, KeyState::Super,  KeyState::Mod5,
                                    KeyState::Super2, KeyState::Hyper2, KeyState::Meta};
-    if (key.states() & modifierStates) {
+    return static_cast<bool>(key.states() & modifierStates);
+}
+
+bool isUnmodifiedKeypadCharKey(const Key& key) {
+    // Fcitx 5のkeysymはX11のkeysymと同じ値のため、共通の分類関数へそのまま渡す
+    return !hasRealKeyModifiers(key) &&
+           hazkey::frontend::isKeypadCharKeySym(static_cast<uint32_t>(key.sym()));
+}
+
+std::optional<int> candidateDigitPageLocalIndex(const Key& key) {
+    // 実際の修飾キーだけを拒否する (Shift・AltGr付きの数字は呼び出し側で従来どおり扱う)
+    if (hasRealKeyModifiers(key)) {
         return std::nullopt;
     }
 

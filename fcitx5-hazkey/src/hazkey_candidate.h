@@ -27,6 +27,24 @@ const KeyList defaultSelectionKeys = {
 /// 数字キーを現在ページ内の候補位置へ対応付ける (対象外のキーはnullopt)
 std::optional<int> candidateDigitPageLocalIndex(const Key& key);
 
+/**
+ * @brief 実際の修飾キーが押されているかを返す
+ * @param key 判定するキー (Key::normalize()は[KP_0]～[KP_9]の[Shift]を除くため、KeyEvent::rawKey()を渡す)
+ * @return [Shift]・[Ctrl]・[Alt]・[Super]・[Hyper]・[Meta]・[AltGr] (Mod5) のいずれかが押されていればtrue
+ * @note NumLock・CapsLock・キーリピート・XKBグループ等の状態ビットは修飾キーとして扱わない
+ *       candidateDigitPageLocalIndex()と同じ判定を使う
+ */
+bool hasRealKeyModifiers(const Key& key);
+
+/**
+ * @brief 修飾キーなしで押されたテンキーの文字キー (0～9 . + - * / = ,) かを返す
+ * @param key 判定するキー (KeyEvent::rawKey()を渡す)
+ * @return テンキーの文字キーで、hasRealKeyModifiers()がfalseならtrue
+ * @note [KP_Enter]やNumLockがOFFのときのナビゲーションキー ([KP_Home]等) は対象外
+ *       修飾キー付きのテンキー ([Ctrl] + [KP_Add]等) はショートカットとしてアプリケーションへ渡すため対象外
+ */
+bool isUnmodifiedKeypadCharKey(const Key& key);
+
 /// サーバ候補をFcitx 5の候補項目として保持する
 class HazkeyCandidateWord : public CandidateWord {
    public:

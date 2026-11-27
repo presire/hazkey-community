@@ -39,6 +39,7 @@ add_library(hazkey-frontend-common STATIC
     composing_cursor_view.cpp
     surrounding_text_snapshot.cpp
     candidate_annotation.cpp
+    keypad_input.cpp
 )
 
 # 両フロントエンドがサーバを起動するときに使う絶対パス (PATHは検索しない)
@@ -204,6 +205,18 @@ if(BUILD_TESTING)
     add_dependencies(hazkey_utf8_test hazkey-proto-headers)
     add_test(NAME hazkey_utf8_test
         COMMAND hazkey_utf8_test)
+
+    # 両フロントエンドが共有するテンキーの文字キーの分類と半角・全角変換のテスト
+    add_executable(hazkey_keypad_input_test
+        keypad_input_test.cpp)
+    target_link_libraries(hazkey_keypad_input_test PRIVATE
+        hazkey-frontend-common)
+    target_compile_options(hazkey_keypad_input_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-UNDEBUG>
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    add_dependencies(hazkey_keypad_input_test hazkey-proto-headers)
+    add_test(NAME hazkey_keypad_input_test
+        COMMAND hazkey_keypad_input_test)
 
     # IBusのキー処理をブロックさせない非同期通信基盤のテスト
     add_executable(hazkey_frontend_async_test

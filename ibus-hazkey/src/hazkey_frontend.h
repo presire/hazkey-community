@@ -148,6 +148,8 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
         HazkeyState::HotkeySpec acceptPrediction{};  ///< 予測受入のホットキー
         HazkeyState::HotkeySpec deleteLearning{};    ///< 学習削除のホットキー
         HazkeyState::HotkeySpec kanaCycle{};         ///< カナ種切替のホットキー
+        hazkey::config::Profile::KeypadInputMode keypadInputMode =
+            hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;  ///< テンキーの入力方法
     };
     /**
      * @brief キーを消費するかを同期的に判定する
@@ -197,12 +199,15 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
      * @param listFocused 投機上の候補焦点状態
      * @param profileLoaded サーバプロファイルを読込済みならtrue
      * @param gateHint ワーカーが右文脈有効かつ周辺テキスト対応と報告した場合はtrue
+     * @param keypadInputMode テンキーの入力方法
+     *                        読込済みで素通しの場合、修飾なしのテンキーの文字キーは組成を開始しないため依頼しない
      * @return 判定を依頼する場合はtrue
      * @note テスト用に公開する
      */
-    static bool isSurroundingGateCandidate(guint keyval, guint state,
-                                           bool composing, bool listFocused,
-                                           bool profileLoaded, bool gateHint);
+    static bool isSurroundingGateCandidate(
+        guint keyval, guint state, bool composing, bool listFocused,
+        bool profileLoaded, bool gateHint,
+        hazkey::config::Profile::KeypadInputMode keypadInputMode);
 
     /**
      * @brief 周辺テキスト待ちの状態遷移と、待機中に保持した操作のキュー
@@ -381,6 +386,7 @@ class HazkeyFrontend : public std::enable_shared_from_this<HazkeyFrontend> {
     HazkeyState::HotkeySpec acceptPrediction_{};  ///< 取込中の予測受入ホットキー
     HazkeyState::HotkeySpec deleteLearning_{};    ///< 取込中の学習削除ホットキー
     HazkeyState::HotkeySpec kanaCycle_{};         ///< 取込中のカナ種切替ホットキー
+    hazkey::config::Profile::KeypadInputMode keypadInputMode_ = hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;  ///< 取込中のテンキーの入力方法
     bool surroundingGateHint_ = false;            ///< ワーカーが右文脈有効かつ周辺テキスト対応と報告したか
 
     // 周辺テキスト待ち (新しい組成の最初の入力を、周辺テキストの到着または期限切れまで保留する)

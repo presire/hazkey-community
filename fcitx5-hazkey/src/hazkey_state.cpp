@@ -5,8 +5,10 @@
 #include <fcitx/candidatelist.h>
 #include <fcitx/instance.h>
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include "candidate_refresh_coalescer.h"
 #include "commands.pb.h"
@@ -15,6 +17,7 @@
 #include "hazkey_candidate.h"
 #include "hazkey_engine.h"
 #include "hazkey_server_connector.h"
+#include "keypad_input.h"
 #include "live_convert_mode.h"
 #include "surrounding_text_snapshot.h"
 
@@ -63,6 +66,51 @@ bool HazkeyState::isInputableEvent(const KeyEvent& event) {
         return true;
     }
     return false;
+}
+
+/** @brief キーイベントから組成へ入力する文字列を求める */
+std::optional<HazkeyState::ComposingInput> HazkeyState::composingInputForEvent(
+    const KeyEvent& event) {
+    // Key::normalize()は[KP_0]～[KP_9]の[Shift]を除くため、修飾キーの判定には正規化前のキーを使う
+    const Key& rawKey = event.rawKey();
+    if (isUnmodifiedKeypadCharKey(rawKey)) {
+        // テンキーの文字は、半角・全角の設定どおりの文字をキーマップを適用せずに入力する
+        // IMEの素通りではstd::nulloptを返し、呼び出し側が確定してからアプリケーションへ渡す
+        auto mapped = hazkey::frontend::keypadCharForMode(
+            static_cast<uint32_t>(rawKey.sym()), keypadInputMode_);
+        if (!mapped.has_value()) {
+            return std::nullopt;
+        }
+        return ComposingInput{std::move(*mapped), /*bypassKeymap=*/true};
+    }
+    if (isInputableEvent(event)) {
+        return ComposingInput{Key::keySymToUTF8(event.key().sym()),
+                              /*bypassKeymap=*/false};
+    }
+    return std::nullopt;
+}
+
+/** @brief IMEを素通りさせるテンキーの文字キーか判定する */
+bool HazkeyState::isPassthroughKeypadCharEvent(const KeyEvent& event) const {
+    // 半角・全角の設定ではkeypadCharForMode()が文字を返し、IMEの素通りではstd::nulloptを返す
+    const Key& rawKey = event.rawKey();
+    return isUnmodifiedKeypadCharKey(rawKey) &&
+           !hazkey::frontend::keypadCharForMode(
+                static_cast<uint32_t>(rawKey.sym()), keypadInputMode_)
+                .has_value();
+}
+
+/** @brief テンキーの文字キーを渡す前に、表示中の組成または候補を確定して状態を初期化する */
+void HazkeyState::commitBeforeKeypadPassthrough(bool completeLivePreedit) {
+    // 古いpreeditではなく最新の組成を確定できるよう、保留中の更新を反映する
+    flushPendingRefresh();
+    preedit_.commitPreedit();
+    if (completeLivePreedit && livePreeditIndex_ >= 0) {
+        engine_->server().completePrefix(livePreeditIndex_);
+    }
+    reset();
+    // 転送したキーで入力先のカーソルや内容が変わり得るため、確定時から持ち越した周辺テキストを捨てる
+    surroundingFreeze_.release();
 }
 
 /** @brief 保留中の候補更新を反映してからpreeditを確定する */
@@ -182,9 +230,10 @@ void HazkeyState::noPreeditKeyEvent(KeyEvent& event) {
             }
             break;
         default:
-            if (isInputableEvent(event)) {
+            // IMEの素通りのテンキーの文字キーは、入力可能なキーとして扱わずにアプリケーションへ渡す
+            if (const auto input = composingInputForEvent(event)) {
                 updateSurroundingText();
-                engine_->server().inputChar(Key::keySymToUTF8(keysym));
+                engine_->server().inputChar(input->text, input->bypassKeymap);
                 // 表示専用の更新を間引き、連続入力時の候補再描画をまとめる
                 // 状態を変更するinputCharは同期実行し、遅延させない
                 scheduleCandidateRefresh(/*isSuggest=*/true);
@@ -217,7 +266,9 @@ void HazkeyState::preeditKeyEvent(
     }
 
     switch (keysym) {
-        case FcitxKey_Return: {
+        // テンキーで数値を入力した後に、テンキーの[Enter]でも確定できるようにする
+        case FcitxKey_Return:
+        case FcitxKey_KP_Enter: {
             // 古いpreeditではなく最新の組成を確定できるよう、保留中の更新を反映する
             flushPendingRefresh();
             const std::string committed = preedit_.text();
@@ -312,6 +363,13 @@ void HazkeyState::preeditKeyEvent(
             moveComposingCursor(1024);
             break;
         default:
+            // 修飾キー付きのテンキーは、テンキー入力の設定に依らずアプリケーションへ渡す
+            // [Shift]はテンキーの数字から除かれて正規化されるため、修飾キーはrawKeyで判定する
+            if (hasRealKeyModifiers(event.rawKey()) &&
+                hazkey::frontend::isKeypadCharKeySym(
+                    static_cast<uint32_t>(event.rawKey().sym()))) {
+                return event.filter();
+            }
             if (event.key().states() == KeyState::Ctrl) {
                 ctrlShortcutHandler(event);
             } else if (isAltDigitKeyEvent(event)) {
@@ -334,7 +392,11 @@ void HazkeyState::preeditKeyEvent(
                         }
                     }
                 }
-            } else if (isInputableEvent(event)) {
+            } else if (isPassthroughKeypadCharEvent(event)) {
+                // 組成を確定してから、テンキーの文字をアプリケーションへ渡す
+                commitBeforeKeypadPassthrough(/*completeLivePreedit=*/true);
+                return event.filter();
+            } else if (const auto input = composingInputForEvent(event)) {
                 std::string committedText;
                 if (isDirectConversionMode_) {
                     // 直接変換の結果を確定してから続けて入力する
@@ -348,7 +410,7 @@ void HazkeyState::preeditKeyEvent(
                 }
                 // Zenzaiの左文脈を更新する
                 updateSurroundingText(committedText);
-                engine_->server().inputChar(Key::keySymToUTF8(keysym));
+                engine_->server().inputChar(input->text, input->bypassKeymap);
                 refreshAfterComposingEdit();
             }
             break;
@@ -410,7 +472,9 @@ void HazkeyState::candidateKeyEvent(
                 candidateList->prevPage();
             }
             break;
+        // テンキーの[Enter]も、[Enter]と同じく選択中の候補を確定する
         case FcitxKey_Return:
+        case FcitxKey_KP_Enter:
             candidateCompleteHandler(candidateList);
             break;
         case FcitxKey_Escape:
@@ -486,7 +550,13 @@ void HazkeyState::candidateKeyEvent(
                     candidateList->setCursorIndex(localIndex);
                     candidateCompleteHandler(candidateList);
                 }
-            } else if (isInputableEvent(event)) {
+            } else if (isPassthroughKeypadCharEvent(event)) {
+                // テンキーの[0]～[9]は上の候補番号の判定で処理済みのため、ここへ来るのは数字以外のテンキーの文字キー
+                // 選択中の候補を確定してから、テンキーの文字をアプリケーションへ渡す
+                // 表示中のpreeditはカーソル位置の候補のため、ライブ変換の候補はサーバへ確定しない
+                commitBeforeKeypadPassthrough(/*completeLivePreedit=*/false);
+                return event.filter();
+            } else if (const auto input = composingInputForEvent(event)) {
                 // 確定文字列と周辺テキストが遅れないよう保留中の更新を反映する
                 flushPendingRefresh();
                 auto committedText = preedit_.text();
@@ -498,8 +568,13 @@ void HazkeyState::candidateKeyEvent(
                 surroundingFreeze_ = carriedFreeze;
                 // 確定後もZenzaiの左文脈を最新に保つ
                 updateSurroundingText(committedText);
-                engine_->server().inputChar(Key::keySymToUTF8(keysym));
-                showPreeditCandidateList();
+                engine_->server().inputChar(input->text, input->bypassKeymap);
+                if (input->bypassKeymap) {
+                    // テンキーの入力は表示専用の更新を間引き、連続入力時の再描画をまとめる
+                    scheduleCandidateRefresh(/*isSuggest=*/true);
+                } else {
+                    showPreeditCandidateList();
+                }
             } else {
                 return event.filter();
             }
@@ -574,6 +649,8 @@ void HazkeyState::loadServerProfile() {
                 break;
         }
     }
+    // フィールドが無い場合 (旧サーバ)・UNSPECIFIED・未知の値はIMEの素通りとして扱う
+    keypadInputMode_ = hazkey::frontend::normalizeKeypadInputMode(profile);
     cachedAutoConvertMode_ = profile.auto_convert_mode();
     cachedAuxTextMode_ = profile.aux_text_mode();
     using M = hazkey::config::Profile_AutoConvertMode;

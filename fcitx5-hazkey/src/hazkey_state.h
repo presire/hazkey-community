@@ -7,6 +7,8 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/surroundingtext.h>
 #include <memory>
+#include <optional>
+#include <string>
 #include "candidate_refresh_coalescer.h"
 #include "config.pb.h"
 #include "hazkey_candidate.h"
@@ -234,6 +236,36 @@ class HazkeyState : public InputContextProperty {
      */
     bool isInputableEvent(const KeyEvent& keyEvent);
 
+    /**
+     * @struct ComposingInput
+     * @brief 組成へ入力する文字列と、サーバでのキーマップの適用方法
+     */
+    struct ComposingInput {
+        std::string text;           ///< 組成へ入力する文字列
+        bool bypassKeymap = false;  ///< サーバのキーマップを適用せずに入力するか (テンキーの半角・全角入力)
+    };
+
+    /** @brief キーイベントから組成へ入力する文字列を求める
+     *  @param keyEvent 判定対象のイベント
+     *  @return テンキーの入力方法が半角・全角なら、修飾キーなしのテンキーの文字キーを設定どおりの文字で返す (キーマップは適用しない)
+     *          isInputableEvent()がtrueのキーは、キーの文字を返す (キーマップを適用する)
+     *          それ以外のキーと、テンキーの入力方法がIMEの素通りのときのテンキーの文字キーはstd::nullopt
+     */
+    std::optional<ComposingInput> composingInputForEvent(const KeyEvent& keyEvent);
+
+    /** @brief テンキーの文字キーを素通りさせる設定で、アプリケーションへ渡すテンキーの文字キーか判定する
+     *  @param keyEvent 判定対象のイベント
+     *  @return テンキーの入力方法がIMEの素通りで、修飾キーなしのテンキーの文字キーならtrue
+     */
+    bool isPassthroughKeypadCharEvent(const KeyEvent& keyEvent) const;
+
+    /** @brief テンキーの文字キーをアプリケーションへ渡す前に、表示中の組成または候補を確定して状態を初期化する
+     *  @param completeLivePreedit 表示中のライブ変換の候補をサーバへ確定 (学習) する場合はtrue (組成中のみ)
+     *  @note 確定した文字列の後にテンキーの文字がアプリケーションへ届くよう、呼び出し側はこの後にevent.filter()を返す
+     *        転送したキーで入力先の内容が変わるため、確定時から持ち越す周辺テキストは捨てる
+     */
+    void commitBeforeKeypadPassthrough(bool completeLivePreedit);
+
     /** @brief [Alt] + [数字]による候補選択キーか判定する
      *  @param keyEvent 判定対象のイベント
      *  @return [Alt] + [1]から[Alt] + [9]ならtrue
@@ -257,6 +289,8 @@ class HazkeyState : public InputContextProperty {
     fcitx::Key deleteLearningHotkey_{"Control+D"};     ///< [Ctrl] + [D]学習データ削除ホットキー
     fcitx::Key kanaCycleHotkey_{"Muhenkan"};           ///< [無変換]カナ種切替ホットキー (無効なキーは無効化を表す)
     bool candidateDigitSelectAndCommit_ = true;        ///< 候補選択中の数字キーで確定するか (falseはカーソル移動のみ)
+    hazkey::config::Profile::KeypadInputMode keypadInputMode_ =
+        hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;  ///< テンキーの文字キーの入力方法 (IMEの素通り・半角・全角)
     hazkey::config::Profile_AutoConvertMode cachedAutoConvertMode_ =
         hazkey::config::Profile_AutoConvertMode_AUTO_CONVERT_FOR_MULTIPLE_CHARS;  ///< キャッシュした自動変換モード
     hazkey::config::Profile_AuxTextMode cachedAuxTextMode_ =

@@ -82,6 +82,17 @@ message Profile {
         CANDIDATE_DIGIT_MOVE_CURSOR = 2;                // カーソルを移すだけ。確定は[Enter]キー
     }
 
+    // テンキーの文字キー (0〜9 . + - * / = ,) の入力方法
+    //
+    // - Note: 修飾キー付きのテンキーと、テンキーの[Enter]キー・ナビゲーションキーは対象外
+    // - Note: 候補にフォーカスがあるときのテンキーの0〜9は、candidate_digit_key_actionに従う
+    enum KeypadInputMode {
+        KEYPAD_INPUT_MODE_UNSPECIFIED = 0;  // 未設定 (IMEを素通りする扱い)
+        KEYPAD_INPUT_PASSTHROUGH = 1;       // IMEを素通りする (既定)。組成中・候補選択中は確定してから半角文字を入力する
+        KEYPAD_INPUT_HALFWIDTH = 2;         // IMEで捕捉し、半角文字を組成へ入力する
+        KEYPAD_INPUT_FULLWIDTH = 3;         // IMEで捕捉し、全角文字を組成へ入力する
+    }
+
     // 特殊な変換候補の有効 / 無効
     //
     // - Note: 既定では全て有効
@@ -237,6 +248,11 @@ message Profile {
     //
     // - Note: 既定はOFF。通常変換のみで、サジェスト (ライブ変換) には適用しない
     optional bool use_postal_code_conversion = 134;
+
+    // テンキーの文字キー (0〜9 . + - * / = ,) の入力方法
+    //
+    // - Note: フィールドが無い場合とUNSPECIFIEDは、IMEを素通りする (KEYPAD_INPUT_PASSTHROUGH) 扱い
+    optional KeypadInputMode keypad_input_mode = 135;
 }
 
 // リクエスト用メッセージ

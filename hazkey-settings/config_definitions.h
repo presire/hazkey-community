@@ -6,6 +6,7 @@
 #ifndef CONFIG_DEFINITIONS_H
 #define CONFIG_DEFINITIONS_H
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QtCore>
 #include "base.pb.h"
@@ -285,6 +286,91 @@ struct CandidateDigitKeyAction {
                     1,
                     hazkey::config::
                         Profile_CandidateDigitKeyAction_CANDIDATE_DIGIT_MOVE_CURSOR));
+    }
+};
+
+/**
+ * @brief テンキー入力の動作と、UIのチェックボックスおよびコンボボックスを対応付ける
+ * @note EnumTypeは、hazkey::config::Profile_KeypadInputModeであり、
+ *       1つの列挙値を[IMEを素通りする]チェックボックスと[全角/半角]コンボボックスの2つへ分けて表す
+ *       未設定 (UNSPECIFIED) や未知の値は、DEFAULT_ENUM (素通り) にフォールバックする
+ *       素通りの間はコンボボックスの選択を保持するが、実効値には影響しない
+ */
+struct KeypadInputMode {
+    /** @brief この設定が扱うprotobuf列挙型 */
+    using EnumType = hazkey::config::Profile_KeypadInputMode;
+    /** @brief 未設定や未知の値に使うprotobuf列挙値 */
+    static constexpr EnumType DEFAULT_ENUM =
+        hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_PASSTHROUGH;
+    /** @brief 半角を表すコンボボックスのインデックス */
+    static constexpr int HALFWIDTH_INDEX = 0;
+    /** @brief 全角を表すコンボボックスのインデックス */
+    static constexpr int FULLWIDTH_INDEX = 1;
+    /** @brief 素通りの値を読み込んだときに選ぶコンボボックスのインデックス */
+    static constexpr int DEFAULT_WIDTH_INDEX = HALFWIDTH_INDEX;
+
+    /**
+     * @brief protobufのenum値が素通りを表すかを判定する
+     * @param enumValue 判定するprotobuf enum値
+     * @return 半角・全角のどちらでもない場合はtrue (UNSPECIFIEDや未知の値を含む)
+     */
+    static bool isPassthrough(int enumValue) {
+        return enumValue !=
+                   hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_HALFWIDTH &&
+               enumValue !=
+                   hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_FULLWIDTH;
+    }
+
+    /**
+     * @brief protobufのenum値をコンボボックスのインデックスへ変換する
+     * @param enumValue 変換するprotobuf enum値
+     * @return 全角ではFULLWIDTH_INDEX、それ以外 (素通りを含む) ではHALFWIDTH_INDEX
+     */
+    static int widthIndexFromEnum(int enumValue) {
+        return enumValue ==
+                       hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_FULLWIDTH
+                   ? FULLWIDTH_INDEX
+                   : DEFAULT_WIDTH_INDEX;
+    }
+
+    /**
+     * @brief UIの2つの値から実効のprotobuf enum値を求める
+     * @param passthrough [IMEを素通りする]チェックボックスの状態
+     * @param widthIndex [全角/半角]コンボボックスのインデックス
+     * @return passthroughがtrueならコンボボックスに依らずKEYPAD_INPUT_PASSTHROUGH
+     *         それ以外は、FULLWIDTH_INDEXならKEYPAD_INPUT_FULLWIDTH、他のインデックスはKEYPAD_INPUT_HALFWIDTH
+     */
+    static EnumType fromUi(bool passthrough, int widthIndex) {
+        if (passthrough) {
+            return hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_PASSTHROUGH;
+        }
+        return widthIndex == FULLWIDTH_INDEX
+                   ? hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_FULLWIDTH
+                   : hazkey::config::Profile_KeypadInputMode_KEYPAD_INPUT_HALFWIDTH;
+    }
+
+    /**
+     * @brief protobufのenum値をチェックボックスとコンボボックスへ設定する
+     * @param passthrough [IMEを素通りする]チェックボックス
+     * @param width [全角/半角]コンボボックス
+     * @param enumValue 設定するprotobuf enum値
+     * @note 有効/無効の切り替えは呼び出し側が行う
+     */
+    static void setToUi(QCheckBox* passthrough, QComboBox* width,
+                        int enumValue) {
+        passthrough->setChecked(isPassthrough(enumValue));
+        width->setCurrentIndex(widthIndexFromEnum(enumValue));
+    }
+
+    /**
+     * @brief チェックボックスとコンボボックスの状態から実効のprotobuf enum値を求める
+     * @param passthrough [IMEを素通りする]チェックボックス
+     * @param width [全角/半角]コンボボックス
+     * @return fromUi()と同じ規則で求めたprotobuf enum値
+     */
+    static EnumType getFromUi(const QCheckBox* passthrough,
+                              const QComboBox* width) {
+        return fromUi(passthrough->isChecked(), width->currentIndex());
     }
 };
 

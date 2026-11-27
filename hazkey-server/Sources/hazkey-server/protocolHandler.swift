@@ -60,7 +60,7 @@ class ProtocolHandler {
         case .newComposingText:
             response = state.createComposingTextInstanse()
         case .inputChar(let req):
-            response = state.inputChar(inputString: req.text)
+            response = state.inputChar(inputString: req.text, bypassKeymap: req.bypassKeymap)
         case .modifierEvent(let req):
             response = state.processModifierEvent(modifier: req.modType, event: req.eventType)
         case .deleteLeft:

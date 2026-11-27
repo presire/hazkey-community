@@ -261,6 +261,38 @@ set_tests_properties(serverconnector_io_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# テンキー入力設定のenum値と[ユーザインターフェース]タブの2つのウィジェットの対応のテスト
+# mainwindow.uiをAUTOUICで生成し、実際のウィジェット名と既定状態も検証する
+qt_add_executable(keypad_input_ui_test
+    keypad_input_ui_test.cpp
+    mainwindow.ui
+    hazkey-icon.qrc
+)
+if(Protobuf_VERSION VERSION_GREATER_EQUAL "3.15")
+    protobuf_generate(
+        TARGET keypad_input_ui_test
+        LANGUAGE cpp
+        PROTOS ${PROTO_FILES}
+        IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+        PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+    )
+else()
+    target_sources(keypad_input_ui_test PRIVATE ${PROTO_SRCS} ${PROTO_HDRS})
+endif()
+target_include_directories(keypad_input_ui_test PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS}
+)
+target_link_libraries(keypad_input_ui_test PRIVATE
+    Qt6::Test
+    Qt6::Widgets
+    PkgConfig::ProtobufLite
+)
+add_test(NAME keypad_input_ui_test COMMAND keypad_input_ui_test)
+set_tests_properties(keypad_input_ui_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 qt_add_executable(learninghistorydialog_test
     learninghistorydialog_test.cpp
     learninghistorydialog.cpp

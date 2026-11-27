@@ -92,6 +92,17 @@ final class DefaultProfileTests: XCTestCase {
         XCTAssertEqual(profile.candidateDigitKeyAction, .candidateDigitSelectAndCommit)
     }
 
+    func testDefaultProfilePassesKeypadInputThroughKeymap() throws {
+        // 前提: サーバの既定プロファイル応答ファクトリ
+        let response = HazkeyServerConfig.getDefaultProfile()
+        let profile = try XCTUnwrap(response.currentConfig.profiles.first)
+
+        // 期待: テンキーの入力は既定で従来どおりキーマップに従う
+        XCTAssertTrue(profile.hasKeypadInputMode)
+        XCTAssertEqual(profile.keypadInputMode, .keypadInputPassthrough)
+        XCTAssertEqual(profile.keypadInputModeEffective, .keypadInputPassthrough)
+    }
+
     func testDefaultProfileDisablesSymbolConversion() throws {
         // 前提: サーバの既定プロファイル応答ファクトリ
         let response = HazkeyServerConfig.getDefaultProfile()

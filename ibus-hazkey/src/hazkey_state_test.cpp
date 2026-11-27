@@ -49,6 +49,10 @@ namespace {
 using hazkey::ibus::HazkeyFrontend;
 using hazkey::ibus::HazkeyState;
 
+/** @brief テンキーの入力方法の既定値 (素通し) */
+constexpr hazkey::config::Profile::KeypadInputMode kPassthrough =
+    hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH;
+
 /**
  * @brief 複数ページにまたがるページ内位置から全体位置への解決を検証する
  *
@@ -908,29 +912,29 @@ void testSurroundingGateConditions() {
     using hazkey::ibus::HazkeyState;
 
     // 未組成の入力可能キーは、プロファイル未読込なら設定が不明なため依頼し、読込後はヒントに従う
-    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, false, false));
-    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, false));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, false, false, kPassthrough));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, false, true, false, kPassthrough));
     // スペース・解放・Shift・修飾子付き・非入力キーは依頼しない
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_space, 0, false, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_RELEASE_MASK, false, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Shift_L, 0, false, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_CONTROL_MASK, false, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Return, 0, false, false, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_space, 0, false, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_RELEASE_MASK, false, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Shift_L, 0, false, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, IBUS_CONTROL_MASK, false, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_Return, 0, false, false, true, true, kPassthrough));
     // 組成中と候補焦点中は新しい組成ではないため依頼しない
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, true, false, true, true));
-    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, true, true, true));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, true, false, true, true, kPassthrough));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_a, 0, false, true, true, true, kPassthrough));
 
     // ワーカーは全条件を満たすときだけ保留する
-    assert(HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, false));
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_space, true, true, false, false));
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_Return, true, true, false, false));
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, false, true, false, false));
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, false, false, false));
+    assert(HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, false, 0, kPassthrough));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_space, true, true, false, false, 0, kPassthrough));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_Return, true, true, false, false, 0, kPassthrough));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, false, true, false, false, 0, kPassthrough));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, false, false, false, 0, kPassthrough));
     // 確定直後に退避・復元した固定内容を持つ組成は待たない
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, true, false));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, true, false, 0, kPassthrough));
     // 周辺テキストを受信済みなら待たない
-    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, true));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_a, true, true, false, true, 0, kPassthrough));
 
     std::cout << "[PASS] surrounding gate conditions\n";
 }
@@ -1190,6 +1194,17 @@ class SurroundingFakeServer {
         return kanaCycleRequests_;
     }
 
+    void setKeypadInputMode(hazkey::config::Profile::KeypadInputMode mode) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        keypadInputMode_ = mode;
+    }
+
+    /** @brief 受け取ったinput_char要求の (文字列, bypass_keymap) を到着順に返す */
+    std::vector<std::pair<std::string, bool>> inputCharRequests() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return inputCharRequests_;
+    }
+
     bool waitForBlockedContext(std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex_);
         return contextCondition_.wait_for(lock, timeout,
@@ -1378,6 +1393,8 @@ class SurroundingFakeServer {
                 break;
             case hazkey::RequestEnvelope::kInputChar:
                 ++inputChars_;
+                inputCharRequests_.emplace_back(request.input_char().text(),
+                                                request.input_char().bypass_keymap());
                 romaji_.insert(cursor_, request.input_char().text());
                 cursor_ += request.input_char().text().size();
                 break;
@@ -1452,6 +1469,9 @@ class SurroundingFakeServer {
                 if (kanaCycleHotkey_.has_value()) {
                     profile->set_kana_cycle_hotkey(*kanaCycleHotkey_);
                 }
+                if (keypadInputMode_.has_value()) {
+                    profile->set_keypad_input_mode(*keypadInputMode_);
+                }
                 break;
             }
             default:
@@ -1485,6 +1505,8 @@ class SurroundingFakeServer {
     std::optional<std::string> kanaCycleHotkey_;
     bool kanaCycleFails_ = false;
     int kanaCycleRequests_ = 0;
+    std::optional<hazkey::config::Profile::KeypadInputMode> keypadInputMode_;
+    std::vector<std::pair<std::string, bool>> inputCharRequests_;
     uint64_t revision_ = 1;
 };
 
@@ -1767,7 +1789,7 @@ void testSurroundingTextWiring() {
         assert(!snapshot.composing);
         assert(hazkey::ibus::HazkeyFrontend::isSurroundingGateCandidate(
             IBUS_KEY_i, 0, snapshot.composing, snapshot.listFocused, snapshot.profileLoaded,
-            snapshot.surroundingGate));
+            snapshot.surroundingGate, snapshot.keypadInputMode));
         runOnWorker(executor, [&] { state->processKeyEvent(IBUS_KEY_Shift_L, 0, IBUS_RELEASE_MASK); });
 
         runOnWorker(executor, [&] { state->focusOut(); });
@@ -1953,8 +1975,22 @@ class EngineSignalRecorder {
             std::lock_guard<std::mutex> lock(self->mutex_);
             self->events_.push_back(event);
         } else if (g_strcmp0(member, "CommitText") == 0) {
+            std::string committed;
+            GVariant* serialized = nullptr;
+            g_variant_get(g_dbus_message_get_body(message), "(v)", &serialized);
+            if (serialized != nullptr) {
+                IBusSerializable* object = ibus_serializable_deserialize(serialized);
+                if (object != nullptr && IBUS_IS_TEXT(object)) {
+                    committed = ibus_text_get_text(IBUS_TEXT(object));
+                }
+                if (object != nullptr) {
+                    g_object_unref(object);
+                }
+                g_variant_unref(serialized);
+            }
             std::lock_guard<std::mutex> lock(self->mutex_);
             ++self->commitTextCount_;
+            self->commitTexts_.push_back(std::move(committed));
         } else if (g_strcmp0(member, "UpdatePreeditText") == 0) {
             std::lock_guard<std::mutex> lock(self->mutex_);
             ++self->preeditUpdateCount_;
@@ -1978,6 +2014,11 @@ class EngineSignalRecorder {
         return commitTextCount_;
     }
 
+    std::vector<std::string> commitTexts() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return commitTexts_;
+    }
+
     int preeditUpdateCount() {
         std::lock_guard<std::mutex> lock(mutex_);
         return preeditUpdateCount_;
@@ -1997,6 +2038,7 @@ class EngineSignalRecorder {
     std::mutex mutex_;
     std::vector<Event> events_;
     int commitTextCount_ = 0;
+    std::vector<std::string> commitTexts_;
     int preeditUpdateCount_ = 0;
     int lookupTableUpdateCount_ = 0;
     int hideLookupTableCount_ = 0;
@@ -2548,6 +2590,443 @@ void testFrontendWorkerExceptionRecoversGate() {
     std::cout << "frontend worker exception recovers surrounding gate: OK\n";
 }
 
+/**
+ * @brief テンキーの文字キーの同期消費判定を、状態・入力方法・修飾・プロファイル読込の組み合わせで検証する
+ *
+ * - 候補の選択中は、数字 (候補選択) も非数字も全ての入力方法で消費する
+ * - 組成中は全ての入力方法で消費する (素通しでもワーカーが組成を確定してから半角の文字を確定する)
+ * - 未入力時は、読込済みで半角・全角のときだけ消費し、素通しとプロファイル未読込はアプリケーションへ渡す
+ * - NumLock (Mod2) は修飾なしとして扱う
+ * - [Ctrl] / [Alt]付きは、読込済みなら全ての入力方法でアプリケーションへ渡し、未読込なら従来どおり投機的に消費する
+ * - [Shift] / [AltGr] (Mod5) 付きも全ての状態・全ての入力方法でアプリケーションへ渡す
+ */
+void testKeypadConsumeDecision() {
+    using hazkey::config::Profile;
+    enum class Phase { Idle, Composing, ListFocused };
+    const Profile::KeypadInputMode modes[] = {
+        Profile::KEYPAD_INPUT_PASSTHROUGH, Profile::KEYPAD_INPUT_HALFWIDTH,
+        Profile::KEYPAD_INPUT_FULLWIDTH, Profile::KEYPAD_INPUT_MODE_UNSPECIFIED};
+    const guint keys[] = {IBUS_KEY_KP_Add, IBUS_KEY_KP_Decimal, IBUS_KEY_KP_3,
+                          IBUS_KEY_KP_0, IBUS_KEY_KP_Separator};
+    for (const Phase phase : {Phase::Idle, Phase::Composing, Phase::ListFocused}) {
+        for (const auto mode : modes) {
+            for (const bool profileLoaded : {false, true}) {
+                for (const guint keyval : keys) {
+                    HazkeyFrontend::DecisionInput in;
+                    in.composing = phase != Phase::Idle;
+                    in.listFocused = phase == Phase::ListFocused;
+                    in.profileLoaded = profileLoaded;
+                    in.keypadInputMode = mode;
+                    const bool capturingMode = mode == Profile::KEYPAD_INPUT_HALFWIDTH ||
+                                               mode == Profile::KEYPAD_INPUT_FULLWIDTH;
+                    const gboolean unmodifiedExpected =
+                        phase != Phase::Idle || (profileLoaded && capturingMode) ? TRUE : FALSE;
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, 0, in) == unmodifiedExpected);
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, IBUS_MOD2_MASK, in) ==
+                           unmodifiedExpected);
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, IBUS_LOCK_MASK, in) ==
+                           unmodifiedExpected);
+                    for (const guint modifier : {IBUS_CONTROL_MASK, IBUS_MOD1_MASK, IBUS_SUPER_MASK}) {
+                        assert(HazkeyFrontend::decideConsumeKey(keyval, modifier, in) ==
+                               (profileLoaded ? FALSE : TRUE));
+                    }
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, IBUS_SHIFT_MASK, in) == FALSE);
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, IBUS_MOD5_MASK, in) == FALSE);
+                    // 解放は常に消費しない
+                    assert(HazkeyFrontend::decideConsumeKey(keyval, IBUS_RELEASE_MASK, in) == FALSE);
+                }
+            }
+        }
+    }
+    // テンキーの文字キーでないキー (NumLock OFFのKP_End、KP_Enter) は本機能の対象外で、未入力時は従来どおり渡す
+    for (const auto mode : modes) {
+        HazkeyFrontend::DecisionInput in;
+        in.profileLoaded = true;
+        in.keypadInputMode = mode;
+        assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_End, 0, in) == FALSE);
+        assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_Enter, 0, in) == FALSE);
+        in.composing = true;
+        assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_Enter, 0, in) == TRUE);
+        in.listFocused = true;
+        assert(HazkeyFrontend::decideConsumeKey(IBUS_KEY_KP_Enter, 0, in) == TRUE);
+    }
+    // 修飾なし・修飾付きの判定はcandidateDigitIndex()と同じ規則に従う
+    assert(HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Add, 0));
+    assert(HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_MOD2_MASK | IBUS_LOCK_MASK));
+    assert(!HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_SHIFT_MASK));
+    assert(!HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_MOD5_MASK));
+    assert(!HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_MOD4_MASK));
+    assert(!HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_plus, 0));
+    assert(!HazkeyState::isUnmodifiedKeypadCharKey(IBUS_KEY_KP_Enter, 0));
+    assert(!HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Add, 0));
+    assert(!HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_MOD2_MASK | IBUS_LOCK_MASK));
+    assert(HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_SHIFT_MASK));
+    assert(HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_1, IBUS_SHIFT_MASK));
+    assert(HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_CONTROL_MASK));
+    assert(HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Add, IBUS_MOD5_MASK));
+    assert(!HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_plus, IBUS_SHIFT_MASK));
+    assert(!HazkeyState::isModifiedKeypadCharKey(IBUS_KEY_KP_Enter, IBUS_SHIFT_MASK));
+    std::cout << "[PASS] keypad consume decision\n";
+}
+
+/**
+ * @brief 素通しのテンキーの文字キーが、周辺テキスト待ちの対象から外れることを検証する
+ *
+ * - 読込済みで素通しなら依頼せず、ワーカーも保留しない (組成を開始しないため)
+ * - 半角・全角は通常の入力と同じく依頼・保留する
+ * - 未読込の間は入力方法が不明なため依頼し、ワーカーが読込後の設定で決める
+ * - [Shift] / [Ctrl]付きは全モードでアプリケーションへ渡すため、依頼・保留しない
+ */
+void testKeypadSurroundingGateConditions() {
+    using hazkey::config::Profile;
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, 0, false, false, true, true,
+                                                       Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, IBUS_MOD2_MASK, false, false, true,
+                                                       true, Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, 0, false, false, true, true,
+                                                      Profile::KEYPAD_INPUT_HALFWIDTH));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_Add, 0, false, false, true, true,
+                                                      Profile::KEYPAD_INPUT_FULLWIDTH));
+    assert(HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, 0, false, false, false, false,
+                                                      Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, IBUS_CONTROL_MASK, false, false,
+                                                       true, true, Profile::KEYPAD_INPUT_HALFWIDTH));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, IBUS_SHIFT_MASK, false, false,
+                                                       true, true, Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyFrontend::isSurroundingGateCandidate(IBUS_KEY_KP_1, IBUS_SHIFT_MASK, false, false,
+                                                       true, true, Profile::KEYPAD_INPUT_HALFWIDTH));
+
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, 0,
+                                              Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_Divide, true, true, false, false,
+                                              IBUS_MOD2_MASK, Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, 0,
+                                              Profile::KEYPAD_INPUT_MODE_UNSPECIFIED));
+    assert(HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, 0,
+                                             Profile::KEYPAD_INPUT_HALFWIDTH));
+    assert(HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, 0,
+                                             Profile::KEYPAD_INPUT_FULLWIDTH));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, IBUS_SHIFT_MASK,
+                                              Profile::KEYPAD_INPUT_PASSTHROUGH));
+    assert(!HazkeyState::shouldGateFirstInput(IBUS_KEY_KP_1, true, true, false, false, IBUS_SHIFT_MASK,
+                                              Profile::KEYPAD_INPUT_HALFWIDTH));
+    std::cout << "[PASS] keypad surrounding gate conditions\n";
+}
+
+/**
+ * @brief テンキーの文字キーがサーバへ送る要求を、模擬サーバに接続した実際のHazkeyStateで検証する
+ *
+ * - 半角・全角は、未入力時・組成中・候補の選択中 (非数字) に、その文字をbypass_keymap=trueで送る
+ * - 素通しの未入力時は処理せず (FALSE)、要求を送らない
+ * - 素通しの組成中・候補の選択中は消費し、文字を組成へ入れない
+ * - 候補の選択中のKP_0〜KP_9は、全ての入力方法で候補選択のままで、文字を送らない
+ * - [Ctrl]付き・プロファイルにフィールドが無い場合 (素通し) は本機能の対象外
+ */
+void testKeypadInputWiring() {
+    using hazkey::config::Profile;
+    char rootTemplate[] = "/tmp/hazkey-ibus-keypad-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    using Body = std::function<void(SurroundingFakeServer&,
+                                    const std::function<gboolean(guint, guint)>&,
+                                    const std::function<void(guint)>&)>;
+    const auto run = [&](std::optional<Profile::KeypadInputMode> mode, bool selectable,
+                         const Body& body) {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        if (mode.has_value()) {
+            server.setKeypadInputMode(*mode);
+        }
+        if (selectable) {
+            server.setCandidates({{"candidate0", ""}, {"candidate1", ""}, {"candidate2", ""},
+                                  {"candidate3", ""}});
+        }
+        hazkey::frontend::SerialTaskExecutor executor;
+        auto state = std::make_shared<HazkeyState>(nullptr, &executor);
+        runOnWorker(executor, [&] {
+            state->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                   IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS | IBUS_CAP_PROPERTY |
+                                   IBUS_CAP_SURROUNDING_TEXT);
+            state->focusIn();
+        });
+        const auto press = [&](guint keyval, guint modifiers) {
+            gboolean handled = FALSE;
+            runOnWorker(executor, [&] {
+                handled = state->processKeyEvent(keyval, 0, modifiers);
+                state->processKeyEvent(keyval, 0, modifiers | IBUS_RELEASE_MASK);
+            });
+            return handled;
+        };
+        const auto type = [&](guint keyval) { typeKey(executor, state, keyval); };
+        body(server, press, type);
+        // ワーカーの要約が読み込んだ入力方法を報告する
+        const auto snapshot = state->ingressSnapshot();
+        assert(snapshot.keypadInputMode ==
+               mode.value_or(Profile::KEYPAD_INPUT_PASSTHROUGH));
+        executor.shutdown();
+    };
+    const auto lastInput = [](SurroundingFakeServer& server) {
+        const auto requests = server.inputCharRequests();
+        assert(!requests.empty());
+        return requests.back();
+    };
+
+    struct Capture {
+        Profile::KeypadInputMode mode;
+        guint keyval;
+        const char* text;
+    };
+    for (const Capture& capture :
+         {Capture{Profile::KEYPAD_INPUT_HALFWIDTH, IBUS_KEY_KP_1, "1"},
+          Capture{Profile::KEYPAD_INPUT_HALFWIDTH, IBUS_KEY_KP_Subtract, "-"},
+          Capture{Profile::KEYPAD_INPUT_FULLWIDTH, IBUS_KEY_KP_1, "１"},
+          Capture{Profile::KEYPAD_INPUT_FULLWIDTH, IBUS_KEY_KP_Decimal, "．"},
+          Capture{Profile::KEYPAD_INPUT_FULLWIDTH, IBUS_KEY_KP_Divide, "／"}}) {
+        // 未入力時: その文字で組成を始める (NumLockは修飾なしとして扱う)
+        run(capture.mode, false,
+            [&](SurroundingFakeServer& server, const auto& press, const auto&) {
+                assert(press(capture.keyval, IBUS_MOD2_MASK) == TRUE);
+                assert(lastInput(server) == std::make_pair(std::string(capture.text), true));
+                assert(server.romaji() == capture.text);
+            });
+        // 組成中: 組成へ追加する
+        run(capture.mode, false,
+            [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+                type(IBUS_KEY_a);
+                assert(lastInput(server) == std::make_pair(std::string("a"), false));
+                assert(press(capture.keyval, 0) == TRUE);
+                assert(lastInput(server) == std::make_pair(std::string(capture.text), true));
+                assert(server.romaji() == std::string("a") + capture.text);
+                assert(server.prefixCompletions() == 0);
+            });
+    }
+    // 候補の選択中の非数字: 新しい組成をその文字で始める
+    for (const auto mode : {Profile::KEYPAD_INPUT_HALFWIDTH, Profile::KEYPAD_INPUT_FULLWIDTH}) {
+        run(mode, true,
+            [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+                type(IBUS_KEY_a);
+                type(IBUS_KEY_Tab);
+                assert(press(IBUS_KEY_KP_Add, 0) == TRUE);
+                const std::string expected =
+                    mode == Profile::KEYPAD_INPUT_HALFWIDTH ? "+" : "＋";
+                assert(lastInput(server) == std::make_pair(expected, true));
+                assert(server.romaji() == expected);
+            });
+    }
+    // 候補の選択中のKP_0〜KP_9は、全ての入力方法で候補を選択して確定し、文字を送らない
+    for (const auto mode : {Profile::KEYPAD_INPUT_PASSTHROUGH, Profile::KEYPAD_INPUT_HALFWIDTH,
+                            Profile::KEYPAD_INPUT_FULLWIDTH}) {
+        run(mode, true,
+            [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+                type(IBUS_KEY_a);
+                type(IBUS_KEY_Tab);
+                const int inputCount = server.inputChars();
+                assert(press(IBUS_KEY_KP_3, 0) == TRUE);
+                assert(server.completedCandidateIndices() == std::vector<int>{2});
+                assert(server.inputChars() == inputCount);
+            });
+    }
+    // 素通し (明示とフィールドが無い場合): 未入力時は処理せず、組成中・候補の選択中は文字を組成へ入れずに確定する
+    for (const auto mode : {std::optional<Profile::KeypadInputMode>(Profile::KEYPAD_INPUT_PASSTHROUGH),
+                            std::optional<Profile::KeypadInputMode>()}) {
+        run(mode, false,
+            [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+                assert(press(IBUS_KEY_KP_1, 0) == FALSE);
+                assert(press(IBUS_KEY_KP_Add, IBUS_MOD2_MASK) == FALSE);
+                assert(server.inputChars() == 0);
+                type(IBUS_KEY_a);
+                type(IBUS_KEY_i);
+                const int inputCount = server.inputChars();
+                assert(press(IBUS_KEY_KP_Add, 0) == TRUE);
+                assert(server.inputChars() == inputCount);
+                // ライブ変換の結果を[Enter]と同じく学習付きで確定して、組成を終える
+                assert(server.prefixCompletions() == 1);
+                assert(server.romaji().empty());
+                // 組成中のテンキーの数字キーも、確定してから半角の数字をアプリへ渡す
+                type(IBUS_KEY_a);
+                type(IBUS_KEY_i);
+                assert(press(IBUS_KEY_KP_3, 0) == TRUE);
+                assert(server.inputChars() == inputCount + 2);
+                assert(server.prefixCompletions() == 2);
+                assert(server.romaji().empty());
+                // 組成を終えたため、次のテンキーの文字キーは再び素通しする
+                assert(press(IBUS_KEY_KP_2, 0) == FALSE);
+            });
+        run(mode, true,
+            [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+                type(IBUS_KEY_a);
+                type(IBUS_KEY_Tab);
+                const int inputCount = server.inputChars();
+                assert(press(IBUS_KEY_KP_Decimal, 0) == TRUE);
+                assert(server.inputChars() == inputCount);
+                assert(server.romaji().empty());
+                assert(press(IBUS_KEY_KP_Decimal, 0) == FALSE);
+            });
+    }
+    // [Ctrl]・[Shift]付きは半角・全角でも全状態でアプリケーションへ渡す
+    run(Profile::KEYPAD_INPUT_HALFWIDTH, true,
+        [&](SurroundingFakeServer& server, const auto& press, const auto& type) {
+            assert(press(IBUS_KEY_KP_Add, IBUS_CONTROL_MASK) == FALSE);
+            assert(press(IBUS_KEY_KP_1, IBUS_SHIFT_MASK) == FALSE);
+            assert(press(IBUS_KEY_KP_Add, IBUS_SHIFT_MASK) == FALSE);
+            assert(server.inputChars() == 0);
+            // 組成中も[Shift]付きテンキーは消費せず素通しする
+            type(IBUS_KEY_a);
+            const int composingCount = server.inputChars();
+            assert(press(IBUS_KEY_KP_1, IBUS_SHIFT_MASK) == FALSE);
+            assert(press(IBUS_KEY_KP_Add, IBUS_SHIFT_MASK) == FALSE);
+            assert(server.inputChars() == composingCount);
+            // 候補の選択中も[Shift]付きテンキーは消費せず素通しする
+            type(IBUS_KEY_Tab);
+            assert(press(IBUS_KEY_KP_1, IBUS_SHIFT_MASK) == FALSE);
+            assert(press(IBUS_KEY_KP_Add, IBUS_SHIFT_MASK) == FALSE);
+            assert(server.inputChars() == composingCount);
+        });
+
+    rmdir(root);
+    std::cout << "keypad input wiring: OK\n";
+}
+
+/**
+ * @brief 素通しのテンキーの文字キーが、組成または候補を確定してから半角の文字を確定する順序を検証する
+ *
+ * IBusデーモンは使わず、socketpairで結んだピア間D-Bus接続の片側に実際のIBusEngineを置き、
+ * 他方でエンジンが送るCommitText・ForwardKeyEventシグナルを受け取る
+ *
+ * - 未入力時は同期判定がFALSEを返し、フレームワークがアプリケーションへ渡す (確定も転送もしない)
+ * - 組成中はライブ変換の結果、次に半角の文字の順に確定する
+ * - 候補の選択中は選択中の候補、次に半角の文字の順に確定する
+ */
+void testKeypadPassthroughCommitUiWiring() {
+    char rootTemplate[] = "/tmp/hazkey-ibus-keypad-ui-XXXXXX";
+    const char* root = mkdtemp(rootTemplate);
+    assert(root != nullptr);
+    setenv("XDG_RUNTIME_DIR", root, 1);
+    signal(SIGPIPE, SIG_IGN);
+    hazkey::frontend::setServerSpawner([](bool) {});
+    const std::string socketPath =
+        std::string(root) + "/hazkey-community-server." + std::to_string(getuid()) + ".sock";
+
+    ibus_init();
+    int fds[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    GDBusConnection* connections[2] = {nullptr, nullptr};
+    for (int index = 0; index < 2; ++index) {
+        GError* error = nullptr;
+        GSocket* socket = g_socket_new_from_fd(fds[index], &error);
+        assert(socket != nullptr);
+        GSocketConnection* stream = g_socket_connection_factory_create_connection(socket);
+        g_object_unref(socket);
+        gchar* guid = index == 0 ? g_dbus_generate_guid() : nullptr;
+        g_dbus_connection_new(
+            G_IO_STREAM(stream), guid,
+            index == 0 ? G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_SERVER
+                       : G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT,
+            nullptr, nullptr,
+            [](GObject*, GAsyncResult* result, gpointer data) {
+                *static_cast<GDBusConnection**>(data) = g_dbus_connection_new_finish(result, nullptr);
+            },
+            &connections[index]);
+        g_free(guid);
+        g_object_unref(stream);
+    }
+    assert(pumpMainLoopUntil([&] { return connections[0] != nullptr && connections[1] != nullptr; },
+                             std::chrono::milliseconds(5000)));
+
+    EngineSignalRecorder recorder;
+    const guint filterId =
+        g_dbus_connection_add_filter(connections[1], &EngineSignalRecorder::filter, &recorder, nullptr);
+    IBusEngine* engine = ibus_engine_new("hazkey-test", "/org/freedesktop/IBus/Engine/1", connections[0]);
+    assert(engine != nullptr);
+    hazkey::frontend::setMainLoopPoster([](std::function<void()> task) {
+        auto* heapTask = new std::function<void()>(std::move(task));
+        g_idle_add_full(
+            G_PRIORITY_DEFAULT,
+            [](gpointer data) -> gboolean {
+                (*static_cast<std::function<void()>*>(data))();
+                return G_SOURCE_REMOVE;
+            },
+            heapTask, [](gpointer data) { delete static_cast<std::function<void()>*>(data); });
+    });
+
+    const auto waitForCommits = [&](size_t count) {
+        const bool arrived = pumpMainLoopUntil([&] { return recorder.commitTexts().size() >= count; },
+                                               std::chrono::milliseconds(5000));
+        if (!arrived) {
+            std::cerr << "  expected " << count << " commits, got " << recorder.commitTexts().size() << "\n";
+        }
+        assert(arrived);
+    };
+
+    {
+        SurroundingFakeServer server(socketPath);
+        server.setRightContext(false);
+        server.setKeypadInputMode(hazkey::config::Profile::KEYPAD_INPUT_PASSTHROUGH);
+        auto frontend = std::make_shared<HazkeyFrontend>(engine);
+        frontend->setCapabilities(IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_AUXILIARY_TEXT |
+                                  IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_FOCUS | IBUS_CAP_PROPERTY);
+        frontend->focusIn();
+        settleFrontend();
+        // 最初の入力でプロファイルを読み込み、組成を[Esc]で取り消す
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_Escape, 9);
+        assert(recorder.commitTexts().empty());
+
+        // 未入力時はフレームワークがアプリケーションへ渡す
+        assert(frontend->processKeyEvent(IBUS_KEY_KP_1, 87, 0) == FALSE);
+        settleFrontend();
+        assert(frontend->processKeyEvent(IBUS_KEY_KP_1, 87, IBUS_RELEASE_MASK) == FALSE);
+        settleFrontend();
+        assert(recorder.commitTexts().empty());
+        assert(recorder.events().empty());
+        assert(server.inputChars() == 1);
+
+        // 組成中はライブ変換の結果、次に半角の文字の順に確定する
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_i, 31);
+        assert(frontend->processKeyEvent(IBUS_KEY_KP_Add, 86, 0) == TRUE);
+        waitForCommits(2);
+        frontend->processKeyEvent(IBUS_KEY_KP_Add, 86, IBUS_RELEASE_MASK);
+        settleFrontend();
+        assert(recorder.commitTexts() == (std::vector<std::string>{"愛", "+"}));
+        assert(recorder.events().empty());
+
+        // 候補の選択中は選択中の候補、次に半角の文字の順に確定する
+        server.setCandidates({{"候補A", ""}, {"候補B", ""}});
+        sendKey(*frontend, IBUS_KEY_a, 38);
+        sendKey(*frontend, IBUS_KEY_Tab, 23);
+        sendKey(*frontend, IBUS_KEY_Down, 116);
+        assert(frontend->processKeyEvent(IBUS_KEY_KP_Decimal, 91, 0) == TRUE);
+        waitForCommits(4);
+        frontend->processKeyEvent(IBUS_KEY_KP_Decimal, 91, IBUS_RELEASE_MASK);
+        settleFrontend();
+        assert(recorder.commitTexts() ==
+               (std::vector<std::string>{"愛", "+", "候補B", "."}));
+        assert(recorder.events().empty());
+        assert(server.inputCharRequests().size() == 4);
+
+        frontend->focusOut();
+        settleFrontend();
+        frontend->retire();
+        settleFrontend();
+    }
+    hazkey::frontend::setMainLoopPoster(nullptr);
+    g_dbus_connection_remove_filter(connections[1], filterId);
+    g_object_unref(engine);
+    for (GDBusConnection* connection : connections) {
+        g_dbus_connection_close_sync(connection, nullptr, nullptr);
+        g_object_unref(connection);
+    }
+    rmdir(root);
+    std::cout << "keypad passthrough commit UI wiring: OK\n";
+}
+
 }  // namespace
 
 /**
@@ -2594,6 +3073,10 @@ int main() {
     testQueuedKeyAfterSecureRequestIsDiscarded();
     testFrontendForwardsReleaseOfFrameworkForwardedPress();
     testFrontendWorkerExceptionRecoversGate();
+    testKeypadConsumeDecision();
+    testKeypadSurroundingGateConditions();
+    testKeypadInputWiring();
+    testKeypadPassthroughCommitUiWiring();
     std::cout << "\nAll HazkeyState candidate-index tests passed.\n";
     return 0;
 }
