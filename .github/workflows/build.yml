@@ -170,18 +170,26 @@ jobs:
               # --gpg-auto-import-keysオプションは付けない
               # (鍵が変わった場合は、取り込まずに失敗させる)
               zypper --non-interactive refresh
-              # コンテナーイメージとミラーのリポジトリの同期時期がずれると、
-              # イメージ側の libmount1 等がリポジトリの *-devel より新しくなり、依存関係が解決できず終了コード4になる
-              # (例: libmount1-2.42.4 に対し libmount-devel が要求する libmount1 = 2.42.3)
-              # 使い捨てのビルドコンテナーのため、1回目の失敗時はメタデータを再取得し、
-              # ダウングレードを許可して依存関係を自動解決する
+              # コンテナイメージとミラーのリポジトリの同期時期がずれる場合、
+              # イメージ側のlibmount1等がリポジトリの*-develより新しくなり、依存関係が解決できず終了コード4になる
+              # (例: libmount1-2.42.4に対して、libmount-develが要求するlibmount1 = 2.42.3)
+              # 使い捨てのビルドコンテナのため、1回目の失敗時はメタデータを再取得して、ダウングレードを許可して依存関係を自動解決する
               zypper_install() {
                 zypper --non-interactive install --no-recommends "$@" \
                   || { zypper --non-interactive refresh --force \
                        && zypper --non-interactive install --no-recommends \
                             --allow-downgrade --force-resolution "$@"; }
               }
-              zypper_install \
+              # コンテナイメージには最小構成のlibcurl-mini4が入っており、libcurl-develは通常これで満たされる
+              # しかし、イメージ側のlibcurl-mini4がリポジトリより新しい場合 (例: イメージがlibcurl-mini4-8.22.0、リポジトリがlibcurl4-8.21.0)、
+              # 依存解決でlibcurl4が選ばれ、/usr/lib64/libcurl.so.4.8.0のファイル衝突で終了コード8になる
+              # そのため、同じトランザクションでlibcurl-mini4を削除して、libcurl4へ明示的に置き換える
+              curl_pkgs=""
+              if rpm -q libcurl-mini4 >/dev/null 2>&1; then
+                curl_pkgs="libcurl4 !libcurl-mini4"
+              fi
+              # shellcheck disable=SC2086
+              zypper_install $curl_pkgs \
                 ca-certificates gpg2 \
                 pkg-config binutils gcc gcc-c++ git gzip glibc-static libbsd-devel libedit-devel libicu-devel \
                 libcurl-devel ncurses-devel sqlite3-devel zlib-devel python3 \
